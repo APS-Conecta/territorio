@@ -51,6 +51,14 @@ use OCP\AppFramework\Db\Entity;
  * @method void setRevision(int $revision)
  * @method bool getRetired()
  * @method void setRetired(bool $retired)
+ * @method ?int getDatasetId()
+ * @method void setDatasetId(?int $datasetId)
+ * @method ?string getExternalId()
+ * @method void setExternalId(?string $externalId)
+ * @method ?string getOfficial()
+ * @method void setOfficial(?string $official)
+ * @method bool getOverridden()
+ * @method void setOverridden(bool $overridden)
  */
 class Feature extends Entity {
 	protected $subcategoryId = 0;
@@ -72,11 +80,17 @@ class Feature extends Entity {
 	protected $sourceRef = null;
 	protected $revision = 0;
 	protected $retired = false;
+	protected $datasetId = null;
+	protected $externalId = null;
+	protected $official = null;
+	protected $overridden = false;
 
 	public function __construct() {
 		$this->addType('subcategoryId', 'integer');
 		$this->addType('revision', 'integer');
 		$this->addType('retired', 'boolean');
+		$this->addType('datasetId', 'integer');
+		$this->addType('overridden', 'boolean');
 		$this->addType('minLat', 'float');
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
@@ -123,6 +137,15 @@ class Feature extends Entity {
 			// read: the change feed deliberately carries them, so a client learns
 			// to stop drawing one it already has (ADR-0005).
 			'retired' => (bool)$this->getRetired(),
+			'datasetId' => $this->getDatasetId(),
+			'externalId' => $this->getExternalId(),
+			// What the authority last published, where it differs from what is
+			// shown. ADR-0003 keeps a local edit AND the official value, so the
+			// two stay comparable and the override can be undone.
+			'overridden' => (bool)$this->getOverridden(),
+			'official' => $this->getOfficial() === null
+				? null
+				: json_decode($this->getOfficial(), true),
 		];
 	}
 

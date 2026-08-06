@@ -20,6 +20,7 @@
 						:show-retired="showRetired"
 						@select="select"
 						@create="startNew"
+						@import="importing = true"
 						@update:show-retired="toggleRetired" />
 				</div>
 			</template>
@@ -54,6 +55,8 @@
 					:filtered="isFiltered(filter)" />
 			</div>
 		</NcAppContent>
+
+		<ImportDialog v-if="importing" @close="importing = false" @imported="poll" />
 
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
@@ -90,6 +93,7 @@ import AnalisisView from './components/AnalisisView.vue'
 import CapasPanel from './components/CapasPanel.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import {
 	countsFor,
@@ -126,6 +130,7 @@ export default {
 		CapasPanel,
 		FeatureDetail,
 		FeatureList,
+		ImportDialog,
 		NcAppContent,
 		NcAppSidebar,
 		NcButton,
@@ -148,6 +153,7 @@ export default {
 			// View is the glossary's word for the whole personal on-screen state —
 			// of which this is one part, alongside the filter above.
 			pane: 'mapa',
+			importing: false,
 			history: [],
 			selectedId: null,
 			draft: null,

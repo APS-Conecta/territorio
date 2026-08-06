@@ -121,16 +121,22 @@ class FeatureService {
 		return $this->revisions->forFeature($id);
 	}
 
-	/** @param array<string, mixed> $input */
-	public function create(array $input): Feature {
-		return $this->features->insert($this->apply(new Feature(), $input));
+	/**
+	 * @param array<string, mixed> $input
+	 * @param ?Provenance $provenance set only by an import; never read from a request
+	 */
+	public function create(array $input, ?Provenance $provenance = null): Feature {
+		$feature = $this->apply(new Feature(), $input);
+		$this->applyProvenance($feature, $provenance);
+
+		return $this->features->insert($feature);
 	}
 
 	/**
 	 * @param array<string, mixed> $input
 	 * @throws DoesNotExistException when there is no such Feature
 	 */
-	public function update(int $id, array $input): Feature {
+	public function update(int $id, array $input, ?Provenance $provenance = null): Feature {
 		$feature = $this->features->find($id);
 
 		// A retired record is invisible on every map, so an edit saved into one
@@ -141,7 +147,32 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro está retirado. Restáurelo antes de editarlo.');
 		}
 
-		return $this->features->update($this->apply($feature, $input));
+		$wasImported = $feature->getDatasetId() !== null;
+		$this->apply($feature, $input);
+		$this->applyProvenance($feature, $provenance);
+
+		// A person editing an imported record is what ADR-0003 calls a local
+		// override: it states what is true on the ground, so it outranks whatever
+		// the authority publishes next. Marked here rather than in the import,
+		// because this is the only place that knows a human did it — an import
+		// passes its Provenance and never sets this.
+		if ($provenance === null && $wasImported) {
+			$feature->setOverridden(true);
+		}
+
+		return $this->features->update($feature);
+	}
+
+	/** Import-only: says which Dataset this record belongs to and what the
+	 *  authority published, which is kept even when a local edit wins. */
+	private function applyProvenance(Feature $feature, ?Provenance $provenance): void {
+		if ($provenance === null) {
+			return;
+		}
+
+		$feature->setDatasetId($provenance->datasetId);
+		$feature->setExternalId($provenance->externalId);
+		$feature->setOfficial($provenance->officialAsJson());
 	}
 
 	/** @param array<string, mixed> $input */

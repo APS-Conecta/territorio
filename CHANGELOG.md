@@ -3,6 +3,36 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.6.0] — unreleased
+
+GeoJSON import.
+
+### Added
+
+- `occ territorio:import <archivo> --dataset=<slug>` and a browser upload, both through one
+  service so they cannot drift.
+- Datasets (Cadastral or Curated), and Import batches recording actor, moment, Dataset and the
+  Revision range the run produced — the range ADR-0009's revert depends on and that nothing can
+  reconstruct afterwards.
+- Provenance on Features: which Dataset a record came from, the external id a re-import matches
+  on, and the official values kept beside a local edit.
+
+### Notes
+
+- Verified against the real 865-feature La Florida catastro, not just fixtures: 538 created, 18
+  duplicates collapsed, 309 kinds nothing draws yet. Re-importing the same file reported 538
+  unchanged and moved the Revision cursor by zero.
+- Matching is on `(Dataset, external id)`. The real file carries no `id` and no `uid` — checked,
+  not assumed — so ids are derived from source, name and position, which is what makes a second
+  import update instead of creating 865 more records.
+- The file repeats 18 rows verbatim, inherited from FONASA. Collapsing them is right; doing it
+  silently is not, so the count is reported.
+- Nothing is written until the whole file has been read and checked. One bad coordinate refuses
+  the entire import — a half-imported catastro is far harder to reason about than a refused one.
+- A record someone edited, or retired, is never overwritten (ADR-0003). The authority's latest
+  values are still refreshed alongside, so "official vs local" stays current and the override can
+  be undone.
+
 ## [0.5.0] — unreleased
 
 The Capas panel, and one filtered set behind everything on screen.

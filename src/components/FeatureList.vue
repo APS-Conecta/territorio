@@ -10,6 +10,9 @@
 					@click="$emit('update:showRetired', !showRetired)">
 					{{ showRetired ? 'Ver activos' : 'Ver retirados' }}
 				</NcButton>
+				<NcButton v-if="!showRetired" variant="tertiary" @click="$emit('import')">
+					Importar
+				</NcButton>
 				<NcButton v-if="!showRetired" variant="primary" @click="$emit('create')">
 					Agregar
 				</NcButton>
@@ -64,7 +67,7 @@ export default {
 		showRetired: { type: Boolean, default: false },
 	},
 
-	emits: ['select', 'create', 'update:showRetired'],
+	emits: ['select', 'create', 'import', 'update:showRetired'],
 
 	computed: {
 		subcategories() {

@@ -11,7 +11,7 @@ organizaciones sociales.
 
 No contiene información de pacientes.
     ]]></description>
-    <version>0.5.1</version>
+    <version>0.6.1</version>
     <licence>agpl</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Territorio</namespace>
@@ -26,6 +26,9 @@ No contiene información de pacientes.
             <route>territorio.page.index</route>
         </navigation>
     </navigations>
+    <commands>
+        <command>OCA\Territorio\Command\Import</command>
+    </commands>
     <settings>
         <admin>OCA\Territorio\Settings\AdminSettings</admin>
         <admin-section>OCA\Territorio\Settings\AdminSection</admin-section>

@@ -110,6 +110,30 @@ class FeatureMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * Everything already in a Dataset, keyed by the external id a re-import
+	 * matches on — read once per run rather than one query per incoming row.
+	 *
+	 * Retired records are included deliberately: a record retired here and still
+	 * present upstream must be recognised as the same record, not created again
+	 * as a second copy the next time the file is imported.
+	 *
+	 * @return array<string, Feature>
+	 */
+	public function findByDataset(int $datasetId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('dataset_id', $qb->createNamedParameter($datasetId, IQueryBuilder::PARAM_INT)));
+
+		$byExternalId = [];
+		foreach ($this->findEntities($qb) as $feature) {
+			$byExternalId[(string)$feature->getExternalId()] = $feature;
+		}
+
+		return $byExternalId;
+	}
+
 	/** @throws DoesNotExistException */
 	public function find(int $id): Feature {
 		$qb = $this->db->getQueryBuilder();

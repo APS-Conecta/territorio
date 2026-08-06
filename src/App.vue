@@ -1,20 +1,27 @@
 <template>
 	<NcContent app-name="territorio">
-		<CapasPanel :taxonomy="taxonomy"
-			:filter="filter"
-			@toggle-category="onToggleCategory"
-			@toggle-subcategory="onToggleSubcategory"
-			@reset="resetFilter" />
-
 		<NcAppContent>
 			<template #list>
-				<FeatureList :features="listed"
-					:taxonomy="taxonomy"
-					:selected-id="selectedId"
-					:show-retired="showRetired"
-					@select="select"
-					@create="startNew"
-					@update:show-retired="toggleRetired" />
+				<!--
+					Three columns, not four: list · map · sidebar. A dedicated Capas
+					column costs a fixed 300px and leaves the map — the point of the
+					app — as the narrowest pane on a laptop.
+				-->
+				<div class="territorio-column">
+					<CapasPanel :taxonomy="taxonomy"
+						:filter="filter"
+						@toggle-category="onToggleCategory"
+						@toggle-subcategory="onToggleSubcategory"
+						@reset="resetFilter" />
+
+					<FeatureList :features="listed"
+						:taxonomy="taxonomy"
+						:selected-id="selectedId"
+						:show-retired="showRetired"
+						@select="select"
+						@create="startNew"
+						@update:show-retired="toggleRetired" />
+				</div>
 			</template>
 
 			<div class="territorio-main">
@@ -474,6 +481,24 @@ export default {
 <style scoped>
 .territorio-restore {
 	margin-top: 8px;
+}
+
+.territorio-column {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+/*
+ * NcAppContentList expects to own its column's height. Inside this flex column
+ * it shares with Capas, so it has to be told to take what is left and scroll —
+ * min-height: 0 is what actually allows a flex child to shrink below its content.
+ */
+.territorio-column :deep(.app-content-list) {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .territorio-main {

@@ -78,7 +78,7 @@
 			</template>
 		</div>
 
-		<FeatureHistory v-if="draft.id !== null" :entries="history" />
+		<FeatureHistory v-if="draft.id !== null" :entries="history" :taxonomy="taxonomy" />
 	</form>
 </template>
 

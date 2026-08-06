@@ -14,12 +14,23 @@
 				<span class="territorio-history__who">
 					{{ entry.actor || 'el sistema' }} · {{ entry.changedAt }}
 				</span>
+
 				<ul v-if="entry.changes" class="territorio-history__changes">
 					<li v-for="(change, field) in entry.changes" :key="field">
 						<strong>{{ FIELDS[field] || field }}:</strong>
-						<span class="territorio-history__from">{{ display(change.from) }}</span>
-						→
-						<span>{{ display(change.to) }}</span>
+
+						<!-- A creation has no previous value, so it is listed rather than
+						     shown as a change from nothing. Rendering "(vacío) → x" for
+						     every field on every new record is noise that buries the
+						     edits people actually care about. -->
+						<template v-if="entry.action === 'created'">
+							{{ format(field, change.to) }}
+						</template>
+						<template v-else>
+							<span class="territorio-history__from">{{ format(field, change.from) }}</span>
+							→
+							<span>{{ format(field, change.to) }}</span>
+						</template>
 					</li>
 				</ul>
 			</li>
@@ -28,6 +39,8 @@
 </template>
 
 <script>
+import { indexSubcategories } from '../taxonomy.js'
+
 const ACTIONS = {
 	created: 'Creado',
 	updated: 'Editado',
@@ -50,30 +63,70 @@ const FIELDS = {
 	sourceRef: 'Fuente',
 }
 
+const QUALITIES = {
+	exacta: 'Exacta',
+	aproximada: 'Aproximada',
+	sin_coordenada: 'Sin coordenada',
+}
+
 export default {
 	name: 'FeatureHistory',
 
 	props: {
 		entries: { type: Array, required: true },
+		taxonomy: { type: Array, default: () => [] },
 	},
 
 	data() {
 		return { ACTIONS, FIELDS }
 	},
 
+	computed: {
+		subcategories() {
+			return indexSubcategories(this.taxonomy)
+		},
+	},
+
 	methods: {
 		/**
-		 * History is append-only and holds whatever the field held, including
-		 * nothing — and "vacío" has to be distinguishable from a literal empty
-		 * string, or a cleared phone number reads as no change at all.
+		 * History stores what the column stored, which is not what a person should
+		 * read: a Subcategory is an id, a location is a GeoJSON document, and an
+		 * exactness is a slug. Rendering them raw is how "Subcategoría: 20" and a
+		 * wall of JSON end up in the sidebar.
 		 */
-		display(value) {
+		format(field, value) {
 			if (value === null || value === undefined || value === '') {
 				return '(vacío)'
 			}
-			return typeof value === 'string' && value.length > 60
-				? value.slice(0, 60) + '…'
-				: String(value)
+
+			if (field === 'subcategoryId') {
+				return this.subcategories.get(value)?.label ?? `#${value}`
+			}
+
+			if (field === 'geometry') {
+				return this.coordinates(value)
+			}
+
+			if (field === 'locationQuality') {
+				return QUALITIES[value] ?? value
+			}
+
+			const text = String(value)
+			return text.length > 60 ? text.slice(0, 60) + '…' : text
+		},
+
+		/** A point as a person would read it: latitude, then longitude. */
+		coordinates(geometry) {
+			try {
+				const parsed = typeof geometry === 'string' ? JSON.parse(geometry) : geometry
+				const [lon, lat] = parsed?.coordinates ?? []
+				if (typeof lat !== 'number' || typeof lon !== 'number') {
+					return 'definida'
+				}
+				return `${lat.toFixed(5)}, ${lon.toFixed(5)}`
+			} catch (error) {
+				return 'definida'
+			}
 		},
 	},
 }

@@ -46,18 +46,18 @@ final class FeatureRoundTripTest extends IntegrationTestCase {
 
 	public function testAPlaceSurvivesTheRoundTripWithItsBoundingBox(): void {
 		$created = $this->service->create([
-			'name' => 'CESFAM Los Castaños',
+			'name' => 'CESFAM de Prueba',
 			'subcategoryId' => $this->anySubcategoryId(),
-			'address' => 'Los Bambúes 2001',
-			'phone' => '961111133',
+			'address' => 'Calle de Prueba 123',
+			'phone' => '900000000',
 			'geometry' => ['type' => 'Point', 'coordinates' => [-70.5553836, -33.5187671]],
 		]);
 		$this->created[] = (int)$created->getId();
 
 		$read = $this->features->find((int)$created->getId());
 
-		self::assertSame('CESFAM Los Castaños', $read->getName());
-		self::assertSame('Los Bambúes 2001', $read->getAddress());
+		self::assertSame('CESFAM de Prueba', $read->getName());
+		self::assertSame('Calle de Prueba 123', $read->getAddress());
 		self::assertSame(Kind::Place->value, $read->getKind());
 		self::assertSame(LocationQuality::Exact->value, $read->getLocationQuality());
 
@@ -77,7 +77,7 @@ final class FeatureRoundTripTest extends IntegrationTestCase {
 
 	public function testARecordWithNoCoordinateStoresNullsNotEmptyStrings(): void {
 		$created = $this->service->create([
-			'name' => 'Coordinadora Territorial',
+			'name' => 'Coordinadora de Prueba',
 			'subcategoryId' => $this->anySubcategoryId(),
 			'address' => 'Dependencias de La Municipalidad',
 			'geometry' => null,

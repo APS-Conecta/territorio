@@ -20,7 +20,6 @@ return [
 		// the safety net is that a batch is recorded and revertible, not that
 		// fewer people are allowed to make one.
 		['name' => 'import#upload', 'url' => '/import', 'verb' => 'POST'],
-		['name' => 'import#batches', 'url' => '/import/batches', 'verb' => 'GET'],
 
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],

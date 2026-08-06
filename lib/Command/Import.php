@@ -63,8 +63,8 @@ class Import extends Command {
 				(string)$input->getOption('actor'),
 			);
 		} catch (InvalidImportException $e) {
-			// Nothing was written: the service checks the whole file before it
-			// touches the Registry.
+			// Refused while reading, so nothing was written. A failure later, while
+			// writing, still leaves a revertible batch.
 			$output->writeln('<error>' . $e->getMessage() . '</error>');
 
 			return Command::FAILURE;

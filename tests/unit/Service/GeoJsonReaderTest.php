@@ -21,9 +21,9 @@ final class GeoJsonReaderTest extends TestCase {
 	{"type":"FeatureCollection","features":[
 	  {"type":"Feature",
 	   "geometry":{"type":"Point","coordinates":[-70.5800318,-33.5159937]},
-	   "properties":{"name":"Junta de Vecinos 35","category":"organizacion_social",
-	     "subcategory":"junta_de_vecinos","address":"Los Bambúes 2001","phone":"961111133",
-	     "email":"jdv@example.org","contact_person":"Humberto Araya","contact_role":"Secretario",
+	   "properties":{"name":"Junta de Vecinos de Prueba","category":"organizacion_social",
+	     "subcategory":"junta_de_vecinos","address":"Calle de Prueba 123","phone":"900000000",
+	     "email":"jdv@example.org","contact_person":"Persona de Prueba","contact_role":"Secretario",
 	     "ubicacion":"Exacta","source":"cesfam_los_castanos","source_url":"https://example.org/catastro"}}
 	]}
 	JSON;
@@ -35,13 +35,13 @@ final class GeoJsonReaderTest extends TestCase {
 	public function testItMapsThePriorArtsPropertyNames(): void {
 		$row = $this->read(self::JDV)[0];
 
-		self::assertSame('Junta de Vecinos 35', $row['name']);
+		self::assertSame('Junta de Vecinos de Prueba', $row['name']);
 		self::assertSame('organizacion_social', $row['categorySlug']);
 		self::assertSame('junta_de_vecinos', $row['subcategorySlug']);
-		self::assertSame('Los Bambúes 2001', $row['address']);
-		self::assertSame('961111133', $row['phone']);
+		self::assertSame('Calle de Prueba 123', $row['address']);
+		self::assertSame('900000000', $row['phone']);
 		self::assertSame('jdv@example.org', $row['email']);
-		self::assertSame('Humberto Araya', $row['contactPerson']);
+		self::assertSame('Persona de Prueba', $row['contactPerson']);
 		self::assertSame('Secretario', $row['contactRole']);
 		self::assertSame(['type' => 'Point', 'coordinates' => [-70.5800318, -33.5159937]], $row['geometry']);
 	}
@@ -115,6 +115,29 @@ final class GeoJsonReaderTest extends TestCase {
 		self::assertNotSame($rows[0]['externalId'], $rows[1]['externalId']);
 	}
 
+	/**
+	 * The one that would have caught a silent, dataset-wide duplication.
+	 *
+	 * `json_encode` of a float obeys serialize_precision, and CLI and FPM
+	 * routinely load different php.ini files — so the occ command and the browser
+	 * upload could derive different ids for the same file, and the second import
+	 * would create every record again instead of matching.
+	 */
+	public function testADerivedIdDoesNotDependOnSerializePrecision(): void {
+		$original = ini_get('serialize_precision');
+
+		try {
+			ini_set('serialize_precision', '-1');
+			$loose = $this->read(self::JDV)[0]['externalId'];
+			ini_set('serialize_precision', '17');
+			$strict = $this->read(self::JDV)[0]['externalId'];
+		} finally {
+			ini_set('serialize_precision', (string)$original);
+		}
+
+		self::assertSame($loose, $strict);
+	}
+
 	public function testAFeatureWithNoGeometryIsKept(): void {
 		$json = str_replace(
 			'"geometry":{"type":"Point","coordinates":[-70.5800318,-33.5159937]}',
@@ -124,7 +147,7 @@ final class GeoJsonReaderTest extends TestCase {
 		$row = $this->read($json)[0];
 
 		self::assertNull($row['geometry']);
-		self::assertSame('Junta de Vecinos 35', $row['name']);
+		self::assertSame('Junta de Vecinos de Prueba', $row['name']);
 	}
 
 	/** Kinds this slice cannot draw are still read; the service decides. */

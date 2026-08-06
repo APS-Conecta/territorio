@@ -99,6 +99,30 @@ class FeatureMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * Update only the stored official value, without taking a Revision.
+	 *
+	 * Deliberately not `update()`. `official` is provenance, not content: it says
+	 * what the authority currently publishes about a record whose local edit is
+	 * winning anyway, and `Feature::comparable()` rightly excludes it. Pushing it
+	 * through the normal path would take a Revision, make every polling client
+	 * refetch, and append an "Actualizado" history entry whose diff is empty —
+	 * the same emptiness FeatureService::retire() already refuses to create.
+	 *
+	 * Nothing a person sees changes here, so nothing a person sees needs telling.
+	 */
+	public function storeOfficial(Feature $feature, string $official): void {
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('official', $qb->createNamedParameter($official))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter(
+				(int)$feature->getId(), IQueryBuilder::PARAM_INT,
+			)))
+			->executeStatement();
+
+		$feature->setOfficial($official);
+	}
+
 	/** @return Feature[] */
 	public function findRetired(): array {
 		$qb = $this->db->getQueryBuilder();

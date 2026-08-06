@@ -99,7 +99,7 @@ final class FeatureServiceTest extends TestCase {
 
 	private function valid(array $overrides = []): array {
 		return array_merge([
-			'name' => 'Junta de Vecinos 35',
+			'name' => 'Junta de Vecinos de Prueba',
 			'subcategoryId' => 7,
 			'geometry' => json_decode(self::PLAZA, true),
 		], $overrides);
@@ -108,7 +108,7 @@ final class FeatureServiceTest extends TestCase {
 	public function testItCreatesAPlaceFromAPoint(): void {
 		$feature = $this->service->create($this->valid());
 
-		self::assertSame('Junta de Vecinos 35', $feature->getName());
+		self::assertSame('Junta de Vecinos de Prueba', $feature->getName());
 		self::assertSame(7, $feature->getSubcategoryId());
 		self::assertSame(Kind::Place->value, $feature->getKind());
 		self::assertEqualsWithDelta(-33.5187671, $feature->getMinLat(), 1e-9);
@@ -196,13 +196,13 @@ final class FeatureServiceTest extends TestCase {
 	public function testWhitespaceIsTrimmedAndBlankOptionalFieldsBecomeNull(): void {
 		$feature = $this->service->create($this->valid([
 			'name' => "  Escuela Los Castaños \n",
-			'address' => '  Los Bambúes 2001  ',
+			'address' => '  Calle de Prueba 123  ',
 			'phone' => '   ',
 			'email' => '',
 		]));
 
 		self::assertSame('Escuela Los Castaños', $feature->getName());
-		self::assertSame('Los Bambúes 2001', $feature->getAddress());
+		self::assertSame('Calle de Prueba 123', $feature->getAddress());
 		self::assertNull($feature->getPhone());
 		self::assertNull($feature->getEmail());
 	}
@@ -255,8 +255,8 @@ final class FeatureServiceTest extends TestCase {
 		$existing = new Feature();
 		$existing->setId(3);
 		$existing->setSubcategoryId(7);
-		$existing->setAddress('Los Bambúes 2001');
-		$existing->setPhone('961111133');
+		$existing->setAddress('Calle de Prueba 123');
+		$existing->setPhone('900000000');
 		$this->features->method('find')->willReturn($existing);
 
 		$updated = $this->service->update(3, [
@@ -265,15 +265,15 @@ final class FeatureServiceTest extends TestCase {
 			'geometry' => null,
 		]);
 
-		self::assertSame('Los Bambúes 2001', $updated->getAddress());
-		self::assertSame('961111133', $updated->getPhone());
+		self::assertSame('Calle de Prueba 123', $updated->getAddress());
+		self::assertSame('900000000', $updated->getPhone());
 	}
 
 	public function testSendingAFieldEmptyStillClearsIt(): void {
 		$existing = new Feature();
 		$existing->setId(3);
 		$existing->setSubcategoryId(7);
-		$existing->setAddress('Los Bambúes 2001');
+		$existing->setAddress('Calle de Prueba 123');
 		$this->features->method('find')->willReturn($existing);
 
 		$updated = $this->service->update(3, [

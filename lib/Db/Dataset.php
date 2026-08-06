@@ -29,18 +29,4 @@ class Dataset extends Entity {
 		$this->addType('createdAt', 'datetime');
 	}
 
-	/** Only a Cadastral Dataset is re-imported, and only its records can be overridden. */
-	public function isCadastral(): bool {
-		return $this->getOrigin() === Origin::Cadastral->value;
-	}
-
-	/** @return array<string, mixed> */
-	public function toClient(): array {
-		return [
-			'id' => (int)$this->getId(),
-			'slug' => $this->getSlug(),
-			'label' => $this->getLabel(),
-			'origin' => $this->getOrigin(),
-		];
-	}
 }

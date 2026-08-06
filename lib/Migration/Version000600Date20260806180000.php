@@ -50,8 +50,9 @@ class Version000600Date20260806180000 extends SimpleMigrationStep {
 			// Null where nobody was behind it. An occ run names itself with --actor.
 			$table->addColumn('actor', Types::STRING, ['notnull' => false, 'length' => 64]);
 			$table->addColumn('started_at', Types::DATETIME, ['notnull' => true]);
-			// The Revision immediately BEFORE the run, and the last one it made.
-			// Everything the batch did lives in (revision_from, revision_to].
+			// Informational only — what to show a person about when the run
+			// happened. A revert reads territorio_revision.import_id instead: a
+			// range would sweep up any edit a colleague made during the run.
 			$table->addColumn('revision_from', Types::BIGINT, ['notnull' => true]);
 			$table->addColumn('revision_to', Types::BIGINT, ['notnull' => true]);
 			$table->addColumn('created', Types::INTEGER, ['notnull' => true, 'default' => 0]);

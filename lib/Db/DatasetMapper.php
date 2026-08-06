@@ -7,21 +7,12 @@ namespace OCA\Territorio\Db;
 use DateTime;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
-use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 /** @template-extends QBMapper<Dataset> */
 class DatasetMapper extends QBMapper {
 	public function __construct(IDBConnection $db) {
 		parent::__construct($db, 'territorio_dataset', Dataset::class);
-	}
-
-	/** @return Dataset[] */
-	public function findAll(): array {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')->from($this->getTableName())->orderBy('label', 'ASC');
-
-		return $this->findEntities($qb);
 	}
 
 	/** @throws DoesNotExistException */
@@ -54,15 +45,5 @@ class DatasetMapper extends QBMapper {
 
 			return $this->insert($dataset);
 		}
-	}
-
-	/** @throws DoesNotExistException */
-	public function find(int $id): Dataset {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')
-			->from($this->getTableName())
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
-
-		return $this->findEntity($qb);
 	}
 }

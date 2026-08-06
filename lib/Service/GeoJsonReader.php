@@ -20,6 +20,20 @@ class GeoJsonReader {
 	/** How many characters of the digest an id keeps, matching the prior art. */
 	private const DIGEST_LENGTH = 16;
 
+	/**
+	 * Decimal places a coordinate is fixed to before it is hashed.
+	 *
+	 * Seven is about a centimetre — far finer than any catastro — and the point
+	 * is not the precision but that it is FIXED. `json_encode` of a float obeys
+	 * `serialize_precision`, and CLI and FPM routinely load different php.ini
+	 * files: at -1 the coordinate encodes as -70.5991, at 17 as
+	 * -70.599100000000007. Two different digests, so `occ territorio:import` and
+	 * a browser upload of the same file would derive disjoint ids and the second
+	 * run would duplicate the whole Dataset instead of matching it — the exact
+	 * outcome ADR-0003 forbids.
+	 */
+	private const COORDINATE_PLACES = 7;
+
 	/** What `ubicacion` says, and what Location quality calls it. */
 	private const QUALITIES = [
 		'exacta' => 'exacta',
@@ -128,9 +142,34 @@ class GeoJsonReader {
 			}
 		}
 
-		$digest = substr(sha1($name . '|' . json_encode($geometry['coordinates'] ?? null)), 0, self::DIGEST_LENGTH);
+		$digest = substr(
+			sha1($name . '|' . $this->position($geometry['coordinates'] ?? null)),
+			0,
+			self::DIGEST_LENGTH,
+		);
 
 		return $source . ':' . $digest;
+	}
+
+	/**
+	 * A coordinate rendered so that the same file always hashes the same way,
+	 * whatever `serialize_precision` happens to be. Nested arrays are flattened
+	 * rather than special-cased per geometry type: the id only needs to be
+	 * stable and distinct, not meaningful.
+	 */
+	private function position(mixed $coordinates): string {
+		if (!is_array($coordinates)) {
+			return 'sin-coordenadas';
+		}
+
+		$flat = [];
+		array_walk_recursive($coordinates, static function (mixed $value) use (&$flat): void {
+			$flat[] = is_int($value) || is_float($value)
+				? sprintf('%.' . self::COORDINATE_PLACES . 'F', $value)
+				: 'x';
+		});
+
+		return implode(',', $flat);
 	}
 
 	/** @param array<string, mixed> $properties */

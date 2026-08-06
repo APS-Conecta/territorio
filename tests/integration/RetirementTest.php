@@ -69,14 +69,14 @@ final class RetirementTest extends IntegrationTestCase {
 	}
 
 	public function testARestoredRecordComesBackIntactWithItsHistory(): void {
-		$id = $this->place('Vuelve entera', ['address' => 'Los Bambúes 2001']);
+		$id = $this->place('Vuelve entera', ['address' => 'Calle de Prueba 123']);
 		$this->service->retire($id);
 
 		$restored = $this->service->restore($id);
 
 		self::assertFalse((bool)$restored->getRetired());
 		self::assertSame('Vuelve entera', $restored->getName());
-		self::assertSame('Los Bambúes 2001', $restored->getAddress());
+		self::assertSame('Calle de Prueba 123', $restored->getAddress());
 		self::assertContains('Vuelve entera', $this->visibleNames());
 
 		$actions = array_column($this->service->history($id), 'action');
@@ -88,12 +88,12 @@ final class RetirementTest extends IntegrationTestCase {
 	}
 
 	public function testHistoryRecordsWhatChangedAndWhatItUsedToSay(): void {
-		$id = $this->place('Nombre viejo', ['address' => 'Los Bambúes 2001']);
+		$id = $this->place('Nombre viejo', ['address' => 'Calle de Prueba 123']);
 
 		$this->service->update($id, [
 			'name' => 'Nombre nuevo',
 			'subcategoryId' => (int)Server::get(SubcategoryMapper::class)->findAll()[0]->getId(),
-			'address' => 'Los Bambúes 2001',
+			'address' => 'Calle de Prueba 123',
 			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
 		]);
 
@@ -107,13 +107,13 @@ final class RetirementTest extends IntegrationTestCase {
 	}
 
 	public function testAnEditThatChangesNothingStillRecordsWhoTouchedIt(): void {
-		$id = $this->place('Sin cambios', ['address' => 'Los Bambúes 2001']);
+		$id = $this->place('Sin cambios', ['address' => 'Calle de Prueba 123']);
 		$before = count($this->service->history($id));
 
 		$this->service->update($id, [
 			'name' => 'Sin cambios',
 			'subcategoryId' => (int)Server::get(SubcategoryMapper::class)->findAll()[0]->getId(),
-			'address' => 'Los Bambúes 2001',
+			'address' => 'Calle de Prueba 123',
 			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
 		]);
 
@@ -182,7 +182,7 @@ final class RetirementTest extends IntegrationTestCase {
 	 * this save with a colleague's edit.
 	 */
 	public function testTheDiffCoversOnlyFieldsTheRequestActuallySent(): void {
-		$id = $this->place('Parcial', ['address' => 'Dirección original', 'phone' => '961111133']);
+		$id = $this->place('Parcial', ['address' => 'Dirección original', 'phone' => '900000000']);
 
 		$this->service->update($id, [
 			'name' => 'Parcial',
@@ -193,7 +193,7 @@ final class RetirementTest extends IntegrationTestCase {
 
 		$changes = $this->service->history($id)[0]['changes'];
 
-		self::assertSame('961111133', $changes['phone']['from']);
+		self::assertSame('900000000', $changes['phone']['from']);
 		self::assertArrayNotHasKey('address', $changes, 'address was never sent, so it did not change');
 		self::assertSame('Dirección original', $this->features->find($id)->getAddress());
 	}

@@ -29,13 +29,17 @@ use OCA\Territorio\Exception\InvalidImportException;
  *  - A record a person has edited is never overwritten (ADR-0003). The incoming
  *    official value is stored beside the override so the two stay comparable and
  *    the override can be undone.
- *  - Every run records the Revision range it produced (ADR-0009), because that
- *    is the only thing that makes it revertible and it cannot be worked out
- *    afterwards.
+ *  - Every Revision a run takes is stamped with its batch (ADR-0009), because
+ *    that is what makes the run revertible and it cannot be worked out
+ *    afterwards. A range of Revision numbers would not do: writes are serialised
+ *    behind one cursor, so a long import is easily long enough for a colleague's
+ *    edit to fall inside the window and be reverted with it.
  *
- * Nothing is written until every row has been read, resolved and checked. A file
- * that is wrong anywhere imports nothing at all — a half-imported catastro is
- * far harder to reason about than one that was refused.
+ * The file is read, resolved against the taxonomy and checked in full before a
+ * single row is written, so a file that is wrong anywhere imports nothing. Once
+ * writing starts each row commits separately, so a failure part-way through does
+ * leave rows behind — which is exactly why the batch is recorded first, and why
+ * its counts are written even when the run throws.
  */
 class ImportService {
 	/** Where a row goes when its Category or Subcategory is not one we hold. */
@@ -66,14 +70,17 @@ class ImportService {
 		?string $actor = null,
 	): ImportBatch {
 		$rows = $this->reader->read($json, $datasetSlug);
+		[$rows, $duplicates] = $this->collapseDuplicates($rows);
+		[$prepared, $unsupported] = $this->prepare($rows);
+
+		// The Dataset is created only once the whole file has been read and
+		// checked. Creating it first left a Dataset behind after a refused
+		// import, which made "imports nothing" not quite true.
 		$dataset = $this->datasets->findOrCreate(
 			$datasetSlug,
 			$label ?? $datasetSlug,
 			Origin::Cadastral,
 		);
-
-		[$rows, $duplicates] = $this->collapseDuplicates($rows);
-		[$prepared, $unsupported] = $this->prepare($rows);
 
 		return $this->apply($dataset, $prepared, $duplicates, $unsupported, $actor);
 	}
@@ -167,11 +174,55 @@ class ImportService {
 		int $unsupported,
 		?string $actor,
 	): ImportBatch {
-		$existing = $this->features->findByDataset((int)$dataset->getId());
-		$revisionFrom = $this->revisions->current();
-		$startedAt = new DateTime();
+		// The batch is written BEFORE a single row is, and that ordering is the
+		// point. Each row commits its own transaction, so a file that fails at row
+		// 400 leaves 399 rows behind — and if the batch were only written at the
+		// end, ADR-0009's one recovery path would not exist for precisely the
+		// failure ADR-0009 was written about.
+		$batch = new ImportBatch();
+		$batch->setDatasetId((int)$dataset->getId());
+		$batch->setActor($actor);
+		$batch->setStartedAt(new DateTime());
+		$batch->setRevisionFrom($this->revisions->current());
+		$batch->setRevisionTo($this->revisions->current());
+		$batch->setDuplicates($duplicates);
+		$batch->setUnsupported($unsupported);
+		$batch = $this->batches->insert($batch);
 
-		$created = $updated = $skipped = $unchanged = 0;
+		$counts = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'unchanged' => 0];
+
+		try {
+			// Every Revision taken in here is stamped with this batch, so a revert
+			// acts on exactly the rows the import touched and leaves a colleague's
+			// concurrent edit alone.
+			$this->revisions->duringImport(
+				(int)$batch->getId(),
+				// A long closure, not fn(): an arrow function captures by value, so
+				// the counts applyRows() writes by reference would never come back.
+				function () use ($dataset, $rows, &$counts): void {
+					$this->applyRows($dataset, $rows, $counts);
+				},
+			);
+		} finally {
+			// Recorded even when the run threw, or the rows it did write would be
+			// unrevertible.
+			$batch->setCreated($counts['created']);
+			$batch->setUpdated($counts['updated']);
+			$batch->setSkipped($counts['skipped']);
+			$batch->setUnchanged($counts['unchanged']);
+			$batch->setRevisionTo($this->revisions->current());
+			$this->batches->update($batch);
+		}
+
+		return $batch;
+	}
+
+	/**
+	 * @param array<string, array<string, mixed>> $rows
+	 * @param array<string, int> $counts mutated as rows are applied
+	 */
+	private function applyRows(Dataset $dataset, array $rows, array &$counts): void {
+		$existing = $this->features->findByDataset((int)$dataset->getId());
 
 		foreach ($rows as $externalId => $row) {
 			$provenance = new Provenance((int)$dataset->getId(), (string)$externalId, $this->official($row));
@@ -179,7 +230,7 @@ class ImportService {
 
 			if ($current === null) {
 				$this->featureService->create($this->input($row), $provenance);
-				$created++;
+				$counts['created']++;
 				continue;
 			}
 
@@ -189,33 +240,18 @@ class ImportService {
 			// and the override remains undoable.
 			if ($current->getOverridden() || $current->getRetired()) {
 				$this->refreshOfficial($current, $provenance);
-				$skipped++;
+				$counts['skipped']++;
 				continue;
 			}
 
 			if (!$this->differs($current, $row, $provenance)) {
-				$unchanged++;
+				$counts['unchanged']++;
 				continue;
 			}
 
 			$this->featureService->update((int)$current->getId(), $this->input($row), $provenance);
-			$updated++;
+			$counts['updated']++;
 		}
-
-		$batch = new ImportBatch();
-		$batch->setDatasetId((int)$dataset->getId());
-		$batch->setActor($actor);
-		$batch->setStartedAt($startedAt);
-		$batch->setRevisionFrom($revisionFrom);
-		$batch->setRevisionTo($this->revisions->current());
-		$batch->setCreated($created);
-		$batch->setUpdated($updated);
-		$batch->setSkipped($skipped);
-		$batch->setDuplicates($duplicates);
-		$batch->setUnsupported($unsupported);
-		$batch->setUnchanged($unchanged);
-
-		return $this->batches->insert($batch);
 	}
 
 	/**
@@ -236,6 +272,7 @@ class ImportService {
 
 		return $current->getName() !== $row['name']
 			|| $current->getSubcategoryId() !== $row['subcategoryId']
+			|| $current->getLocationQuality() !== $this->expectedQuality($row)
 			|| $current->getGeometry() !== $geometry
 			|| $current->getAddress() !== $row['address']
 			|| $current->getPhone() !== $row['phone']
@@ -251,18 +288,33 @@ class ImportService {
 	 * Keep the authority's latest values beside an override, without touching
 	 * what the person wrote.
 	 *
-	 * Written only when it actually changed, so re-importing an unchanged file
-	 * against an overridden record still writes nothing.
+	 * Written only when it actually changed, and written WITHOUT taking a
+	 * Revision. Nothing a person sees changes — the record still shows the local
+	 * edit — so pushing it through the normal write path would spend a Revision,
+	 * make every polling client refetch, and leave an "Actualizado" entry in
+	 * history whose diff is empty.
 	 */
-	private function refreshOfficial(Feature $current, Provenance $provenance): bool {
+	private function refreshOfficial(Feature $current, Provenance $provenance): void {
 		if ($current->getOfficial() === $provenance->officialAsJson()) {
-			return false;
+			return;
 		}
 
-		$current->setOfficial($provenance->officialAsJson());
-		$this->features->update($current);
+		$this->features->storeOfficial($current, $provenance->officialAsJson());
+	}
 
-		return true;
+	/**
+	 * The Location quality this row will end up with, so `differs()` compares
+	 * like with like — FeatureService derives it rather than storing what the
+	 * file said.
+	 *
+	 * @param array<string, mixed> $row
+	 */
+	private function expectedQuality(array $row): string {
+		if ($row['geometry'] === null) {
+			return LocationQuality::Absent->value;
+		}
+
+		return $row['locationQuality'] ?? LocationQuality::Exact->value;
 	}
 
 	/**

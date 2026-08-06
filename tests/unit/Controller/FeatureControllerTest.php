@@ -35,14 +35,14 @@ final class FeatureControllerTest extends TestCase {
 	public function testACreatedFeatureComesBackToTheClient(): void {
 		$feature = new Feature();
 		$feature->setId(12);
-		$feature->setName('Plaza Los Castaños');
+		$feature->setName('Plaza de Prueba');
 		$feature->setKind('place');
 		$this->features->method('create')->willReturn($feature);
 
 		$response = $this->controller->create();
 
 		self::assertSame(Http::STATUS_OK, $response->getStatus());
-		self::assertSame('Plaza Los Castaños', $response->getData()['name']);
+		self::assertSame('Plaza de Prueba', $response->getData()['name']);
 		self::assertSame(12, $response->getData()['id']);
 	}
 

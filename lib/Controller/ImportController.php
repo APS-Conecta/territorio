@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
@@ -38,7 +37,6 @@ class ImportController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private ImportService $import,
-		private ImportBatchMapper $batches,
 		private IUserSession $userSession,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -72,19 +70,13 @@ class ImportController extends Controller {
 				$this->userSession->getUser()?->getUID(),
 			);
 		} catch (InvalidImportException|InvalidFeatureException $e) {
-			// Nothing was written: the service checks the whole file first.
+			// A file rejected during reading wrote nothing at all. One that failed
+			// part-way through writing left a batch behind that can be reverted —
+			// which is why the message matters and the batch is recorded first.
 			return $this->refuse($e->getMessage());
 		}
 
 		return new JSONResponse($batch->toClient());
-	}
-
-	#[NoAdminRequired]
-	public function batches(): JSONResponse {
-		return new JSONResponse(array_map(
-			static fn ($batch): array => $batch->toClient(),
-			$this->batches->findAll(),
-		));
 	}
 
 	private function refuse(string $message): JSONResponse {

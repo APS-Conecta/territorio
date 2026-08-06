@@ -19,9 +19,10 @@ GeoJSON import.
 
 ### Notes
 
-- Verified against the real 865-feature La Florida catastro, not just fixtures: 538 created, 18
-  duplicates collapsed, 309 kinds nothing draws yet. Re-importing the same file reported 538
-  unchanged and moved the Revision cursor by zero.
+- Developed against the real 865-feature La Florida catastro to learn what real files look like:
+  538 would be created, 18 rows are exact duplicates, 309 are kinds nothing draws yet, and
+  re-importing moves the Revision cursor by zero. That data is NOT loaded — the dev instance holds
+  invented records only.
 - Matching is on `(Dataset, external id)`. The real file carries no `id` and no `uid` — checked,
   not assumed — so ids are derived from source, name and position, which is what makes a second
   import update instead of creating 865 more records.

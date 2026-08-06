@@ -13,9 +13,8 @@
 			</NcNoteCard>
 
 			<p v-else class="territorio-import__hint">
-				El archivo debe ser un FeatureCollection de GeoJSON. Nada se escribe hasta
-				que el archivo entero se haya leído: si una fila es inválida, no se importa
-				ninguna.
+				El archivo debe ser un FeatureCollection de GeoJSON. Se revisa entero antes
+				de escribir nada: si una fila es inválida, no se importa ninguna.
 			</p>
 
 			<NcTextField v-model="dataset"

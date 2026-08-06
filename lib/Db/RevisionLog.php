@@ -36,10 +36,36 @@ class RevisionLog {
 	/** The cursor is one row, and this is it. */
 	public const CURSOR_ROW = 1;
 
+	/**
+	 * The import currently running, if one is. Every Revision taken while it is
+	 * set is stamped with it, which is what makes a batch a set of rows rather
+	 * than a window of time somebody else's edit can fall into.
+	 */
+	private ?int $importId = null;
+
 	public function __construct(
 		private IDBConnection $db,
 		private IUserSession $userSession,
 	) {
+	}
+
+	/**
+	 * Run $work with every Revision it takes attributed to $importId.
+	 *
+	 * @template T
+	 * @param callable(): T $work
+	 * @return T
+	 */
+	public function duringImport(int $importId, callable $work): mixed {
+		$previous = $this->importId;
+		$this->importId = $importId;
+		try {
+			return $work();
+		} finally {
+			// Restored rather than nulled: if an import ever nests, the outer one
+			// must not silently lose its own attribution.
+			$this->importId = $previous;
+		}
 	}
 
 	/**
@@ -95,6 +121,7 @@ class RevisionLog {
 			'changes' => $log->createNamedParameter(
 				$changes === null || $changes === [] ? null : json_encode($changes, JSON_UNESCAPED_UNICODE),
 			),
+			'import_id' => $log->createNamedParameter($this->importId, IQueryBuilder::PARAM_INT),
 		])->executeStatement();
 
 		return $revision;

@@ -127,6 +127,9 @@ export default {
 		 * save. The list and the map update; the form the user is holding does not.
 		 */
 		async poll() {
+			// Not awaited by the timer, so a slow response can land after a later
+			// one and move the cursor backwards. Harmless: the only consequence is
+			// that a record arrives twice, and mergeFeature is idempotent.
 			try {
 				const { data } = await axios.get(
 					generateUrl('/apps/territorio/changes'),
@@ -247,10 +250,11 @@ export default {
 					)
 
 				this.mergeFeature(data)
-				// Our own write already advanced the Revision; carrying the cursor
-				// forward stops the next poll handing us back what we just sent.
-				this.revision = Math.max(this.revision, data.revision ?? this.revision)
-
+				// The cursor is deliberately NOT advanced here. Jumping it to our
+				// own Revision skips every change that landed between our last poll
+				// and this save — a colleague's edit at Revision 11 is lost for good
+				// once our save banks 12. Letting the next poll re-deliver our own
+				// record costs one merge, and mergeFeature is idempotent.
 				this.selectedId = data.id
 				this.draft = this.draftFrom(data)
 			} catch (exception) {

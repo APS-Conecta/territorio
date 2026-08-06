@@ -11,30 +11,50 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 /**
- * The Revision sequence — the one number that answers both "what has changed
- * since I last looked" and, once issue #4 lands, "who changed this, and when".
+ * The Revision — the one number that answers both "what has changed since I
+ * last looked" and, once issue #4 lands, "who changed this, and when".
  *
- * `territorio_revision` is the allocator: its autoincrement id IS the Revision.
- * A dedicated table rather than a counter in app config because two people
- * saving at the same moment must get different numbers, and an autoincrement is
- * the one portable way to guarantee that across MySQL, SQLite and Postgres.
+ * `territorio_cursor` is a single row holding the highest Revision handed out.
+ * It is deliberately NOT an autoincrement: autoincrement guarantees that two
+ * writers get different numbers, which is not the property a cursor needs.
+ * A cursor needs numbers to become *visible in the order they were issued*, and
+ * autoincrement gives no such promise — writer A can take 5, writer B take 6 and
+ * commit first, and a client that polls in between banks 6 and never asks for 5
+ * again. Incrementing this row takes a row lock held to commit, so writers
+ * serialise and commit order matches issue order.
  *
- * It is also already the change log. Issue #4 adds the actor and the action to
- * these same rows rather than starting a second sequence — ADR-0002 and ADR-0005
- * are deliberately served by one mechanism, not two.
+ * `territorio_revision` is the change log, keyed by that Revision. Issue #4 adds
+ * the actor and the action to these same rows rather than introducing a second
+ * counter: ADR-0002 and ADR-0005 are served by one mechanism, not two.
+ *
+ * The single cursor row is created by the EnsureSeedData repair step, not here —
+ * a migration's postSchemaChange is skipped on a fresh install.
  */
 class Version000300Date20260806100000 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
 
+		if (!$schema->hasTable('territorio_cursor')) {
+			$table = $schema->createTable('territorio_cursor');
+			// One row, forever. A primary key it does not need, but every table
+			// gets one and a fixed id makes the "there is only one" explicit.
+			$table->addColumn('id', Types::INTEGER, ['notnull' => true]);
+			$table->addColumn('value', Types::BIGINT, ['notnull' => true, 'default' => 0]);
+			$table->setPrimaryKey(['id']);
+		}
+
 		if (!$schema->hasTable('territorio_revision')) {
 			$table = $schema->createTable('territorio_revision');
-			$table->addColumn('id', Types::BIGINT, ['autoincrement' => true, 'notnull' => true]);
+			// Not autoincrement: the Revision comes from territorio_cursor, so
+			// that it is issued and committed under one lock.
+			$table->addColumn('id', Types::BIGINT, ['notnull' => true]);
 			$table->addColumn('feature_id', Types::BIGINT, ['notnull' => true]);
 			$table->addColumn('changed_at', Types::DATETIME, ['notnull' => true]);
 			$table->setPrimaryKey(['id']);
-			$table->addIndex(['feature_id'], 'terr_rev_feature_idx');
+			// No index on feature_id. Nothing reads it until issue #4 builds the
+			// history view, and an index is paid for on every single write — this
+			// is the hottest write path in the app.
 		}
 
 		$features = $schema->getTable('territorio_feature');
@@ -50,4 +70,5 @@ class Version000300Date20260806100000 extends SimpleMigrationStep {
 
 		return $schema;
 	}
+
 }

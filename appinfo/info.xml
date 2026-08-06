@@ -30,4 +30,18 @@ No contiene información de pacientes.
         <admin>OCA\Territorio\Settings\AdminSettings</admin>
         <admin-section>OCA\Territorio\Settings\AdminSection</admin-section>
     </settings>
+    <!--
+      Seeding lives here, not in a migration's postSchemaChange, because that
+      hook is skipped when an app's schema is applied on a first install — the
+      one case where the seed matters most. Registered for both events; the step
+      is guarded and idempotent.
+    -->
+    <repair-steps>
+        <install>
+            <step>OCA\Territorio\Migration\EnsureSeedData</step>
+        </install>
+        <post-migration>
+            <step>OCA\Territorio\Migration\EnsureSeedData</step>
+        </post-migration>
+    </repair-steps>
 </info>

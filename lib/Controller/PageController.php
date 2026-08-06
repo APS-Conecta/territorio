@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\TaxonomyService;
@@ -35,6 +36,7 @@ class PageController extends Controller {
 		private BasemapConfig $basemapConfig,
 		private TaxonomyService $taxonomy,
 		private FeatureService $features,
+		private RevisionLog $revisions,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -51,7 +53,7 @@ class PageController extends Controller {
 		// but already counted in the cursor, so the client never asks for it and
 		// stays stale forever. Read before, that same change is simply delivered
 		// again by the first poll, and merging a record twice is harmless.
-		$this->initialState->provideInitialState('revision', $this->features->currentRevision());
+		$this->initialState->provideInitialState('revision', $this->revisions->current());
 		$this->initialState->provideInitialState('features', array_map(
 			static fn ($feature): array => $feature->toClient(),
 			$this->features->listAll(),

@@ -10,6 +10,7 @@ use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
+use Throwable;
 
 /** @template-extends QBMapper<Feature> */
 class FeatureMapper extends QBMapper {
@@ -26,22 +27,46 @@ class FeatureMapper extends QBMapper {
 	 * as long as no write escapes without advancing it, and a rule that lives in
 	 * a service is a rule the next caller can walk around.
 	 *
-	 * Three statements on insert, because a Feature has no id to log against
-	 * until it exists. At a comuna's volumes that is not worth avoiding.
+	 * The transaction is not bookkeeping — it is the correctness. Taking a
+	 * Revision and stamping the row must become visible together: if the Revision
+	 * lands first, a poll in the gap sees a higher cursor with nothing to fetch,
+	 * banks it, and never asks for that change again. Three statements, because a
+	 * Feature has no id to log against until it exists.
 	 */
 	public function insert(Entity $entity): Entity {
-		$inserted = parent::insert($entity);
-		$inserted->setRevision($this->revisions->allocate((int)$inserted->getId()));
+		return $this->transactionally(function () use ($entity): Entity {
+			$inserted = parent::insert($entity);
+			$inserted->setRevision($this->revisions->allocate((int)$inserted->getId()));
 
-		// parent::update, not $this->update — that would allocate a second
-		// Revision for the same change and make the client fetch it twice.
-		return parent::update($inserted);
+			// parent::update, not $this->update — that would take a second
+			// Revision for one change and make every client fetch it twice.
+			return parent::update($inserted);
+		});
 	}
 
 	public function update(Entity $entity): Entity {
-		$entity->setRevision($this->revisions->allocate((int)$entity->getId()));
+		return $this->transactionally(function () use ($entity): Entity {
+			$entity->setRevision($this->revisions->allocate((int)$entity->getId()));
 
-		return parent::update($entity);
+			return parent::update($entity);
+		});
+	}
+
+	/**
+	 * @param callable(): Entity $write
+	 */
+	private function transactionally(callable $write): Entity {
+		$this->db->beginTransaction();
+		try {
+			$written = $write();
+			$this->db->commit();
+
+			return $written;
+		} catch (Throwable $e) {
+			$this->db->rollBack();
+
+			throw $e;
+		}
 	}
 
 	/**
@@ -49,6 +74,10 @@ class FeatureMapper extends QBMapper {
 	 *
 	 * Ordered by Revision so a client that stops reading early can resume from
 	 * the last one it actually applied, rather than skipping the remainder.
+	 *
+	 * ponytail: unpaginated, like findAll(). A client that has been away long
+	 * enough gets the whole comuna in one response; add a limit and a "there is
+	 * more" flag when a real catastro makes that payload hurt.
 	 *
 	 * @return Feature[]
 	 */

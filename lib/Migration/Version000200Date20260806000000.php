@@ -7,7 +7,6 @@ namespace OCA\Territorio\Migration;
 use Closure;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\Types;
-use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
@@ -24,84 +23,14 @@ use OCP\Migration\SimpleMigrationStep;
  * geometry, not stored as editable fields (ADR-0008), and arrive with the
  * boundaries they are derived from. Provenance columns (`dataset_id`,
  * `external_id`) arrive with import (issue #6); `revision` arrives with the
- * change cursor (issue #3). Retirement — the column ADR-0005 needs so that a
+ * change cursor (issue #3). The taxonomy itself is seeded by the EnsureSeedData
+ * repair step, not here: a migration's postSchemaChange is skipped entirely on a
+ * fresh install. Retirement — the column ADR-0005 needs so that a
  * delete hides a record instead of destroying it — arrives with history in
  * issue #4; until then `FeatureMapper::delete()` refuses outright, so nothing
  * can be lost in the meantime.
  */
 class Version000200Date20260806000000 extends SimpleMigrationStep {
-	/**
-	 * The taxonomy an install starts with: the eleven categories, each with the
-	 * subcategories the La Florida catastro actually used, plus `taller`, which
-	 * the clinic asked for. It is a starting point, not a fixed list — a Category
-	 * is editable data, and adding a row makes it appear in the Capas panel.
-	 *
-	 * @var array<string, array{label: string, color: string, subcategories: array<string, string>}>
-	 */
-	private const TAXONOMY = [
-		'salud' => ['label' => 'Salud', 'color' => '#dc2626', 'subcategories' => [
-			'cesfam' => 'CESFAM',
-			'sapu' => 'SAPU',
-			'ccr' => 'CCR',
-			'salud_mental' => 'Salud mental',
-			'farmacia' => 'Farmacia',
-			'red_derivacion' => 'Red de derivación',
-			'establecimiento' => 'Establecimiento de salud',
-			'otro' => 'Otro',
-		]],
-		'educacion' => ['label' => 'Educación', 'color' => '#2563eb', 'subcategories' => [
-			'colegio' => 'Colegio',
-			'jardin_infantil' => 'Jardín infantil',
-			'otro' => 'Otro',
-		]],
-		'deporte_recreacion' => ['label' => 'Deporte y recreación', 'color' => '#16a34a', 'subcategories' => [
-			'plaza' => 'Plaza o parque',
-			'multicancha' => 'Multicancha',
-			'otro' => 'Otro',
-		]],
-		'seguridad' => ['label' => 'Seguridad', 'color' => '#4338ca', 'subcategories' => [
-			'carabineros' => 'Carabineros',
-			'bomberos' => 'Bomberos',
-			'otro' => 'Otro',
-		]],
-		'medioambiente' => ['label' => 'Medioambiente', 'color' => '#059669', 'subcategories' => [
-			'punto_limpio' => 'Punto limpio',
-			'otro' => 'Otro',
-		]],
-		'organizacion_social' => ['label' => 'Organización social', 'color' => '#ea580c', 'subcategories' => [
-			'junta_de_vecinos' => 'Junta de vecinos',
-			'club_adulto_mayor' => 'Club de adulto mayor',
-			'taller' => 'Taller',
-			'centro_comunitario' => 'Centro comunitario',
-			'otro' => 'Otro',
-		]],
-		'servicio_publico' => ['label' => 'Servicio público', 'color' => '#0891b2', 'subcategories' => [
-			'municipalidad' => 'Municipalidad',
-			'otro' => 'Otro',
-		]],
-		'movilidad_transporte' => ['label' => 'Movilidad y transporte', 'color' => '#0d9488', 'subcategories' => [
-			'ciclovia' => 'Ciclovía',
-			'paradero' => 'Paradero',
-			'otro' => 'Otro',
-		]],
-		'religion' => ['label' => 'Religión', 'color' => '#7c3aed', 'subcategories' => [
-			'iglesia' => 'Iglesia',
-			'otro' => 'Otro',
-		]],
-		'comercio_economia' => ['label' => 'Comercio y economía', 'color' => '#ca8a04', 'subcategories' => [
-			'feria' => 'Feria',
-			'otro' => 'Otro',
-		]],
-		'sin_clasificar' => ['label' => 'Sin clasificar', 'color' => '#6b7280', 'subcategories' => [
-			'otro' => 'Otro',
-		]],
-	];
-
-	public function __construct(
-		private IDBConnection $db,
-	) {
-	}
-
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
@@ -165,43 +94,4 @@ class Version000200Date20260806000000 extends SimpleMigrationStep {
 		return $schema;
 	}
 
-	/**
-	 * Seed the taxonomy, once. Guarded on the table being empty rather than on
-	 * the migration having run, so re-running against a populated install cannot
-	 * duplicate a Category — and so a clinic that has renamed or deleted one does
-	 * not get it silently restored.
-	 */
-	public function postSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void {
-		$existing = $this->db->getQueryBuilder();
-		$existing->select($existing->func()->count('*', 'total'))->from('territorio_category');
-		$result = $existing->executeQuery();
-		$total = (int)$result->fetchOne();
-		$result->closeCursor();
-
-		if ($total > 0) {
-			$output->info('Territorio: taxonomy already present, leaving it alone');
-			return;
-		}
-
-		foreach (self::TAXONOMY as $slug => $category) {
-			$insert = $this->db->getQueryBuilder();
-			$insert->insert('territorio_category')->values([
-				'slug' => $insert->createNamedParameter($slug),
-				'label' => $insert->createNamedParameter($category['label']),
-				'color' => $insert->createNamedParameter($category['color']),
-			])->executeStatement();
-			$categoryId = $insert->getLastInsertId();
-
-			foreach ($category['subcategories'] as $subSlug => $subLabel) {
-				$sub = $this->db->getQueryBuilder();
-				$sub->insert('territorio_subcategory')->values([
-					'category_id' => $sub->createNamedParameter($categoryId),
-					'slug' => $sub->createNamedParameter($subSlug),
-					'label' => $sub->createNamedParameter($subLabel),
-				])->executeStatement();
-			}
-		}
-
-		$output->info(sprintf('Territorio: seeded %d categories', count(self::TAXONOMY)));
-	}
 }

@@ -9,23 +9,31 @@ Collaboration: one shared map that keeps itself current.
 
 ### Added
 
-- A monotonic Revision stamped on every change, allocated by a dedicated table whose autoincrement
-  id *is* the Revision — the one portable way to guarantee that two people saving in the same
-  instant get different numbers across MySQL, SQLite and Postgres.
+- A monotonic Revision stamped on every change, issued from a single locked row. Deliberately not
+  an autoincrement: that guarantees two writers get *different* numbers, which is not what a cursor
+  needs — it needs numbers to become visible in the order they were issued. With an autoincrement,
+  writer A can take 5, writer B take 6 and commit first, and a client polling in between banks 6
+  and never asks for 5 again.
 - `GET /changes?since=N` — the cursor every open map polls. When nothing has changed it answers
   from a single indexed read and never touches the Feature table, which is what makes a
   five-second poll from every open map affordable on an instance with no push backend (ADR-0002).
 - Client polling roughly every five seconds, stopping entirely while the tab is hidden and
   catching up in one request when it returns.
 - The Revision log is already the change log: issue #4 adds the actor and the action to these same
-  rows rather than starting a second sequence.
+  rows rather than introducing a second counter.
 
 ### Notes
 
-- Stamping happens in `FeatureMapper::insert()/update()`, not in the service. The cursor is only
-  correct as long as no write escapes without advancing it, and a rule that lives in a service is
-  one the next caller can walk around — the same reasoning that makes `delete()` throw. An
-  integration test writes through the mapper directly to prove it.
+- Stamping happens in `FeatureMapper::insert()/update()`, inside one transaction, and neither half
+  is optional. The cursor is correct only as long as no write escapes without advancing it, and
+  only as long as the Revision and the row become visible together — a Revision landing first lets
+  a poll bank a cursor past a change it was never given. `RevisionLog::allocate()` refuses outside
+  a transaction so that window cannot be constructed.
+
+- Seeding runs from a repair step, not a migration's `postSchemaChange`. That hook is skipped when
+  a schema is applied on a first install, so seeds written there run on every upgrade and on no
+  fresh install — the one case that matters most, and the one a developer upgrading their own dev
+  instance never sees.
 - The page reads the Revision *before* the Features, deliberately. The other order lets a change
   landing between the two reads be absent from the list yet already counted in the cursor, so the
   client would never ask for it and would stay stale forever. This way it is simply delivered

@@ -47,11 +47,6 @@ class FeatureService {
 		return $this->features->findAll();
 	}
 
-	/** The Revision a client should start its cursor from. */
-	public function currentRevision(): int {
-		return $this->revisions->current();
-	}
-
 	/**
 	 * What a client holding `$since` has not seen yet (ADR-0002).
 	 *

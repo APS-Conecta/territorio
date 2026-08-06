@@ -62,7 +62,7 @@ class FeatureService {
 	private function apply(Feature $feature, array $input): Feature {
 		$name = trim((string)($input['name'] ?? ''));
 		if ($name === '') {
-			throw new InvalidFeatureException('a Feature needs a name');
+			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
 		$feature->setName($name);
 
@@ -71,13 +71,20 @@ class FeatureService {
 			$this->subcategories->find($subcategoryId);
 		} catch (DoesNotExistException $e) {
 			throw new InvalidFeatureException(
-				sprintf('subcategory %d does not exist', $subcategoryId), 0, $e,
+				sprintf('La subcategoría %d no existe.', $subcategoryId), 0, $e,
 			);
 		}
 		$feature->setSubcategoryId($subcategoryId);
 
+		// Only fields actually submitted are written. A request that omits one
+		// leaves it alone rather than blanking it — history is the thing that
+		// would otherwise make such a loss recoverable, and it does not exist
+		// until issue #4. Clearing a field is still possible: send it empty.
 		foreach (self::OPTIONAL_TEXT as $key => $setter) {
-			$value = trim((string)($input[$key] ?? ''));
+			if (!array_key_exists($key, $input)) {
+				continue;
+			}
+			$value = trim((string)$input[$key]);
 			$feature->$setter($value === '' ? null : $value);
 		}
 
@@ -97,10 +104,7 @@ class FeatureService {
 
 		if (!is_array($raw) || $raw === []) {
 			$feature->setGeometry(null);
-			$feature->setMinLat(null);
-			$feature->setMinLon(null);
-			$feature->setMaxLat(null);
-			$feature->setMaxLon(null);
+			$feature->setBoundingBox(null);
 			$feature->setKind(Kind::Place->value);
 			// Nothing to describe, so this is not the user's to choose.
 			$feature->setLocationQuality(LocationQuality::Absent->value);
@@ -109,13 +113,20 @@ class FeatureService {
 		}
 
 		$geometry = Geometry::fromArray($raw);
-		$box = $geometry->boundingBox();
+
+		// Places only, for now. Geometry can measure a Zone or a Route perfectly
+		// well, but nothing in this slice draws one — a Polygon would land on the
+		// map as a single pin on an arbitrary vertex, which is worse than a clear
+		// refusal. Lift this when Sectores get their own rendering (issue #10).
+		if ($geometry->kind() !== Kind::Place) {
+			throw new InvalidFeatureException(sprintf(
+				'Por ahora solo se admiten puntos; %s llegará con los sectores y las rutas.',
+				$geometry->type(),
+			));
+		}
 
 		$feature->setGeometry($geometry->toJson());
-		$feature->setMinLat($box->minLat());
-		$feature->setMinLon($box->minLon());
-		$feature->setMaxLat($box->maxLat());
-		$feature->setMaxLon($box->maxLon());
+		$feature->setBoundingBox($geometry->boundingBox());
 		$feature->setKind($geometry->kind()->value);
 		$feature->setLocationQuality($this->locationQuality($input));
 	}
@@ -131,7 +142,7 @@ class FeatureService {
 		if ($quality === null || $quality === LocationQuality::Absent) {
 			// Absent is derived from having no geometry; claiming it while
 			// supplying one would leave the record contradicting itself.
-			throw new InvalidFeatureException(sprintf('unknown location quality "%s"', $requested));
+			throw new InvalidFeatureException(sprintf('Exactitud desconocida: "%s".', $requested));
 		}
 
 		return $quality->value;

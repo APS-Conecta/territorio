@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Integration;
 
+use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\LocationQuality;
-use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
 use OCP\Server;
 use PHPUnit\Framework\TestCase;
 
@@ -33,17 +35,41 @@ final class FeatureRoundTripTest extends TestCase {
 		$this->service = Server::get(FeatureService::class);
 	}
 
+	/**
+	 * Rows this test made, removed with raw SQL.
+	 *
+	 * Not `FeatureMapper::delete()`: that now refuses outright, because ADR-0005
+	 * forbids hard-deleting a Feature anywhere in the app and the mapper is where
+	 * that has to be enforced. Cleaning up after a test is the one job that
+	 * legitimately sits outside the app, so it goes around the mapper rather than
+	 * weakening it.
+	 */
 	protected function tearDown(): void {
-		// Territorio never hard-deletes a Feature in production (ADR-0005), but a
-		// test that leaves rows behind poisons the next run and the dev instance.
-		foreach ($this->created as $id) {
-			try {
-				$this->features->delete($this->features->find($id));
-			} catch (DoesNotExistException) {
-				// Already gone; nothing to undo.
-			}
+		if ($this->created === []) {
+			return;
 		}
+
+		$db = Server::get(IDBConnection::class);
+		$qb = $db->getQueryBuilder();
+		$qb->delete('territorio_feature')
+			->where($qb->expr()->in('id', $qb->createNamedParameter(
+				$this->created, IQueryBuilder::PARAM_INT_ARRAY,
+			)))
+			->executeStatement();
+
 		$this->created = [];
+	}
+
+	public function testTheMapperRefusesToHardDeleteAFeature(): void {
+		$created = $this->service->create([
+			'name' => 'No se borra',
+			'subcategoryId' => $this->anySubcategoryId(),
+			'geometry' => null,
+		]);
+		$this->created[] = (int)$created->getId();
+
+		$this->expectException(BadFunctionCallException::class);
+		$this->features->delete($created);
 	}
 
 	private function anySubcategoryId(): int {

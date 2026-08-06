@@ -41,8 +41,7 @@ import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
-
-const UNCLASSIFIED_COLOUR = '#6b7280'
+import { indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
 export default {
 	name: 'FeatureList',
@@ -58,28 +57,23 @@ export default {
 	emits: ['select', 'create'],
 
 	computed: {
-		/** Subcategory id → { label, colour }, built once instead of per row. */
 		subcategories() {
-			const index = new Map()
-			this.taxonomy.forEach((category) => {
-				category.subcategories.forEach((subcategory) => {
-					index.set(subcategory.id, {
-						label: `${category.label} · ${subcategory.label}`,
-						colour: category.color,
-					})
-				})
-			})
-			return index
+			return indexSubcategories(this.taxonomy)
 		},
 	},
 
 	methods: {
+		/**
+		 * The fallback deliberately does NOT read "Sin clasificar": that is a real
+		 * seeded Category, and using its name here would make a broken reference
+		 * indistinguishable from a record someone correctly left unclassified.
+		 */
 		subcategoryLabel(feature) {
-			return this.subcategories.get(feature.subcategoryId)?.label ?? 'Sin clasificar'
+			return this.subcategories.get(feature.subcategoryId)?.label ?? 'Clasificación desconocida'
 		},
 
 		colourOf(feature) {
-			return this.subcategories.get(feature.subcategoryId)?.colour ?? UNCLASSIFIED_COLOUR
+			return this.subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
 		},
 	},
 }

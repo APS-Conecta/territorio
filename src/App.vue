@@ -38,6 +38,7 @@ import NcContent from '@nextcloud/vue/components/NcContent'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
+import { defaultSubcategoryId } from './taxonomy.js'
 
 /** Chilean keyboards produce a decimal comma; Leaflet and GeoJSON want a dot. */
 const toNumber = (value) => {
@@ -86,9 +87,7 @@ export default {
 			this.draft = {
 				id: null,
 				name: '',
-				// The first Subcategory is a starting point, not a guess at intent —
-				// the field is required, and an empty select cannot be submitted.
-				subcategoryId: this.taxonomy[0]?.subcategories[0]?.id ?? null,
+				subcategoryId: defaultSubcategoryId(this.taxonomy),
 				lat: '',
 				lon: '',
 				locationQuality: 'exacta',

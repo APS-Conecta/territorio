@@ -24,7 +24,10 @@ use OCP\Migration\SimpleMigrationStep;
  * geometry, not stored as editable fields (ADR-0008), and arrive with the
  * boundaries they are derived from. Provenance columns (`dataset_id`,
  * `external_id`) arrive with import (issue #6); `revision` arrives with the
- * change cursor (issue #3).
+ * change cursor (issue #3). Retirement — the column ADR-0005 needs so that a
+ * delete hides a record instead of destroying it — arrives with history in
+ * issue #4; until then `FeatureMapper::delete()` refuses outright, so nothing
+ * can be lost in the meantime.
  */
 class Version000200Date20260806000000 extends SimpleMigrationStep {
 	/**

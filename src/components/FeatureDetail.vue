@@ -8,7 +8,7 @@
 
 		<NcSelect v-model="subcategory"
 			class="territorio-detail__field"
-			input-label="Categoría"
+			input-label="Subcategoría"
 			:options="subcategoryOptions"
 			:clearable="false"
 			label="label" />
@@ -62,7 +62,10 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { subcategoryOptions } from '../taxonomy.js'
 
+// Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
+// from having no geometry, and these options only appear when there is one.
 const QUALITIES = [
 	{ id: 'exacta', label: 'Exacta' },
 	{ id: 'aproximada', label: 'Aproximada' },
@@ -87,10 +90,7 @@ export default {
 
 	computed: {
 		subcategoryOptions() {
-			return this.taxonomy.flatMap((category) => category.subcategories.map((subcategory) => ({
-				id: subcategory.id,
-				label: `${category.label} · ${subcategory.label}`,
-			})))
+			return subcategoryOptions(this.taxonomy)
 		},
 
 		qualityOptions() {

@@ -71,15 +71,25 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	public function testKindIsDerivedFromTheGeometryNotAcceptedFromTheClient(): void {
-		$feature = $this->service->create($this->valid([
-			'kind' => 'route',
+		$feature = $this->service->create($this->valid(['kind' => 'route']));
+
+		self::assertSame(Kind::Place->value, $feature->getKind());
+	}
+
+	/**
+	 * Slice boundary, not a limitation of Geometry: it measures a Polygon
+	 * perfectly well, but nothing draws a Zone yet, so one would land on the map
+	 * as a single pin on an arbitrary vertex. Lifted when Sectores get their own
+	 * rendering (issue #10).
+	 */
+	public function testANonPointGeometryIsRefusedForNow(): void {
+		$this->expectException(InvalidFeatureException::class);
+		$this->service->create($this->valid([
 			'geometry' => json_decode(
 				'{"type":"Polygon","coordinates":[[[-70.6,-33.5],[-70.5,-33.5],[-70.5,-33.4],[-70.6,-33.5]]]}',
 				true,
 			),
 		]));
-
-		self::assertSame(Kind::Zone->value, $feature->getKind());
 	}
 
 	/**
@@ -188,6 +198,44 @@ final class FeatureServiceTest extends TestCase {
 		self::assertNull($updated->getMinLon());
 		self::assertNull($updated->getMaxLat());
 		self::assertNull($updated->getMaxLon());
+	}
+
+	/**
+	 * A request that does not mention a field must leave it alone. History is
+	 * what would make such a loss recoverable, and it does not exist until issue
+	 * #4 — so until then an omission silently blanking an address would be
+	 * unrecoverable, on a route every user can reach.
+	 */
+	public function testAnUpdateThatOmitsAFieldLeavesItAlone(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setSubcategoryId(7);
+		$existing->setAddress('Los Bambúes 2001');
+		$existing->setPhone('961111133');
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, [
+			'name' => 'Solo cambio el nombre',
+			'subcategoryId' => 7,
+			'geometry' => null,
+		]);
+
+		self::assertSame('Los Bambúes 2001', $updated->getAddress());
+		self::assertSame('961111133', $updated->getPhone());
+	}
+
+	public function testSendingAFieldEmptyStillClearsIt(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setSubcategoryId(7);
+		$existing->setAddress('Los Bambúes 2001');
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, [
+			'name' => 'X', 'subcategoryId' => 7, 'geometry' => null, 'address' => '',
+		]);
+
+		self::assertNull($updated->getAddress());
 	}
 
 	public function testUpdatingSomethingThatDoesNotExistIsNotSwallowed(): void {

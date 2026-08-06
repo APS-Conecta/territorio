@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Db;
 
+use OCA\Territorio\Service\BoundingBox;
 use OCP\AppFramework\Db\Entity;
 
 /**
@@ -72,6 +73,18 @@ class Feature extends Entity {
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
 		$this->addType('maxLon', 'float');
+	}
+
+	/**
+	 * The four bounding-box columns move together or not at all — a Feature
+	 * carrying three quarters of a box, or a box belonging to a shape it no
+	 * longer has, is the kind of state that hides records from the map.
+	 */
+	public function setBoundingBox(?BoundingBox $box): void {
+		$this->setMinLat($box?->minLat());
+		$this->setMinLon($box?->minLon());
+		$this->setMaxLat($box?->maxLat());
+		$this->setMaxLon($box?->maxLon());
 	}
 
 	/**

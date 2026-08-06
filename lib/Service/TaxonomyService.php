@@ -11,8 +11,8 @@ use OCA\Territorio\Db\SubcategoryMapper;
  * The Category tree, as the client needs it.
  *
  * It goes to the browser whole — 11 Categories and a few dozen Subcategories —
- * because it is the Capas panel, the Subcategory picker and the legend all at
- * once, and because Features then travel as a subcategory id rather than
+ * because it is at once the tree people toggle, the Subcategory picker and the
+ * legend, and because Features then travel as a subcategory id rather than
  * repeating a label on every row.
  */
 class TaxonomyService {

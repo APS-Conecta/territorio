@@ -22,6 +22,17 @@ Places: the Registry's first records.
   Location quality is forced to "absent" when there is no geometry to describe.
 - An integration suite that round-trips the mappers against a real Postgres.
 
+### Notes
+
+- `FeatureMapper::delete()` refuses outright. ADR-0005 forbids hard-deleting a Feature anywhere in
+  the app, and QBMapper hands every subclass a public `delete()`, so the mapper is where that rule
+  has to be enforced rather than merely written down. Retirement arrives with history in issue #4;
+  until then a Feature cannot be removed at all, which is the safe direction to be wrong in.
+- Only Point geometry is accepted. Zones and Routes are measured correctly but nothing draws them
+  yet, so one would appear as a single pin on an arbitrary vertex. Lifted in issue #10.
+- An update only writes the fields it was sent. Omitting one leaves it alone; clearing it means
+  sending it empty.
+
 ## [0.1.0] — unreleased
 
 First slice: the app shell and the map. No territorial data yet.

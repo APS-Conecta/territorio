@@ -19,6 +19,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
+import { indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
 /**
  * OpenStreetMap's own credit, as markup, from here and never from configuration.
@@ -31,8 +32,6 @@ const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
 // ponytail: fixed opening view until the install knows its Comuna (issue #9),
 // which replaces this with that comuna's bounds.
 const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
-
-const UNCLASSIFIED_COLOUR = '#6b7280'
 
 const escapeHtml = (value) => String(value).replace(
 	/[&<>"']/g,
@@ -90,15 +89,9 @@ export default {
 			return this.tileFailed && !this.tileLoaded
 		},
 
-		/** Subcategory id → its Category's colour, so a marker looks like its legend. */
-		colourBySubcategory() {
-			const colours = new Map()
-			this.taxonomy.forEach((category) => {
-				category.subcategories.forEach((subcategory) => {
-					colours.set(subcategory.id, category.color)
-				})
-			})
-			return colours
+		/** Shared with the list, so a marker can never disagree with its legend. */
+		subcategories() {
+			return indexSubcategories(this.taxonomy)
 		},
 
 		/** Only Features with a geometry can be drawn; the rest are Datos-only. */
@@ -202,7 +195,7 @@ export default {
 		},
 
 		iconFor(feature) {
-			const colour = this.colourBySubcategory.get(feature.subcategoryId) ?? UNCLASSIFIED_COLOUR
+			const colour = this.subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
 			const selected = feature.id === this.selectedId
 
 			return L.divIcon({

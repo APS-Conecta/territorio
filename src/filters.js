@@ -12,14 +12,20 @@
  * anywhere. Storing visible ids would make every new row invisible until some
  * code went looking for it.
  *
- * Every function here is pure and returns a new filter, so a filter can be
- * compared, replayed or thrown away — and none of it ever leaves the browser.
- * The View is personal (CONTEXT.md): changing it changes nothing for anyone else.
+ * Every function here is pure and returns a new filter rather than mutating one,
+ * so a component can hand its filter around without wondering who else might
+ * change it. None of it ever leaves the browser: the View is personal
+ * (CONTEXT.md), and changing it changes nothing for anyone else.
  */
 
 /** Nothing hidden: everything is on screen. */
 export function emptyFilter() {
 	return { hidden: new Set() }
+}
+
+/** Whether anything is being hidden at all — what "Ver todo" keys off. */
+export function isFiltered(filter) {
+	return filter.hidden.size > 0
 }
 
 export function isSubcategoryVisible(filter, subcategoryId) {
@@ -62,13 +68,16 @@ export function toggleCategory(filter, category) {
  * What the Category's checkbox should show: 'all', 'none', or 'some' for the
  * indeterminate state.
  *
- * A Category with no Subcategories is 'none' — it can show nothing, because
- * there is nothing under it to show.
+ * A Category with no Subcategories is 'all': nothing under it is hidden, because
+ * there is nothing under it. Reporting 'none' would draw an unchecked box next to
+ * a Category that is hiding nothing — and a Category without Subcategories is
+ * reachable precisely through the "add a row, change no code" path this panel
+ * exists to support.
  */
 export function categoryState(filter, category) {
 	const ids = category.subcategories.map((subcategory) => subcategory.id)
 	if (ids.length === 0) {
-		return 'none'
+		return 'all'
 	}
 
 	const visible = ids.filter((id) => isSubcategoryVisible(filter, id)).length
@@ -77,6 +86,21 @@ export function categoryState(filter, category) {
 	}
 
 	return visible === ids.length ? 'all' : 'some'
+}
+
+/**
+ * What the Datos list shows.
+ *
+ * The retired list is deliberately NOT filtered. It is the recovery screen
+ * (ADR-0005), and gating it on a map filter means someone who hid Educación and
+ * then retired a colegio is told "No hay registros retirados" — the record they
+ * are looking for appears destroyed.
+ *
+ * This decision lives here rather than in the component so it can be tested;
+ * when it lived in a computed property it was wrong and nothing noticed.
+ */
+export function listFor({ features, retiredFeatures, showRetired, filter }) {
+	return showRetired ? retiredFeatures : filterFeatures(features, filter)
 }
 
 export function filterFeatures(features, filter) {
@@ -89,10 +113,12 @@ export function filterFeatures(features, filter) {
  * It does no filtering of its own — it is given the already-filtered features,
  * which is what stops the numbers drifting away from the list and the map.
  *
- * Categories with nothing in them are kept so the legend does not reshuffle
- * every time a filter changes; a Feature whose Subcategory the taxonomy no
- * longer has is counted under `unclassified` rather than dropped, because a
- * total that quietly disagrees with the list is worse than an awkward one.
+ * Every Category is reported, including empty ones, so the caller can decide
+ * whether to draw them — Análisis hides empty rows to keep the chart readable,
+ * but a legend or an export may well want them. A Feature whose Subcategory the
+ * taxonomy no longer has is counted under `unclassified` rather than dropped,
+ * because a total that quietly disagrees with the list is worse than an awkward
+ * one.
  */
 export function countsFor(features, taxonomy) {
 	const perSubcategory = new Map()

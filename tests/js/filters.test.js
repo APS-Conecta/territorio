@@ -4,7 +4,9 @@ import {
 	countsFor,
 	emptyFilter,
 	filterFeatures,
+	isFiltered,
 	isSubcategoryVisible,
+	listFor,
 	toggleCategory,
 	toggleSubcategory,
 } from '../../src/filters.js'
@@ -139,8 +141,14 @@ describe('the state a category checkbox shows', () => {
 		expect(categoryState(toggleSubcategory(emptyFilter(), 11), TAXONOMY[0])).toBe('some')
 	})
 
-	it('is none for a category with no subcategories at all', () => {
-		expect(categoryState(emptyFilter(), { id: 9, subcategories: [] })).toBe('none')
+	/**
+	 * A Category with nothing under it is hiding nothing, so its box is checked.
+	 * Reporting 'none' would draw an unchecked box next to a Category that hides
+	 * nothing — and an empty Category arrives exactly through the "add a row,
+	 * change no code" path this panel exists to support.
+	 */
+	it('is all for a category with no subcategories at all', () => {
+		expect(categoryState(emptyFilter(), { id: 9, subcategories: [] })).toBe('all')
 	})
 })
 
@@ -186,5 +194,46 @@ describe('counts for Análisis', () => {
 
 		expect(counts.total).toBe(5)
 		expect(counts.unclassified).toBe(1)
+	})
+})
+
+describe('what the Datos list shows', () => {
+	const retired = [feature(7, 21, 'Colegio retirado')]
+
+	it('filters the live list by the Capas filter', () => {
+		const list = listFor({
+			features: FEATURES, retiredFeatures: retired, showRetired: false,
+			filter: toggleSubcategory(emptyFilter(), 12),
+		})
+
+		expect(list.map((f) => f.id)).toEqual([1, 4])
+	})
+
+	/**
+	 * The regression this exists to prevent: the retired list is the recovery
+	 * screen (ADR-0005). Filtering it by Capas means hiding Educación and then
+	 * retiring a colegio tells the user "No hay registros retirados" — the record
+	 * they are looking for appears destroyed.
+	 */
+	it('never filters the retired list, so a retired record is always findable', () => {
+		const list = listFor({
+			features: FEATURES, retiredFeatures: retired, showRetired: true,
+			filter: toggleSubcategory(emptyFilter(), 21),
+		})
+
+		expect(list.map((f) => f.name)).toEqual(['Colegio retirado'])
+	})
+})
+
+describe('isFiltered', () => {
+	it('is false until something is hidden', () => {
+		expect(isFiltered(emptyFilter())).toBe(false)
+		expect(isFiltered(toggleSubcategory(emptyFilter(), 11))).toBe(true)
+	})
+
+	it('is false again once everything is shown', () => {
+		const filter = toggleSubcategory(toggleSubcategory(emptyFilter(), 11), 11)
+
+		expect(isFiltered(filter)).toBe(false)
 	})
 })

@@ -17,6 +17,7 @@ Kind is Place only; Sectores, Zones, Routes, import, history and live sync are i
 ## Working on it
 
     make test             # PHP unit tests in a bare container — no Nextcloud needed
+    make test-js          # the frontend's pure logic (filters, counts) — vitest
     make lint             # php -l over lib/ and tests/
     npm install           # once
     make build            # webpack → js/territorio-{main,admin}.js
@@ -24,11 +25,14 @@ Kind is Place only; Sectores, Zones, Routes, import, history and live sync are i
     make test-integration # mapper round-trip against that instance's real Postgres
     make instance-clean   # wipe it
 
-Two test suites, on purpose:
+Three test suites, on purpose:
 
 - **`make test`** is the judgement — validation, geometry, status codes. It depends on no OCP
   class and runs in a bare PHP container in milliseconds. Classes that must touch Nextcloud are
   tested against the `nextcloud/ocp` interface stubs, mapped in `autoload-dev` only.
+- **`make test-js`** is the frontend's judgement — the filter reducer, the counts. Pure modules,
+  no browser, no Nextcloud. UI *rendering* is still unverified by anything but a person looking at
+  it; two of this project's bugs so far were visible only that way.
 - **`make test-integration`** is the round trip. A mocked mapper cannot tell you whether an
   Entity's camelCase properties actually reach the snake_case columns the migration created, with
   the right types — only a real insert can, and a wrong answer there is invisible until data is

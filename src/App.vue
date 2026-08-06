@@ -19,10 +19,10 @@
 
 			<div class="territorio-main">
 				<div class="territorio-main__switch">
-					<NcButton :pressed="view === 'mapa'" @click="view = 'mapa'">
+					<NcButton :pressed="pane === 'mapa'" @click="pane = 'mapa'">
 						Mapa
 					</NcButton>
-					<NcButton :pressed="view === 'analisis'" @click="view = 'analisis'">
+					<NcButton :pressed="pane === 'analisis'" @click="pane = 'analisis'">
 						Análisis
 					</NcButton>
 				</div>
@@ -35,16 +35,16 @@
 					The map only ever shows what is live. Retired records are browsable
 					in the list so they can be restored, never drawn.
 				-->
-				<TerritorioMap v-show="view === 'mapa'"
-					:features="mappable"
+				<TerritorioMap v-show="pane === 'mapa'"
+					:features="liveFiltered"
 					:taxonomy="taxonomy"
 					:selected-id="selectedId"
 					@select="select"
 					@map-click="placeDraft" />
 
-				<AnalisisView v-if="view === 'analisis'"
+				<AnalisisView v-if="pane === 'analisis'"
 					:counts="counts"
-					:filtered="filter.hidden.size > 0" />
+					:filtered="isFiltered(filter)" />
 			</div>
 		</NcAppContent>
 
@@ -88,6 +88,7 @@ import {
 	countsFor,
 	emptyFilter,
 	filterFeatures,
+	isFiltered,
 	toggleCategory,
 	toggleSubcategory,
 } from './filters.js'
@@ -136,7 +137,10 @@ export default {
 			// The View is personal (CONTEXT.md): this never leaves the browser and
 			// changing it changes nothing for anyone else.
 			filter: emptyFilter(),
-			view: 'mapa',
+			// Which pane fills the main area. Named `pane`, not `view`, because
+			// View is the glossary's word for the whole personal on-screen state —
+			// of which this is one part, alongside the filter above.
+			pane: 'mapa',
 			history: [],
 			selectedId: null,
 			draft: null,
@@ -149,21 +153,31 @@ export default {
 
 	computed: {
 		/**
-		 * The one filtered set. The list, the map and Análisis all derive from
-		 * this rather than each filtering for themselves — three filters is how
-		 * the count ends up disagreeing with what is on screen.
+		 * The one filtered set. The map, the Datos list and Análisis all derive
+		 * from this rather than each filtering for themselves — three filters is
+		 * how a count ends up disagreeing with what is on screen.
 		 */
-		listed() {
-			return filterFeatures(this.showRetired ? this.retiredFeatures : this.features, this.filter)
-		},
-
-		/** Retired records are never drawn, whatever the list is showing. */
-		mappable() {
+		liveFiltered() {
 			return filterFeatures(this.features, this.filter)
 		},
 
+		/** See listFor(): the retired list is a recovery screen, never filtered. */
+		listed() {
+			return listFor({
+				features: this.features,
+				retiredFeatures: this.retiredFeatures,
+				showRetired: this.showRetired,
+				filter: this.filter,
+			})
+		},
+
+		/**
+		 * Always the live Registry, never the retired list. ADR-0005 keeps retired
+		 * records out of every default read, and a total that silently counted
+		 * them would be wrong in a way nobody on screen could see.
+		 */
 		counts() {
-			return countsFor(this.listed, this.taxonomy)
+			return countsFor(this.liveFiltered, this.taxonomy)
 		},
 
 		selectedIsRetired() {
@@ -183,6 +197,8 @@ export default {
 	},
 
 	methods: {
+		isFiltered,
+
 		resetFilter() {
 			this.filter = emptyFilter()
 		},

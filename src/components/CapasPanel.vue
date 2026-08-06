@@ -40,7 +40,7 @@
 import NcAppNavigation from '@nextcloud/vue/components/NcAppNavigation'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
-import { categoryState, isSubcategoryVisible } from '../filters.js'
+import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
 
 export default {
 	name: 'CapasPanel',
@@ -56,7 +56,7 @@ export default {
 
 	computed: {
 		anythingHidden() {
-			return this.filter.hidden.size > 0
+			return isFiltered(this.filter)
 		},
 	},
 

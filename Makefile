@@ -22,8 +22,8 @@ deps: test-image
 test: test-image
 	$(DOCKER) sh -c "composer install --no-interaction --no-progress -q && vendor/bin/phpunit --testdox"
 
-# The frontend's pure logic — filters, counts, the search predicate. Needs no
-# browser and no Nextcloud; it is the JS half of what `make test` is for PHP.
+# The frontend's pure logic — the filter reducer and the Análisis counts. Needs
+# no browser and no Nextcloud; it is the JS half of what `make test` is for PHP.
 test-js:
 	npm run test
 

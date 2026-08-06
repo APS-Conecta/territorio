@@ -10,7 +10,7 @@ DOCKER := docker run --rm -v "$(CURDIR)":/app -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image deps build watch lint clean instance-up instance-occ instance-down instance-clean
+.PHONY: test test-image test-integration deps build watch lint clean instance-up instance-occ instance-down instance-clean
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -21,6 +21,13 @@ deps: test-image
 # The tested core depends on no OCP class, so this needs no Nextcloud at all.
 test: test-image
 	$(DOCKER) sh -c "composer install --no-interaction --no-progress -q && vendor/bin/phpunit --testdox"
+
+# Round-trip the mappers against the dev instance's real Postgres. Proves what a
+# mocked mapper cannot: that camelCase Entity properties reach the snake_case
+# columns, with the right types. Needs `make instance-up` first.
+test-integration:
+	$(COMPOSE) exec --user www-data -w /var/www/html/custom_apps/territorio nextcloud \
+		php vendor/bin/phpunit -c phpunit.integration.xml --testdox
 
 # Syntax-check every PHP file. Cheap standing in for a static analyser we do not have yet.
 # Must FAIL on a parse error: piping into `grep -v … || true` throws the exit status

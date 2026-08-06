@@ -6,6 +6,8 @@ namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Service\BasemapConfig;
+use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -31,6 +33,8 @@ class PageController extends Controller {
 		IRequest $request,
 		private IInitialState $initialState,
 		private BasemapConfig $basemapConfig,
+		private TaxonomyService $taxonomy,
+		private FeatureService $features,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -41,6 +45,11 @@ class PageController extends Controller {
 		$basemap = $this->basemapConfig->get();
 
 		$this->initialState->provideInitialState('basemap', $basemap->jsonSerialize());
+		$this->initialState->provideInitialState('taxonomy', $this->taxonomy->tree());
+		$this->initialState->provideInitialState('features', array_map(
+			static fn ($feature): array => $feature->toClient(),
+			$this->features->listAll(),
+		));
 
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-main');
 

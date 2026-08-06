@@ -3,6 +3,25 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.2.0] — unreleased
+
+Places: the Registry's first records.
+
+### Added
+
+- The Category/Subcategory taxonomy, seeded with the eleven categories and the subcategories the
+  La Florida catastro actually used. It is editable data, not code — adding a row makes it appear
+  in the app.
+- Features stored as GeoJSON text with a bounding box in four plain columns. No PostGIS is
+  available, and a Nextcloud app must run on MySQL, SQLite and Postgres alike.
+- Datos: a list of records beside the map, with a sidebar to add and edit one. Selecting a record
+  highlights its marker; markers cluster and are coloured by Category.
+- A record with no coordinate is valid — it appears in Datos and not on the map. The inherited
+  catastro holds real organisations whose address never resolved.
+- Kind and the bounding box are derived from the geometry and never accepted from the client.
+  Location quality is forced to "absent" when there is no geometry to describe.
+- An integration suite that round-trips the mappers against a real Postgres.
+
 ## [0.1.0] — unreleased
 
 First slice: the app shell and the map. No territorial data yet.

@@ -10,7 +10,7 @@ DOCKER := docker run --rm -v "$(CURDIR)":/app -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image test-integration deps build watch lint clean instance-up instance-occ instance-down instance-clean
+.PHONY: test test-image test-integration test-js deps build watch lint clean instance-up instance-occ instance-down instance-clean
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -21,6 +21,11 @@ deps: test-image
 # The tested core depends on no OCP class, so this needs no Nextcloud at all.
 test: test-image
 	$(DOCKER) sh -c "composer install --no-interaction --no-progress -q && vendor/bin/phpunit --testdox"
+
+# The frontend's pure logic — filters, counts, the search predicate. Needs no
+# browser and no Nextcloud; it is the JS half of what `make test` is for PHP.
+test-js:
+	npm run test
 
 # Round-trip the mappers against the dev instance's real Postgres. Proves what a
 # mocked mapper cannot: that camelCase Entity properties reach the snake_case

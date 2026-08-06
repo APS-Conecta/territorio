@@ -1,5 +1,11 @@
 <template>
 	<NcContent app-name="territorio">
+		<CapasPanel :taxonomy="taxonomy"
+			:filter="filter"
+			@toggle-category="onToggleCategory"
+			@toggle-subcategory="onToggleSubcategory"
+			@reset="resetFilter" />
+
 		<NcAppContent>
 			<template #list>
 				<FeatureList :features="listed"
@@ -11,13 +17,35 @@
 					@update:show-retired="toggleRetired" />
 			</template>
 
-			<!-- The map only ever shows what is live. Retired records are browsable
-			     in the list so they can be restored, never drawn. -->
-			<TerritorioMap :features="features"
-				:taxonomy="taxonomy"
-				:selected-id="selectedId"
-				@select="select"
-				@map-click="placeDraft" />
+			<div class="territorio-main">
+				<div class="territorio-main__switch">
+					<NcButton :pressed="view === 'mapa'" @click="view = 'mapa'">
+						Mapa
+					</NcButton>
+					<NcButton :pressed="view === 'analisis'" @click="view = 'analisis'">
+						Análisis
+					</NcButton>
+				</div>
+
+				<!--
+					v-show, not v-if: tearing the Leaflet map down and rebuilding it on
+					every switch would throw away the viewport the user had panned to.
+					The ResizeObserver inside it re-measures when it comes back.
+
+					The map only ever shows what is live. Retired records are browsable
+					in the list so they can be restored, never drawn.
+				-->
+				<TerritorioMap v-show="view === 'mapa'"
+					:features="mappable"
+					:taxonomy="taxonomy"
+					:selected-id="selectedId"
+					@select="select"
+					@map-click="placeDraft" />
+
+				<AnalisisView v-if="view === 'analisis'"
+					:counts="counts"
+					:filtered="filter.hidden.size > 0" />
+			</div>
 		</NcAppContent>
 
 		<NcAppSidebar v-if="draft !== null"
@@ -51,9 +79,18 @@ import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import AnalisisView from './components/AnalisisView.vue'
+import CapasPanel from './components/CapasPanel.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
+import {
+	countsFor,
+	emptyFilter,
+	filterFeatures,
+	toggleCategory,
+	toggleSubcategory,
+} from './filters.js'
 import { defaultSubcategoryId } from './taxonomy.js'
 
 /**
@@ -77,6 +114,8 @@ export default {
 	name: 'App',
 
 	components: {
+		AnalisisView,
+		CapasPanel,
 		FeatureDetail,
 		FeatureList,
 		NcAppContent,
@@ -94,6 +133,10 @@ export default {
 			revision: loadState('territorio', 'revision'),
 			retiredFeatures: [],
 			showRetired: false,
+			// The View is personal (CONTEXT.md): this never leaves the browser and
+			// changing it changes nothing for anyone else.
+			filter: emptyFilter(),
+			view: 'mapa',
 			history: [],
 			selectedId: null,
 			draft: null,
@@ -105,9 +148,22 @@ export default {
 	},
 
 	computed: {
-		/** The list shows one set or the other; the map only ever shows the live one. */
+		/**
+		 * The one filtered set. The list, the map and Análisis all derive from
+		 * this rather than each filtering for themselves — three filters is how
+		 * the count ends up disagreeing with what is on screen.
+		 */
 		listed() {
-			return this.showRetired ? this.retiredFeatures : this.features
+			return filterFeatures(this.showRetired ? this.retiredFeatures : this.features, this.filter)
+		},
+
+		/** Retired records are never drawn, whatever the list is showing. */
+		mappable() {
+			return filterFeatures(this.features, this.filter)
+		},
+
+		counts() {
+			return countsFor(this.listed, this.taxonomy)
 		},
 
 		selectedIsRetired() {
@@ -127,6 +183,18 @@ export default {
 	},
 
 	methods: {
+		resetFilter() {
+			this.filter = emptyFilter()
+		},
+
+		onToggleCategory(category) {
+			this.filter = toggleCategory(this.filter, category)
+		},
+
+		onToggleSubcategory(subcategoryId) {
+			this.filter = toggleSubcategory(this.filter, subcategoryId)
+		},
+
 		startPolling() {
 			if (this.pollTimer === null && !document.hidden) {
 				this.pollTimer = setInterval(this.poll, POLL_INTERVAL_MS)
@@ -390,5 +458,20 @@ export default {
 <style scoped>
 .territorio-restore {
 	margin-top: 8px;
+}
+
+.territorio-main {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.territorio-main__switch {
+	display: flex;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--color-border);
+	flex: 0 0 auto;
 }
 </style>

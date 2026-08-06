@@ -3,6 +3,32 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.5.0] — unreleased
+
+The Capas panel, and one filtered set behind everything on screen.
+
+### Added
+
+- The Category tree as toggles in the app navigation. Unchecking a Category takes its whole branch
+  with it; unchecking one Subcategory leaves its siblings alone. The parent checkbox shows an
+  indeterminate state when only part of the branch is hidden, and clicking it then reveals the
+  rest rather than hiding what was left.
+- An Análisis view: counts by Category and Subcategory over the filtered set, drawn as bars.
+- A JS test runner (vitest) and `make test-js`. The filter logic is a pure module with 17 tests —
+  the first frontend logic in the repo that is tested rather than eyeballed.
+
+### Notes
+
+- The filter records what is **hidden**, never what is visible. That is what makes a Subcategory
+  added to the taxonomy appear on its own with no code change: it is absent from the hidden set,
+  so it shows. Storing visible ids would leave every new row invisible until some code went
+  looking for it.
+- The map, the Datos list and Análisis all derive from one filtered set rather than filtering
+  separately. Three filters is how a count ends up disagreeing with what is on screen.
+- Análisis counts what it is handed and filters nothing itself, for the same reason.
+- The filter is a View (CONTEXT.md): it lives in the browser, is never sent anywhere, and changing
+  it changes nothing for any other user.
+
 ## [0.4.0] — unreleased
 
 History and retirement.

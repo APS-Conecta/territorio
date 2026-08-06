@@ -40,11 +40,7 @@ class PageController extends Controller {
 	public function index(): TemplateResponse {
 		$basemap = $this->basemapConfig->get();
 
-		$this->initialState->provideInitialState('basemap', [
-			'url' => $basemap->url(),
-			'attribution' => $basemap->attribution(),
-			'isDefault' => $basemap->isDefault(),
-		]);
+		$this->initialState->provideInitialState('basemap', $basemap->jsonSerialize());
 
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-main');
 

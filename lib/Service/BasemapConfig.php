@@ -22,10 +22,26 @@ class BasemapConfig {
 	}
 
 	public function get(): Basemap {
-		return Basemap::resolve(
-			$this->appConfig->getValueString(Application::APP_ID, self::KEY_URL),
-			$this->appConfig->getValueString(Application::APP_ID, self::KEY_ATTRIBUTION),
-		);
+		['url' => $url, 'attribution' => $attribution] = $this->stored();
+
+		return Basemap::resolve($url, $attribution);
+	}
+
+	/**
+	 * What is actually in the database, before any judgement is applied.
+	 *
+	 * The settings form fills its boxes from this, not from `get()`. Otherwise a
+	 * rejected URL resolves to the default, the form renders empty, and the
+	 * administrator's typo disappears with no explanation — which is exactly what
+	 * storing it verbatim was supposed to prevent.
+	 *
+	 * @return array{url: string, attribution: string}
+	 */
+	public function stored(): array {
+		return [
+			'url' => $this->appConfig->getValueString(Application::APP_ID, self::KEY_URL),
+			'attribution' => $this->appConfig->getValueString(Application::APP_ID, self::KEY_ATTRIBUTION),
+		];
 	}
 
 	/**

@@ -19,12 +19,13 @@ class AdminSettings implements ISettings {
 	}
 
 	public function getForm(): TemplateResponse {
-		$basemap = $this->basemapConfig->get();
+		// The form shows what was typed, not what it resolved to — a rejected URL
+		// has to stay visible in the box that produced it, together with the
+		// warning saying why the map is still on OpenStreetMap.
+		$stored = $this->basemapConfig->stored();
 
-		$this->initialState->provideInitialState('basemap', [
-			'url' => $basemap->url(),
-			'attribution' => $basemap->attribution(),
-			'isDefault' => $basemap->isDefault(),
+		$this->initialState->provideInitialState('basemap', $stored + [
+			'rejected' => $this->basemapConfig->get()->wasRejected(),
 		]);
 
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-admin');

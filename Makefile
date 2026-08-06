@@ -23,8 +23,10 @@ test: test-image
 	$(DOCKER) sh -c "composer install --no-interaction --no-progress -q && vendor/bin/phpunit --testdox"
 
 # Syntax-check every PHP file. Cheap standing in for a static analyser we do not have yet.
+# Must FAIL on a parse error: piping into `grep -v … || true` throws the exit status
+# away and makes this target permanently green, which is worse than having no target.
 lint: test-image
-	$(DOCKER) sh -c 'find lib tests -name "*.php" -print0 | xargs -0 -n1 php -l' | grep -v "^No syntax errors" || true
+	$(DOCKER) sh -c 'find lib tests -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
 
 build:
 	npm run build
@@ -32,8 +34,10 @@ build:
 watch:
 	npm run watch
 
+# js/ is committed (Nextcloud apps ship built assets), so it is not cleaned here —
+# removing it would just dirty the working tree. `npm run build` overwrites it.
 clean:
-	rm -rf vendor node_modules js/*.js js/*.map js/*.txt .phpunit.cache
+	rm -rf vendor node_modules js/*.map .phpunit.cache
 
 # ── Throwaway Nextcloud instance (compose.dev.yaml) ────────────────────────────────────────────
 # First run pulls images and installs Nextcloud; a couple of minutes. After that, seconds.

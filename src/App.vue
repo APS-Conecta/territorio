@@ -16,10 +16,3 @@ export default {
 	components: { NcAppContent, NcContent, TerritorioMap },
 }
 </script>
-
-<style>
-/* The map is the whole screen: give it every pixel NcAppContent has. */
-#territorio .app-content-wrapper {
-	height: 100%;
-}
-</style>

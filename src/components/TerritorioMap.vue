@@ -1,9 +1,10 @@
 <template>
 	<div class="territorio-map">
-		<NcNoteCard v-if="tilesUnavailable"
+		<NcNoteCard v-if="basemapUnreachable"
 			type="warning"
 			class="territorio-map__notice">
-			{{ t('No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta la imagen de fondo.') }}
+			No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta
+			la imagen de fondo.
 		</NcNoteCard>
 
 		<div ref="container" class="territorio-map__canvas" data-testid="map-canvas" />
@@ -47,7 +48,8 @@ export default {
 	data() {
 		return {
 			basemap: loadState('territorio', 'basemap'),
-			tilesUnavailable: false,
+			tileFailed: false,
+			tileLoaded: false,
 			map: null,
 			resizeObserver: null,
 		}
@@ -55,13 +57,23 @@ export default {
 
 	computed: {
 		/**
-		 * The default basemap may credit OpenStreetMap with a real link, because
-		 * that markup is ours. Anything an administrator typed is text.
+		 * OpenStreetMap tiles get OpenStreetMap's own link, because that markup is
+		 * ours and its licence requires the credit. Anything an administrator
+		 * typed is text, escaped — Leaflet writes attribution with innerHTML.
 		 */
 		attributionHtml() {
-			return this.basemap.isDefault
+			return this.basemap.usesOpenStreetMap
 				? OSM_ATTRIBUTION
 				: escapeHtml(this.basemap.attribution)
+		},
+
+		/**
+		 * Only warn when the basemap is genuinely unreachable — no tile has ever
+		 * loaded. A healthy server still 404s tiles at the edge of coverage, and
+		 * latching on the first of those would pin the banner forever.
+		 */
+		basemapUnreachable() {
+			return this.tileFailed && !this.tileLoaded
 		},
 	},
 
@@ -81,9 +93,12 @@ export default {
 		})
 			// Tiles failing is not an error the app should die on: the clinic may
 			// be offline, or the tile host firewalled. Pan, zoom and everything
-			// drawn on top keep working, so we say so once and carry on.
+			// drawn on top keep working, so we note it and carry on.
 			.on('tileerror', () => {
-				this.tilesUnavailable = true
+				this.tileFailed = true
+			})
+			.on('tileload', () => {
+				this.tileLoaded = true
 			})
 			.addTo(this.map)
 
@@ -96,12 +111,6 @@ export default {
 	beforeUnmount() {
 		this.resizeObserver?.disconnect()
 		this.map?.remove()
-	},
-
-	methods: {
-		t(text) {
-			return text
-		},
 	},
 }
 </script>

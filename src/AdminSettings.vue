@@ -10,6 +10,10 @@
 			<code>{z}</code>, <code>{x}</code> e <code>{y}</code>.
 		</NcNoteCard>
 
+		<NcNoteCard v-else-if="failed" type="error">
+			No se pudo guardar. Revise la conexión e inténtelo de nuevo.
+		</NcNoteCard>
+
 		<NcNoteCard v-else-if="saved" type="success">
 			Guardado.
 		</NcNoteCard>
@@ -49,16 +53,18 @@ export default {
 	components: { NcButton, NcNoteCard, NcSettingsSection, NcTextField },
 
 	data() {
+		// These are the stored values, not the resolved ones: a URL Territorio
+		// declined must stay in the box that produced it, next to the warning
+		// saying why the map is still on OpenStreetMap. An empty box means unset.
 		const basemap = loadState('territorio', 'basemap')
 
 		return {
-			// Blank rather than the default URL: an empty box means "unset", and
-			// pre-filling it would make clearing the field impossible to express.
-			url: basemap.isDefault ? '' : basemap.url,
-			attribution: basemap.isDefault ? '' : basemap.attribution,
+			url: basemap.url,
+			attribution: basemap.attribution,
 			saving: false,
 			saved: false,
-			rejected: false,
+			rejected: basemap.rejected,
+			failed: false,
 		}
 	},
 
@@ -67,6 +73,7 @@ export default {
 			this.saving = true
 			this.saved = false
 			this.rejected = false
+			this.failed = false
 
 			try {
 				const { data } = await axios.put(
@@ -78,6 +85,11 @@ export default {
 				// rather than later as a blank map.
 				this.rejected = !data.accepted
 				this.saved = data.accepted
+			} catch (error) {
+				// Without this, a 500 or a dropped connection leaves every flag
+				// false and the page looks exactly as if nobody pressed the button.
+				console.error('territorio: could not save the basemap setting', error)
+				this.failed = true
 			} finally {
 				this.saving = false
 			}

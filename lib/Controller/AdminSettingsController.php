@@ -34,11 +34,8 @@ class AdminSettingsController extends Controller {
 	public function save(string $url = '', string $attribution = ''): JSONResponse {
 		$basemap = $this->basemapConfig->set($url, $attribution);
 
-		return new JSONResponse([
-			'url' => $basemap->url(),
-			'attribution' => $basemap->attribution(),
-			'isDefault' => $basemap->isDefault(),
-			'accepted' => $basemap->url() === trim($url) || trim($url) === '',
-		]);
+		return new JSONResponse(
+			$basemap->jsonSerialize() + ['accepted' => !$basemap->wasRejected()],
+		);
 	}
 }

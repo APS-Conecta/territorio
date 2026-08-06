@@ -118,11 +118,33 @@ final class BasemapTest extends TestCase {
 		self::assertSame('https://tile.openstreetmap.org', $basemap->cspHost());
 	}
 
-	public function testAValidUrlWithBlankAttributionKeepsTheUrlAndCreditsNobody(): void {
+	/**
+	 * An administrator may leave their own tile server uncredited — it is theirs
+	 * to credit or not.
+	 */
+	public function testAPrivateTileServerMayCreditNobody(): void {
 		$basemap = Basemap::resolve('https://tiles.intranet/{z}/{x}/{y}.png', '');
 
 		self::assertSame('https://tiles.intranet/{z}/{x}/{y}.png', $basemap->url());
 		self::assertSame('', $basemap->attribution());
+	}
+
+	/**
+	 * OpenStreetMap's is not theirs to drop. Typing the default URL — which is
+	 * the placeholder text in the settings field, so people will — and clearing
+	 * the attribution must not serve OSM tiles with no credit at all.
+	 */
+	public function testOpenStreetMapIsCreditedEvenWhenTheAttributionIsCleared(): void {
+		$basemap = Basemap::resolve(Basemap::DEFAULT_URL, '');
+
+		self::assertSame(Basemap::DEFAULT_ATTRIBUTION, $basemap->attribution());
+		self::assertTrue($basemap->usesOpenStreetMap());
+	}
+
+	public function testAnExplicitAttributionOverOpenStreetMapTilesIsKept(): void {
+		$basemap = Basemap::resolve(Basemap::DEFAULT_URL, 'OSM vía caché local');
+
+		self::assertSame('OSM vía caché local', $basemap->attribution());
 	}
 
 	public function testSurroundingWhitespaceIsIgnored(): void {
@@ -132,10 +154,35 @@ final class BasemapTest extends TestCase {
 		self::assertSame('Intranet', $basemap->attribution());
 	}
 
-	public function testIsDefaultReportsWhetherTheAdminChangedAnything(): void {
-		self::assertTrue(Basemap::resolve(null, null)->isDefault());
+	public function testUsesOpenStreetMapTurnsOnTheUrlAloneNotTheAttribution(): void {
+		self::assertTrue(Basemap::resolve(null, null)->usesOpenStreetMap());
+		// A custom credit does not change whose tiles these are.
+		self::assertTrue(Basemap::resolve(Basemap::DEFAULT_URL, 'Mi crédito')->usesOpenStreetMap());
 		self::assertFalse(
-			Basemap::resolve('https://tiles.intranet/{z}/{x}/{y}.png', 'Intranet')->isDefault(),
+			Basemap::resolve('https://tiles.intranet/{z}/{x}/{y}.png', 'Intranet')->usesOpenStreetMap(),
+		);
+	}
+
+	public function testNothingConfiguredIsNotARejection(): void {
+		self::assertFalse(Basemap::resolve(null, null)->wasRejected());
+		self::assertFalse(Basemap::resolve('', '')->wasRejected());
+	}
+
+	public function testASuppliedUrlThatIsNotUsedIsReportedAsRejected(): void {
+		self::assertTrue(Basemap::resolve('https://maps.local/static.png', '')->wasRejected());
+		self::assertFalse(
+			Basemap::resolve('https://tiles.intranet/{z}/{x}/{y}.png', '')->wasRejected(),
+		);
+	}
+
+	public function testJsonSerializeCarriesWhatTheClientsNeed(): void {
+		self::assertSame(
+			[
+				'url' => Basemap::DEFAULT_URL,
+				'attribution' => Basemap::DEFAULT_ATTRIBUTION,
+				'usesOpenStreetMap' => true,
+			],
+			Basemap::resolve(null, null)->jsonSerialize(),
 		);
 	}
 }

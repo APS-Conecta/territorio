@@ -38,7 +38,28 @@ final class BasemapConfigTest extends TestCase {
 		$basemap = (new BasemapConfig($this->appConfig()))->get();
 
 		self::assertSame(Basemap::DEFAULT_URL, $basemap->url());
-		self::assertTrue($basemap->isDefault());
+		self::assertTrue($basemap->usesOpenStreetMap());
+		self::assertFalse($basemap->wasRejected());
+	}
+
+	/**
+	 * The settings form reads this, so a rejected URL stays in the box that
+	 * produced it instead of vanishing when the page reloads.
+	 */
+	public function testStoredReturnsTheRawValuesWithoutJudgingThem(): void {
+		$config = new BasemapConfig($this->appConfig([
+			BasemapConfig::KEY_URL => 'https://maps.local/not-a-tile-url.png',
+			BasemapConfig::KEY_ATTRIBUTION => 'Cartografía municipal',
+		]));
+
+		self::assertSame([
+			'url' => 'https://maps.local/not-a-tile-url.png',
+			'attribution' => 'Cartografía municipal',
+		], $config->stored());
+
+		// …while what actually gets served falls back, and says it was rejected.
+		self::assertSame(Basemap::DEFAULT_URL, $config->get()->url());
+		self::assertTrue($config->get()->wasRejected());
 	}
 
 	public function testStoredValuesAreResolved(): void {
@@ -50,7 +71,7 @@ final class BasemapConfigTest extends TestCase {
 		self::assertSame('https://tiles.cesfam.local/{z}/{x}/{y}.png', $basemap->url());
 		self::assertSame('Cartografía municipal', $basemap->attribution());
 		self::assertSame('https://tiles.cesfam.local', $basemap->cspHost());
-		self::assertFalse($basemap->isDefault());
+		self::assertFalse($basemap->usesOpenStreetMap());
 	}
 
 	public function testSavingReturnsWhatTheSettingResolvesTo(): void {

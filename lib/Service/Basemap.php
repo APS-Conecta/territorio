@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use JsonSerializable;
+
 /**
  * The tile service the map draws on, resolved from what an administrator typed.
  *
@@ -15,7 +17,7 @@ namespace OCA\Territorio\Service;
  * Deliberately depends on no OCP class: this is the part worth testing, and it
  * tests in bare PHP. Reading the setting is `BasemapConfig`'s job.
  */
-final class Basemap {
+final class Basemap implements JsonSerializable {
 	public const DEFAULT_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 	/**
@@ -32,11 +34,13 @@ final class Basemap {
 		private readonly string $url,
 		private readonly string $attribution,
 		private readonly string $cspHost,
+		private readonly bool $rejected,
 	) {
 	}
 
 	public static function resolve(?string $url, ?string $attribution): self {
 		$url = trim((string)$url);
+		$attribution = trim((string)$attribution);
 		$origin = $url === '' ? null : self::originOf($url);
 
 		// A rejected URL takes its attribution down with it. We fall back to
@@ -47,10 +51,19 @@ final class Basemap {
 				self::DEFAULT_URL,
 				self::DEFAULT_ATTRIBUTION,
 				(string)self::originOf(self::DEFAULT_URL),
+				// Blank is not a rejection: it means the setting was never used.
+				$url !== '',
 			);
 		}
 
-		return new self($url, trim((string)$attribution), $origin);
+		// Serving OpenStreetMap's tiles obliges us to credit OpenStreetMap,
+		// whatever the attribution box happens to say. An administrator may
+		// leave their OWN server uncredited; they may not silently drop OSM's.
+		if ($url === self::DEFAULT_URL && $attribution === '') {
+			$attribution = self::DEFAULT_ATTRIBUTION;
+		}
+
+		return new self($url, $attribution, $origin, false);
 	}
 
 	public function url(): string {
@@ -66,11 +79,32 @@ final class Basemap {
 		return $this->cspHost;
 	}
 
-	/** True when nothing has been customised — the view uses this to decide
-	 *  whether it may render OpenStreetMap's own attribution link. */
-	public function isDefault(): bool {
-		return $this->url === self::DEFAULT_URL
-			&& $this->attribution === self::DEFAULT_ATTRIBUTION;
+	/**
+	 * Whether the tiles come from OpenStreetMap — the only thing that decides
+	 * whether the view may render OpenStreetMap's own copyright link. It turns
+	 * on the URL alone: what the attribution says cannot change whose tiles
+	 * these are.
+	 */
+	public function usesOpenStreetMap(): bool {
+		return $this->url === self::DEFAULT_URL;
+	}
+
+	/**
+	 * True when a URL was supplied and Territorio declined to use it. Lets the
+	 * settings page tell an administrator their value was not accepted, instead
+	 * of leaving them to discover it from a map that quietly stayed the same.
+	 */
+	public function wasRejected(): bool {
+		return $this->rejected;
+	}
+
+	/** @return array{url: string, attribution: string, usesOpenStreetMap: bool} */
+	public function jsonSerialize(): array {
+		return [
+			'url' => $this->url,
+			'attribution' => $this->attribution,
+			'usesOpenStreetMap' => $this->usesOpenStreetMap(),
+		];
 	}
 
 	/**

@@ -3,6 +3,30 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.7.0] — unreleased
+
+Undo an import.
+
+### Added
+
+- Recent runs are listed in the import dialog with who ran them and what they did, each with a
+  **Deshacer**. Undo lives beside the thing it undoes.
+- Reverting retires what a run created and puts back what it overwrote — and leaves alone anything
+  touched since, reporting how many it left.
+
+### Notes
+
+- A revert is expressed as the inverse of each action the batch recorded, applied newest first:
+  created becomes retired, an update is restored to its previous values, a retirement is undone.
+  Expressing it that way rather than as an "undo import" routine is what makes a revert revertible
+  — it records its own batch, its Revisions are stamped with it, and undoing THAT is the same code
+  walking a different batch.
+- A revert never marks a record as a local override. Going through the ordinary edit path would,
+  and every future import would then skip those records for good (ADR-0003) — a strange and
+  permanent consequence of pressing undo.
+- Nothing is undone blindly. A record with a newer Revision than the batch's has been touched
+  since, so it is left exactly as it is: a revert exists to prevent silent loss, not to cause it.
+
 ## [0.6.0] — unreleased
 
 GeoJSON import.

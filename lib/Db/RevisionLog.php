@@ -176,6 +176,61 @@ class RevisionLog {
 		return $entries;
 	}
 
+	/**
+	 * Everything one batch did, newest first.
+	 *
+	 * Newest first because a revert undoes in reverse order: if a batch touched
+	 * the same record twice, the later change has to come off before the earlier
+	 * one, or the record ends up holding a value from the middle of the run.
+	 *
+	 * Read by `import_id`, never by a range of Revision numbers — writes are
+	 * serialised behind one cursor, so a range would sweep up whatever a
+	 * colleague saved while the import was running.
+	 *
+	 * @return list<array{revision: int, featureId: int, action: string, changes: ?array}>
+	 */
+	public function forImport(int $importId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'feature_id', 'action', 'changes')
+			->from('territorio_revision')
+			->where($qb->expr()->eq('import_id', $qb->createNamedParameter($importId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id', 'DESC');
+
+		$result = $qb->executeQuery();
+		$entries = [];
+		while ($row = $result->fetch()) {
+			$entries[] = [
+				'revision' => (int)$row['id'],
+				'featureId' => (int)$row['feature_id'],
+				'action' => (string)$row['action'],
+				'changes' => $row['changes'] === null ? null : json_decode((string)$row['changes'], true),
+			];
+		}
+		$result->closeCursor();
+
+		return $entries;
+	}
+
+	/**
+	 * The newest Revision affecting one Feature.
+	 *
+	 * A revert compares this against the Revision it is about to undo: if
+	 * something newer exists, the record has been touched since and undoing it
+	 * would silently discard whatever that was.
+	 */
+	public function newestFor(int $featureId): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->max('id'))
+			->from('territorio_revision')
+			->where($qb->expr()->eq('feature_id', $qb->createNamedParameter($featureId, IQueryBuilder::PARAM_INT)));
+
+		$result = $qb->executeQuery();
+		$max = $result->fetchOne();
+		$result->closeCursor();
+
+		return $max === false || $max === null ? 0 : (int)$max;
+	}
+
 	/** Null where nobody was behind the change — an occ import, for instance. */
 	private function actor(): ?string {
 		return $this->userSession->getUser()?->getUID();

@@ -1,5 +1,5 @@
 <template>
-	<NcDialog name="Importar GeoJSON"
+	<NcDialog name="Importar y deshacer"
 		size="normal"
 		:open="true"
 		@update:open="$emit('close')">
@@ -34,6 +34,39 @@
 			<p v-if="file" class="territorio-import__hint">
 				{{ file.name }} · {{ Math.round(file.size / 1024) }} KB
 			</p>
+
+			<!--
+				Undo lives beside the thing it undoes. ADR-0009 says there is no
+				backup feature and that reverting a run is the answer instead, so it
+				has to be somewhere a person will actually find it.
+			-->
+			<section v-if="batches.length > 0" class="territorio-import__batches">
+				<h4>Importaciones recientes</h4>
+				<ul>
+					<li v-for="batch in batches" :key="batch.id" class="territorio-import__batch">
+						<span class="territorio-import__batch-what">
+							<strong>{{ batch.isRevert ? 'Deshacer' : 'Importación' }} #{{ batch.id }}</strong>
+							<span class="territorio-import__hint">
+								{{ batch.startedAt }} · {{ batch.actor || 'el sistema' }}
+								<template v-if="!batch.isRevert">
+									· {{ batch.created }} creados, {{ batch.updated }} actualizados,
+									{{ batch.skipped }} omitidos
+								</template>
+								<template v-else>
+									· {{ batch.updated }} deshechos, {{ batch.skipped }} intactos
+								</template>
+							</span>
+						</span>
+						<NcButton v-if="!isUndone(batch)"
+							variant="tertiary"
+							:disabled="working"
+							@click="undo(batch)">
+							Deshacer
+						</NcButton>
+						<span v-else class="territorio-import__hint">ya deshecha</span>
+					</li>
+				</ul>
+			</section>
 		</div>
 
 		<template #actions>
@@ -66,7 +99,12 @@ export default {
 			working: false,
 			error: '',
 			result: null,
+			batches: [],
 		}
+	},
+
+	mounted() {
+		this.loadBatches()
 	},
 
 	computed: {
@@ -89,6 +127,36 @@ export default {
 	},
 
 	methods: {
+		async loadBatches() {
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/import/batches'))
+				this.batches = data
+			} catch (exception) {
+				console.warn('territorio: could not list import batches', exception)
+			}
+		},
+
+		/** A batch is spent once something records having undone it. */
+		isUndone(batch) {
+			return this.batches.some((other) => other.revertsId === batch.id)
+		},
+
+		async undo(batch) {
+			this.working = true
+			this.error = ''
+			this.result = null
+
+			try {
+				await axios.post(generateUrl(`/apps/territorio/import/${batch.id}/revert`))
+				await this.loadBatches()
+				this.$emit('imported')
+			} catch (exception) {
+				this.error = exception.response?.data?.message ?? 'No se pudo deshacer el lote.'
+			} finally {
+				this.working = false
+			}
+		},
+
 		pick(event) {
 			this.file = event.target.files?.[0] ?? null
 			this.error = ''
@@ -107,6 +175,7 @@ export default {
 			try {
 				const { data } = await axios.post(generateUrl('/apps/territorio/import'), body)
 				this.result = data
+				await this.loadBatches()
 				// The list and the map catch up through the change cursor rather
 				// than being told separately — one mechanism, not two (ADR-0002).
 				this.$emit('imported')
@@ -122,6 +191,38 @@ export default {
 </script>
 
 <style scoped>
+.territorio-import__batches {
+	margin-top: 20px;
+	border-top: 1px solid var(--color-border);
+	padding-top: 8px;
+}
+
+.territorio-import__batches h4 {
+	margin-bottom: 4px;
+}
+
+.territorio-import__batches ul {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	max-height: 180px;
+	overflow-y: auto;
+}
+
+.territorio-import__batch {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 0;
+}
+
+.territorio-import__batch-what {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
 .territorio-import {
 	padding: 0 12px 8px;
 }

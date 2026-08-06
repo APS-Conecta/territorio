@@ -36,6 +36,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUnsupported(int $unsupported)
  * @method int getUnchanged()
  * @method void setUnchanged(int $unchanged)
+ * @method ?int getRevertsId()
+ * @method void setRevertsId(?int $revertsId)
  */
 class ImportBatch extends Entity {
 	protected $datasetId = 0;
@@ -49,6 +51,7 @@ class ImportBatch extends Entity {
 	protected $duplicates = 0;
 	protected $unsupported = 0;
 	protected $unchanged = 0;
+	protected $revertsId = null;
 
 	public function __construct() {
 		$this->addType('datasetId', 'integer');
@@ -61,6 +64,7 @@ class ImportBatch extends Entity {
 		$this->addType('duplicates', 'integer');
 		$this->addType('unsupported', 'integer');
 		$this->addType('unchanged', 'integer');
+		$this->addType('revertsId', 'integer');
 	}
 
 	/** @return array<string, mixed> */
@@ -78,6 +82,8 @@ class ImportBatch extends Entity {
 			'duplicates' => $this->getDuplicates(),
 			'unsupported' => $this->getUnsupported(),
 			'unchanged' => $this->getUnchanged(),
+			'revertsId' => $this->getRevertsId(),
+			'isRevert' => $this->getRevertsId() !== null,
 		];
 	}
 }

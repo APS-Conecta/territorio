@@ -147,16 +147,41 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro está retirado. Restáurelo antes de editarlo.');
 		}
 
+		return $this->write($feature, $input, $provenance, markOverride: $provenance === null);
+	}
+
+	/**
+	 * Put a record back to values it previously held, without calling it a local
+	 * override.
+	 *
+	 * A revert is not a person deciding what is true on the ground — it is the
+	 * undoing of a batch. Going through `update()` would mark every reverted
+	 * record as overridden, and every future import would then skip them for good
+	 * (ADR-0003), which is a strange and permanent consequence of pressing undo.
+	 *
+	 * @param array<string, mixed> $input
+	 * @throws DoesNotExistException
+	 */
+	public function revertTo(int $id, array $input): Feature {
+		return $this->write($this->features->find($id), $input, null, markOverride: false);
+	}
+
+	/** @param array<string, mixed> $input */
+	private function write(
+		Feature $feature,
+		array $input,
+		?Provenance $provenance,
+		bool $markOverride,
+	): Feature {
 		$wasImported = $feature->getDatasetId() !== null;
 		$this->apply($feature, $input);
 		$this->applyProvenance($feature, $provenance);
 
 		// A person editing an imported record is what ADR-0003 calls a local
 		// override: it states what is true on the ground, so it outranks whatever
-		// the authority publishes next. Marked here rather than in the import,
-		// because this is the only place that knows a human did it — an import
-		// passes its Provenance and never sets this.
-		if ($provenance === null && $wasImported) {
+		// the authority publishes next. Only a person's edit sets this — an import
+		// passes its Provenance, and a revert asks not to.
+		if ($markOverride && $wasImported) {
 			$feature->setOverridden(true);
 		}
 

@@ -7,8 +7,11 @@ namespace OCA\Territorio\Controller;
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
+use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Service\ImportService;
+use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
@@ -37,6 +40,8 @@ class ImportController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private ImportService $import,
+		private RevertService $revertService,
+		private ImportBatchMapper $batches,
 		private IUserSession $userSession,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -77,6 +82,32 @@ class ImportController extends Controller {
 		}
 
 		return new JSONResponse($batch->toClient());
+	}
+
+	#[NoAdminRequired]
+	public function batches(): JSONResponse {
+		return new JSONResponse(array_map(
+			static fn ($batch): array => $batch->toClient(),
+			$this->batches->findAll(),
+		));
+	}
+
+	/**
+	 * ADR-0009's answer to "restore from backup". Open to every user for the same
+	 * reason importing is: the safety net is that the undo is itself recorded and
+	 * undoable, not that fewer people may reach it.
+	 */
+	#[NoAdminRequired]
+	public function revert(int $id): JSONResponse {
+		try {
+			$revert = $this->revertService->revert($id, $this->userSession->getUser()?->getUID());
+		} catch (DoesNotExistException) {
+			return new JSONResponse(['message' => 'Ese lote no existe.'], Http::STATUS_NOT_FOUND);
+		} catch (InvalidImportException $e) {
+			return $this->refuse($e->getMessage());
+		}
+
+		return new JSONResponse($revert->toClient());
 	}
 
 	private function refuse(string $message): JSONResponse {

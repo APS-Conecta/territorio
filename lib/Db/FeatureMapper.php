@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Db;
 
 use BadFunctionCallException;
+use OCA\Territorio\Service\Action;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
@@ -22,6 +23,18 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
+	 * ADR-0005 says no hard DELETE of a Feature anywhere in the app, and this is
+	 * the place that rule has to be enforced: QBMapper hands every subclass a
+	 * public `delete()`, so without this override the prohibition is a sentence
+	 * in a document that nothing stops a future caller from ignoring.
+	 */
+	public function delete(Entity $entity): Entity {
+		throw new BadFunctionCallException(
+			'Features are never hard-deleted (ADR-0005); retire them instead',
+		);
+	}
+
+	/**
 	 * Stamping happens here, not in the service, for the same reason `delete()`
 	 * refuses here: this is the only door. ADR-0002's cursor is correct exactly
 	 * as long as no write escapes without advancing it, and a rule that lives in
@@ -30,13 +43,19 @@ class FeatureMapper extends QBMapper {
 	 * The transaction is not bookkeeping — it is the correctness. Taking a
 	 * Revision and stamping the row must become visible together: if the Revision
 	 * lands first, a poll in the gap sees a higher cursor with nothing to fetch,
-	 * banks it, and never asks for that change again. Three statements, because a
-	 * Feature has no id to log against until it exists.
+	 * banks it, and never asks for that change again.
 	 */
 	public function insert(Entity $entity): Entity {
 		return $this->transactionally(function () use ($entity): Entity {
 			$inserted = parent::insert($entity);
-			$inserted->setRevision($this->revisions->allocate((int)$inserted->getId()));
+			$inserted->setRevision($this->revisions->allocate(
+				(int)$inserted->getId(),
+				Action::Created,
+				// A creation's "diff" is every field it arrived with. Recording it
+				// means the first version is reconstructable, which is what makes
+				// an import revert able to undo a created row (ADR-0009).
+				$this->asChanges($inserted->comparable()),
+			));
 
 			// parent::update, not $this->update — that would take a second
 			// Revision for one change and make every client fetch it twice.
@@ -45,32 +64,71 @@ class FeatureMapper extends QBMapper {
 	}
 
 	public function update(Entity $entity): Entity {
-		return $this->transactionally(function () use ($entity): Entity {
-			$entity->setRevision($this->revisions->allocate((int)$entity->getId()));
+		return $this->write($entity, Action::Updated);
+	}
 
-			return parent::update($entity);
-		});
+	/** ADR-0005: deleting is retiring. The record leaves the map, not the database. */
+	public function retire(Feature $feature): Feature {
+		$feature->setRetired(true);
+
+		return $this->write($feature, Action::Retired);
+	}
+
+	public function restore(Feature $feature): Feature {
+		$feature->setRetired(false);
+
+		return $this->write($feature, Action::Restored);
 	}
 
 	/**
-	 * @param callable(): Entity $write
+	 * Everything a person can still see.
+	 *
+	 * ponytail: unpaginated. One comuna's catastro is hundreds of rows and the
+	 * Datos list, the map and the counts all render from the same set anyway;
+	 * paginate when a real install makes this slow, not before.
+	 *
+	 * @return Feature[]
 	 */
-	private function transactionally(callable $write): Entity {
-		$this->db->beginTransaction();
-		try {
-			$written = $write();
-			$this->db->commit();
+	public function findAll(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->orderBy('id', 'DESC');
 
-			return $written;
-		} catch (Throwable $e) {
-			$this->db->rollBack();
+		return $this->findEntities($qb);
+	}
 
-			throw $e;
-		}
+	/** @return Feature[] */
+	public function findRetired(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL)))
+			->orderBy('revision', 'DESC');
+
+		return $this->findEntities($qb);
+	}
+
+	/** @throws DoesNotExistException */
+	public function find(int $id): Feature {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
+
+		return $this->findEntity($qb);
 	}
 
 	/**
-	 * Everything a client holding `$since` has not seen.
+	 * Everything a client holding `$since` has not seen — retired records
+	 * INCLUDED, deliberately.
+	 *
+	 * This is the one read that does not filter them out, and it must not. A
+	 * client already holding a record needs to be told it was retired so it can
+	 * stop drawing it; filtering here would leave that record on every open map
+	 * until someone reloaded. It ships with `retired: true` and the client
+	 * removes it.
 	 *
 	 * Ordered by Revision so a client that stops reading early can resume from
 	 * the last one it actually applied, rather than skipping the remainder.
@@ -92,44 +150,64 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
-	 * ADR-0005 says no hard DELETE of a Feature anywhere in the app, and this is
-	 * the place that rule has to be enforced: QBMapper hands every subclass a
-	 * public `delete()`, so without this override the prohibition is a sentence
-	 * in a document that nothing stops a future caller from ignoring.
+	 * One write, one Revision, one history entry, all inside one transaction.
 	 *
-	 * Deleting is retirement, which arrives with history in issue #4. Until then
-	 * a Feature cannot be removed at all, which is the safe direction to be
-	 * wrong in.
+	 * The stored row is re-read here rather than trusted from the caller: the
+	 * entity handed in has already been mutated, so its original values are gone,
+	 * and history's whole job is to say what they were.
 	 */
-	public function delete(Entity $entity): Entity {
-		throw new BadFunctionCallException(
-			'Features are never hard-deleted (ADR-0005); retire them instead, once issue #4 lands',
-		);
+	private function write(Feature $entity, Action $action): Feature {
+		return $this->transactionally(function () use ($entity, $action): Feature {
+			$stored = $this->find((int)$entity->getId());
+			$entity->setRevision($this->revisions->allocate(
+				(int)$entity->getId(),
+				$action,
+				$this->diff($stored, $entity),
+			));
+
+			return parent::update($entity);
+		});
 	}
 
 	/**
-	 * Every Feature, newest first.
-	 *
-	 * ponytail: unpaginated. One comuna's catastro is hundreds of rows and the
-	 * Datos list, the map and the counts all render from the same set anyway;
-	 * paginate when a real install makes this slow, not before.
-	 *
-	 * @return Feature[]
+	 * @return array<string, array{from: mixed, to: mixed}>
 	 */
-	public function findAll(): array {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')->from($this->getTableName())->orderBy('id', 'DESC');
+	private function diff(Feature $before, Feature $after): array {
+		$was = $before->comparable();
+		$changes = [];
 
-		return $this->findEntities($qb);
+		foreach ($after->comparable() as $field => $value) {
+			if (($was[$field] ?? null) !== $value) {
+				$changes[$field] = ['from' => $was[$field] ?? null, 'to' => $value];
+			}
+		}
+
+		return $changes;
 	}
 
-	/** @throws DoesNotExistException */
-	public function find(int $id): Feature {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')
-			->from($this->getTableName())
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id)));
+	/**
+	 * @param array<string, mixed> $fields
+	 * @return array<string, array{from: null, to: mixed}>
+	 */
+	private function asChanges(array $fields): array {
+		return array_map(
+			static fn (mixed $value): array => ['from' => null, 'to' => $value],
+			array_filter($fields, static fn (mixed $value): bool => $value !== null),
+		);
+	}
 
-		return $this->findEntity($qb);
+	/** @param callable(): Entity $write */
+	private function transactionally(callable $write): Entity {
+		$this->db->beginTransaction();
+		try {
+			$written = $write();
+			$this->db->commit();
+
+			return $written;
+		} catch (Throwable $e) {
+			$this->db->rollBack();
+
+			throw $e;
+		}
 	}
 }

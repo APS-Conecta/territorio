@@ -47,6 +47,34 @@ class FeatureController extends Controller {
 	}
 
 	/**
+	 * DELETE retires; it does not destroy (ADR-0005). The verb is the one a
+	 * client naturally reaches for, and what it means here is documented rather
+	 * than renamed — calling the route `/retire` would only move the surprise.
+	 */
+	#[NoAdminRequired]
+	public function destroy(int $id): JSONResponse {
+		return $this->attempt(fn (): array => $this->features->retire($id)->toClient());
+	}
+
+	#[NoAdminRequired]
+	public function restore(int $id): JSONResponse {
+		return $this->attempt(fn (): array => $this->features->restore($id)->toClient());
+	}
+
+	#[NoAdminRequired]
+	public function retired(): JSONResponse {
+		return $this->attempt(fn (): array => array_map(
+			static fn ($feature): array => $feature->toClient(),
+			$this->features->listRetired(),
+		));
+	}
+
+	#[NoAdminRequired]
+	public function history(int $id): JSONResponse {
+		return $this->attempt(fn (): array => $this->features->history($id));
+	}
+
+	/**
 	 * One place to turn the service's refusals into status codes, so neither
 	 * action repeats the mapping and neither can quietly forget a case.
 	 *

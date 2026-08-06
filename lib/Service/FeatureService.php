@@ -73,6 +73,42 @@ class FeatureService {
 		];
 	}
 
+	/**
+	 * Retired records, for the screen that offers to bring one back.
+	 *
+	 * @return Feature[]
+	 */
+	public function listRetired(): array {
+		return $this->features->findRetired();
+	}
+
+	/**
+	 * ADR-0005: deleting is retiring. Nothing is destroyed, so nothing needs a
+	 * confirmation that warns about permanence — because there is none.
+	 *
+	 * @throws DoesNotExistException
+	 */
+	public function retire(int $id): Feature {
+		return $this->features->retire($this->features->find($id));
+	}
+
+	/** @throws DoesNotExistException */
+	public function restore(int $id): Feature {
+		return $this->features->restore($this->features->find($id));
+	}
+
+	/**
+	 * @return list<array<string, mixed>>
+	 * @throws DoesNotExistException when there is no such Feature
+	 */
+	public function history(int $id): array {
+		// Reading the Feature first so a history request for something that never
+		// existed is a 404 rather than a convincing empty list.
+		$this->features->find($id);
+
+		return $this->revisions->forFeature($id);
+	}
+
 	/** @param array<string, mixed> $input */
 	public function create(array $input): Feature {
 		return $this->features->insert($this->apply(new Feature(), $input));

@@ -49,6 +49,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setSourceRef(?string $sourceRef)
  * @method int getRevision()
  * @method void setRevision(int $revision)
+ * @method bool getRetired()
+ * @method void setRetired(bool $retired)
  */
 class Feature extends Entity {
 	protected $subcategoryId = 0;
@@ -69,10 +71,12 @@ class Feature extends Entity {
 	protected $notes = null;
 	protected $sourceRef = null;
 	protected $revision = 0;
+	protected $retired = false;
 
 	public function __construct() {
 		$this->addType('subcategoryId', 'integer');
 		$this->addType('revision', 'integer');
+		$this->addType('retired', 'boolean');
 		$this->addType('minLat', 'float');
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
@@ -115,6 +119,36 @@ class Feature extends Entity {
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
 			'revision' => $this->getRevision(),
+			// Ships even though retired records are absent from every default
+			// read: the change feed deliberately carries them, so a client learns
+			// to stop drawing one it already has (ADR-0005).
+			'retired' => (bool)$this->getRetired(),
+		];
+	}
+
+	/**
+	 * The fields history compares, keyed as the client knows them.
+	 *
+	 * Derived values are absent on purpose — the bounding box, the Kind and the
+	 * Revision all follow from something else here, and recording "kind: place →
+	 * place" on every save would bury the edit a person actually made.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function comparable(): array {
+		return [
+			'name' => $this->getName(),
+			'subcategoryId' => $this->getSubcategoryId(),
+			'geometry' => $this->getGeometry(),
+			'address' => $this->getAddress(),
+			'phone' => $this->getPhone(),
+			'email' => $this->getEmail(),
+			'contactPerson' => $this->getContactPerson(),
+			'contactRole' => $this->getContactRole(),
+			'locationQuality' => $this->getLocationQuality(),
+			'openingHours' => $this->getOpeningHours(),
+			'notes' => $this->getNotes(),
+			'sourceRef' => $this->getSourceRef(),
 		];
 	}
 }

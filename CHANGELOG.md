@@ -3,6 +3,34 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.4.0] — unreleased
+
+History and retirement.
+
+### Added
+
+- Every change appends a history entry naming who did it, when, and what changed — including what
+  the field used to say. Those previous values are the point, not decoration: ADR-0009 says an
+  import revert "restores what it overwrote", and this is where that comes from.
+- Deleting a record retires it (ADR-0005). It leaves the map, the list and every count, keeps its
+  history, and can be restored intact.
+- A record's history is shown in its sidebar; retired records are browsable and restorable from
+  the list.
+
+### Notes
+
+- The history columns went onto `territorio_revision`, the log that already carried the Revision
+  and the moment. Adding the actor, the action and the diff to those rows is what ADR-0002 and
+  ADR-0005 meant by one mechanism rather than two.
+- `findChangedSince()` is the one read that does NOT hide retired records, deliberately. A client
+  already holding a record has to be told it was retired so it can stop drawing it; filtering it
+  out of the change feed would leave it on every open map until someone reloaded.
+- Retiring is confirmed inline, in two steps, never with a browser `confirm()` — that blocks the
+  page, and there is nothing irreversible to warn about.
+- `Retired` and `Restored` are distinct actions rather than an ordinary diff of a boolean, because
+  "who retired this?" is a question history exists to answer and should not need reading every
+  entry to find.
+
 ## [0.3.0] — unreleased
 
 Collaboration: one shared map that keeps itself current.

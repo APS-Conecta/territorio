@@ -53,6 +53,30 @@
 			native-type="submit">
 			{{ saving ? 'Guardando…' : 'Guardar' }}
 		</NcButton>
+
+		<!-- Two-step, inline. Never a browser confirm(): it blocks the page, and
+		     there is nothing irreversible to warn about anyway — retiring keeps
+		     the record and its history (ADR-0005). -->
+		<div v-if="draft.id !== null" class="territorio-detail__retire">
+			<NcButton v-if="!confirmingRetire" variant="tertiary" @click="confirmingRetire = true">
+				Retirar del mapa
+			</NcButton>
+
+			<template v-else>
+				<p class="territorio-detail__hint">
+					Se retira del mapa y de la lista. No se borra: conserva su historial y
+					se puede restaurar.
+				</p>
+				<NcButton variant="error" @click="$emit('retire')">
+					Retirar
+				</NcButton>
+				<NcButton variant="tertiary" @click="confirmingRetire = false">
+					Cancelar
+				</NcButton>
+			</template>
+		</div>
+
+		<FeatureHistory v-if="draft.id !== null" :entries="history" />
 	</form>
 </template>
 
@@ -62,6 +86,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import FeatureHistory from './FeatureHistory.vue'
 import { subcategoryOptions } from '../taxonomy.js'
 
 // Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
@@ -74,9 +99,10 @@ const QUALITIES = [
 export default {
 	name: 'FeatureDetail',
 
-	components: { NcButton, NcNoteCard, NcSelect, NcTextArea, NcTextField },
+	components: { FeatureHistory, NcButton, NcNoteCard, NcSelect, NcTextArea, NcTextField },
 
 	props: {
+		history: { type: Array, default: () => [] },
 		// The draft is owned by App.vue and mutated in place: the sidebar edits
 		// one record at a time, and copying it back and forth would only add a
 		// second place for the two to disagree.
@@ -86,7 +112,19 @@ export default {
 		error: { type: String, default: '' },
 	},
 
-	emits: ['save'],
+	emits: ['save', 'retire'],
+
+	data() {
+		return { confirmingRetire: false }
+	},
+
+	watch: {
+		// Selecting a different record must not leave the previous one's confirm
+		// step armed — the next click would retire something nobody meant to.
+		'draft.id'() {
+			this.confirmingRetire = false
+		},
+	},
 
 	computed: {
 		subcategoryOptions() {
@@ -152,6 +190,16 @@ export default {
 .territorio-detail__coords-row {
 	display: flex;
 	gap: 8px;
+}
+
+.territorio-detail__retire {
+	margin-top: 24px;
+	border-top: 1px solid var(--color-border);
+	padding-top: 12px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
 }
 
 .territorio-detail__hint {

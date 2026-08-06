@@ -8,6 +8,7 @@ use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\SubcategoryMapper;
+use OCA\Territorio\Service\Action;
 use OCA\Territorio\Service\FeatureService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
@@ -77,7 +78,7 @@ final class RevisionRaceTest extends TestCase {
 	 */
 	public function testARevisionCannotBeTakenOutsideAWriteTransaction(): void {
 		$this->expectException(BadFunctionCallException::class);
-		$this->revisions->allocate(1);
+		$this->revisions->allocate(1, Action::Updated);
 	}
 
 	/**

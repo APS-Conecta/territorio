@@ -2,13 +2,17 @@
 	<NcContent app-name="territorio">
 		<NcAppContent>
 			<template #list>
-				<FeatureList :features="features"
+				<FeatureList :features="listed"
 					:taxonomy="taxonomy"
 					:selected-id="selectedId"
+					:show-retired="showRetired"
 					@select="select"
-					@create="startNew" />
+					@create="startNew"
+					@update:show-retired="toggleRetired" />
 			</template>
 
+			<!-- The map only ever shows what is live. Retired records are browsable
+			     in the list so they can be restored, never drawn. -->
 			<TerritorioMap :features="features"
 				:taxonomy="taxonomy"
 				:selected-id="selectedId"
@@ -19,11 +23,20 @@
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
 			@close="closeDraft">
+			<NcNoteCard v-if="selectedIsRetired" type="warning">
+				Este registro está retirado: no aparece en el mapa ni en la lista de activos.
+				<NcButton class="territorio-restore" variant="primary" @click="restore">
+					Restaurar
+				</NcButton>
+			</NcNoteCard>
+
 			<FeatureDetail :draft="draft"
 				:taxonomy="taxonomy"
 				:saving="saving"
 				:error="error"
-				@save="save" />
+				:history="history"
+				@save="save"
+				@retire="retire" />
 		</NcAppSidebar>
 	</NcContent>
 </template>
@@ -34,7 +47,9 @@ import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
+import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
@@ -65,7 +80,9 @@ export default {
 		FeatureList,
 		NcAppContent,
 		NcAppSidebar,
+		NcButton,
 		NcContent,
+		NcNoteCard,
 		TerritorioMap,
 	},
 
@@ -74,6 +91,9 @@ export default {
 			taxonomy: loadState('territorio', 'taxonomy'),
 			features: loadState('territorio', 'features'),
 			revision: loadState('territorio', 'revision'),
+			retiredFeatures: [],
+			showRetired: false,
+			history: [],
 			selectedId: null,
 			draft: null,
 			saving: false,
@@ -81,6 +101,18 @@ export default {
 			pollTimer: null,
 			pollFailed: false,
 		}
+	},
+
+	computed: {
+		/** The list shows one set or the other; the map only ever shows the live one. */
+		listed() {
+			return this.showRetired ? this.retiredFeatures : this.features
+		},
+
+		selectedIsRetired() {
+			return this.showRetired
+				&& this.retiredFeatures.some((feature) => feature.id === this.selectedId)
+		},
 	},
 
 	mounted() {
@@ -150,6 +182,17 @@ export default {
 
 		mergeFeature(incoming) {
 			const existing = this.features.findIndex((feature) => feature.id === incoming.id)
+
+			// A retirement reaches us as an ordinary change carrying retired:true.
+			// Dropping it here is what takes the record off the map for everyone
+			// else — filtering it out of the feed instead would leave it drawn.
+			if (incoming.retired) {
+				if (existing !== -1) {
+					this.features.splice(existing, 1)
+				}
+				return
+			}
+
 			if (existing === -1) {
 				this.features.unshift(incoming)
 			} else {
@@ -159,9 +202,71 @@ export default {
 
 		select(id) {
 			this.selectedId = id
-			const feature = this.features.find((candidate) => candidate.id === id)
+			const feature = this.listed.find((candidate) => candidate.id === id)
 			this.draft = feature === undefined ? null : this.draftFrom(feature)
 			this.error = ''
+			this.history = []
+			if (feature !== undefined) {
+				this.loadHistory(id)
+			}
+		},
+
+		async loadHistory(id) {
+			try {
+				const { data } = await axios.get(
+					generateUrl(`/apps/territorio/features/${id}/history`),
+				)
+				// Ignore a response that arrived after the user moved on, or the
+				// sidebar shows one record's details beside another's history.
+				if (this.selectedId === id) {
+					this.history = data
+				}
+			} catch (exception) {
+				console.warn('territorio: could not load the history', exception)
+			}
+		},
+
+		async toggleRetired(showRetired) {
+			this.showRetired = showRetired
+			this.closeDraft()
+			if (showRetired) {
+				await this.loadRetired()
+			}
+		},
+
+		async loadRetired() {
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/features/retired'))
+				this.retiredFeatures = data
+			} catch (exception) {
+				console.warn('territorio: could not load retired records', exception)
+			}
+		},
+
+		/** Retiring keeps the record; it only leaves the live set (ADR-0005). */
+		async retire() {
+			const id = this.draft.id
+			try {
+				await axios.delete(generateUrl(`/apps/territorio/features/${id}`))
+				this.features = this.features.filter((feature) => feature.id !== id)
+				this.closeDraft()
+			} catch (exception) {
+				this.error = exception.response?.data?.message ?? 'No se pudo retirar el registro.'
+			}
+		},
+
+		async restore() {
+			const id = this.draft.id
+			try {
+				const { data } = await axios.post(
+					generateUrl(`/apps/territorio/features/${id}/restore`),
+				)
+				this.retiredFeatures = this.retiredFeatures.filter((feature) => feature.id !== id)
+				this.mergeFeature(data)
+				this.closeDraft()
+			} catch (exception) {
+				this.error = exception.response?.data?.message ?? 'No se pudo restaurar el registro.'
+			}
 		},
 
 		startNew() {
@@ -220,6 +325,7 @@ export default {
 		closeDraft() {
 			this.draft = null
 			this.selectedId = null
+			this.history = []
 		},
 
 		payload() {
@@ -269,3 +375,9 @@ export default {
 	},
 }
 </script>
+
+<style scoped>
+.territorio-restore {
+	margin-top: 8px;
+}
+</style>

@@ -9,6 +9,12 @@ return [
 		// Every user who can open the app may edit the Registry (ADR-0005).
 		['name' => 'feature#create', 'url' => '/features', 'verb' => 'POST'],
 		['name' => 'feature#update', 'url' => '/features/{id}', 'verb' => 'PUT'],
+		// Retires rather than destroys (ADR-0005). Declared before the {id}
+		// routes so /features/retired is not read as a Feature called "retired".
+		['name' => 'feature#retired', 'url' => '/features/retired', 'verb' => 'GET'],
+		['name' => 'feature#destroy', 'url' => '/features/{id}', 'verb' => 'DELETE'],
+		['name' => 'feature#restore', 'url' => '/features/{id}/restore', 'verb' => 'POST'],
+		['name' => 'feature#history', 'url' => '/features/{id}/history', 'verb' => 'GET'],
 
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],

@@ -4,14 +4,23 @@
 			<span class="territorio-list__count">
 				{{ features.length }} {{ features.length === 1 ? 'registro' : 'registros' }}
 			</span>
-			<NcButton variant="primary" @click="$emit('create')">
-				Agregar
-			</NcButton>
+			<div class="territorio-list__actions">
+				<NcButton variant="tertiary"
+					:pressed="showRetired"
+					@click="$emit('update:showRetired', !showRetired)">
+					{{ showRetired ? 'Ver activos' : 'Ver retirados' }}
+				</NcButton>
+				<NcButton v-if="!showRetired" variant="primary" @click="$emit('create')">
+					Agregar
+				</NcButton>
+			</div>
 		</div>
 
 		<NcEmptyContent v-if="features.length === 0"
-			name="Todavía no hay registros"
-			description="Agregue el primer lugar del territorio: un colegio, una plaza, una junta de vecinos.">
+			:name="showRetired ? 'No hay registros retirados' : 'Todavía no hay registros'"
+			:description="showRetired
+				? 'Lo que se retira del mapa aparece aquí y se puede restaurar.'
+				: 'Agregue el primer lugar del territorio: un colegio, una plaza, una junta de vecinos.'">
 			<template #icon>
 				<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
 					<path fill="currentColor"
@@ -52,9 +61,10 @@ export default {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
+		showRetired: { type: Boolean, default: false },
 	},
 
-	emits: ['select', 'create'],
+	emits: ['select', 'create', 'update:showRetired'],
 
 	computed: {
 		subcategories() {
@@ -87,6 +97,12 @@ export default {
 	gap: 12px;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--color-border);
+}
+
+.territorio-list__actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
 }
 
 .territorio-list__count {

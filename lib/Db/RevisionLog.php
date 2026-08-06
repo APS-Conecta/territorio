@@ -6,11 +6,13 @@ namespace OCA\Territorio\Db;
 
 use BadFunctionCallException;
 use DateTime;
+use OCA\Territorio\Service\Action;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
+use OCP\IUserSession;
 
 /**
- * Issues Revisions, and is already the log of what changed.
+ * Issues Revisions, and is the history of what changed.
  *
  * The number comes from a single row in `territorio_cursor`, incremented with an
  * UPDATE that takes a row lock held until the surrounding transaction commits.
@@ -28,7 +30,7 @@ use OCP\IDBConnection;
  * bulk import (issue #6) ever makes it a bottleneck, allocate a block of
  * Revisions per batch instead of one per row.
  *
- * Issue #4 adds the actor and the action to these same log rows.
+ * ADR-0005: history is append-only and is never edited to correct a mistake.
  */
 class RevisionLog {
 	/** The cursor is one row, and this is it. */
@@ -36,17 +38,20 @@ class RevisionLog {
 
 	public function __construct(
 		private IDBConnection $db,
+		private IUserSession $userSession,
 	) {
 	}
 
 	/**
-	 * Take the next Revision, recording which Feature it belongs to.
+	 * Take the next Revision and record what it did.
 	 *
 	 * MUST be called inside a transaction that also writes the Feature. The lock
 	 * this takes is only held to the end of that transaction, and it is the lock
 	 * — not the number — that makes the cursor correct.
+	 *
+	 * @param array<string, array{from: mixed, to: mixed}>|null $changes
 	 */
-	public function allocate(int $featureId): int {
+	public function allocate(int $featureId, Action $action, ?array $changes = null): int {
 		if (!$this->db->inTransaction()) {
 			// Outside a transaction the lock is released the instant the UPDATE
 			// returns, so the Revision becomes visible before the Feature does —
@@ -75,6 +80,11 @@ class RevisionLog {
 			'id' => $log->createNamedParameter($revision, IQueryBuilder::PARAM_INT),
 			'feature_id' => $log->createNamedParameter($featureId, IQueryBuilder::PARAM_INT),
 			'changed_at' => $log->createNamedParameter(new DateTime(), 'datetime'),
+			'action' => $log->createNamedParameter($action->value),
+			'actor' => $log->createNamedParameter($this->actor()),
+			'changes' => $log->createNamedParameter(
+				$changes === null || $changes === [] ? null : json_encode($changes, JSON_UNESCAPED_UNICODE),
+			),
 		])->executeStatement();
 
 		return $revision;
@@ -99,5 +109,38 @@ class RevisionLog {
 		$result->closeCursor();
 
 		return $value === false || $value === null ? 0 : (int)$value;
+	}
+
+	/**
+	 * One Feature's history, newest first.
+	 *
+	 * @return list<array{revision: int, action: string, actor: ?string, changedAt: ?string, changes: ?array}>
+	 */
+	public function forFeature(int $featureId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'action', 'actor', 'changed_at', 'changes')
+			->from('territorio_revision')
+			->where($qb->expr()->eq('feature_id', $qb->createNamedParameter($featureId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id', 'DESC');
+
+		$result = $qb->executeQuery();
+		$entries = [];
+		while ($row = $result->fetch()) {
+			$entries[] = [
+				'revision' => (int)$row['id'],
+				'action' => (string)$row['action'],
+				'actor' => $row['actor'],
+				'changedAt' => $row['changed_at'],
+				'changes' => $row['changes'] === null ? null : json_decode((string)$row['changes'], true),
+			];
+		}
+		$result->closeCursor();
+
+		return $entries;
+	}
+
+	/** Null where nobody was behind the change — an occ import, for instance. */
+	private function actor(): ?string {
+		return $this->userSession->getUser()?->getUID();
 	}
 }

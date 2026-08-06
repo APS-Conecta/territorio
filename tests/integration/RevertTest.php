@@ -7,6 +7,7 @@ namespace OCA\Territorio\Tests\Integration;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
+use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\Action;
 use OCA\Territorio\Service\FeatureService;
@@ -151,6 +152,51 @@ final class RevertTest extends IntegrationTestCase {
 		foreach ($this->imported() as $feature) {
 			self::assertFalse((bool)$feature->getRetired(), 'the records come back');
 		}
+	}
+
+	/**
+	 * A revert that undid nothing must not spend the batch.
+	 *
+	 * Import A, then import B overwrites all of it. Undoing A now correctly finds
+	 * every record touched since and leaves them alone — but if that counted as
+	 * "A has been undone", A could never be undone later, and the only recovery
+	 * path ADR-0009 offers would be gone for good.
+	 *
+	 * What this does NOT claim: that undoing B afterwards makes A undoable again.
+	 * The guard is deliberately conservative — it knows another batch's undo
+	 * touched those records last, not that it happened to restore exactly A's
+	 * values — and when undo is ambiguous, refusing and saying so is the safe
+	 * direction to be wrong in.
+	 */
+	public function testARevertThatUndidNothingDoesNotSpendTheBatch(): void {
+		$first = $this->importTwo();
+		// Both rows, or undoing the first would still legitimately undo the one
+		// the second import left alone.
+		$this->importTwo(str_replace(
+			['Calle Uno 1', 'Calle Dos 2'],
+			['Calle Uno 99', 'Calle Dos 99'],
+			self::TWO,
+		));
+
+		$empty = $this->revert->revert((int)$first->getId(), 'tester');
+
+		self::assertSame(0, $empty->getUpdated(), 'nothing to undo: the rows moved on');
+		self::assertSame(2, $empty->getSkipped(), 'and it says so rather than being silent');
+		self::assertFalse(
+			Server::get(ImportBatchMapper::class)->isUndone((int)$first->getId()),
+			'a revert that undid nothing must leave the batch undoable',
+		);
+	}
+
+	/** Undo, redo, and the original is available to undo again. */
+	public function testUndoingARevertMakesTheOriginalRevertibleAgain(): void {
+		$batch = $this->importTwo();
+		$revert = $this->revert->revert((int)$batch->getId(), 'tester');
+		$this->revert->revert((int)$revert->getId(), 'tester');
+
+		$again = $this->revert->revert((int)$batch->getId(), 'tester');
+
+		self::assertSame(2, $again->getUpdated());
 	}
 
 	public function testABatchCannotBeRevertedTwice(): void {

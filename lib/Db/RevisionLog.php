@@ -179,9 +179,12 @@ class RevisionLog {
 	/**
 	 * Everything one batch did, newest first.
 	 *
-	 * Newest first because a revert undoes in reverse order: if a batch touched
-	 * the same record twice, the later change has to come off before the earlier
-	 * one, or the record ends up holding a value from the middle of the run.
+	 * Newest first, which is the right order for undoing — but be clear about
+	 * what it does NOT buy: a revert writes a Revision as it goes, so once the
+	 * newest entry for a record is undone, any earlier entry for that same record
+	 * fails the "touched since" check and is reported as left alone. A batch that
+	 * touched one record twice is therefore only partly undone. No import does
+	 * that today, because duplicate rows are collapsed before anything is written.
 	 *
 	 * Read by `import_id`, never by a range of Revision numbers — writes are
 	 * serialised behind one cursor, so a range would sweep up whatever a
@@ -217,18 +220,27 @@ class RevisionLog {
 	 * A revert compares this against the Revision it is about to undo: if
 	 * something newer exists, the record has been touched since and undoing it
 	 * would silently discard whatever that was.
+	 *
+	 * The batch that made the newest Revision comes back too, because "touched
+	 * since" has an exception: a batch's own undo, and the undo of that undo, are
+	 * not somebody else's work. Without knowing which batch touched it, undo →
+	 * redo → undo is refused as though a colleague had intervened.
 	 */
-	public function newestFor(int $featureId): int {
+	public function newestFor(int $featureId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select($qb->func()->max('id'))
+		$qb->select('id', 'import_id')
 			->from('territorio_revision')
-			->where($qb->expr()->eq('feature_id', $qb->createNamedParameter($featureId, IQueryBuilder::PARAM_INT)));
+			->where($qb->expr()->eq('feature_id', $qb->createNamedParameter($featureId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id', 'DESC')
+			->setMaxResults(1);
 
 		$result = $qb->executeQuery();
-		$max = $result->fetchOne();
+		$row = $result->fetch();
 		$result->closeCursor();
 
-		return $max === false || $max === null ? 0 : (int)$max;
+		return $row === false
+			? ['revision' => 0, 'importId' => null]
+			: ['revision' => (int)$row['id'], 'importId' => $row['import_id'] === null ? null : (int)$row['import_id']];
 	}
 
 	/** Null where nobody was behind the change — an occ import, for instance. */

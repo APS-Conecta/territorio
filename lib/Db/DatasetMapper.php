@@ -15,6 +15,19 @@ class DatasetMapper extends QBMapper {
 		parent::__construct($db, 'territorio_dataset', Dataset::class);
 	}
 
+	/** @return array<int, Dataset> keyed by id */
+	public function allById(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName());
+
+		$byId = [];
+		foreach ($this->findEntities($qb) as $dataset) {
+			$byId[(int)$dataset->getId()] = $dataset;
+		}
+
+		return $byId;
+	}
+
 	/** @throws DoesNotExistException */
 	public function findBySlug(string $slug): Dataset {
 		$qb = $this->db->getQueryBuilder();

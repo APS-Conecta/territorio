@@ -47,7 +47,7 @@
 						<span class="territorio-import__batch-what">
 							<strong>{{ batch.isRevert ? 'Deshacer' : 'Importación' }} #{{ batch.id }}</strong>
 							<span class="territorio-import__hint">
-								{{ batch.startedAt }} · {{ batch.actor || 'el sistema' }}
+								{{ batch.dataset }} · {{ batch.startedAt }} · {{ batch.actor || 'el sistema' }}
 								<template v-if="!batch.isRevert">
 									· {{ batch.created }} creados, {{ batch.updated }} actualizados,
 									{{ batch.skipped }} omitidos
@@ -57,7 +57,7 @@
 								</template>
 							</span>
 						</span>
-						<NcButton v-if="!isUndone(batch)"
+						<NcButton v-if="!batch.undone"
 							variant="tertiary"
 							:disabled="working"
 							@click="undo(batch)">
@@ -134,11 +134,6 @@ export default {
 			} catch (exception) {
 				console.warn('territorio: could not list import batches', exception)
 			}
-		},
-
-		/** A batch is spent once something records having undone it. */
-		isUndone(batch) {
-			return this.batches.some((other) => other.revertsId === batch.id)
 		},
 
 		async undo(batch) {

@@ -10,8 +10,10 @@
 					@click="$emit('update:showRetired', !showRetired)">
 					{{ showRetired ? 'Ver activos' : 'Ver retirados' }}
 				</NcButton>
-				<NcButton v-if="!showRetired" variant="tertiary" @click="$emit('import')">
-					Importar
+				<!-- Undo lives in here too, so the label says so: someone who did
+				     not run the import has no other cue where it is. -->
+				<NcButton variant="tertiary" @click="$emit('import')">
+					Importar / deshacer
 				</NcButton>
 				<NcButton v-if="!showRetired" variant="primary" @click="$emit('create')">
 					Agregar

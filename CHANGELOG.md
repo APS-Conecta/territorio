@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.7.0] — unreleased
+## [0.7.2] — unreleased
 
 Undo an import.
 

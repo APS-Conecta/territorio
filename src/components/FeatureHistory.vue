@@ -17,18 +17,16 @@
 
 				<ul v-if="entry.changes" class="territorio-history__changes">
 					<li v-for="(change, field) in entry.changes" :key="field">
-						<strong>{{ FIELDS[field] || field }}:</strong>
+						<span class="territorio-history__label">{{ FIELDS[field] || field }}:</span>
 
 						<!-- A creation has no previous value, so it is listed rather than
 						     shown as a change from nothing. Rendering "(vacío) → x" for
 						     every field on every new record is noise that buries the
 						     edits people actually care about. -->
-						<template v-if="entry.action === 'created'">
-							{{ format(field, change.to) }}
-						</template>
+						<span v-if="entry.action === 'created'">{{ format(field, change.to) }}</span>
 						<template v-else>
 							<span class="territorio-history__from">{{ format(field, change.from) }}</span>
-							→
+							<span class="territorio-history__arrow" aria-hidden="true">→</span>
 							<span>{{ format(field, change.to) }}</span>
 						</template>
 					</li>
@@ -158,7 +156,7 @@ export default {
 
 .territorio-history__action {
 	font-weight: bold;
-	margin-inline-end: 6px;
+	margin-inline-end: 8px;
 }
 
 .territorio-history__action.is-retired {
@@ -175,8 +173,28 @@ export default {
 	font-size: 0.9em;
 }
 
+/*
+ * Spacing is CSS, not whitespace in the template: Vue's compiler condenses
+ * whitespace-only text nodes between elements away, which is what glued
+ * "Nombre:" to its value in the first place.
+ */
+.territorio-history__changes li {
+	margin-bottom: 2px;
+	line-height: 1.5;
+}
+
+.territorio-history__label {
+	font-weight: bold;
+	margin-inline-end: 6px;
+}
+
 .territorio-history__from {
 	text-decoration: line-through;
+	color: var(--color-text-maxcontrast);
+}
+
+.territorio-history__arrow {
+	margin-inline: 6px;
 	color: var(--color-text-maxcontrast);
 }
 </style>

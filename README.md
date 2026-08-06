@@ -34,12 +34,19 @@ Two test suites, on purpose:
   the right types — only a real insert can, and a wrong answer there is invisible until data is
   lost. Needs `make instance-up` first.
 
-### A trap worth knowing
+### Two traps worth knowing
 
-The dev instance uses APCu as its local cache, and APCu is per-process. Changing a setting with
-`occ config:app:set` will **not** be visible to the web process until you
-`docker compose -f compose.dev.yaml restart nextcloud`. This costs an hour if you do not know it.
-Changing the setting through the admin UI has no such problem.
+**APCu is per-process.** The dev instance uses APCu as its local cache, so changing a setting with
+`occ config:app:set` is **not** visible to the web process until you
+`docker compose -f compose.dev.yaml restart nextcloud`. The same applies to the route table after
+adding a route — a new endpoint 404s until the restart. Changing a setting through the admin UI
+has no such problem.
+
+**`make build` does not bust the browser cache.** Nextcloud's `?v=` on a script URL comes from the
+app version in `appinfo/info.xml`, not from the file's contents, so rebuilding the bundle leaves
+the URL identical and the browser keeps serving the copy it already has. After `make build`,
+**hard-reload** (Ctrl/Cmd+Shift+R). If you are handing the instance to someone else to look at,
+bump the app version instead — that changes the URL for everyone.
 
 ## The basemap
 

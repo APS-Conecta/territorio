@@ -12,8 +12,8 @@ History and retirement.
 - Every change appends a history entry naming who did it, when, and what changed — including what
   the field used to say. Those previous values are the point, not decoration: ADR-0009 says an
   import revert "restores what it overwrote", and this is where that comes from.
-- Deleting a record retires it (ADR-0005). It leaves the map, the list and every count, keeps its
-  history, and can be restored intact.
+- Deleting a record retires it (ADR-0005). It leaves the map and the list, keeps its history, and
+  can be restored intact. (There are no counts to leave yet — Análisis is issue #5.)
 - A record's history is shown in its sidebar; retired records are browsable and restorable from
   the list.
 

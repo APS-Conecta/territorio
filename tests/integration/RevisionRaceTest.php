@@ -13,7 +13,6 @@ use OCA\Territorio\Service\FeatureService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Server;
-use PHPUnit\Framework\TestCase;
 
 /**
  * The properties that make the cursor safe under concurrency.
@@ -32,44 +31,15 @@ use PHPUnit\Framework\TestCase;
  * These three failed before the fix. The suite that passed alongside them tested
  * only the happy path, which is why it noticed nothing.
  */
-final class RevisionRaceTest extends TestCase {
+final class RevisionRaceTest extends IntegrationTestCase {
 	private FeatureService $service;
 	private FeatureMapper $features;
 	private RevisionLog $revisions;
-	/** @var int[] */
-	private array $created = [];
 
 	protected function setUp(): void {
 		$this->service = Server::get(FeatureService::class);
 		$this->features = Server::get(FeatureMapper::class);
 		$this->revisions = Server::get(RevisionLog::class);
-	}
-
-	protected function tearDown(): void {
-		if ($this->created === []) {
-			return;
-		}
-		$db = Server::get(IDBConnection::class);
-		foreach (['territorio_feature' => 'id', 'territorio_revision' => 'feature_id'] as $table => $column) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete($table)
-				->where($qb->expr()->in($column, $qb->createNamedParameter(
-					$this->created, IQueryBuilder::PARAM_INT_ARRAY,
-				)))
-				->executeStatement();
-		}
-		$this->created = [];
-	}
-
-	private function place(string $name): int {
-		$id = (int)$this->service->create([
-			'name' => $name,
-			'subcategoryId' => (int)Server::get(SubcategoryMapper::class)->findAll()[0]->getId(),
-			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
 	}
 
 	/**

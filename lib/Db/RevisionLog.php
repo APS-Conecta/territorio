@@ -49,9 +49,16 @@ class RevisionLog {
 	 * this takes is only held to the end of that transaction, and it is the lock
 	 * — not the number — that makes the cursor correct.
 	 *
-	 * @param array<string, array{from: mixed, to: mixed}>|null $changes
+	 * `$describe` is a callback, not an array, and that is the whole point: it is
+	 * invoked AFTER the lock is taken, so the "before" values it reports are the
+	 * ones this write is actually about to overwrite. Computing them earlier
+	 * reads a row another writer may still be holding — and since every writer
+	 * past the first waits here, computing early is most wrong exactly when two
+	 * people are editing the same record.
+	 *
+	 * @param ?callable(): array<string, array{from: mixed, to: mixed}> $describe
 	 */
-	public function allocate(int $featureId, Action $action, ?array $changes = null): int {
+	public function allocate(int $featureId, Action $action, ?callable $describe = null): int {
 		if (!$this->db->inTransaction()) {
 			// Outside a transaction the lock is released the instant the UPDATE
 			// returns, so the Revision becomes visible before the Feature does —
@@ -74,6 +81,9 @@ class RevisionLog {
 		$bump->executeStatement();
 
 		$revision = $this->current();
+
+		// Only now, holding the lock, is it safe to ask what is being overwritten.
+		$changes = $describe === null ? null : $describe();
 
 		$log = $this->db->getQueryBuilder();
 		$log->insert('territorio_revision')->values([

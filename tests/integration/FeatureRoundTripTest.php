@@ -13,7 +13,6 @@ use OCA\Territorio\Service\LocationQuality;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Server;
-use PHPUnit\Framework\TestCase;
 
 /**
  * A Feature written to the real database and read back.
@@ -24,40 +23,13 @@ use PHPUnit\Framework\TestCase;
  * as floats and not strings, and that a null geometry stays null rather than
  * becoming an empty string. None of that is visible to a mocked mapper.
  */
-final class FeatureRoundTripTest extends TestCase {
+final class FeatureRoundTripTest extends IntegrationTestCase {
 	private FeatureService $service;
 	private FeatureMapper $features;
-	/** @var int[] */
-	private array $created = [];
 
 	protected function setUp(): void {
 		$this->features = Server::get(FeatureMapper::class);
 		$this->service = Server::get(FeatureService::class);
-	}
-
-	/**
-	 * Rows this test made, removed with raw SQL.
-	 *
-	 * Not `FeatureMapper::delete()`: that now refuses outright, because ADR-0005
-	 * forbids hard-deleting a Feature anywhere in the app and the mapper is where
-	 * that has to be enforced. Cleaning up after a test is the one job that
-	 * legitimately sits outside the app, so it goes around the mapper rather than
-	 * weakening it.
-	 */
-	protected function tearDown(): void {
-		if ($this->created === []) {
-			return;
-		}
-
-		$db = Server::get(IDBConnection::class);
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_feature')
-			->where($qb->expr()->in('id', $qb->createNamedParameter(
-				$this->created, IQueryBuilder::PARAM_INT_ARRAY,
-			)))
-			->executeStatement();
-
-		$this->created = [];
 	}
 
 	public function testTheMapperRefusesToHardDeleteAFeature(): void {
@@ -70,13 +42,6 @@ final class FeatureRoundTripTest extends TestCase {
 
 		$this->expectException(BadFunctionCallException::class);
 		$this->features->delete($created);
-	}
-
-	private function anySubcategoryId(): int {
-		$subcategories = Server::get(SubcategoryMapper::class)->findAll();
-		self::assertNotEmpty($subcategories, 'the migration should have seeded the taxonomy');
-
-		return (int)$subcategories[0]->getId();
 	}
 
 	public function testAPlaceSurvivesTheRoundTripWithItsBoundingBox(): void {

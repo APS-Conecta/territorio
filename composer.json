@@ -17,6 +17,7 @@
     "autoload-dev": {
         "psr-4": {
             "OCA\\Territorio\\Tests\\Unit\\": "tests/unit/",
+            "OCA\\Territorio\\Tests\\Integration\\": "tests/integration/",
             "OCP\\": "vendor/nextcloud/ocp/OCP/",
             "NCU\\": "vendor/nextcloud/ocp/NCU/"
         }

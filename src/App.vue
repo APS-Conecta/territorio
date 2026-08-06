@@ -35,6 +35,7 @@
 				:saving="saving"
 				:error="error"
 				:history="history"
+				:retired="selectedIsRetired"
 				@save="save"
 				@retire="retire" />
 		</NcAppSidebar>
@@ -180,23 +181,34 @@ export default {
 			}
 		},
 
+		/**
+		 * Apply one record from the change feed to whichever list it belongs in.
+		 *
+		 * A retirement reaches us as an ordinary change carrying retired:true;
+		 * moving the record between the two lists here is what takes it off
+		 * everyone else's map. Both lists are kept, not just the live one —
+		 * otherwise a colleague's restore leaves a stale row in the retired list
+		 * still offering to restore what is already back.
+		 */
 		mergeFeature(incoming) {
-			const existing = this.features.findIndex((feature) => feature.id === incoming.id)
+			const from = incoming.retired ? this.features : this.retiredFeatures
+			const into = incoming.retired ? this.retiredFeatures : this.features
 
-			// A retirement reaches us as an ordinary change carrying retired:true.
-			// Dropping it here is what takes the record off the map for everyone
-			// else — filtering it out of the feed instead would leave it drawn.
-			if (incoming.retired) {
-				if (existing !== -1) {
-					this.features.splice(existing, 1)
-				}
-				return
+			const stale = from.findIndex((feature) => feature.id === incoming.id)
+			if (stale !== -1) {
+				from.splice(stale, 1)
 			}
 
+			const existing = into.findIndex((feature) => feature.id === incoming.id)
 			if (existing === -1) {
-				this.features.unshift(incoming)
+				into.unshift(incoming)
 			} else {
-				this.features.splice(existing, 1, incoming)
+				into.splice(existing, 1, incoming)
+			}
+
+			// The sidebar may now be showing a record that just changed sides.
+			if (this.selectedId === incoming.id && incoming.retired !== this.showRetired) {
+				this.closeDraft()
 			}
 		},
 
@@ -247,8 +259,8 @@ export default {
 		async retire() {
 			const id = this.draft.id
 			try {
-				await axios.delete(generateUrl(`/apps/territorio/features/${id}`))
-				this.features = this.features.filter((feature) => feature.id !== id)
+				const { data } = await axios.delete(generateUrl(`/apps/territorio/features/${id}`))
+				this.mergeFeature(data)
 				this.closeDraft()
 			} catch (exception) {
 				this.error = exception.response?.data?.message ?? 'No se pudo retirar el registro.'
@@ -261,7 +273,6 @@ export default {
 				const { data } = await axios.post(
 					generateUrl(`/apps/territorio/features/${id}/restore`),
 				)
-				this.retiredFeatures = this.retiredFeatures.filter((feature) => feature.id !== id)
 				this.mergeFeature(data)
 				this.closeDraft()
 			} catch (exception) {

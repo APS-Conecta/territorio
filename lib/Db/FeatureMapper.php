@@ -54,7 +54,7 @@ class FeatureMapper extends QBMapper {
 				// A creation's "diff" is every field it arrived with. Recording it
 				// means the first version is reconstructable, which is what makes
 				// an import revert able to undo a created row (ADR-0009).
-				$this->asChanges($inserted->comparable()),
+				fn (): array => $this->asChanges($inserted->comparable()),
 			));
 
 			// parent::update, not $this->update — that would take a second
@@ -158,11 +158,15 @@ class FeatureMapper extends QBMapper {
 	 */
 	private function write(Feature $entity, Action $action): Feature {
 		return $this->transactionally(function () use ($entity, $action): Feature {
-			$stored = $this->find((int)$entity->getId());
 			$entity->setRevision($this->revisions->allocate(
 				(int)$entity->getId(),
 				$action,
-				$this->diff($stored, $entity),
+				// Read inside the callback, which runs after the cursor lock is
+				// held. Reading before it would snapshot a row another writer is
+				// still finishing, and history would then name a "from" value that
+				// was already superseded — the one thing an import revert must not
+				// get wrong (ADR-0009).
+				fn (): array => $this->diff($this->find((int)$entity->getId()), $entity),
 			));
 
 			return parent::update($entity);
@@ -170,13 +174,23 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
+	 * What this write actually changes.
+	 *
+	 * Restricted to the fields the entity will really write: QBMapper only
+	 * persists what was set, so comparing every field against a freshly read row
+	 * would report a colleague's untouched edit as a change this save made.
+	 *
 	 * @return array<string, array{from: mixed, to: mixed}>
 	 */
 	private function diff(Feature $before, Feature $after): array {
+		$writing = $after->getUpdatedFields();
 		$was = $before->comparable();
 		$changes = [];
 
 		foreach ($after->comparable() as $field => $value) {
+			if (!isset($writing[$field])) {
+				continue;
+			}
 			if (($was[$field] ?? null) !== $value) {
 				$changes[$field] = ['from' => $was[$field] ?? null, 'to' => $value];
 			}

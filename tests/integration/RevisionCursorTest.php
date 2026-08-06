@@ -11,7 +11,6 @@ use OCA\Territorio\Service\FeatureService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Server;
-use PHPUnit\Framework\TestCase;
 
 /**
  * The change cursor, driven the way a browser drives it (ADR-0002).
@@ -21,43 +20,15 @@ use PHPUnit\Framework\TestCase;
  * and that neither is skipped — is the database's, not PHP's. A mocked allocator
  * would prove nothing.
  */
-final class RevisionCursorTest extends TestCase {
+final class RevisionCursorTest extends IntegrationTestCase {
 	private FeatureService $service;
 	private FeatureMapper $features;
 	private RevisionLog $revisions;
-	/** @var int[] */
-	private array $created = [];
 
 	protected function setUp(): void {
 		$this->service = Server::get(FeatureService::class);
 		$this->features = Server::get(FeatureMapper::class);
 		$this->revisions = Server::get(RevisionLog::class);
-	}
-
-	protected function tearDown(): void {
-		if ($this->created === []) {
-			return;
-		}
-		$db = Server::get(IDBConnection::class);
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_feature')
-			->where($qb->expr()->in('id', $qb->createNamedParameter(
-				$this->created, IQueryBuilder::PARAM_INT_ARRAY,
-			)))
-			->executeStatement();
-		$this->created = [];
-	}
-
-	private function place(string $name): int {
-		$subcategories = Server::get(SubcategoryMapper::class)->findAll();
-		$feature = $this->service->create([
-			'name' => $name,
-			'subcategoryId' => (int)$subcategories[0]->getId(),
-			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
-		]);
-		$this->created[] = (int)$feature->getId();
-
-		return (int)$feature->getId();
 	}
 
 	/** One poll, exactly as the browser makes it. */

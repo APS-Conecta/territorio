@@ -30,13 +30,22 @@ class Version000400Date20260806140000 extends SimpleMigrationStep {
 
 		$features = $schema->getTable('territorio_feature');
 		if (!$features->hasColumn('retired')) {
-			$features->addColumn('retired', Types::BOOLEAN, ['notnull' => false, 'default' => false]);
-			// Every default read filters on this, so it earns an index even at a
-			// comuna's volumes — unlike feature_id on the log, which nothing reads.
+			// notnull: a NULL would match neither findAll(retired = false) nor
+			// findRetired(retired = true), leaving the record invisible in both and
+			// unreachable from the UI entirely.
+			$features->addColumn('retired', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
+			// Every default read filters on this, so it earns an index.
 			$features->addIndex(['retired'], 'terr_feat_retired_idx');
 		}
 
 		$revisions = $schema->getTable('territorio_revision');
+		if (!$revisions->hasIndex('terr_rev_feature_idx')) {
+			// Deferred in Version000300 with "nothing reads it until issue #4
+			// builds the history view". This is issue #4, and forFeature() filters
+			// on it — against a table ADR-0005 says grows without bound.
+			$revisions->addIndex(['feature_id'], 'terr_rev_feature_idx');
+		}
+
 		if (!$revisions->hasColumn('action')) {
 			// created | updated | retired | restored
 			$revisions->addColumn('action', Types::STRING, ['notnull' => true, 'default' => 'updated', 'length' => 16]);

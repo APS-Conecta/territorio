@@ -47,7 +47,8 @@
 		<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
 
-		<NcButton class="territorio-detail__field"
+		<NcButton v-if="!retired"
+			class="territorio-detail__field"
 			variant="primary"
 			:disabled="saving"
 			native-type="submit">
@@ -56,8 +57,9 @@
 
 		<!-- Two-step, inline. Never a browser confirm(): it blocks the page, and
 		     there is nothing irreversible to warn about anyway — retiring keeps
-		     the record and its history (ADR-0005). -->
-		<div v-if="draft.id !== null" class="territorio-detail__retire">
+		     the record and its history (ADR-0005). Hidden once retired, or the
+		     sidebar would offer to retire something already retired. -->
+		<div v-if="draft.id !== null && !retired" class="territorio-detail__retire">
 			<NcButton v-if="!confirmingRetire" variant="tertiary" @click="confirmingRetire = true">
 				Retirar del mapa
 			</NcButton>
@@ -103,6 +105,7 @@ export default {
 
 	props: {
 		history: { type: Array, default: () => [] },
+		retired: { type: Boolean, default: false },
 		// The draft is owned by App.vue and mutated in place: the sidebar edits
 		// one record at a time, and copying it back and forth would only add a
 		// second place for the two to disagree.

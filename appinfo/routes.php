@@ -9,8 +9,8 @@ return [
 		// Every user who can open the app may edit the Registry (ADR-0005).
 		['name' => 'feature#create', 'url' => '/features', 'verb' => 'POST'],
 		['name' => 'feature#update', 'url' => '/features/{id}', 'verb' => 'PUT'],
-		// Retires rather than destroys (ADR-0005). Declared before the {id}
-		// routes so /features/retired is not read as a Feature called "retired".
+		// Retires rather than destroys (ADR-0005). /features/retired cannot be
+		// confused with /features/{id} because no GET route takes an {id}.
 		['name' => 'feature#retired', 'url' => '/features/retired', 'verb' => 'GET'],
 		['name' => 'feature#destroy', 'url' => '/features/{id}', 'verb' => 'DELETE'],
 		['name' => 'feature#restore', 'url' => '/features/{id}/restore', 'verb' => 'POST'],

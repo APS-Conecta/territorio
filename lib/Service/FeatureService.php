@@ -89,12 +89,24 @@ class FeatureService {
 	 * @throws DoesNotExistException
 	 */
 	public function retire(int $id): Feature {
-		return $this->features->retire($this->features->find($id));
+		$feature = $this->features->find($id);
+		if ($feature->getRetired()) {
+			// History is append-only and never tidied, so a no-op that still logged
+			// would leave a second "Retirado" entry describing nothing.
+			throw new InvalidFeatureException('El registro ya estaba retirado.');
+		}
+
+		return $this->features->retire($feature);
 	}
 
 	/** @throws DoesNotExistException */
 	public function restore(int $id): Feature {
-		return $this->features->restore($this->features->find($id));
+		$feature = $this->features->find($id);
+		if (!$feature->getRetired()) {
+			throw new InvalidFeatureException('El registro no está retirado.');
+		}
+
+		return $this->features->restore($feature);
 	}
 
 	/**
@@ -119,7 +131,17 @@ class FeatureService {
 	 * @throws DoesNotExistException when there is no such Feature
 	 */
 	public function update(int $id, array $input): Feature {
-		return $this->features->update($this->apply($this->features->find($id), $input));
+		$feature = $this->features->find($id);
+
+		// A retired record is invisible on every map, so an edit saved into one
+		// would simply vanish — including one made by someone who had the record
+		// open when a colleague retired it. Restoring first makes the edit land
+		// somewhere people can see.
+		if ($feature->getRetired()) {
+			throw new InvalidFeatureException('El registro está retirado. Restáurelo antes de editarlo.');
+		}
+
+		return $this->features->update($this->apply($feature, $input));
 	}
 
 	/** @param array<string, mixed> $input */
@@ -141,9 +163,9 @@ class FeatureService {
 		$feature->setSubcategoryId($subcategoryId);
 
 		// Only fields actually submitted are written. A request that omits one
-		// leaves it alone rather than blanking it — history is the thing that
-		// would otherwise make such a loss recoverable, and it does not exist
-		// until issue #4. Clearing a field is still possible: send it empty.
+		// leaves it alone rather than blanking it: history can now say what a
+		// field used to hold, but silently blanking it would still be a change
+		// nobody asked for. Clearing a field is possible — send it empty.
 		foreach (self::OPTIONAL_TEXT as $key => $setter) {
 			if (!array_key_exists($key, $input)) {
 				continue;

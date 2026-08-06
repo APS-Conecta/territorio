@@ -1,0 +1,41 @@
+{
+    "name": "territorio",
+    "description": "Mapa territorial de un CESFAM",
+    "version": "0.1.0",
+    "license": "AGPL-3.0-or-later",
+    "private": true,
+    "scripts": {
+        "build": "webpack --node-env production --progress",
+        "dev": "webpack --node-env development --progress",
+        "watch": "webpack --node-env development --progress --watch"
+    },
+    "dependencies": {
+        "@nextcloud/axios": "^2.5.1",
+        "@nextcloud/initial-state": "^3.0.0",
+        "@nextcloud/router": "^3.0.1",
+        "@nextcloud/vue": "^9.0.0",
+        "leaflet": "^1.9.4",
+        "vue": "^3.5.13"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.22.9",
+        "@nextcloud/browserslist-config": "^3.0.0",
+        "@nextcloud/webpack-vue-config": "^6.3.2",
+        "babel-loader": "^10.0.0",
+        "css-loader": "^7.1.1",
+        "node-polyfill-webpack-plugin": "4.0.0",
+        "sass": "^1.64.2",
+        "sass-loader": "^16.0.2",
+        "style-loader": "^4.0.0",
+        "terser-webpack-plugin": "^5.3.10",
+        "vue-loader": "^17.4.2",
+        "webpack": "^5.88.2",
+        "webpack-cli": "^6.0.1"
+    },
+    "browserslist": [
+        "extends @nextcloud/browserslist-config"
+    ],
+    "engines": {
+        "node": "^20.0.0 || ^22.0.0 || ^24.0.0"
+    }
+}

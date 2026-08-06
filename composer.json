@@ -1,0 +1,28 @@
+{
+    "name": "cesfam/territorio",
+    "description": "Mapa territorial de un CESFAM para Nextcloud",
+    "license": "AGPL-3.0-or-later",
+    "type": "project",
+    "config": {
+        "platform": {
+            "php": "8.1"
+        },
+        "sort-packages": true
+    },
+    "autoload": {
+        "psr-4": {
+            "OCA\\Territorio\\": "lib/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OCA\\Territorio\\Tests\\Unit\\": "tests/unit/",
+            "OCP\\": "vendor/nextcloud/ocp/OCP/",
+            "NCU\\": "vendor/nextcloud/ocp/NCU/"
+        }
+    },
+    "require-dev": {
+        "nextcloud/ocp": "^34",
+        "phpunit/phpunit": "^10"
+    }
+}

@@ -1,0 +1,57 @@
+# Throwaway Nextcloud instance for developing this app.
+#
+# NOT the gestion instance: it shares none of its .env, provisioning or data. It exists to run what
+# the bare `make test` harness cannot — settings pages, IAppConfig, occ — without touching the real
+# stack. Throw it away whenever it gets in the way (`make instance-clean`).
+#
+# Same images as gestion/compose.yaml, to share layers and test against the real versions.
+# Loopback only, on 8083 (analizador-rem-dev uses 8080). The passwords are toys on purpose.
+name: territorio-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: "no"
+    volumes:
+      # postgres:18+ stores data in a major-version subdir, so mount the parent, not /data.
+      - dev_postgres:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  nextcloud:
+    image: nextcloud:34-apache
+    restart: "no"
+    ports:
+      - "127.0.0.1:8083:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - dev_nextcloud:/var/www/html
+      # The repo itself mounted as the app: edit here, see it live, no copy and no rebuild.
+      - .:/var/www/html/custom_apps/territorio
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: dev
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: dev
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/status.php || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  dev_postgres:
+  dev_nextcloud:

@@ -1,7 +1,15 @@
+# deps
 node_modules/
+/vendor/
+
+# build — js/ IS committed (Nextcloud apps ship built assets), and so are the
+# .LICENSE.txt files terser extracts: they carry third-party licence notices.
+# Sourcemaps are not.
+*.js.map
 dist/
 build/
 coverage/
+.phpunit.cache/
 
 .env
 .env.*
@@ -16,4 +24,3 @@ pnpm-debug.log*
 .DS_Store
 .cache/
 .vite/
-.next/

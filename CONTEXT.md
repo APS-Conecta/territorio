@@ -115,6 +115,11 @@ The single ever-increasing number the Registry stamps on every change. It answer
 changed since I last looked" and "who changed this, and when".
 _Avoid_: version, timestamp, sequence
 
+**Import batch**:
+Everything one run of an import created or changed, held together so it can be undone as a unit
+without disturbing anything edited since.
+_Avoid_: import job, upload, transaction
+
 **Retired**:
 The state of a record a person has deleted. It leaves the map and every default listing, keeps
 its history, and can be brought back.

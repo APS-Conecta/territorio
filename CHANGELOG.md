@@ -3,6 +3,36 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.3.0] — unreleased
+
+Collaboration: one shared map that keeps itself current.
+
+### Added
+
+- A monotonic Revision stamped on every change, allocated by a dedicated table whose autoincrement
+  id *is* the Revision — the one portable way to guarantee that two people saving in the same
+  instant get different numbers across MySQL, SQLite and Postgres.
+- `GET /changes?since=N` — the cursor every open map polls. When nothing has changed it answers
+  from a single indexed read and never touches the Feature table, which is what makes a
+  five-second poll from every open map affordable on an instance with no push backend (ADR-0002).
+- Client polling roughly every five seconds, stopping entirely while the tab is hidden and
+  catching up in one request when it returns.
+- The Revision log is already the change log: issue #4 adds the actor and the action to these same
+  rows rather than starting a second sequence.
+
+### Notes
+
+- Stamping happens in `FeatureMapper::insert()/update()`, not in the service. The cursor is only
+  correct as long as no write escapes without advancing it, and a rule that lives in a service is
+  one the next caller can walk around — the same reasoning that makes `delete()` throw. An
+  integration test writes through the mapper directly to prove it.
+- The page reads the Revision *before* the Features, deliberately. The other order lets a change
+  landing between the two reads be absent from the list yet already counted in the cursor, so the
+  client would never ask for it and would stay stale forever. This way it is simply delivered
+  again, and merging a record twice is harmless.
+- Not SSE and not WebSockets: this instance runs `nextcloud:34-apache`, where a held-open
+  connection pins a PHP worker.
+
 ## [0.2.0] — unreleased
 
 Places: the Registry's first records.

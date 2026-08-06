@@ -6,6 +6,7 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -37,12 +38,44 @@ class FeatureService {
 	public function __construct(
 		private FeatureMapper $features,
 		private SubcategoryMapper $subcategories,
+		private RevisionLog $revisions,
 	) {
 	}
 
 	/** @return Feature[] */
 	public function listAll(): array {
 		return $this->features->findAll();
+	}
+
+	/** The Revision a client should start its cursor from. */
+	public function currentRevision(): int {
+		return $this->revisions->current();
+	}
+
+	/**
+	 * What a client holding `$since` has not seen yet (ADR-0002).
+	 *
+	 * The common case by far is that nothing has changed, and it costs exactly
+	 * one indexed read of the Revision log — the Feature table is not touched at
+	 * all. That is what makes a five-second poll from every open map affordable
+	 * on an instance with no push infrastructure.
+	 *
+	 * @return array{revision: int, features: list<array<string, mixed>>}
+	 */
+	public function changesSince(int $since): array {
+		$current = $this->revisions->current();
+
+		if ($current <= $since) {
+			return ['revision' => $current, 'features' => []];
+		}
+
+		return [
+			'revision' => $current,
+			'features' => array_map(
+				static fn (Feature $feature): array => $feature->toClient(),
+				$this->features->findChangedSince($since),
+			),
+		];
 	}
 
 	/** @param array<string, mixed> $input */

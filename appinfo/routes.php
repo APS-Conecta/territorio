@@ -10,6 +10,9 @@ return [
 		['name' => 'feature#create', 'url' => '/features', 'verb' => 'POST'],
 		['name' => 'feature#update', 'url' => '/features/{id}', 'verb' => 'PUT'],
 
+		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
+		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],
+
 		// Admin-only by default: it is #[NoAdminRequired] that opens a route up,
 		// and this one deliberately carries no such attribute.
 		['name' => 'adminSettings#save', 'url' => '/settings/basemap', 'verb' => 'PUT'],

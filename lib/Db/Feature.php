@@ -47,6 +47,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setNotes(?string $notes)
  * @method ?string getSourceRef()
  * @method void setSourceRef(?string $sourceRef)
+ * @method int getRevision()
+ * @method void setRevision(int $revision)
  */
 class Feature extends Entity {
 	protected $subcategoryId = 0;
@@ -66,9 +68,11 @@ class Feature extends Entity {
 	protected $openingHours = null;
 	protected $notes = null;
 	protected $sourceRef = null;
+	protected $revision = 0;
 
 	public function __construct() {
 		$this->addType('subcategoryId', 'integer');
+		$this->addType('revision', 'integer');
 		$this->addType('minLat', 'float');
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
@@ -110,6 +114,7 @@ class Feature extends Entity {
 			'openingHours' => $this->getOpeningHours(),
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
+			'revision' => $this->getRevision(),
 		];
 	}
 }

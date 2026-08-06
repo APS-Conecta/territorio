@@ -40,6 +40,13 @@ import FeatureList from './components/FeatureList.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { defaultSubcategoryId } from './taxonomy.js'
 
+/**
+ * ADR-0002: seconds of latency is fine for territorial editing, and this instance
+ * has no push backend. Five seconds at twenty open maps is four requests a second,
+ * most of them answered by one indexed read.
+ */
+const POLL_INTERVAL_MS = 5000
+
 /** Chilean keyboards produce a decimal comma; Leaflet and GeoJSON want a dot. */
 const toNumber = (value) => {
 	const text = String(value ?? '').trim().replace(',', '.')
@@ -66,14 +73,87 @@ export default {
 		return {
 			taxonomy: loadState('territorio', 'taxonomy'),
 			features: loadState('territorio', 'features'),
+			revision: loadState('territorio', 'revision'),
 			selectedId: null,
 			draft: null,
 			saving: false,
 			error: '',
+			pollTimer: null,
+			pollFailed: false,
 		}
 	},
 
+	mounted() {
+		this.startPolling()
+		document.addEventListener('visibilitychange', this.onVisibilityChange)
+	},
+
+	beforeUnmount() {
+		this.stopPolling()
+		document.removeEventListener('visibilitychange', this.onVisibilityChange)
+	},
+
 	methods: {
+		startPolling() {
+			if (this.pollTimer === null && !document.hidden) {
+				this.pollTimer = setInterval(this.poll, POLL_INTERVAL_MS)
+			}
+		},
+
+		stopPolling() {
+			clearInterval(this.pollTimer)
+			this.pollTimer = null
+		},
+
+		/**
+		 * A hidden tab costs the server the same as a visible one and shows the
+		 * user nothing, so it stops entirely — and catches up in one request when
+		 * it comes back, rather than waiting out the interval.
+		 */
+		onVisibilityChange() {
+			if (document.hidden) {
+				this.stopPolling()
+				return
+			}
+			this.poll()
+			this.startPolling()
+		},
+
+		/**
+		 * Ask what has changed since our cursor and merge it (ADR-0002).
+		 *
+		 * Deliberately does not touch an open draft: someone half-way through
+		 * typing an address must not have it replaced under them by a colleague's
+		 * save. The list and the map update; the form the user is holding does not.
+		 */
+		async poll() {
+			try {
+				const { data } = await axios.get(
+					generateUrl('/apps/territorio/changes'),
+					{ params: { since: this.revision } },
+				)
+				this.revision = data.revision
+				data.features.forEach((incoming) => this.mergeFeature(incoming))
+				this.pollFailed = false
+			} catch (exception) {
+				// One line per outage, not one every five seconds — a clinic that
+				// loses its connection for an hour would otherwise fill the console.
+				if (!this.pollFailed) {
+					this.pollFailed = true
+					console.warn('territorio: change polling failed, will keep trying', exception)
+				}
+			}
+		},
+
+		mergeFeature(incoming) {
+			const existing = this.features.findIndex((feature) => feature.id === incoming.id)
+			if (existing === -1) {
+				this.features.unshift(incoming)
+			} else {
+				this.features.splice(existing, 1, incoming)
+			}
+		},
+
 		select(id) {
 			this.selectedId = id
 			const feature = this.features.find((candidate) => candidate.id === id)
@@ -166,12 +246,10 @@ export default {
 						this.payload(),
 					)
 
-				const existing = this.features.findIndex((feature) => feature.id === data.id)
-				if (existing === -1) {
-					this.features.unshift(data)
-				} else {
-					this.features.splice(existing, 1, data)
-				}
+				this.mergeFeature(data)
+				// Our own write already advanced the Revision; carrying the cursor
+				// forward stops the next poll handing us back what we just sent.
+				this.revision = Math.max(this.revision, data.revision ?? this.revision)
 
 				this.selectedId = data.id
 				this.draft = this.draftFrom(data)

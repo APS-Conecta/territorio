@@ -46,6 +46,12 @@ class PageController extends Controller {
 
 		$this->initialState->provideInitialState('basemap', $basemap->jsonSerialize());
 		$this->initialState->provideInitialState('taxonomy', $this->taxonomy->tree());
+		// The cursor is read BEFORE the Features, and the order matters. Read
+		// after, a change landing between the two reads is missing from the list
+		// but already counted in the cursor, so the client never asks for it and
+		// stays stale forever. Read before, that same change is simply delivered
+		// again by the first poll, and merging a record twice is harmless.
+		$this->initialState->provideInitialState('revision', $this->features->currentRevision());
 		$this->initialState->provideInitialState('features', array_map(
 			static fn ($feature): array => $feature->toClient(),
 			$this->features->listAll(),

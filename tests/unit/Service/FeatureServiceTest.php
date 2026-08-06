@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
@@ -27,11 +28,13 @@ final class FeatureServiceTest extends TestCase {
 
 	private FeatureMapper&MockObject $features;
 	private SubcategoryMapper&MockObject $subcategories;
+	private RevisionLog&MockObject $revisions;
 	private FeatureService $service;
 
 	protected function setUp(): void {
 		$this->features = $this->createMock(FeatureMapper::class);
 		$this->subcategories = $this->createMock(SubcategoryMapper::class);
+		$this->revisions = $this->createMock(RevisionLog::class);
 
 		$subcategory = new Subcategory();
 		$subcategory->setId(7);
@@ -49,7 +52,49 @@ final class FeatureServiceTest extends TestCase {
 		$this->features->method('insert')->willReturnArgument(0);
 		$this->features->method('update')->willReturnArgument(0);
 
-		$this->service = new FeatureService($this->features, $this->subcategories);
+		$this->service = new FeatureService($this->features, $this->subcategories, $this->revisions);
+	}
+
+	public function testNothingChangedCostsOneQueryAndReturnsNoFeatures(): void {
+		$this->revisions->method('current')->willReturn(12);
+		// The Feature table must not be touched at all on the common poll — this
+		// is what makes a five-second interval from every open map affordable.
+		$this->features->expects(self::never())->method('findChangedSince');
+
+		self::assertSame(
+			['revision' => 12, 'features' => []],
+			$this->service->changesSince(12),
+		);
+	}
+
+	public function testAClientBehindTheCursorIsGivenWhatItMissed(): void {
+		$changed = new Feature();
+		$changed->setId(5);
+		$changed->setName('Plaza nueva');
+		$changed->setRevision(13);
+
+		$this->revisions->method('current')->willReturn(13);
+		$this->features->expects(self::once())
+			->method('findChangedSince')
+			->with(12)
+			->willReturn([$changed]);
+
+		$result = $this->service->changesSince(12);
+
+		self::assertSame(13, $result['revision']);
+		self::assertCount(1, $result['features']);
+		self::assertSame('Plaza nueva', $result['features'][0]['name']);
+	}
+
+	/**
+	 * A cursor ahead of the log means the client knows something the server does
+	 * not — a restored database, say. Answering with the real current Revision
+	 * lets it fall back into step instead of never polling successfully again.
+	 */
+	public function testACursorAheadOfTheLogIsBroughtBackIntoStep(): void {
+		$this->revisions->method('current')->willReturn(3);
+
+		self::assertSame(['revision' => 3, 'features' => []], $this->service->changesSince(99));
 	}
 
 	private function valid(array $overrides = []): array {

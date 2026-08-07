@@ -47,6 +47,15 @@
 					<NcButton :pressed="pane === 'analisis'" @click="pane = 'analisis'">
 						Análisis
 					</NcButton>
+					<!--
+						The count sits on the button because that is the only place it
+						gets read. A queue nobody can see the size of is a queue nobody
+						opens (issue #16), and it is hidden when empty so that it reads
+						as news rather than furniture.
+					-->
+					<NcButton :pressed="pane === 'duplicados'" @click="pane = 'duplicados'">
+						Duplicados<span v-if="duplicates.length > 0"> ({{ duplicates.length }})</span>
+					</NcButton>
 				</div>
 
 				<!--
@@ -76,10 +85,25 @@
 				<AnalisisView v-if="pane === 'analisis'"
 					:counts="counts"
 					:filtered="isFiltered(filter)" />
+
+				<!--
+					Unfiltered on purpose, unlike everything beside it. The Capas panel
+					and the search are about what someone is looking at; the queue is
+					about what is waiting to be decided, and hiding half a pair behind a
+					filter would leave a card with one side and no question.
+				-->
+				<DuplicatesView v-if="pane === 'duplicados'"
+					:pairs="duplicates"
+					:features="features"
+					:taxonomy="taxonomy"
+					:busy="resolving"
+					@merge="mergePair"
+					@dismiss="dismissPair"
+					@show="select" />
 			</div>
 		</NcAppContent>
 
-		<ImportDialog v-if="importing" @close="importing = false" @imported="poll" />
+		<ImportDialog v-if="importing" @close="importing = false" @imported="afterImport" />
 
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
@@ -124,6 +148,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import AnalisisView from './components/AnalisisView.vue'
 import BoundaryPicker from './components/BoundaryPicker.vue'
 import CapasPanel from './components/CapasPanel.vue'
+import DuplicatesView from './components/DuplicatesView.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ImportDialog from './components/ImportDialog.vue'
@@ -170,6 +195,7 @@ export default {
 		AnalisisView,
 		BoundaryPicker,
 		CapasPanel,
+		DuplicatesView,
 		FeatureDetail,
 		FeatureList,
 		ImportDialog,
@@ -195,6 +221,13 @@ export default {
 			// View is the glossary's word for the whole personal on-screen state —
 			// of which this is one part, alongside the filter above.
 			pane: 'mapa',
+			// Pairs of records that might be one place (issue #16). Ids only: both
+			// sides of a pending pair are visible, so `features` already holds them
+			// and a second copy could only disagree with the first.
+			duplicates: [],
+			// The pair being resolved right now, so its buttons cannot be pressed
+			// twice while the request is in flight.
+			resolving: null,
 			importing: false,
 			history: [],
 			selectedId: null,
@@ -304,6 +337,7 @@ export default {
 	},
 
 	mounted() {
+		this.loadDuplicates()
 		this.startPolling()
 		document.addEventListener('visibilitychange', this.onVisibilityChange)
 	},
@@ -470,6 +504,62 @@ export default {
 			this.closeDraft()
 			if (showRetired) {
 				await this.loadRetired()
+			}
+		},
+
+		/**
+		 * The outstanding pairs (issue #16).
+		 *
+		 * Not polled. Pairs appear when somebody imports and are resolved by the
+		 * person looking at them, so a five-second poll would spend a request every
+		 * five seconds on a number that changes a few times a month. It is loaded
+		 * on open and after each of those two events instead.
+		 */
+		async loadDuplicates() {
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/duplicates'))
+				this.duplicates = data.pairs
+			} catch (exception) {
+				// The queue failing to load must not take the Registry down with it.
+				console.warn('territorio: could not load the duplicate queue', exception)
+			}
+		},
+
+		/** An import is the one moment new pairs appear. */
+		async afterImport() {
+			await this.poll()
+			await this.loadDuplicates()
+		},
+
+		/**
+		 * Keep one of two records and retire the other, pointing it at the survivor.
+		 *
+		 * The whole exchange is reloaded rather than patched locally: a merge
+		 * retires a record, which the change feed will deliver anyway, and guessing
+		 * at that here would mean two descriptions of the same event that can
+		 * disagree.
+		 */
+		async mergePair({ pairId, survivorId }) {
+			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/merge`, { survivorId })
+		},
+
+		async dismissPair(pairId) {
+			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/dismiss`, {})
+		},
+
+		/** Both decisions post, then refetch; only the URL and the body differ. */
+		async resolve(pairId, url, body) {
+			this.resolving = pairId
+			try {
+				await axios.post(generateUrl(url), body)
+				await this.poll()
+				await this.loadDuplicates()
+				this.error = ''
+			} catch (exception) {
+				this.error = exception.response?.data?.message
+					?? 'No se pudo resolver el par. Inténtelo de nuevo.'
+			} finally {
+				this.resolving = null
 			}
 		},
 

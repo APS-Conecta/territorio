@@ -44,6 +44,7 @@ const ACTIONS = {
 	updated: 'Editado',
 	retired: 'Retirado',
 	restored: 'Restaurado',
+	merged: 'Fusionado',
 }
 
 const FIELDS = {

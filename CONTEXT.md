@@ -125,6 +125,17 @@ The state of a record a person has deleted. It leaves the map and every default 
 its history, and can be brought back.
 _Avoid_: deleted, archived, inactive, soft-deleted
 
+**Candidate pair**:
+Two records that might be the same place, put together for somebody to decide about. Nothing is
+merged on similarity (ADR-0011): both stay visible and usable until the pair is resolved, either
+by merging them or by saying they are different places.
+_Avoid_: duplicate, match, conflict
+
+**Merged**:
+The state of a record somebody decided was the same place as another one. It is retired and points
+at the survivor, so it can be brought back like any retired record and the mapping is kept.
+_Avoid_: deduplicated, absorbed, deleted
+
 ### Distinctions that matter
 
 **Junta de Vecinos**:

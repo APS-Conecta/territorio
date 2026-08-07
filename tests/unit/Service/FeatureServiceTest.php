@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Db\Feature;
+use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\Subcategory;
@@ -60,6 +61,7 @@ final class FeatureServiceTest extends TestCase {
 			$this->subcategories,
 			$this->revisions,
 			$this->createMock(AssignmentService::class),
+			$this->createMock(DuplicateMapper::class),
 		);
 	}
 

@@ -29,6 +29,7 @@ its own, where it is the subject rather than a step on the way to something
 else. That took this from passing two runs in three to nine of nine.
 """
 
+import json
 import sys
 import uuid
 from pathlib import Path
@@ -281,6 +282,108 @@ def the_limit_can_be_picked(page, failures):
     page.wait_for_timeout(400)
 
 
+def the_duplicate_queue_works(page, failures):
+    """#16: an import FLAGS two records that look like one place, and merges none.
+
+    Driven through a real import, because "Import flags candidate pairs" is the
+    criterion — creating the pair by hand would check the queue's rendering while
+    leaving the sentence in the ticket unexercised.
+
+    The twins are put at a coordinate this run picks, far from the cadastre this
+    instance already holds, so the pair the queue is asked about is this run's
+    and not one of the real ones.
+    """
+    # Two different names sharing one token nothing else in this run carries —
+    # different names is the point (that is the shape being detected), and the
+    # shared token is how the check finds both of them again.
+    token = f"Gemelo{RUN}"
+    twin = f"Balneario {token}"
+    lat, lon = -33.47 - NUDGE / 10_000, -70.47 - NUDGE / 10_000
+
+    # Two records, one coordinate, two names — the first of the two shapes the
+    # real data actually contains.
+    geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"id": f"nav-{RUN}-a", "name": twin},
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            },
+            {
+                "type": "Feature",
+                "properties": {"id": f"nav-{RUN}-b", "name": f"Piscina {token}"},
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            },
+        ],
+    }).encode()
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.wait_for_timeout(600)
+    # A Dataset of this run's own, so re-running does not update the last run's
+    # rows: matching is on (Dataset, external id), and an import into the same
+    # Dataset would find the twins already there and change nothing.
+    page.get_by_label("Conjunto de datos").fill(f"navegador-{RUN}")
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"navegador-{RUN}.geojson",
+        "mimeType": "application/geo+json",
+        "buffer": geojson,
+    })
+    page.wait_for_timeout(500)
+    page.get_by_role("button", name="Importar", exact=True).click()
+    page.wait_for_timeout(2500)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(800)
+
+    # Both are in the Registry. The criterion that matters most: nothing was
+    # merged on similarity, so both are still there for somebody to look at.
+    page.locator(SEARCH).fill(token)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() != 2:
+        failures.append(
+            f"importing two records at one coordinate left {page.locator(ROWS).count()} in the list, expected 2",
+        )
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(300)
+
+    button = page.locator(".territorio-main__switch").get_by_role("button", name="Duplicados")
+    if "(" not in button.inner_text():
+        failures.append(
+            f"the Duplicados button does not say how many are outstanding: {button.inner_text()!r}",
+        )
+    button.click()
+    page.wait_for_timeout(800)
+
+    card = page.locator(".territorio-duplicados__pair").filter(has_text=twin)
+    if card.count() == 0:
+        failures.append("the imported pair was not offered in the queue")
+        page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
+        return
+
+    card = card.first
+    if "coordenada" not in card.locator(".territorio-duplicados__why").inner_text():
+        failures.append("the pair does not say why it was offered")
+
+    # Keep one. The other leaves the Registry, and the pair leaves the queue.
+    card.locator(".territorio-duplicados__side").first.get_by_role(
+        "button", name="Conservar este",
+    ).click()
+    page.wait_for_timeout(2000)
+
+    if page.locator(".territorio-duplicados__pair").filter(has_text=twin).count() != 0:
+        failures.append("the pair is still in the queue after being merged")
+
+    page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
+    page.locator(SEARCH).fill(token)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() != 1:
+        failures.append(
+            f"merging left {page.locator(ROWS).count()} visible records, expected 1",
+        )
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(300)
+
+
 def the_map_survives_churn(page, errors, failures):
     """Zoom and pan with the Limit picker open, which is when groups get swapped.
 
@@ -482,6 +585,7 @@ def main():
         the_assignment_is_shown_and_not_editable(page, failures)
         search_narrows_everything(page, failures)
         the_limit_can_be_picked(page, failures)
+        the_duplicate_queue_works(page, failures)
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

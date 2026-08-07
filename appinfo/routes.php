@@ -29,6 +29,13 @@ return [
 		// leave them out.
 		['name' => 'boundary#inView', 'url' => '/boundaries', 'verb' => 'GET'],
 
+		// The review queue (issue #16). Import never merges on similarity, so
+		// deciding is a request of its own — and both decisions it offers are
+		// undoable by restoring the record (ADR-0005).
+		['name' => 'duplicate#index', 'url' => '/duplicates', 'verb' => 'GET'],
+		['name' => 'duplicate#merge', 'url' => '/duplicates/{id}/merge', 'verb' => 'POST'],
+		['name' => 'duplicate#dismiss', 'url' => '/duplicates/{id}/dismiss', 'verb' => 'POST'],
+
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],
 

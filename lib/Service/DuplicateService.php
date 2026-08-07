@@ -1,0 +1,178 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\Territorio\Service;
+
+use DateTime;
+use OCA\Territorio\Db\Duplicate;
+use OCA\Territorio\Db\DuplicateMapper;
+use OCA\Territorio\Db\Feature;
+use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Exception\InvalidFeatureException;
+use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IUserSession;
+
+/**
+ * The review queue: which records might be the same place, and what was decided
+ * (issue #16).
+ *
+ * Import matches on the exact external id and nothing else. Everything that
+ * merely looks similar comes here, both records stay visible and usable, and a
+ * person decides. That is the whole design, and it is a decision about failure
+ * modes rather than about effort: a wrong merge fails SILENTLY — nobody
+ * discovers it until they phone the wrong place — while a pair left in a queue
+ * is a visible, harmless nuisance.
+ *
+ * The rule lives in DuplicateFinder, which knows nothing about the database.
+ * This knows about the database and nothing about the rule.
+ */
+class DuplicateService {
+	public function __construct(
+		private DuplicateMapper $duplicates,
+		private FeatureMapper $features,
+		private FeatureService $featureService,
+		private IUserSession $session,
+	) {
+	}
+
+	/**
+	 * Look for candidate pairs and record the new ones.
+	 *
+	 * Run after an import, over the whole Registry rather than only what the file
+	 * touched: a record typed in by hand and a record imported last month are as
+	 * much a candidate pair as two rows of one file, and scoping this to the
+	 * import would find only the second kind.
+	 *
+	 * Pairs already known — including ones somebody dismissed — are left alone.
+	 *
+	 * @return int how many pairs were new
+	 */
+	public function scan(): int {
+		$found = 0;
+		foreach (DuplicateFinder::pairs($this->candidates()) as $pair) {
+			$row = new Duplicate();
+			$row->setFirstId($pair->firstId);
+			$row->setSecondId($pair->secondId);
+			$row->setReason($pair->reason);
+			$row->setStatus(Duplicate::PENDING);
+			$row->setFoundAt(new DateTime());
+
+			if ($this->duplicates->record($row)) {
+				$found++;
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * The outstanding pairs and how many there are.
+	 *
+	 * Only ids go out. The client already holds every visible record for the list
+	 * and the map, so sending names and addresses again would be a second copy
+	 * that can disagree with the first — and both members of a pending pair are
+	 * visible by definition, so the lookup always succeeds.
+	 *
+	 * @return array{pairs: list<array<string, mixed>>, total: int}
+	 */
+	public function outstanding(): array {
+		$pairs = array_map(
+			static fn (Duplicate $pair): array => $pair->toClient(),
+			$this->duplicates->findPending(),
+		);
+
+		return ['pairs' => $pairs, 'total' => count($pairs)];
+	}
+
+	/**
+	 * Decide that these two are one place, and which one survives.
+	 *
+	 * @throws DoesNotExistException when the pair or either record is gone
+	 * @throws InvalidFeatureException when the survivor is not one of the two
+	 */
+	public function merge(int $pairId, int $survivorId): Feature {
+		$pair = $this->duplicates->find($pairId);
+		$this->refuseResolved($pair);
+
+		$ids = [$pair->getFirstId(), $pair->getSecondId()];
+		if (!in_array($survivorId, $ids, true)) {
+			// A survivor from outside the pair would retire a record on the strength
+			// of a comparison nobody made.
+			throw new InvalidFeatureException('El registro que se conserva no es parte de este par.');
+		}
+
+		$loserId = $survivorId === $ids[0] ? $ids[1] : $ids[0];
+		$merged = $this->featureService->merge($loserId, $survivorId);
+
+		$pair->setStatus(Duplicate::MERGED);
+		$pair->setResolvedBy($this->actor());
+		$this->duplicates->update($pair);
+
+		return $merged;
+	}
+
+	/**
+	 * Decide that these two are different places.
+	 *
+	 * Recorded rather than deleted: the next import will find the same pair, and
+	 * a queue that asks the same question every week is a queue nobody opens.
+	 *
+	 * @throws DoesNotExistException
+	 */
+	public function dismiss(int $pairId): Duplicate {
+		$pair = $this->duplicates->find($pairId);
+		$this->refuseResolved($pair);
+
+		$pair->setStatus(Duplicate::DISMISSED);
+		$pair->setResolvedBy($this->actor());
+
+		return $this->duplicates->update($pair);
+	}
+
+	/**
+	 * Two people opening the queue at once both see the pair; the second to act
+	 * would otherwise retire a record on the strength of a decision the first had
+	 * already made differently.
+	 */
+	private function refuseResolved(Duplicate $pair): void {
+		if ($pair->getStatus() !== Duplicate::PENDING) {
+			throw new InvalidFeatureException('Alguien ya resolvió este par.');
+		}
+	}
+
+	/**
+	 * What the finder compares: everything visible that is a single location.
+	 *
+	 * Places only. A Sector and a Unidad Vecinal have an extent rather than a
+	 * coordinate, so "the same place" would have to mean overlapping areas — a
+	 * different question, and one that would offer every Sector against the
+	 * Unidad Vecinal it covers. Boundaries and retired records are already absent
+	 * from this read.
+	 *
+	 * @return list<array{id: int, name: string, lat: ?float, lon: ?float}>
+	 */
+	private function candidates(): array {
+		$candidates = [];
+		foreach ($this->features->findAll() as $feature) {
+			if ($feature->getKind() !== Kind::Place->value) {
+				continue;
+			}
+
+			$candidates[] = [
+				'id' => (int)$feature->getId(),
+				'name' => $feature->getName(),
+				// A Place's bounding box IS its coordinate — min and max are the same
+				// point — so this needs no geometry parsing.
+				'lat' => $feature->getMinLat(),
+				'lon' => $feature->getMinLon(),
+			];
+		}
+
+		return $candidates;
+	}
+
+	private function actor(): ?string {
+		return $this->session->getUser()?->getUID();
+	}
+}

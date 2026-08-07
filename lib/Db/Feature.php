@@ -67,6 +67,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setOfficial(?string $official)
  * @method bool getOverridden()
  * @method void setOverridden(bool $overridden)
+ * @method ?int getMergedInto()
+ * @method void setMergedInto(?int $mergedInto)
  */
 class Feature extends Entity {
 	protected $subcategoryId = 0;
@@ -100,6 +102,12 @@ class Feature extends Entity {
 	protected $externalId = null;
 	protected $official = null;
 	protected $overridden = false;
+	// Where a record went when somebody decided it and another were the same
+	// place (issue #16). Null everywhere else. This is the mapping a clinic used
+	// to keep in a spreadsheet beside the cadastre, and the question it answers —
+	// "we retired this one, which record replaced it?" — is asked of the retired
+	// record, so it lives here rather than on the pair.
+	protected $mergedInto = null;
 
 	public function __construct() {
 		$this->addType('subcategoryId', 'integer');
@@ -113,6 +121,7 @@ class Feature extends Entity {
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
 		$this->addType('maxLon', 'float');
+		$this->addType('mergedInto', 'integer');
 	}
 
 	/**
@@ -184,6 +193,9 @@ class Feature extends Entity {
 			// shown. ADR-0003 keeps a local edit AND the official value, so the
 			// two stay comparable and the override can be undone.
 			'overridden' => (bool)$this->getOverridden(),
+			// Ships for the same reason `retired` does: a client holding the losing
+			// record needs to be able to say where it went rather than just drop it.
+			'mergedInto' => $this->getMergedInto(),
 			'official' => $this->getOfficial() === null
 				? null
 				: json_decode($this->getOfficial(), true),

@@ -3,6 +3,36 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.19.3] — unreleased
+
+Two records that might be one place, decided by a person.
+
+### Added
+
+- A **Duplicados** pane listing candidate pairs, with the outstanding count on the button that
+  opens it. Each pair says why it was offered, shows both records side by side, and offers three
+  answers: keep this one, keep that one, or they are not duplicates.
+- Import flags candidate pairs and merges nothing (ADR-0011). Two shapes are detected, both of
+  which appear in the real data: records at the same coordinate under different names, and similar
+  names within a short distance of each other.
+- Merging retires the loser and records a pointer to the survivor, which is the mapping
+  `fonasa_eliminados.csv` was keeping by hand. Restoring the record undoes the merge and puts the
+  pair back in the queue.
+- `Fusionado` is its own entry in history, separate from `Retirado`: a merged record was not
+  withdrawn, it was decided to be the same place as another one.
+
+### Notes
+
+- No auto-merge, at any threshold (ADR-0011). A pair left in a queue is visible and harmless; a
+  wrong merge fails silently and is discovered by somebody phoning the wrong place.
+- A dismissed pair never comes back. Re-offering it after the next import would teach people to
+  close the queue and leave it closed.
+- Detection compares Places only. A Sector has an extent rather than a coordinate, so "the same
+  place" would mean overlapping areas — a different question, and one that would offer every
+  Sector against the Unidad Vecinal it covers.
+- Similar names count only within about 150 m. "Sede Junta de Vecinos" is thirty different
+  buildings in La Florida, and pairing them all is 435 questions nobody will ever read.
+
 ## [0.18.8] — unreleased
 
 Saying where a Sector's limit runs.

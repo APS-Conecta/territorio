@@ -29,7 +29,9 @@ use OCA\Territorio\Exception\InvalidImportException;
  * preferences:
  *
  *  - Matching is on `(Dataset, external id)`, so importing the same file twice
- *    updates rather than duplicates.
+ *    updates rather than duplicates. Anything that merely LOOKS the same is
+ *    flagged for a person and never merged (issue #16) — a wrong merge is the
+ *    one failure nobody notices until they phone the wrong place.
  *  - A record a person has edited is never overwritten (ADR-0003). The incoming
  *    official value is stored beside the override so the two stay comparable and
  *    the override can be undone.
@@ -61,6 +63,7 @@ class ImportService {
 		private RevisionLog $revisions,
 		private ImportBatchMapper $batches,
 		private ComunaConfig $comuna,
+		private DuplicateService $duplicates,
 	) {
 	}
 
@@ -352,6 +355,12 @@ class ImportService {
 			$batch->setRevisionTo($this->revisions->current());
 			$this->batches->update($batch);
 		}
+
+		// Candidate pairs, flagged and never merged (issue #16). Deliberately
+		// AFTER the batch is closed and outside duringImport(): this writes no
+		// Revisions, so stamping it with the batch would be a lie, and a revert
+		// that undid the flagging would take a person's decisions with it.
+		$this->duplicates->scan();
 
 		return $batch;
 	}

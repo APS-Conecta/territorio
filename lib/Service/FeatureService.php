@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use OCA\Territorio\Db\Duplicate;
+use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
@@ -40,6 +42,7 @@ class FeatureService {
 		private SubcategoryMapper $subcategories,
 		private RevisionLog $revisions,
 		private AssignmentService $assignments,
+		private DuplicateMapper $duplicates,
 	) {
 	}
 
@@ -101,6 +104,43 @@ class FeatureService {
 	 * @throws DoesNotExistException
 	 */
 	public function retire(int $id): Feature {
+		return $this->withdraw($id, null);
+	}
+
+	/**
+	 * Retire one of two records as the same place as the other (issue #16).
+	 *
+	 * The survivor is checked before anything is written, because a merge into a
+	 * record that is itself retired would take both off the map and leave the
+	 * pointer aimed at something nobody can see.
+	 *
+	 * @throws DoesNotExistException when either record is gone
+	 */
+	public function merge(int $loserId, int $survivorId): Feature {
+		if ($loserId === $survivorId) {
+			throw new InvalidFeatureException('Un registro no se puede fusionar consigo mismo.');
+		}
+
+		$survivor = $this->features->find($survivorId);
+		if ($survivor->getRetired()) {
+			throw new InvalidFeatureException(
+				'El registro que se conserva está retirado; restáurelo antes de fusionar.',
+			);
+		}
+
+		return $this->withdraw($loserId, $survivorId);
+	}
+
+	/**
+	 * A record leaves the map, either withdrawn or merged into another.
+	 *
+	 * One path for both because everything after the reason is identical, and
+	 * because the assignment cleanup below is the kind of thing that gets added
+	 * to one of two copies and not the other.
+	 *
+	 * @throws DoesNotExistException
+	 */
+	private function withdraw(int $id, ?int $into): Feature {
 		$feature = $this->features->find($id);
 		if ($feature->getRetired()) {
 			// History is append-only and never tidied, so a no-op that still logged
@@ -108,14 +148,17 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro ya estaba retirado.');
 		}
 
-		$retired = $this->features->retire($feature);
+		$gone = $into === null
+			? $this->features->retire($feature)
+			: $this->features->merge($feature, $into);
+
 		// A retired Sector is gone from every read that resolves an assignment, so
 		// everything it held has to be let go of — otherwise a record keeps an id
 		// pointing at a boundary the app will not show, and the sidebar says "sin
 		// asignar" about a record that is assigned (ADR-0005, ADR-0008).
-		$this->reassignAround($retired, $retired->getGeometry());
+		$this->reassignAround($gone, $gone->getGeometry());
 
-		return $retired;
+		return $gone;
 	}
 
 	/** @throws DoesNotExistException */
@@ -128,6 +171,17 @@ class FeatureService {
 		$restored = $this->features->restore($feature);
 		// And a restored one takes back what falls inside it.
 		$this->reassignAround($restored, null);
+
+		// Undoing a merge puts its pair back in the queue. Both records are on the
+		// map again and still look like one place, so the question is open again —
+		// and leaving it closed would mean the only way to reconsider a merge is to
+		// wait for an import to notice the pair a second time.
+		$merge = $this->duplicates->findMergeOf($id);
+		if ($merge !== null) {
+			$merge->setStatus(Duplicate::PENDING);
+			$merge->setResolvedBy(null);
+			$this->duplicates->update($merge);
+		}
 
 		return $restored;
 	}

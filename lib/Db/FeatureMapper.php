@@ -75,8 +75,33 @@ class FeatureMapper extends QBMapper {
 		return $this->write($feature, Action::Retired);
 	}
 
+	/**
+	 * Retire this one and say where it went (issue #16).
+	 *
+	 * Its own Action rather than a retirement with a note: "fusionado con" is a
+	 * different fact from "retirado", and it is the one somebody looking at the
+	 * losing record needs. The pointer is a column so that it can be answered
+	 * from the record itself, without knowing which pair occasioned the merge.
+	 */
+	public function merge(Feature $loser, int $survivorId): Feature {
+		$loser->setRetired(true);
+		$loser->setMergedInto($survivorId);
+
+		return $this->write($loser, Action::Merged);
+	}
+
+	/**
+	 * Back on the map, and no longer pointing anywhere.
+	 *
+	 * Clearing the pointer here rather than in a separate un-merge is what makes
+	 * a merge "reversible for free" under ADR-0005: there is one way back for a
+	 * record that has left the map, and it is this one. A restored record that
+	 * still claimed to be merged into another would be visible in the Registry
+	 * and describing itself as gone.
+	 */
 	public function restore(Feature $feature): Feature {
 		$feature->setRetired(false);
+		$feature->setMergedInto(null);
 
 		return $this->write($feature, Action::Restored);
 	}

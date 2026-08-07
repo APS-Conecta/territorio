@@ -21,13 +21,12 @@ at afterwards.
 ponytail: one script, no framework, no page objects. It grows a function per
 slice that has a screen; when that stops fitting, it wants a real suite.
 
-KNOWN: the two steps that CREATE things — clicking the map to place a record and
-drawing a polygon — pass roughly two runs in three on an instance holding a
-comuna's cadastre. Everything they set up is then asserted exactly, so a bad run
-fails loudly rather than passing hollow, and the assertions themselves are
-sound. But a gate that cries wolf one run in three gets ignored, so this needs
-fixing before it is trusted unattended: the failures show no console error and
-no refusal from the app, which points at the clicks rather than at the code.
+A note on clicking. Positioned clicks on a map canvas are the least reliable
+thing here: once a comuna's cadastre is loaded the whole view is polygons, and
+what sits under a given pixel changes with the data. So anything that needs a
+record to EXIST types its coordinate, and the behaviour of a click is checked on
+its own, where it is the subject rather than a step on the way to something
+else. That took this from passing two runs in three to nine of nine.
 """
 
 import sys
@@ -105,16 +104,18 @@ def save(page, failures, what):
 
 
 def create_a_place(page, name, failures):
-    """The #2 criterion nobody ever exercised: create a record end to end."""
+    """The #2 criterion nobody ever exercised: create a record end to end.
+
+    The coordinate is typed, not clicked. The form offers both — "Haga clic en el
+    mapa para situar el registro, o escriba las coordenadas" — and typing is the
+    half that does not depend on what happens to be drawn under the cursor. What
+    a click does is checked on its own in clicking_places_the_coordinate(), where
+    it is the subject rather than a step on the way to something else.
+    """
     page.get_by_role("button", name="Agregar").click()
     page.get_by_label("Nombre").fill(name)
-    # Click the map so the record has a coordinate, the way a person places one —
-    # well clear of where draw_a_sector() puts its polygons. Clicking inside one
-    # selects that Sector instead (#10's own behaviour) and replaces this draft,
-    # so every run after the first would silently create nothing.
-    page.locator('[data-testid="map-canvas"]').click(
-        position={"x": 620 + NUDGE, "y": 560 + (NUDGE % 60)}
-    )
+    page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
+    page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
     save(page, failures, "the Place")
     # Dismiss the sidebar so it does not overlay the map for the next click.
     #
@@ -162,6 +163,31 @@ def draw_a_sector(page, name, failures, colour="#16a34a"):
     # driven by clicking.
     page.locator('input[type="color"]').fill(colour)
     save(page, failures, "the Sector")
+
+
+def clicking_places_the_coordinate(page, failures):
+    """A click on the map belongs to the draft that is waiting for a coordinate.
+
+    The regression this exists for: once a comuna's Unidades Vecinales are
+    imported they tile the whole view, so a click landed on a boundary and
+    selected it — the draft was replaced and the next save edited the cadastre.
+    One Unidad Vecinal was renamed that way before this was fixed.
+    """
+    page.get_by_role("button", name="Agregar").click()
+    page.get_by_label("Nombre").fill(f"Prueba de clic {RUN}")
+
+    page.locator('[data-testid="map-canvas"]').click(position={"x": 420, "y": 300})
+    page.wait_for_timeout(400)
+
+    if page.get_by_label("Latitud").input_value().strip() == "":
+        failures.append("clicking the map did not fill the open draft's coordinate")
+    if page.get_by_label("Nombre").input_value() != f"Prueba de clic {RUN}":
+        failures.append("clicking the map replaced the open draft with another record")
+
+    # Nothing is saved: this is about where the click went, and leaving a record
+    # behind for it would only be more to tidy.
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
 
 
 def search_narrows_everything(page, failures):
@@ -307,6 +333,7 @@ def main():
 
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
 
+        clicking_places_the_coordinate(page, failures)
         search_narrows_everything(page, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

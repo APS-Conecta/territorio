@@ -84,6 +84,26 @@ final class PointInPolygonTest extends TestCase {
 		self::assertFalse(PointInPolygon::contains($ele, 3.0, 3.0), 'in the missing quarter');
 	}
 
+	/**
+	 * The tolerance is a distance, and it has to stay one however short the edge.
+	 *
+	 * The collinearity test compares a cross product, which is an AREA: for a
+	 * segment a metre long, a fixed area tolerance of 1e-9 degrees² answers "on
+	 * the line" for a point most of a metre away from it. Boundaries at cadastral
+	 * vertex density are exactly that short, and the answer flips from outside to
+	 * inside.
+	 *
+	 * This diamond is about a metre across; the point is well outside it.
+	 */
+	public function testAShortEdgeDoesNotSwallowPointsNearIt(): void {
+		$tiny = [[
+			[0.0, 1e-5], [1e-5, 0.0], [2e-5, 1e-5], [1e-5, 2e-5], [0.0, 1e-5],
+		]];
+
+		self::assertFalse(PointInPolygon::contains($tiny, 0.0, 0.0), 'a corner of its bounding box');
+		self::assertTrue(PointInPolygon::contains($tiny, 1e-5, 1e-5), 'and the centre is still inside');
+	}
+
 	/** Nonsense in, false out — never a crash, and never a wrong "inside". */
 	public function testSomethingThatIsNotAPolygonContainsNothing(): void {
 		self::assertFalse(PointInPolygon::contains([], 1.0, 1.0));

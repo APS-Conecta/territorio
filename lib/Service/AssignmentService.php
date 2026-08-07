@@ -6,6 +6,7 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Exception\InvalidGeometryException;
 
 /**
  * Which Sector and which Unidad Vecinal a record falls in.
@@ -20,10 +21,27 @@ use OCA\Territorio\Db\FeatureMapper;
  * and after an import, and everything else reads the stored id.
  */
 class AssignmentService {
+	/**
+	 * The boundaries, read once per request rather than once per record.
+	 *
+	 * Without it, resolving 500 Places after a Sector moved read the whole
+	 * Registry a thousand times in one request, and importing a catastro of 865
+	 * rows read it about seventeen hundred. Cleared whenever a boundary is
+	 * written, which is the only thing that can make it stale.
+	 *
+	 * @var ?array<string, Feature[]>
+	 */
+	private ?array $known = null;
+
 	public function __construct(
 		private FeatureMapper $features,
 		private TaxonomyService $taxonomy,
 	) {
+	}
+
+	/** A boundary has changed, so what was read before is no longer true. */
+	public function forget(): void {
+		$this->known = null;
 	}
 
 	/**
@@ -43,15 +61,7 @@ class AssignmentService {
 
 	/** Whether this record is one of the boundaries others are assigned by. */
 	public function isBoundary(Feature $feature): bool {
-		foreach (array_keys(self::DIVISIONS) as $slug) {
-			foreach ($this->boundaries($slug) as $boundary) {
-				if ((int)$boundary->getId() === (int)$feature->getId()) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		return in_array($feature->getSubcategoryId(), $this->divisionSubcategoryIds(), true);
 	}
 
 	/**
@@ -64,9 +74,13 @@ class AssignmentService {
 	 * @return Feature[]
 	 */
 	public function affectedBy(Feature $boundary, ?string $before): array {
+		// The box it has now comes off the entity, which already carries it. The
+		// one it had before has to be measured, and a stored geometry this app can
+		// no longer parse must not turn an ordinary save into a 500 — the record
+		// is being edited, which is how someone would fix it.
 		$boxes = array_values(array_filter([
-			$boundary->getGeometry() === null ? null : Geometry::fromJson($boundary->getGeometry())->boundingBox(),
-			$before === null ? null : Geometry::fromJson($before)->boundingBox(),
+			$boundary->boundingBox(),
+			$before === null ? null : self::boxOf($before),
 		]));
 
 		$affected = [];
@@ -106,7 +120,7 @@ class AssignmentService {
 	 */
 	private function containing(string $slug, float $lon, float $lat): ?int {
 		foreach ($this->boundaries($slug) as $boundary) {
-			if (!self::boxHolds($boundary, $lon, $lat)) {
+			if ($boundary->boundingBox()?->holds($lon, $lat) !== true) {
 				continue;
 			}
 
@@ -121,38 +135,57 @@ class AssignmentService {
 	}
 
 	/**
-	 * The boundaries of one kind.
+	 * The boundaries of one kind, read once per request.
 	 *
-	 * ponytail: reads the live set and filters in PHP, like everything else that
-	 * needs the Registry. A comuna is a few dozen Sectores and Unidades Vecinales;
-	 * give the mapper a by-subcategory read when that stops being true.
+	 * ponytail: one read of the whole live set, filtered in PHP, cached until a
+	 * boundary is written. The ceiling is that read, not the filtering — give the
+	 * mapper a by-subcategory query when a comuna's Registry is too big to hold.
 	 *
 	 * @return Feature[]
 	 */
 	private function boundaries(string $slug): array {
-		$wanted = null;
-		foreach ($this->taxonomy->tree() as $category) {
-			foreach ($category['subcategories'] as $subcategory) {
-				if ($subcategory['slug'] === $slug) {
-					$wanted = $subcategory['id'];
+		if ($this->known === null) {
+			$wanted = [];
+			foreach ($this->taxonomy->tree() as $category) {
+				foreach ($category['subcategories'] as $subcategory) {
+					if (isset(self::DIVISIONS[$subcategory['slug']])) {
+						$wanted[$subcategory['id']] = $subcategory['slug'];
+					}
+				}
+			}
+
+			$this->known = array_fill_keys(array_keys(self::DIVISIONS), []);
+			foreach ($this->features->findAll() as $feature) {
+				$kind = $wanted[$feature->getSubcategoryId()] ?? null;
+				if ($kind !== null && $feature->getGeometry() !== null) {
+					$this->known[$kind][] = $feature;
 				}
 			}
 		}
-		if ($wanted === null) {
-			return [];
-		}
 
-		return array_values(array_filter(
-			$this->features->findAll(),
-			static fn (Feature $feature): bool => $feature->getSubcategoryId() === $wanted
-				&& $feature->getGeometry() !== null,
-		));
+		return $this->known[$slug] ?? [];
 	}
 
-	private static function boxHolds(Feature $feature, float $lon, float $lat): bool {
-		return $feature->getMinLat() !== null
-			&& $lat >= $feature->getMinLat() && $lat <= $feature->getMaxLat()
-			&& $lon >= $feature->getMinLon() && $lon <= $feature->getMaxLon();
+	private static function boxOf(string $geometry): ?BoundingBox {
+		try {
+			return Geometry::fromJson($geometry)->boundingBox();
+		} catch (InvalidGeometryException) {
+			return null;
+		}
+	}
+
+	/** @return int[] */
+	private function divisionSubcategoryIds(): array {
+		$ids = [];
+		foreach ($this->taxonomy->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				if (isset(self::DIVISIONS[$subcategory['slug']])) {
+					$ids[] = $subcategory['id'];
+				}
+			}
+		}
+
+		return $ids;
 	}
 
 	/**

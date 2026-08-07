@@ -108,7 +108,14 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro ya estaba retirado.');
 		}
 
-		return $this->features->retire($feature);
+		$retired = $this->features->retire($feature);
+		// A retired Sector is gone from every read that resolves an assignment, so
+		// everything it held has to be let go of — otherwise a record keeps an id
+		// pointing at a boundary the app will not show, and the sidebar says "sin
+		// asignar" about a record that is assigned (ADR-0005, ADR-0008).
+		$this->reassignAround($retired, $retired->getGeometry());
+
+		return $retired;
 	}
 
 	/** @throws DoesNotExistException */
@@ -118,7 +125,11 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro no está retirado.');
 		}
 
-		return $this->features->restore($feature);
+		$restored = $this->features->restore($feature);
+		// And a restored one takes back what falls inside it.
+		$this->reassignAround($restored, null);
+
+		return $restored;
 	}
 
 	/**
@@ -141,7 +152,16 @@ class FeatureService {
 		$feature = $this->apply(new Feature(), $input);
 		$this->applyProvenance($feature, $provenance);
 
-		return $this->features->insert($feature);
+		$created = $this->features->insert($feature);
+
+		// A boundary that did not exist a moment ago covers records that were
+		// resolved before it. Without this, importing a comuna's Unidades
+		// Vecinales into an install that already holds its catastro leaves every
+		// one of those records assigned to nothing — which is the case ADR-0008
+		// exists for, arriving through the door it is most likely to arrive by.
+		$this->reassignAround($created, null);
+
+		return $created;
 	}
 
 	/**
@@ -182,9 +202,17 @@ class FeatureService {
 	 * that would make every edit to a boundary expensive.
 	 */
 	private function reassignAround(Feature $boundary, ?string $before): void {
-		if ($boundary->getGeometry() === $before || !$this->assignments->isBoundary($boundary)) {
+		if (!$this->assignments->isBoundary($boundary)) {
 			return;
 		}
+		// Retiring and restoring pass the same geometry on purpose: what changed is
+		// whether it counts at all, not its shape.
+		if ($boundary->getGeometry() === $before && !$boundary->getRetired() && $before !== null) {
+			return;
+		}
+
+		// What was read before this write no longer describes the Registry.
+		$this->assignments->forget();
 
 		foreach ($this->assignments->affectedBy($boundary, $before) as $affected) {
 			$was = [$affected->getSectorId(), $affected->getUnidadVecinalId()];

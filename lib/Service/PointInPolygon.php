@@ -21,11 +21,17 @@ namespace OCA\Territorio\Service;
  */
 final class PointInPolygon {
 	/**
-	 * How close to an edge still counts as on it.
+	 * How close to an edge still counts as on it, as a distance in degrees.
 	 *
-	 * Coordinates here are degrees, so 1e-9 is about a tenth of a millimetre —
-	 * far below any cadastre's accuracy, and far above the rounding error of
-	 * comparing two doubles that ought to be equal.
+	 * 1e-9 degrees is about a tenth of a millimetre — far below any cadastre's
+	 * accuracy, and far above the rounding error of comparing two doubles that
+	 * ought to be equal.
+	 *
+	 * Scaled by the segment's own length before it is compared, because the test
+	 * below produces a cross product and a cross product is an AREA. Compared
+	 * raw, the effective tolerance became 1e-9 divided by the segment length: on
+	 * boundaries at cadastral vertex density — edges about a metre long — a point
+	 * most of a metre outside answered "on the line", and so "inside".
 	 */
 	private const ON_THE_LINE = 1e-9;
 
@@ -114,9 +120,12 @@ final class PointInPolygon {
 			return false;
 		}
 
-		// Zero cross product means the three points are collinear.
+		// Zero cross product means the three points are collinear. |cross| is twice
+		// the triangle's area, so dividing by the segment's length would give the
+		// perpendicular distance — multiplying the tolerance instead avoids caring
+		// whether that length is zero.
 		$cross = ($lon - $x1) * ($y2 - $y1) - ($lat - $y1) * ($x2 - $x1);
 
-		return abs($cross) <= self::ON_THE_LINE;
+		return abs($cross) <= self::ON_THE_LINE * hypot($x2 - $x1, $y2 - $y1);
 	}
 }

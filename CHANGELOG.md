@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.17.0] — unreleased
+## [0.17.1] — unreleased
 
 Where a record falls, worked out rather than typed.
 
@@ -21,6 +21,12 @@ Where a record falls, worked out rather than typed.
 
 ### Notes
 
+- A boundary that arrives AFTER the records takes them on. That is the likeliest
+  order in practice — a comuna's Unidades Vecinales land after its catastro does — and without it
+  every one of those records would sit assigned to nothing.
+- Retiring a boundary lets go of everything it held, and restoring it takes them back. A record
+  keeping an id that points at a retired Sector would be assigned to something the app will not
+  show, and the sidebar would call it unassigned.
 - A point on a boundary counts as inside. Ray casting alone answers that differently depending on
   which way the ray leaves, and a record on the line between two sectores belongs to one of them
   rather than to neither — "neither" is the answer that looks like a bug to whoever finds it.

@@ -128,6 +128,24 @@ class Feature extends Entity {
 	}
 
 	/**
+	 * The box this record's geometry spans, or null where it has none.
+	 *
+	 * The columns are already here, so nothing re-parses the geometry to find out
+	 * — and the bounding-box test that stands in front of point-in-polygon
+	 * (ADR-0008) is the same one `BoundingBox` already implements.
+	 */
+	public function boundingBox(): ?BoundingBox {
+		if ($this->getMinLat() === null) {
+			return null;
+		}
+
+		return BoundingBox::around([
+			[$this->getMinLon(), $this->getMinLat()],
+			[$this->getMaxLon(), $this->getMaxLat()],
+		]);
+	}
+
+	/**
 	 * What the browser gets. The Subcategory is sent as an id, not expanded: the
 	 * client already holds the whole taxonomy for the Capas panel, so expanding
 	 * it here would repeat the same label on every row for nothing.

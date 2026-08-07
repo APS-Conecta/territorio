@@ -60,6 +60,12 @@ const FIELDS = {
 	notes: 'Notas',
 	sourceRef: 'Fuente',
 	colour: 'Color',
+	// Derived, and in history because ADR-0008 says a reassignment must be
+	// visible like any other change. The value is a record's id, so the entry
+	// reads "Sector: 41 → 58" — honest, if terse; naming them needs the whole
+	// Registry here, which the history panel does not have.
+	sectorId: 'Sector',
+	unidadVecinalId: 'Unidad Vecinal',
 }
 
 const QUALITIES = {

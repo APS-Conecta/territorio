@@ -38,8 +38,10 @@ class Version001100Date20260807220000 extends SimpleMigrationStep {
 			}
 		}
 
-		// Both are filtered and grouped on — "every Place in this Sector" and the
-		// counts beside it — so they earn an index each.
+		// Nothing queries these in SQL yet — the counts loop in PHP over a set the
+		// app has already read. They are here because every read that will want
+		// them is a filter or a group-by on a foreign key, and adding the index
+		// with the column is cheaper than remembering to add it later.
 		foreach ([
 			'sector_id' => 'terr_feat_sector_idx',
 			'unidad_vecinal_id' => 'terr_feat_uv_idx',
@@ -47,14 +49,6 @@ class Version001100Date20260807220000 extends SimpleMigrationStep {
 			if (!$features->hasIndex($name)) {
 				$features->addIndex([$column], $name);
 			}
-		}
-
-		// The bounding-box pre-check reads these before it walks any ring, which is
-		// what keeps resolving a coordinate against a comuna's worth of boundaries
-		// cheap. Deferred in Version000200 with "nothing queries the box yet";
-		// this is what queries it.
-		if (!$features->hasIndex('terr_feat_bbox_idx')) {
-			$features->addIndex(['min_lat', 'max_lat'], 'terr_feat_bbox_idx');
 		}
 
 		return $schema;

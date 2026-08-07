@@ -95,10 +95,20 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertNull($this->stored($inside)->getSectorId(), 'the one it left');
 		self::assertSame($sector, $this->stored($outside)->getSectorId(), 'the one it reached');
 
-		// Visible, not silent: each reassignment is an ordinary write.
+		// Visible, not silent: the reassignment is its own entry, and it says what
+		// changed. Found by action rather than by index — `?? ` on an array that is
+		// always set never falls through, which is an assertion that cannot fail.
 		$history = Server::get(FeatureService::class)->history($inside);
 		self::assertCount(2, $history, 'created, then reassigned');
-		self::assertArrayHasKey('sectorId', $history[0]['changes'] ?? $history[1]['changes'] ?? []);
+
+		$updates = array_values(array_filter(
+			$history,
+			static fn (array $entry): bool => $entry['action'] === 'updated',
+		));
+		self::assertCount(1, $updates, 'the reassignment is an ordinary edit');
+		self::assertArrayHasKey('sectorId', $updates[0]['changes']);
+		self::assertSame($sector, $updates[0]['changes']['sectorId']['from']);
+		self::assertNull($updates[0]['changes']['sectorId']['to']);
 	}
 
 	/** Renaming a boundary moves nobody, and must not spend a Revision saying so. */
@@ -116,11 +126,56 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame($before, $this->stored($place)->getRevision());
 	}
 
-	/** #18's deferred half: counts by the stored id, never by asking the geometry. */
+	/**
+	 * A boundary imported into an install that already holds records takes them
+	 * on. This is the case ADR-0008 exists for arriving through the likeliest
+	 * door: the comuna's Unidades Vecinales land after the catastro does, and
+	 * without this every one of those records stays assigned to nothing.
+	 */
+	public function testABoundaryCreatedAfterTheRecordsStillClaimsThem(): void {
+		// Somewhere nothing else reaches: this runs against an instance people have
+		// been drawing on, and asserting "assigned to nothing" first would only be
+		// measuring how empty it happened to be.
+		$place = $this->place('Escuela que ya estaba', ['geometry' => self::at(-71.90, -30.10)]);
+		$before = $this->stored($place)->getSectorId();
+
+		$sector = $this->sector('Sector que llega después', [[
+			[-71.92, -30.12], [-71.88, -30.12], [-71.88, -30.08], [-71.92, -30.08], [-71.92, -30.12],
+		]]);
+
+		self::assertNotSame($before, $this->stored($place)->getSectorId());
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+	}
+
+	/**
+	 * A retired Sector is absent from every read that resolves an assignment, so
+	 * a record must not keep an id pointing at it — the sidebar would say "sin
+	 * asignar" about a record that is assigned (ADR-0005).
+	 */
+	public function testRetiringASectorLetsGoOfWhatItHeld(): void {
+		$sector = $this->sector('Sector que se retira', self::WEST);
+		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+
+		Server::get(FeatureService::class)->retire($sector);
+		self::assertNull($this->stored($place)->getSectorId());
+
+		Server::get(FeatureService::class)->restore($sector);
+		self::assertSame($sector, $this->stored($place)->getSectorId(), 'and takes it back');
+	}
+
+	/**
+	 * #18's deferred half: counts by the stored id, never by asking the geometry.
+	 *
+	 * Somewhere nothing else reaches, so the count is this test's two records and
+	 * not however many the instance already had inside WEST.
+	 */
 	public function testTheServiceCountsBySector(): void {
-		$sector = $this->sector('Sector contado', self::WEST);
-		$this->place('Una', ['geometry' => self::at(-70.58, -33.52)]);
-		$this->place('Otra', ['geometry' => self::at(-70.57, -33.53)]);
+		$sector = $this->sector('Sector contado', [[
+			[-72.02, -30.52], [-71.98, -30.52], [-71.98, -30.48], [-72.02, -30.48], [-72.02, -30.52],
+		]]);
+		$this->place('Una', ['geometry' => self::at(-72.00, -30.50)]);
+		$this->place('Otra', ['geometry' => self::at(-71.99, -30.51)]);
 
 		self::assertSame(2, Server::get(RegistryService::class)->counts()['bySector'][$sector] ?? 0);
 	}

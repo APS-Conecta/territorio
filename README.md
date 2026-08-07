@@ -11,14 +11,20 @@ Contains no patient information.
 
 ## Current state
 
-Issues #1 and #2: the app shell, the map, and Places — create, list and edit one record at a time.
-Kind is Place only; Sectores, Zones, Routes, import, history and live sync are issues #3 onward.
+Issues #1–#7, #10 and #12: the app shell and the map; Places created, edited, retired and
+restored, with history and a polled change cursor behind them; the Capas panel driving map, Datos
+and Análisis from one filtered set; GeoJSON import as a Dataset, revertible batch by batch; and
+Sectores drawn by hand, named, coloured and reshaped.
+
+Next up is what turns a drawn boundary into a described one: picking real streets and canals as a
+Sector's Limit (#13), polygonizing them (#14), and keeping the picked features (#15). The Comuna
+setting and the Unidad Vecinal cadastre (#9) unlock derived assignment (#11).
 
 ## Working on it
 
     make test             # PHP unit tests in a bare container — no Nextcloud needed
     make test-js          # the frontend's pure logic (filters, counts) — vitest
-    make lint             # php -l over lib/ and tests/
+    make lint             # php -l over lib/, tests/ and tools/
     npm install           # once
     make build            # webpack → js/territorio-{main,admin}.js
     make instance-up      # throwaway Nextcloud 34 + PG 18 on :8083 (admin / dev)
@@ -51,6 +57,23 @@ app version in `appinfo/info.xml`, not from the file's contents, so rebuilding t
 the URL identical and the browser keeps serving the copy it already has. After `make build`,
 **hard-reload** (Ctrl/Cmd+Shift+R). If you are handing the instance to someone else to look at,
 bump the app version instead — that changes the URL for everyone.
+
+## Boundary features
+
+The lines a Sector's Limit can run along — the comuna's named streets, canals and railways — come
+from OpenStreetMap through a **repo-side** tool, never from a call the app makes
+([ADR-0004](docs/adr/0004-openstreetmap-is-tiles-and-offline-imports-only.md)):
+
+    php tools/boundary-features.php --bbox=<sur,oeste,norte,este> --source=<slug> > limites.geojson
+    occ territorio:import limites.geojson --dataset=<slug> --label="Límites" --boundary
+
+`--boundary` is what keeps them off the map. They are Features like any other and go through the
+same import, batch and revert, but a comuna is around eleven thousand of them: the flag marks the
+Dataset, and every ordinary read — the map, the Datos list, the counts, the change feed — leaves
+the whole collection out. They are loaded only while a Sector's boundary is being built.
+
+Refreshing them later is just re-running both commands. Ids come from OSM, so a street redrawn
+upstream updates the record it already has, and no Sector already drawn is moved.
 
 ## The basemap
 

@@ -38,7 +38,7 @@ test-integration:
 # Must FAIL on a parse error: piping into `grep -v … || true` throws the exit status
 # away and makes this target permanently green, which is worse than having no target.
 lint: test-image
-	$(DOCKER) sh -c 'find lib tests -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
+	$(DOCKER) sh -c 'find lib tests tools -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
 
 build:
 	npm run build

@@ -36,7 +36,18 @@ class Import extends Command {
 			->addOption('label', null, InputOption::VALUE_REQUIRED, 'Nombre visible del conjunto, si es nuevo')
 			// There is no logged-in user on the command line, so the batch would
 			// otherwise record what happened and never who asked for it.
-			->addOption('actor', null, InputOption::VALUE_REQUIRED, 'Quién ejecuta la importación', 'occ');
+			->addOption('actor', null, InputOption::VALUE_REQUIRED, 'Quién ejecuta la importación', 'occ')
+			// Boundary features are imported from the command line and nowhere
+			// else: the browser upload is for the catastro a person curates, and
+			// eleven thousand streets is not that. Producing the file is a
+			// repo-side tool anyway (ADR-0004), so whoever has the file has a
+			// shell.
+			->addOption(
+				'boundary',
+				null,
+				InputOption::VALUE_NONE,
+				'El conjunto son límites (calles, canales, vías férreas): no se dibujan en el mapa',
+			);
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
@@ -61,6 +72,7 @@ class Import extends Command {
 				$dataset,
 				$input->getOption('label') === null ? null : (string)$input->getOption('label'),
 				(string)$input->getOption('actor'),
+				(bool)$input->getOption('boundary'),
 			);
 		} catch (InvalidImportException $e) {
 			// Refused while reading, so nothing was written. A failure later, while

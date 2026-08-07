@@ -3,6 +3,34 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.9.0] — unreleased
+
+The comuna's streets, canals and railways — in the Registry, off the map.
+
+### Added
+
+- `tools/boundary-features.php` produces a comuna's Boundary features as GeoJSON from a bounding
+  box. A repo-side tool run by hand, never a call the app makes (ADR-0004).
+- `occ territorio:import … --boundary` marks the Dataset as boundary features, which takes the
+  whole collection out of every ordinary read at once: the map, the Datos list, the Análisis
+  counts and the change feed.
+- Import accepts every geometry the Registry can store, not Points alone. What is left over —
+  a MultiPolygon, say — is still counted rather than refused, so one odd row cannot make a
+  cadastre of thousands an all-or-nothing import.
+
+### Notes
+
+- Named lines only, and the name filter earns its place twice over: for La Florida it is the
+  difference between 11,178 ways and 19,034, the rest being service roads and driveways nobody
+  bounds a sector with — and the import refuses a nameless row outright, so an unnamed way would
+  abort the whole file rather than be skipped.
+- Ids are OSM's own (`way/12345`) rather than the digest of name and position the reader derives
+  otherwise. A street renamed or redrawn upstream therefore updates the record it already has,
+  which is what makes a refresh months later safe — and no Sector already drawn is touched by one.
+- Boundary features are filed under "Sin clasificar · Otro" deliberately. They are never drawn and
+  never toggled, so what they are is said by the Dataset they belong to; seeding a taxonomy row
+  for eleven thousand invisible records would put a branch in Capas that means nothing to anyone.
+
 ## [0.8.0] — unreleased
 
 Sectores, drawn by hand.

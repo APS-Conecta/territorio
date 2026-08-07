@@ -178,15 +178,42 @@ final class ImportTest extends IntegrationTestCase {
 		self::assertSame(1, $batch->getDuplicates());
 	}
 
-	public function testGeometryKindsNothingDrawsYetAreReportedNotImported(): void {
+	/**
+	 * A Zone imports now that one can be drawn (issue #10), and a boundary file
+	 * is Routes from end to end (issue #12) — the pipeline takes everything the
+	 * Registry can store.
+	 */
+	public function testEveryGeometryTheRegistryCanStoreIsImported(): void {
 		$json = '{"type":"FeatureCollection","features":['
 			. '{"type":"Feature","geometry":{"type":"Polygon","coordinates":'
 			. '[[[-70.6,-33.5],[-70.5,-33.5],[-70.5,-33.4],[-70.6,-33.5]]]},'
-			. '"properties":{"name":"Sector","source":"prueba"}}]}';
+			. '"properties":{"name":"Sector","source":"prueba"}},'
+			. '{"type":"Feature","geometry":{"type":"LineString","coordinates":'
+			. '[[-70.6,-33.5],[-70.5,-33.5]]},'
+			. '"properties":{"name":"Calle","source":"prueba"}}]}';
 
 		$batch = $this->import($json);
 
-		self::assertSame(0, $batch->getCreated());
+		self::assertSame(2, $batch->getCreated());
+		self::assertSame(0, $batch->getUnsupported());
+	}
+
+	/**
+	 * What is left over is counted, not refused. One MultiPolygon in a cadastre
+	 * of thousands must not make the whole file an all-or-nothing problem — the
+	 * batch says how many rows it could not take, and the rest are imported.
+	 */
+	public function testAGeometryTheRegistryCannotStoreIsCountedAndTheRestImported(): void {
+		$json = '{"type":"FeatureCollection","features":['
+			. '{"type":"Feature","geometry":{"type":"MultiPolygon","coordinates":'
+			. '[[[[-70.6,-33.5],[-70.5,-33.5],[-70.5,-33.4],[-70.6,-33.5]]]]},'
+			. '"properties":{"name":"Dos trozos","source":"prueba"}},'
+			. '{"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},'
+			. '"properties":{"name":"Una plaza","source":"prueba"}}]}';
+
+		$batch = $this->import($json);
+
+		self::assertSame(1, $batch->getCreated());
 		self::assertSame(1, $batch->getUnsupported());
 	}
 

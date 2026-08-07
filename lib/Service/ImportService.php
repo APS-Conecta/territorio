@@ -46,16 +46,14 @@ class ImportService {
 	private const FALLBACK = ['sin_clasificar', 'otro'];
 
 	/**
-	 * Import brings in Places only.
+	 * Anything the Registry can store, which is what `Geometry` can measure.
 	 *
-	 * The map draws Zones and Routes now (issue #10), so this is no longer about
-	 * rendering: it is that no import in this app produces one yet. The boundary
-	 * datasets that will — the Unidad Vecinal cadastre (issue #9) and the
-	 * boundary features from Overpass (issue #12) — arrive with the loading and
-	 * matching rules those need, and lifting this before them would import a
-	 * comuna's worth of lines into the ordinary map with none of it.
+	 * Counted rather than refused, and that distinction is the point: a file with
+	 * one MultiPolygon in it still imports, and the batch says how many rows it
+	 * could not take. Refusing the whole file over a geometry type would make a
+	 * single odd row in a cadastre of thousands an all-or-nothing problem.
 	 */
-	private const SUPPORTED_GEOMETRY = 'Point';
+	private const SUPPORTED_GEOMETRY = ['Point', 'LineString', 'Polygon'];
 
 	public function __construct(
 		private GeoJsonReader $reader,
@@ -77,6 +75,7 @@ class ImportService {
 		string $datasetSlug,
 		?string $label = null,
 		?string $actor = null,
+		bool $boundary = false,
 	): ImportBatch {
 		$rows = $this->reader->read($json, $datasetSlug);
 		[$rows, $duplicates] = $this->collapseDuplicates($rows);
@@ -89,6 +88,7 @@ class ImportService {
 			$datasetSlug,
 			$label ?? $datasetSlug,
 			Origin::Cadastral,
+			$boundary,
 		);
 
 		return $this->apply($dataset, $prepared, $duplicates, $unsupported, $actor);
@@ -139,9 +139,9 @@ class ImportService {
 		$problems = [];
 
 		foreach ($rows as $externalId => $row) {
-			if ($row['geometry'] !== null && ($row['geometry']['type'] ?? null) !== self::SUPPORTED_GEOMETRY) {
-				// Read, understood, and counted rather than imported — see
-				// SUPPORTED_GEOMETRY for why the boundary datasets bring their own way in.
+			if ($row['geometry'] !== null
+				&& !in_array($row['geometry']['type'] ?? null, self::SUPPORTED_GEOMETRY, true)) {
+				// Read, understood, and counted rather than imported.
 				$unsupported++;
 				continue;
 			}

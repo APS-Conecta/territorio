@@ -18,6 +18,7 @@ class FeatureMapper extends QBMapper {
 	public function __construct(
 		IDBConnection $db,
 		private RevisionLog $revisions,
+		private DatasetMapper $datasets,
 	) {
 		parent::__construct($db, 'territorio_feature', Feature::class);
 	}
@@ -95,6 +96,7 @@ class FeatureMapper extends QBMapper {
 			->from($this->getTableName())
 			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
 			->orderBy('id', 'DESC');
+		$this->withoutBoundaries($qb);
 
 		return $this->findEntities($qb);
 	}
@@ -130,6 +132,7 @@ class FeatureMapper extends QBMapper {
 			->from($this->getTableName())
 			->where($qb->expr()->eq('retired', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL)))
 			->orderBy('revision', 'DESC');
+		$this->withoutBoundaries($qb);
 
 		return $this->findEntities($qb);
 	}
@@ -193,8 +196,38 @@ class FeatureMapper extends QBMapper {
 			->from($this->getTableName())
 			->where($qb->expr()->gt('revision', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
 			->orderBy('revision', 'ASC');
+		// Boundary features are excluded here too, and this is the read where it
+		// matters most: importing a comuna's streets moves the cursor by eleven
+		// thousand, and without this every open map would fetch all of them at the
+		// next poll to draw none of them.
+		$this->withoutBoundaries($qb);
 
 		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Leave out everything belonging to a Boundary-feature Dataset.
+	 *
+	 * Applied to the ordinary reads and to no others. `findByDataset()` must see
+	 * them or a re-import would create every street a second time; `find()` must
+	 * see them or #13's picker could not open one; and a revert reaches them
+	 * through the batch, not through here.
+	 */
+	private function withoutBoundaries(IQueryBuilder $qb): void {
+		$boundaries = $this->datasets->boundaryIds();
+		if ($boundaries === []) {
+			return;
+		}
+
+		$qb->andWhere($qb->expr()->orX(
+			// A record typed in rather than imported has no Dataset at all, and
+			// NOT IN never matches a NULL.
+			$qb->expr()->isNull('dataset_id'),
+			$qb->expr()->notIn(
+				'dataset_id',
+				$qb->createNamedParameter($boundaries, IQueryBuilder::PARAM_INT_ARRAY),
+			),
+		));
 	}
 
 	/**

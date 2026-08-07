@@ -81,6 +81,18 @@ final class Geometry {
 		return new self($type, $coordinates, self::flatten($coordinates, self::NESTING[$type]));
 	}
 
+	/**
+	 * Whether a geometry of this type can be stored at all.
+	 *
+	 * Asked before a file is read, by the import, so a row it cannot take is
+	 * counted rather than throwing. It reads the same list `fromArray()` enforces
+	 * — a second list kept alongside would eventually disagree with this one, and
+	 * the disagreement would show up as rows silently dropped.
+	 */
+	public static function supports(mixed $type): bool {
+		return is_string($type) && isset(self::KINDS[$type]);
+	}
+
 	public function type(): string {
 		return $this->type;
 	}

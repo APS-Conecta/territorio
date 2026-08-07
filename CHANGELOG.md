@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.9.0] — unreleased
+## [0.9.1] — unreleased
 
 The comuna's streets, canals and railways — in the Registry, off the map.
 

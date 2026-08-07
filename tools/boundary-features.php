@@ -55,7 +55,7 @@ const KINDS = ['highway', 'waterway', 'railway'];
  * @throws InvalidArgumentException when the box is not one
  */
 function overpassQuery(string $bbox): string {
-	$box = boundingBox($bbox);
+	$box = bboxForQuery($bbox);
 
 	$ways = '';
 	foreach (KINDS as $kind) {
@@ -81,7 +81,7 @@ function overpassQuery(string $bbox): string {
  *
  * @throws InvalidArgumentException
  */
-function boundingBox(string $bbox): string {
+function bboxForQuery(string $bbox): string {
 	$parts = explode(',', trim($bbox));
 	if (count($parts) !== 4) {
 		throw new InvalidArgumentException(

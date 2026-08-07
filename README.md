@@ -16,9 +16,7 @@ restored, with history and a polled change cursor behind them; the Capas panel d
 and Análisis from one filtered set; GeoJSON import as a Dataset, revertible batch by batch; and
 Sectores drawn by hand, named, coloured and reshaped.
 
-Next up is what turns a drawn boundary into a described one: picking real streets and canals as a
-Sector's Limit (#13), polygonizing them (#14), and keeping the picked features (#15). The Comuna
-setting and the Unidad Vecinal cadastre (#9) unlock derived assignment (#11).
+Open issues carry what is left.
 
 ## Working on it
 

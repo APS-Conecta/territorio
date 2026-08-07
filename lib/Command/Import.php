@@ -72,7 +72,10 @@ class Import extends Command {
 				$dataset,
 				$input->getOption('label') === null ? null : (string)$input->getOption('label'),
 				(string)$input->getOption('actor'),
-				(bool)$input->getOption('boundary'),
+				// Null, not false, when the flag is absent: "not saying" must leave
+				// an existing Dataset alone. Passing false would mean a refresh that
+				// forgot --boundary put the comuna's streets back on the map.
+				$input->getOption('boundary') ? true : null,
 			);
 		} catch (InvalidImportException $e) {
 			// Refused while reading, so nothing was written. A failure later, while
@@ -84,7 +87,8 @@ class Import extends Command {
 
 		$output->writeln(sprintf(
 			'Importado a "%s": %d creados, %d actualizados, %d sin cambios, '
-			. '%d omitidos por edición local, %d duplicados en el archivo, %d aún no soportados',
+			. '%d omitidos por edición local, %d duplicados en el archivo, '
+			. '%d con geometría no soportada',
 			$dataset,
 			$batch->getCreated(),
 			$batch->getUpdated(),

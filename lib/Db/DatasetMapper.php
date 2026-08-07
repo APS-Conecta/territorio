@@ -69,17 +69,24 @@ class DatasetMapper extends QBMapper {
 	 * they are allowed to put anything in it, which is a step that exists only
 	 * to be forgotten.
 	 *
-	 * An import that declares a different `boundary` from the one on record wins,
-	 * and deliberately: someone who imported the streets without saying so is
-	 * looking at eleven thousand lines on the map, and re-running the import with
-	 * the flag has to be the way out. It is the same authority re-declaring what
-	 * its own collection is, and it moves no record.
+	 * `$boundary` is three-valued on purpose. Null means "not saying", which is
+	 * what a browser upload and a command line without `--boundary` both mean,
+	 * and it leaves an existing Dataset exactly as it is. Only an explicit true
+	 * marks one.
+	 *
+	 * The asymmetry is the whole point: an import that could UNmark a Dataset
+	 * would put eleven thousand lines on the map and through the change feed the
+	 * moment someone re-imported the streets and forgot the flag, or uploaded a
+	 * file through the browser naming a slug that already existed. Marking one by
+	 * mistake only hides records, and re-running the import is the way in. There
+	 * is deliberately no way out yet: nobody has needed one, and it would be a
+	 * command of its own rather than a side effect of importing.
 	 */
-	public function findOrCreate(string $slug, string $label, Origin $origin, bool $boundary = false): Dataset {
+	public function findOrCreate(string $slug, string $label, Origin $origin, ?bool $boundary = null): Dataset {
 		try {
 			$dataset = $this->findBySlug($slug);
-			if ($dataset->getBoundary() !== $boundary) {
-				$dataset->setBoundary($boundary);
+			if ($boundary === true && !$dataset->getBoundary()) {
+				$dataset->setBoundary(true);
 				$dataset = $this->update($dataset);
 			}
 
@@ -89,7 +96,7 @@ class DatasetMapper extends QBMapper {
 			$dataset->setSlug($slug);
 			$dataset->setLabel($label);
 			$dataset->setOrigin($origin->value);
-			$dataset->setBoundary($boundary);
+			$dataset->setBoundary($boundary === true);
 			$dataset->setCreatedAt(new DateTime());
 
 			return $this->insert($dataset);

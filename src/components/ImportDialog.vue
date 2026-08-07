@@ -114,15 +114,19 @@ export default {
 
 		/**
 		 * Every number the batch recorded, including the ones nobody asked for.
-		 * "18 duplicados en el archivo" and "309 aún no soportados" are the counts
-		 * that explain why 865 features became 538 records — without them the
-		 * import looks like it quietly lost a third of the file.
+		 * "18 duplicados en el archivo" and "309 con geometría no soportada" are
+		 * the counts that explain why 865 features became 538 records — without
+		 * them the import looks like it quietly lost a third of the file.
+		 *
+		 * Not "aún no soportados" any more: the Registry now stores every shape it
+		 * ever intends to, so what this counts is a MultiPolygon or a
+		 * GeometryCollection, and nothing is waiting to make those work.
 		 */
 		summary() {
 			const r = this.result
 			return `${r.created} creados, ${r.updated} actualizados, ${r.unchanged} sin cambios, `
 				+ `${r.skipped} omitidos por edición local, ${r.duplicates} duplicados en el archivo, `
-				+ `${r.unsupported} aún no soportados.`
+				+ `${r.unsupported} con geometría no soportada.`
 		},
 	},
 

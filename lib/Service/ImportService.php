@@ -45,15 +45,6 @@ class ImportService {
 	/** Where a row goes when its Category or Subcategory is not one we hold. */
 	private const FALLBACK = ['sin_clasificar', 'otro'];
 
-	/**
-	 * Anything the Registry can store, which is what `Geometry` can measure.
-	 *
-	 * Counted rather than refused, and that distinction is the point: a file with
-	 * one MultiPolygon in it still imports, and the batch says how many rows it
-	 * could not take. Refusing the whole file over a geometry type would make a
-	 * single odd row in a cadastre of thousands an all-or-nothing problem.
-	 */
-	private const SUPPORTED_GEOMETRY = ['Point', 'LineString', 'Polygon'];
 
 	public function __construct(
 		private GeoJsonReader $reader,
@@ -75,7 +66,7 @@ class ImportService {
 		string $datasetSlug,
 		?string $label = null,
 		?string $actor = null,
-		bool $boundary = false,
+		?bool $boundary = null,
 	): ImportBatch {
 		$rows = $this->reader->read($json, $datasetSlug);
 		[$rows, $duplicates] = $this->collapseDuplicates($rows);
@@ -139,9 +130,11 @@ class ImportService {
 		$problems = [];
 
 		foreach ($rows as $externalId => $row) {
-			if ($row['geometry'] !== null
-				&& !in_array($row['geometry']['type'] ?? null, self::SUPPORTED_GEOMETRY, true)) {
-				// Read, understood, and counted rather than imported.
+			if ($row['geometry'] !== null && !Geometry::supports($row['geometry']['type'] ?? null)) {
+				// Read, understood, and counted rather than imported. Counting is
+				// the point: one MultiPolygon in a cadastre of thousands must not
+				// make the file an all-or-nothing problem, and the batch says how
+				// many rows were left behind.
 				$unsupported++;
 				continue;
 			}

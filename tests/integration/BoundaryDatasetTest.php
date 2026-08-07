@@ -13,6 +13,10 @@ use OCA\Territorio\Service\Kind;
 use OCP\IDBConnection;
 use OCP\Server;
 
+use function Territorio\Tools\toGeoJson;
+
+require_once __DIR__ . '/../../tools/boundary-features.php';
+
 /**
  * Boundary features are in the Registry and out of the way.
  *
@@ -112,11 +116,19 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * ADR-0007's warning, made a test: "the boundary network goes stale as OSM
-	 * changes. Refreshing it is a re-import and must never move a Sector that has
-	 * already been drawn."
+	 * ADR-0007 warns that "the boundary network goes stale as OSM changes.
+	 * Refreshing it is a re-import and must never move a Sector that has already
+	 * been drawn."
+	 *
+	 * What this pins is the structural half of that: an import only ever walks
+	 * its own Dataset, and a hand-drawn Sector belongs to none, so a refresh
+	 * cannot reach it. It would fail if matching ever went wider than
+	 * `findByDataset()` — and it is honest to say it proves no more than that. The
+	 * harder half, a Sector whose Limit cites boundary features that have since
+	 * moved, cannot exist until a Limit is stored (issue #15) and belongs to that
+	 * slice.
 	 */
-	public function testReimportingLeavesADrawnSectorExactlyWhereItWas(): void {
+	public function testARefreshCannotReachAHandDrawnSector(): void {
 		$sector = $this->sector();
 		$before = Server::get(FeatureMapper::class)->find($sector);
 
@@ -130,6 +142,39 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		self::assertSame($before->getGeometry(), $after->getGeometry());
 		self::assertSame($before->getRevision(), $after->getRevision(), 'the Sector was not even touched');
 		self::assertCount(1, Server::get(FeatureService::class)->history($sector), 'created, and nothing since');
+	}
+
+	/**
+	 * The mark survives an import that does not mention it.
+	 *
+	 * This is the one that would hurt: a browser upload cannot declare `boundary`
+	 * at all, and a refresh from the command line can forget `--boundary`. If
+	 * either were read as "declared not a boundary", the comuna's eleven thousand
+	 * lines would land on the map, in the Datos list and in every open browser's
+	 * next poll — and the un-marking takes no Revision, so ADR-0009's revert could
+	 * not undo it either.
+	 */
+	public function testAnImportThatSaysNothingCannotUnmarkTheDataset(): void {
+		$this->importBoundaries();
+
+		// Exactly what ImportController::upload() passes: no opinion on boundary.
+		Server::get(ImportService::class)->importGeoJson(
+			self::boundaryFile(false),
+			self::SLUG,
+			'Límites de prueba',
+			'alguien',
+		);
+
+		self::assertTrue(
+			(bool)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getBoundary(),
+			'an import that did not mention boundaries un-marked the Dataset',
+		);
+
+		// And the consequence that would follow, checked rather than assumed.
+		$pushed = array_column(Server::get(FeatureService::class)->changesSince(0)['features'], 'id');
+		foreach (Server::get(FeatureMapper::class)->findByDataset($this->datasetId()) as $boundary) {
+			self::assertNotContains((int)$boundary->getId(), $pushed);
+		}
 	}
 
 	/** Re-importing the same file changes nothing and spends no Revisions. */
@@ -195,43 +240,41 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		return $id;
 	}
 
-	/** Invented, not taken from any real extract — the shape is what matters. */
+	/**
+	 * Built by the tool itself, from an invented Overpass answer, rather than
+	 * hand-written to look like its output.
+	 *
+	 * That is the point of doing it this way: the tool and the reader are two
+	 * halves of one contract — the id, the property names, the [lon, lat] order —
+	 * and a fixture that imitates the tool would keep passing after the tool
+	 * changed. This is the only place the two meet.
+	 */
 	private static function boundaryFile(bool $moved): string {
 		$street = $moved
-			? [[-70.60, -33.52], [-70.585, -33.52]]
-			: [[-70.60, -33.52], [-70.59, -33.52]];
+			? [['lat' => -33.52, 'lon' => -70.60], ['lat' => -33.52, 'lon' => -70.585]]
+			: [['lat' => -33.52, 'lon' => -70.60], ['lat' => -33.52, 'lon' => -70.59]];
 
-		return json_encode([
-			'type' => 'FeatureCollection',
-			'features' => [
-				[
-					'type' => 'Feature',
-					'id' => 'way/101',
-					'properties' => [
-						'name' => 'Calle de Prueba',
-						'category' => 'sin_clasificar',
-						'subcategory' => 'otro',
-						'source_es' => 'OpenStreetMap',
-						'source_url' => 'https://www.openstreetmap.org/way/101',
+		return json_encode(
+			toGeoJson([
+				'elements' => [
+					[
+						'type' => 'way',
+						'id' => 101,
+						'tags' => ['highway' => 'residential', 'name' => 'Calle de Prueba'],
+						'geometry' => $street,
 					],
-					'geometry' => ['type' => 'LineString', 'coordinates' => $street],
-				],
-				[
-					'type' => 'Feature',
-					'id' => 'way/102',
-					'properties' => [
-						'name' => 'Canal de Prueba',
-						'category' => 'sin_clasificar',
-						'subcategory' => 'otro',
-						'source_es' => 'OpenStreetMap',
-						'source_url' => 'https://www.openstreetmap.org/way/102',
-					],
-					'geometry' => [
-						'type' => 'LineString',
-						'coordinates' => [[-70.60, -33.53], [-70.58, -33.53]],
+					[
+						'type' => 'way',
+						'id' => 102,
+						'tags' => ['waterway' => 'canal', 'name' => 'Canal de Prueba'],
+						'geometry' => [
+							['lat' => -33.53, 'lon' => -70.60],
+							['lat' => -33.53, 'lon' => -70.58],
+						],
 					],
 				],
-			],
-		], JSON_THROW_ON_ERROR);
+			], 'prueba'),
+			JSON_THROW_ON_ERROR,
+		);
 	}
 }

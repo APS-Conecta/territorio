@@ -31,7 +31,11 @@ class Version001000Date20260807180000 extends SimpleMigrationStep {
 
 		$datasets = $schema->getTable('territorio_dataset');
 		if (!$datasets->hasColumn('boundary')) {
-			$datasets->addColumn('boundary', Types::BOOLEAN, ['notnull' => false, 'default' => false]);
+			// notnull, like `retired` in Version000400 and for the same reason: a
+			// NULL would match neither "is a boundary set" nor "is not", so the
+			// Dataset would be excluded from the map by one read and included by
+			// the next.
+			$datasets->addColumn('boundary', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
 		}
 
 		return $schema;

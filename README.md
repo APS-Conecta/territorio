@@ -23,24 +23,32 @@ Open issues carry what is left.
     make test             # PHP unit tests in a bare container — no Nextcloud needed
     make test-js          # the frontend's pure logic (filters, counts) — vitest
     make lint             # php -l over lib/, tests/ and tools/
+    make lint-js          # eslint over src/ and tests/js — one rule: nothing undefined
+    make test-browser     # drive the running app with Playwright (needs instance-up + build)
     npm install           # once
     make build            # webpack → js/territorio-{main,admin}.js
     make instance-up      # throwaway Nextcloud 34 + PG 18 on :8083 (admin / dev)
     make test-integration # mapper round-trip against that instance's real Postgres
     make instance-clean   # wipe it
 
-Three test suites, on purpose:
+Four suites, on purpose:
 
 - **`make test`** is the judgement — validation, geometry, status codes. It depends on no OCP
   class and runs in a bare PHP container in milliseconds. Classes that must touch Nextcloud are
   tested against the `nextcloud/ocp` interface stubs, mapped in `autoload-dev` only.
 - **`make test-js`** is the frontend's judgement — the filter reducer, the counts. Pure modules,
-  no browser, no Nextcloud. UI *rendering* is still unverified by anything but a person looking at
-  it; two of this project's bugs so far were visible only that way.
+  no browser, no Nextcloud.
 - **`make test-integration`** is the round trip. A mocked mapper cannot tell you whether an
   Entity's camelCase properties actually reach the snake_case columns the migration created, with
   the right types — only a real insert can, and a wrong answer there is invisible until data is
   lost. Needs `make instance-up` first.
+- **`make test-browser`** is the app. It is the only thing here that opens it, and it exists because
+  everything above passed for eight slices while **`Guardar` did nothing at all** — `native-type`
+  is the @nextcloud/vue 8 prop name, so under 9 the button stayed a `type="button"` and never
+  submitted its form. No unit test loads a component and webpack emits whatever it is given, so the
+  database was the only witness: every revision carried a null actor, meaning `occ` or a test, never
+  a person. It asserts on the Registry rather than the screen — a green screen over an empty table
+  is the failure it is here to catch. Needs `make instance-up` and a current `make build`.
 
 ### Two traps worth knowing
 

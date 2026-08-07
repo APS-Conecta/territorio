@@ -10,7 +10,7 @@ DOCKER := docker run --rm -v "$(CURDIR)":/app -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image test-integration test-js deps build watch lint clean instance-up instance-occ instance-down instance-clean
+.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js clean instance-up instance-occ instance-down instance-clean
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -33,6 +33,18 @@ test-js:
 test-integration:
 	$(COMPOSE) exec --user www-data -w /var/www/html/custom_apps/territorio nextcloud \
 		php vendor/bin/phpunit -c phpunit.integration.xml --testdox
+
+# One rule that matters: a name used but never imported. `listFor` was called in
+# App.vue with no import and took the whole Datos column down, past a green build
+# and three green suites — none of which loads a component. Style rules are off.
+lint-js:
+	npx eslint src tests/js
+
+# Drive the running app the way a person would. Needs `make instance-up` and a
+# current `make build`. This is the only thing in the repo that opens the app —
+# `Guardar` did nothing for eight slices and every other check passed.
+test-browser:
+	python3 tools/browser-check.py
 
 # Syntax-check every PHP file. Cheap standing in for a static analyser we do not have yet.
 # Must FAIL on a parse error: piping into `grep -v … || true` throws the exit status

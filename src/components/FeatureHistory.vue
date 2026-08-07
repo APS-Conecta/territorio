@@ -123,7 +123,7 @@ export default {
 					return 'definida'
 				}
 				return `${lat.toFixed(5)}, ${lon.toFixed(5)}`
-			} catch (error) {
+			} catch {
 				return 'definida'
 			}
 		},

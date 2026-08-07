@@ -86,6 +86,36 @@ class ImportService {
 	}
 
 	/**
+	 * The recent runs, as the import dialog lists them.
+	 *
+	 * The Dataset's name is joined on here rather than shipped by the batch: a
+	 * batch knows an id, and "Importación #3 en 7" tells a person nothing.
+	 *
+	 * This lives in the service rather than the controller so that an OCS
+	 * controller later is a new file rather than a second copy of the join
+	 * (issue #18).
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function recentBatches(): array {
+		$datasets = $this->datasets->allById();
+
+		return array_map(
+			function (ImportBatch $batch) use ($datasets): array {
+				// ?? not ?->: a missing key is an undefined-index warning before
+				// the nullsafe operator ever gets a chance.
+				$dataset = $datasets[$batch->getDatasetId()] ?? null;
+
+				return $batch->toClient() + [
+					'dataset' => $dataset?->getLabel() ?? 'conjunto eliminado',
+					'undone' => $this->batches->isUndone((int)$batch->getId()),
+				];
+			},
+			$this->batches->findRecent(),
+		);
+	}
+
+	/**
 	 * Rows the file repeated verbatim collapse to one.
 	 *
 	 * The La Florida catastro contains 18 of these across 865 features —

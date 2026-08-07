@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
-use OCA\Territorio\Db\Category;
-use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\Subcategory;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\RegistryService;
+use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -29,20 +26,18 @@ final class RegistryServiceTest extends TestCase {
 	protected function setUp(): void {
 		$this->features = $this->createMock(FeatureMapper::class);
 
-		$categories = $this->createMock(CategoryMapper::class);
-		$categories->method('findAll')->willReturn([
-			self::category(1, 'salud', 'Salud'),
-			self::category(2, 'organizacion_social', 'Organización social'),
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('tree')->willReturn([
+			['id' => 1, 'slug' => 'salud', 'label' => 'Salud', 'color' => '#dc2626', 'subcategories' => [
+				['id' => 11, 'slug' => 'cesfam', 'label' => 'CESFAM'],
+				['id' => 12, 'slug' => 'farmacia', 'label' => 'Farmacia'],
+			]],
+			['id' => 2, 'slug' => 'organizacion_social', 'label' => 'Organización social', 'color' => '#ea580c', 'subcategories' => [
+				['id' => 21, 'slug' => 'taller', 'label' => 'Taller'],
+			]],
 		]);
 
-		$subcategories = $this->createMock(SubcategoryMapper::class);
-		$subcategories->method('findAll')->willReturn([
-			self::subcategory(11, 1, 'cesfam', 'CESFAM'),
-			self::subcategory(12, 1, 'farmacia', 'Farmacia'),
-			self::subcategory(21, 2, 'taller', 'Taller'),
-		]);
-
-		$this->registry = new RegistryService($this->features, $categories, $subcategories);
+		$this->registry = new RegistryService($this->features, $taxonomy);
 	}
 
 	/** The question the issue names: "how many talleres". */
@@ -99,7 +94,7 @@ final class RegistryServiceTest extends TestCase {
 
 	/**
 	 * A Feature pointing at a Subcategory the taxonomy no longer has is counted
-	 * as unclassified rather than dropped — a total that quietly disagrees with
+	 * under unknownSubcategory rather than dropped — a total that quietly disagrees with
 	 * the Registry is worse than an awkward one.
 	 */
 	public function testAFeatureWithAnUnknownSubcategoryIsStillCounted(): void {
@@ -108,7 +103,7 @@ final class RegistryServiceTest extends TestCase {
 		$counts = $this->registry->counts();
 
 		self::assertSame(2, $counts['total']);
-		self::assertSame(1, $counts['unclassified']);
+		self::assertSame(1, $counts['unknownSubcategory']);
 	}
 
 	public function testItLooksUpOneRecord(): void {
@@ -145,46 +140,6 @@ final class RegistryServiceTest extends TestCase {
 		$this->features->method('findAll')->willReturn([self::feature(1, 11)]);
 
 		self::assertSame([], $this->registry->inSubcategory('salud', 'no_existe'));
-	}
-
-	/**
-	 * "No OCS route and no externally-reachable API route is registered."
-	 *
-	 * This service is for apps on this instance, reached by injection. An `ocs`
-	 * section in the route file is what would put it on the public internet, and
-	 * adding one is a decision someone should have to take deliberately rather
-	 * than by copying a route block.
-	 */
-	public function testNothingHereIsReachableFromOutsideTheInstance(): void {
-		$routes = require dirname(__DIR__, 3) . '/appinfo/routes.php';
-
-		self::assertArrayNotHasKey('ocs', $routes, 'an OCS route would expose this externally');
-		foreach ($routes['routes'] as $route) {
-			self::assertStringNotContainsStringIgnoringCase(
-				'registry',
-				$route['name'],
-				'the registry service is injected, never routed',
-			);
-		}
-	}
-
-	private static function category(int $id, string $slug, string $label): Category {
-		$category = new Category();
-		$category->setId($id);
-		$category->setSlug($slug);
-		$category->setLabel($label);
-
-		return $category;
-	}
-
-	private static function subcategory(int $id, int $categoryId, string $slug, string $label): Subcategory {
-		$subcategory = new Subcategory();
-		$subcategory->setId($id);
-		$subcategory->setCategoryId($categoryId);
-		$subcategory->setSlug($slug);
-		$subcategory->setLabel($label);
-
-		return $subcategory;
 	}
 
 	private static function feature(int $id, int $subcategoryId, string $name = 'Registro'): Feature {

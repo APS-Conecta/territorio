@@ -5,7 +5,32 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [0.12.0] — unreleased
 
-Search, and an answer for the app next door.
+An answer for the app next door.
+
+### Added
+
+- `OCA\Territorio\Service\RegistryService` — counts and record lookups for other apps on this
+  instance, by injection. No OCS route and no external API, and two tests keep it that way: one
+  refuses an `ocs` section in the route file, another refuses a `Db\` class in any controller.
+
+### Changed
+
+- The import dialog's batch list and the page's opening cursor moved out of their controllers and
+  into the services that own them. A controller that reads the database itself is a controller an
+  OCS version would have to copy rather than replace.
+
+### Notes
+
+- The service reads through `FeatureMapper::findAll()` rather than querying for itself, so what it
+  answers and what the app shows cannot drift: retired records are out, and so are the
+  Boundary-feature Datasets.
+- Counting records **by** the Sector or Unidad Vecinal they fall in is not there yet — ADR-0008
+  derives that from geometry and stores it, and nothing stores one until issue #11. Counting the
+  sectores themselves already works: they are Features under `division_territorial`.
+
+## [0.11.0] — unreleased
+
+Search.
 
 ### Added
 
@@ -13,19 +38,12 @@ Search, and an answer for the app next door.
   predicate on the one filtered set rather than a mechanism beside it. Case- and accent-insensitive:
   "castanos" finds "Los Castaños". It matches name, address, contact person and the
   "Categoría · Subcategoría" label, and it composes with the Capas toggles in either order.
-- `OCA\Territorio\Service\RegistryService` — counts and lookups for other apps on the instance, by
-  injection. No OCS route and no external API, and a test keeps it that way.
 
 ### Notes
 
 - Search reaches the retired list, where the Capas toggles deliberately do not. A toggle is a
   background setting someone forgot they left on; a query is someone saying what they are looking
   for, and ignoring it in the list they are staring at would overrule them.
-- The service reads through `FeatureMapper::findAll()` rather than querying for itself, so what it
-  answers and what the app shows cannot drift: retired records are out, and so are the
-  Boundary-feature Datasets.
-- Counts by Sector and Unidad Vecinal are not there yet. ADR-0008 derives an assignment from
-  geometry and stores it, and nothing stores one until issue #11.
 
 ## [0.10.0] — unreleased
 

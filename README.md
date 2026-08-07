@@ -86,8 +86,13 @@ Keyed by slug, never by id: ids differ per install, slugs are what the seed and 
 Everything reads through the same set the app's own screens read, so retired records and the
 Boundary-feature Datasets are absent — a comuna's eleven thousand streets are not places anyone
 means to count. **No OCS route and no external API is registered**, and a test asserts that stays
-true. Counts by Sector and Unidad Vecinal arrive with issue #11, which is what first stores an
-assignment (ADR-0008).
+true.
+
+"How many sectores" already works: they are Features under `division_territorial` (ADR-0010), so
+`counts()['categories']['division_territorial']['subcategories']['sector']` answers it. "How many
+unidades vecinales" needs the cadastre import (issue #9). What is genuinely absent is counting
+records **by** the Sector or Unidad Vecinal they fall in: ADR-0008 derives that from geometry and
+stores it, and nothing stores one until issue #11.
 
 ## Boundary features
 

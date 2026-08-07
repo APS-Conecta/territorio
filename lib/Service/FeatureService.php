@@ -48,6 +48,17 @@ class FeatureService {
 	}
 
 	/**
+	 * The cursor a page load hands the client to poll from (ADR-0002).
+	 *
+	 * Here rather than in the controller so that nothing outside `lib/Service`
+	 * has to reach into `Db` for it — a controller that knows about RevisionLog
+	 * is a controller an OCS version would have to duplicate (issue #18).
+	 */
+	public function currentRevision(): int {
+		return $this->revisions->current();
+	}
+
+	/**
 	 * What a client holding `$since` has not seen yet (ADR-0002).
 	 *
 	 * The common case by far is that nothing has changed, and it costs exactly

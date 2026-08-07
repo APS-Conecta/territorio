@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
-use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 
 /**
  * What Territorio answers when another app on this instance asks.
@@ -40,8 +38,7 @@ use OCA\Territorio\Db\SubcategoryMapper;
 class RegistryService {
 	public function __construct(
 		private FeatureMapper $features,
-		private CategoryMapper $categories,
-		private SubcategoryMapper $subcategories,
+		private TaxonomyService $taxonomy,
 	) {
 	}
 
@@ -56,7 +53,7 @@ class RegistryService {
 	 * restating it in SQL — reach for an aggregate query when a real catastro
 	 * makes this slow, and move the retired-and-boundary rule with it.
 	 *
-	 * @return array{total: int, unclassified: int, categories: array<string, array{label: string, total: int, subcategories: array<string, int>}>}
+	 * @return array{total: int, unknownSubcategory: int, categories: array<string, array{label: string, total: int, subcategories: array<string, int>}>}
 	 */
 	public function counts(): array {
 		$perSubcategory = [];
@@ -68,18 +65,18 @@ class RegistryService {
 
 		$categories = [];
 		$classified = 0;
-		foreach ($this->categories->findAll() as $category) {
+		foreach ($this->taxonomy->tree() as $category) {
 			$subcategories = [];
 			$total = 0;
-			foreach ($this->subcategoriesOf((int)$category->getId()) as $subcategory) {
-				$count = $perSubcategory[(int)$subcategory->getId()] ?? 0;
-				$subcategories[$subcategory->getSlug()] = $count;
+			foreach ($category['subcategories'] as $subcategory) {
+				$count = $perSubcategory[$subcategory['id']] ?? 0;
+				$subcategories[$subcategory['slug']] = $count;
 				$total += $count;
 			}
 
 			$classified += $total;
-			$categories[$category->getSlug()] = [
-				'label' => $category->getLabel(),
+			$categories[$category['slug']] = [
+				'label' => $category['label'],
 				'total' => $total,
 				'subcategories' => $subcategories,
 			];
@@ -87,10 +84,13 @@ class RegistryService {
 
 		return [
 			'total' => count($live),
-			// A record whose Subcategory the taxonomy no longer has is still a
-			// record. Dropping it would make this total quietly disagree with the
-			// Registry, which is worse than an awkward number.
-			'unclassified' => count($live) - $classified,
+			// NOT "unclassified": "Sin clasificar" is a real seeded Category that
+			// someone may have deliberately filed a record under, and it is counted
+			// like any other above. This is the other thing — a record pointing at a
+			// Subcategory the taxonomy no longer has. Conflating the two would make
+			// a broken reference indistinguishable from a decision, which is the
+			// distinction `taxonomy.js` and `FeatureList.vue` both already protect.
+			'unknownSubcategory' => count($live) - $classified,
 			'categories' => $categories,
 		];
 	}
@@ -101,12 +101,18 @@ class RegistryService {
 	 * Null rather than an exception: "is this id still there" is a fair question,
 	 * and a retired record answering null is the honest answer to "show me this".
 	 *
+	 * ponytail: reads the whole live set to return one row, because going through
+	 * `FeatureMapper::find()` would mean restating here which records are visible
+	 * — and two copies of that rule is how a retired record ends up answerable to
+	 * another app. Give the mapper a visible-only `find()` when this hurts.
+	 *
 	 * @return ?array<string, mixed>
 	 */
 	public function find(int $id): ?array {
+		$named = $this->named();
 		foreach ($this->features->findAll() as $feature) {
 			if ((int)$feature->getId() === $id) {
-				return $this->describe($feature);
+				return $this->describe($feature, $named);
 			}
 		}
 
@@ -120,7 +126,14 @@ class RegistryService {
 	 * @return list<array<string, mixed>>
 	 */
 	public function inSubcategory(string $categorySlug, string $subcategorySlug): array {
-		$wanted = $this->subcategoryId($categorySlug, $subcategorySlug);
+		$named = $this->named();
+
+		$wanted = null;
+		foreach ($named as $id => $names) {
+			if ($names['category'] === $categorySlug && $names['subcategory'] === $subcategorySlug) {
+				$wanted = $id;
+			}
+		}
 		if ($wanted === null) {
 			return [];
 		}
@@ -128,7 +141,7 @@ class RegistryService {
 		$found = [];
 		foreach ($this->features->findAll() as $feature) {
 			if ($feature->getSubcategoryId() === $wanted) {
-				$found[] = $this->describe($feature);
+				$found[] = $this->describe($feature, $named);
 			}
 		}
 
@@ -136,70 +149,48 @@ class RegistryService {
 	}
 
 	/**
+	 * Subcategory id → the two slugs that name it, read once per call.
+	 *
+	 * Once, deliberately. Looking each record's Category and Subcategory up as it
+	 * was described meant two more reads of the whole taxonomy per record — two
+	 * hundred talleres cost four hundred queries to answer one question.
+	 *
+	 * @return array<int, array{category: string, subcategory: string}>
+	 */
+	private function named(): array {
+		$named = [];
+		foreach ($this->taxonomy->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				$named[$subcategory['id']] = [
+					'category' => $category['slug'],
+					'subcategory' => $subcategory['slug'],
+				];
+			}
+		}
+
+		return $named;
+	}
+
+	/**
 	 * A record as another app wants it: slugs rather than ids, because an id is
 	 * ours and a slug is shared.
 	 *
+	 * @param array<int, array{category: string, subcategory: string}> $named
 	 * @return array<string, mixed>
 	 */
-	private function describe(Feature $feature): array {
-		$subcategory = $this->subcategoryById($feature->getSubcategoryId());
-		$category = $subcategory === null
-			? null
-			: $this->categoryById((int)$subcategory->getCategoryId());
+	private function describe(Feature $feature, array $named): array {
+		$names = $named[$feature->getSubcategoryId()] ?? null;
 
 		return [
 			'id' => (int)$feature->getId(),
 			'name' => $feature->getName(),
 			'kind' => $feature->getKind(),
-			'category' => $category?->getSlug(),
-			'subcategory' => $subcategory?->getSlug(),
+			'category' => $names['category'] ?? null,
+			'subcategory' => $names['subcategory'] ?? null,
 			'address' => $feature->getAddress(),
 			'geometry' => $feature->getGeometry() === null
 				? null
 				: json_decode($feature->getGeometry(), true),
 		];
-	}
-
-	private function subcategoryId(string $categorySlug, string $subcategorySlug): ?int {
-		foreach ($this->categories->findAll() as $category) {
-			if ($category->getSlug() !== $categorySlug) {
-				continue;
-			}
-			foreach ($this->subcategoriesOf((int)$category->getId()) as $subcategory) {
-				if ($subcategory->getSlug() === $subcategorySlug) {
-					return (int)$subcategory->getId();
-				}
-			}
-		}
-
-		return null;
-	}
-
-	/** @return \OCA\Territorio\Db\Subcategory[] */
-	private function subcategoriesOf(int $categoryId): array {
-		return array_values(array_filter(
-			$this->subcategories->findAll(),
-			static fn ($subcategory): bool => (int)$subcategory->getCategoryId() === $categoryId,
-		));
-	}
-
-	private function subcategoryById(int $id): ?\OCA\Territorio\Db\Subcategory {
-		foreach ($this->subcategories->findAll() as $subcategory) {
-			if ((int)$subcategory->getId() === $id) {
-				return $subcategory;
-			}
-		}
-
-		return null;
-	}
-
-	private function categoryById(int $id): ?\OCA\Territorio\Db\Category {
-		foreach ($this->categories->findAll() as $category) {
-			if ((int)$category->getId() === $id) {
-				return $category;
-			}
-		}
-
-		return null;
 	}
 }

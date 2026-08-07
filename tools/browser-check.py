@@ -41,6 +41,13 @@ SHOTS = Path(__file__).parent / ".browser-check"
 # persist, it needs to retire what it made on the way out.
 RUN = uuid.uuid4().hex[:6]
 
+# Where this run clicks, nudged so it never lands on what the last run left.
+# Clicking a marker selects that record and clicking inside a polygon selects
+# that Sector — both replace the open draft, so a fixed spot means every run
+# after the first silently edits the previous run's record instead of creating
+# its own. That is the app behaving correctly and the check being naive.
+NUDGE = int(RUN, 16) % 120
+
 # Our own list, not Nextcloud's: the header carries a "Buscar contactos" field
 # and a menu full of list items, and unscoped selectors find those first.
 ROWS = ".app-content-list .list-item"
@@ -69,7 +76,22 @@ def console_errors(page):
     return found
 
 
-def create_a_place(page, name):
+def save(page, failures, what):
+    """Press Guardar and report what the app said if it refused.
+
+    Without this the gate could only say a record was missing afterwards, which
+    is the symptom rather than the reason — and the app already puts the reason
+    on screen.
+    """
+    page.get_by_role("button", name="Guardar").click()
+    page.wait_for_timeout(800)
+
+    refusal = page.locator(".notecard--error, .notecard--warning")
+    if refusal.count() > 0:
+        failures.append(f"saving {what} was refused: {refusal.first.inner_text().strip()}")
+
+
+def create_a_place(page, name, failures):
     """The #2 criterion nobody ever exercised: create a record end to end."""
     page.get_by_role("button", name="Agregar").click()
     page.get_by_label("Nombre").fill(name)
@@ -77,17 +99,20 @@ def create_a_place(page, name):
     # well clear of where draw_a_sector() puts its polygons. Clicking inside one
     # selects that Sector instead (#10's own behaviour) and replaces this draft,
     # so every run after the first would silently create nothing.
-    page.locator('[data-testid="map-canvas"]').click(position={"x": 800, "y": 620})
-    page.get_by_role("button", name="Guardar").click()
+    page.locator('[data-testid="map-canvas"]').click(
+        position={"x": 620 + NUDGE, "y": 560 + (NUDGE % 60)}
+    )
+    save(page, failures, "the Place")
 
 
-def draw_a_sector(page, name, colour="#16a34a"):
+def draw_a_sector(page, name, failures, colour="#16a34a"):
     """The #10 criterion: draw a polygon, name it, colour it, save it."""
     # The icon is a div inside the button's anchor, not the anchor itself.
     page.locator(".leaflet-pm-icon-polygon").click()
 
     canvas = page.locator('[data-testid="map-canvas"]')
-    for x, y in [(260, 200), (420, 200), (420, 320), (260, 320)]:
+    left, top = 180 + NUDGE, 160 + (NUDGE % 60)
+    for x, y in [(left, top), (left + 110, top), (left + 110, top + 90), (left, top + 90)]:
         canvas.click(position={"x": x, "y": y})
     # Geoman's own Finalizar, rather than clicking the first vertex again: the
     # vertex is an 8px marker and hitting it is a coin toss.
@@ -97,7 +122,7 @@ def draw_a_sector(page, name, colour="#16a34a"):
     # The colour input is native, so set it directly — a colour picker cannot be
     # driven by clicking.
     page.locator('input[type="color"]').fill(colour)
-    page.get_by_role("button", name="Guardar").click()
+    save(page, failures, "the Sector")
 
 
 def search_narrows_everything(page, failures):
@@ -183,8 +208,8 @@ def main():
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
-        create_a_place(page, f"Plaza del Navegador {RUN}")
-        draw_a_sector(page, f"Sector Navegador {RUN}")
+        create_a_place(page, f"Plaza del Navegador {RUN}", failures)
+        draw_a_sector(page, f"Sector Navegador {RUN}", failures)
 
         # Reload rather than trust the screen: a record that only exists in the
         # browser's memory looks identical to one that was saved.

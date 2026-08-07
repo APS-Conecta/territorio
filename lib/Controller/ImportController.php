@@ -7,8 +7,6 @@ namespace OCA\Territorio\Controller;
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
-use OCA\Territorio\Db\DatasetMapper;
-use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Controller;
@@ -42,8 +40,6 @@ class ImportController extends Controller {
 		IRequest $request,
 		private ImportService $import,
 		private RevertService $revertService,
-		private ImportBatchMapper $batches,
-		private DatasetMapper $datasets,
 		private IUserSession $userSession,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -88,23 +84,7 @@ class ImportController extends Controller {
 
 	#[NoAdminRequired]
 	public function batches(): JSONResponse {
-		// The Dataset's name is joined on here rather than shipped by the batch:
-		// a batch knows an id, and "Importación #3 en 7" tells a person nothing.
-		$datasets = $this->datasets->allById();
-
-		return new JSONResponse(array_map(
-			function ($batch) use ($datasets): array {
-				// ?? not ?->: a missing key is an undefined-index warning before
-				// the nullsafe operator ever gets a chance.
-				$dataset = $datasets[$batch->getDatasetId()] ?? null;
-
-				return $batch->toClient() + [
-					'dataset' => $dataset?->getLabel() ?? 'conjunto eliminado',
-					'undone' => $this->batches->isUndone((int)$batch->getId()),
-				];
-			},
-			$this->batches->findRecent(),
-		));
+		return new JSONResponse($this->import->recentBatches());
 	}
 
 	/**

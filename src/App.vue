@@ -100,6 +100,7 @@ import {
 	emptyFilter,
 	filterFeatures,
 	isFiltered,
+	listFor,
 	toggleCategory,
 	toggleSubcategory,
 } from './filters.js'

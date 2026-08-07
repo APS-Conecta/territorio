@@ -3,6 +3,15 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.7.3] — unreleased
+
+### Fixed
+
+- The record list came back. `listFor` was called in `App.vue` without being imported, so the
+  computed behind the Datos column threw a `ReferenceError` and took the list down with it —
+  present since the Capas panel landed. Nothing catches this class of mistake yet: the three
+  suites test `filters.js` directly and never load `App.vue`, and there is no JS linter.
+
 ## [0.7.2] — unreleased
 
 Undo an import.

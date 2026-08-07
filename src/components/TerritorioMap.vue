@@ -96,12 +96,6 @@ export default {
 			// change that happens to look identical, which is precisely what
 			// reopening a saved Sector produces.
 			reported: '',
-			// True between zoomstart and zoomend. Rebuilding a layer group while the
-			// map is animating a zoom leaves Leaflet mid-flight holding a layer whose
-			// map is already gone — it throws on _animateZoom and the pins never come
-			// back. The map polls every five seconds, so "someone zoomed just as a
-			// poll landed" is an ordinary Tuesday rather than a rare accident.
-			zooming: false,
 			resizeObserver: null,
 		}
 	},
@@ -183,12 +177,6 @@ export default {
 			// Leaflet's default puts the zoom control top-left, under Nextcloud's
 			// app navigation toggle on narrow screens.
 			zoomControl: false,
-			// No animated zoom. Leaflet animates by computing every layer's new
-			// screen position mid-flight, and this map rebuilds its layers on a
-			// five-second poll — a rebuild landing inside a flight leaves Leaflet
-			// reading a layer whose map is already gone, it throws, and the pins do
-			// not come back. A smooth zoom is not worth a map that empties itself.
-			zoomAnimation: false,
 		})
 		L.control.zoom({ position: 'topright' }).addTo(this.map)
 
@@ -203,11 +191,7 @@ export default {
 		// animate over.
 		const comuna = boundsOf(this.features, this.subcategories, COMUNA_EXTENT)
 		if (comuna !== null) {
-			this.map.setView(
-				L.latLngBounds(comuna).getCenter(),
-				this.map.getBoundsZoom(L.latLngBounds(comuna), false, [16, 16]),
-				{ animate: false },
-			)
+			this.map.fitBounds(comuna, { padding: [16, 16], animate: false })
 		}
 
 		L.tileLayer(this.basemap.url, {
@@ -228,21 +212,10 @@ export default {
 		// Shapes live in Leaflet's overlayPane and markers in its markerPane, which
 		// is what puts a Sector's fill beneath the pins standing on it. Nothing
 		// here sets a z-index: the panes already order themselves.
-		this.outlines = L.featureGroup().addTo(this.map)
 		this.setUpDrawing()
 		this.drawMarkers()
 		this.drawShapes()
 		this.drawDraft()
-
-		// Whatever a redraw wanted to do during the zoom happens once it lands.
-		this.map.on('zoomstart', () => {
-			this.zooming = true
-		})
-		this.map.on('zoomend', () => {
-			this.zooming = false
-			this.drawMarkers()
-			this.drawShapes()
-		})
 
 		this.map.on('click', (event) => {
 			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
@@ -268,7 +241,7 @@ export default {
 		 * ponytail: full redraw; diff only if a real catastro makes it stutter.
 		 */
 		drawMarkers() {
-			if (this.map === null || this.zooming) {
+			if (this.map === null) {
 				return
 			}
 
@@ -310,10 +283,13 @@ export default {
 		 * polygon while looking at another sitting exactly on top of it.
 		 */
 		drawShapes() {
-			if (this.outlines === null || this.zooming) {
+			if (this.map === null) {
 				return
 			}
-			this.outlines.clearLayers()
+
+			// Swapped whole, for the reason drawMarkers() swaps: emptying a group the
+			// map is still using leaves Leaflet holding layers whose map is gone.
+			const next = L.featureGroup()
 
 			this.shapes.forEach((feature) => {
 				if (this.draftGeometry !== null && feature.id === this.selectedId) {
@@ -343,8 +319,15 @@ export default {
 					L.DomEvent.stopPropagation(event)
 					this.$emit('select', feature.id)
 				})
-				this.outlines.addLayer(layer)
+				next.addLayer(layer)
 			})
+
+			const previous = this.outlines
+			this.outlines = next
+			this.map.addLayer(next)
+			if (previous !== null) {
+				this.map.removeLayer(previous)
+			}
 		},
 
 		/**

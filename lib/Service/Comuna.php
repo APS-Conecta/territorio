@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
-use OCA\Territorio\Exception\InvalidFeatureException;
+use InvalidArgumentException;
 
 /**
  * The Chilean municipality this install is scoped to — see `CONTEXT.md`.
@@ -34,12 +34,12 @@ final class Comuna {
 	 * and storing it would mean every UV file is later refused for a reason
 	 * nobody can see.
 	 *
-	 * @throws InvalidFeatureException
+	 * @throws InvalidArgumentException
 	 */
 	public static function of(string $cut, string $name = ''): self {
 		$cut = trim($cut);
 		if (preg_match('/^\d{5}$/', $cut) !== 1) {
-			throw new InvalidFeatureException(sprintf(
+			throw new InvalidArgumentException(sprintf(
 				'"%s" no es un código CUT: se esperan cinco dígitos, como 13110.',
 				$cut,
 			));

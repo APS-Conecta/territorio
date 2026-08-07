@@ -20,13 +20,21 @@ at afterwards.
 
 ponytail: one script, no framework, no page objects. It grows a function per
 slice that has a screen; when that stops fitting, it wants a real suite.
+
+KNOWN: the two steps that CREATE things — clicking the map to place a record and
+drawing a polygon — pass roughly two runs in three on an instance holding a
+comuna's cadastre. Everything they set up is then asserted exactly, so a bad run
+fails loudly rather than passing hollow, and the assertions themselves are
+sound. But a gate that cries wolf one run in three gets ignored, so this needs
+fixing before it is trusted unattended: the failures show no console error and
+no refusal from the app, which points at the clicks rather than at the code.
 """
 
 import sys
 import uuid
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
 
 BASE = "http://localhost:8083"
 USER, PASSWORD = "admin", "dev"
@@ -108,9 +116,18 @@ def create_a_place(page, name, failures):
         position={"x": 620 + NUDGE, "y": 560 + (NUDGE % 60)}
     )
     save(page, failures, "the Place")
-    # Close the sidebar: it covers the right of the map, and the next thing this
-    # does is click on the map.
+    # Dismiss the sidebar so it does not overlay the map for the next click.
+    #
+    # Escape rather than its close button, deliberately: closing it properly
+    # widens the map canvas, and every position-based click after that lands
+    # somewhere else than the one before it. Escape leaves the geometry alone.
     page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
+def toggle_division(page, label):
+    """Tick or untick one of the Capas division toggles."""
+    page.locator(".territorio-capas__divisions").get_by_text(label, exact=True).click()
     page.wait_for_timeout(400)
 
 
@@ -126,6 +143,19 @@ def draw_a_sector(page, name, failures, colour="#16a34a"):
     # Geoman's own Finalizar, rather than clicking the first vertex again: the
     # vertex is an 8px marker and hitting it is a coin toss.
     page.locator(".leaflet-pm-action.action-finish").click()
+
+    # The sidebar for a Sector carries a colour input and no coordinate fields.
+    # Waiting for it here turns "the polygon never became a draft" into a sentence
+    # instead of a timeout thirty seconds later on an unrelated locator.
+    #
+    # ponytail: the draw is clicks on a canvas that may be covered in boundaries,
+    # and geoman snaps to them, so it does occasionally not take. It fails
+    # honestly rather than silently; give it a retry if that starts costing time.
+    try:
+        page.wait_for_selector('input[type="color"]', timeout=5_000)
+    except PlaywrightTimeout:
+        failures.append("drawing the polygon did not open a Sector draft")
+        return
 
     page.get_by_label("Nombre").fill(name)
     # The colour input is native, so set it directly — a colour picker cannot be
@@ -252,6 +282,16 @@ def main():
 
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+        # Hide the cadastre first, which is what a person drawing a boundary does
+        # anyway. With a comuna's Unidades Vecinales on screen the whole map is
+        # polygons: clicks land on them and geoman snaps new vertices to their
+        # edges, so the drawing step becomes a coin toss for reasons that have
+        # nothing to do with what is being checked.
+        if page.locator(".territorio-capas__divisions").get_by_text(
+            "Unidad Vecinal", exact=True,
+        ).count() > 0:
+            toggle_division(page, "Unidad Vecinal")
 
         create_a_place(page, f"Plaza del Navegador {RUN}", failures)
         draw_a_sector(page, f"Sector Navegador {RUN}", failures)

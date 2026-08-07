@@ -13,8 +13,10 @@ declare(strict_types=1);
  * One comuna is typically under 100 KB, which is a thing a clinic can import and
  * a release can carry as an asset.
  *
- * EPSG:4674 (SIRGAS 2000) is already degrees, so nothing is reprojected here and
- * nothing should be. UTF-8 throughout.
+ * EPSG:4674 (SIRGAS 2000) is already degrees, so there is no projection to
+ * undo. The `.shp` path still asks GDAL for EPSG:4326, which is a sub-metre
+ * datum shift rather than a reprojection: RFC 7946 says GeoJSON is WGS84, and
+ * saying so costs nothing. UTF-8 throughout.
  *
  * A `.shp` is converted with `ogr2ogr` (GDAL), which is the tool for the job and
  * is not a dependency of this app — it runs on whoever's machine cuts the file,
@@ -25,6 +27,8 @@ declare(strict_types=1);
  * lives, is pure and tested.
  */
 
+// One namespace per tool: each declares a `main()`, and the unit tests
+// `require_once` both files into the same process.
 namespace Territorio\Tools\Comuna;
 
 use InvalidArgumentException;
@@ -109,12 +113,17 @@ function cutComuna(array $national, string $cut): array {
  * @return array<string, mixed>
  * @throws RuntimeException
  */
-function readNational(string $path): array {
+function readNational(string $path, string $cut): array {
 	if (!is_readable($path)) {
 		throw new RuntimeException(sprintf('No se puede leer %s', $path));
 	}
 
-	$geojson = str_ends_with(strtolower($path), '.shp') ? convert($path) : (string)file_get_contents($path);
+	// ponytail: a .geojson is read whole and decoded whole, so a national file
+	// handed in directly still costs gigabytes. The .shp path filters inside GDAL
+	// and does not; cut the national file once and this never matters.
+	$geojson = str_ends_with(strtolower($path), '.shp')
+		? convert($path, $cut)
+		: (string)file_get_contents($path);
 	$decoded = json_decode($geojson, true);
 
 	if (!is_array($decoded)) {
@@ -124,21 +133,41 @@ function readNational(string $path): array {
 	return $decoded;
 }
 
-/** @throws RuntimeException */
-function convert(string $shapefile): string {
+/**
+ * The shapefile, converted — and filtered to one comuna while still inside GDAL.
+ *
+ * The `-where` matters more than it looks. The national file is 128 MB of
+ * shapefile and several hundred megabytes as GeoJSON text; reading all of it
+ * into one PHP string and then decoding that into arrays costs gigabytes to end
+ * up with 37 polygons. GDAL drops the other 345 comunas before a byte reaches
+ * us.
+ *
+ * `-t_srs EPSG:4326` is a datum shift, not a reprojection: the source is already
+ * degrees (EPSG:4674, SIRGAS 2000) and the difference is sub-metre, but RFC 7946
+ * says GeoJSON is WGS84 and saying so costs nothing.
+ *
+ * @throws RuntimeException
+ */
+function convert(string $shapefile, string $cut): string {
 	fwrite(STDERR, 'Convirtiendo el shapefile con ogr2ogr…' . PHP_EOL);
 
+	$errors = tempnam(sys_get_temp_dir(), 'ogr');
 	$command = sprintf(
-		'ogr2ogr -f GeoJSON -t_srs EPSG:4326 /vsistdout/ %s 2>/dev/null',
+		'ogr2ogr -f GeoJSON -t_srs EPSG:4326 -where %s /vsistdout/ %s 2>%s',
+		escapeshellarg(sprintf('%s = \'%s\'', COMUNA_FIELD, $cut)),
 		escapeshellarg($shapefile),
+		escapeshellarg((string)$errors),
 	);
 	$geojson = shell_exec($command);
+	$said = trim((string)@file_get_contents((string)$errors));
+	@unlink((string)$errors);
 
 	if (!is_string($geojson) || trim($geojson) === '') {
 		throw new RuntimeException(
 			'ogr2ogr no devolvió nada. ¿Está GDAL instalado? '
 			. 'En Debian/Ubuntu: sudo apt install gdal-bin. '
-			. 'También puede convertir el archivo aparte y pasar el .geojson resultante.',
+			. 'También puede convertir el archivo aparte y pasar el .geojson resultante.'
+			. ($said === '' ? '' : PHP_EOL . 'ogr2ogr dijo: ' . $said),
 		);
 	}
 
@@ -162,7 +191,7 @@ function main(array $argv): int {
 	}
 
 	try {
-		$cut = cutComuna(readNational($file), $comuna);
+		$cut = cutComuna(readNational($file, $comuna), $comuna);
 	} catch (InvalidArgumentException|RuntimeException $e) {
 		fwrite(STDERR, $e->getMessage() . PHP_EOL);
 

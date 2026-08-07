@@ -65,14 +65,6 @@ export function sectorSubcategoryId(taxonomy) {
 }
 
 /**
- * What colour to draw a record in: its own if it has one, otherwise its
- * Category's.
- *
- * Sectores are why the first case exists — they all share one Subcategory, so a
- * per-Category colour would draw every Sector the same. Everything else stays
- * coloured by its Category with nothing to set by hand.
- */
-/**
  * The extent of everything filed under one Subcategory, as Leaflet wants it:
  * `[[south, west], [north, east]]`, or null when there is nothing to measure.
  *
@@ -92,6 +84,15 @@ export function boundsOf(features, subcategories, slug) {
 	let east = -Infinity
 
 	const stretch = (node) => {
+		// Anything that is not a list of positions is not ours to measure — a
+		// GeometryCollection, or a `coordinates: null` the reader let through
+		// because it only checks that `geometry` is an object. Reading node[0] of
+		// one throws inside mounted(), before the tile layer, and the map never
+		// appears at all.
+		if (!Array.isArray(node)) {
+			return
+		}
+
 		// A position is [lon, lat]; everything above it is a list of those, however
 		// deeply a Polygon's rings nest them.
 		if (typeof node[0] === 'number') {
@@ -114,6 +115,14 @@ export function boundsOf(features, subcategories, slug) {
 	return south === Infinity ? null : [[south, west], [north, east]]
 }
 
+/**
+ * What colour to draw a record in: its own if it has one, otherwise its
+ * Category's.
+ *
+ * Sectores are why the first case exists — they all share one Subcategory, so a
+ * per-Category colour would draw every Sector the same. Everything else stays
+ * coloured by its Category with nothing to set by hand.
+ */
 export function colourOf(feature, subcategories) {
 	return feature.colour ?? subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
 }

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidFeatureException;
+use InvalidArgumentException;
 use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Service\Comuna;
 use OCA\Territorio\Service\ComunaConfig;
@@ -15,7 +15,8 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
 /**
- * Saves the basemap setting.
+ * Saves the settings an administrator chooses: which Comuna this install
+ * serves, and where the map's tiles come from.
  *
  * Carries no #[NoAdminRequired] and no #[NoCSRFRequired] on purpose: both of
  * those are how a route is opened up, so their absence is what makes this
@@ -53,7 +54,7 @@ class AdminSettingsController extends Controller {
 	public function saveComuna(string $cut = '', string $name = ''): JSONResponse {
 		try {
 			$comuna = Comuna::of($cut, $name);
-		} catch (InvalidFeatureException $e) {
+		} catch (InvalidArgumentException $e) {
 			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
 		}
 

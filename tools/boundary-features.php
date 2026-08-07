@@ -20,6 +20,8 @@ declare(strict_types=1);
  * and unit-tested; only `main()` touches the network.
  */
 
+// One namespace per tool: each declares a `main()`, and the unit tests
+// `require_once` both files into the same process.
 namespace Territorio\Tools\Boundary;
 
 use InvalidArgumentException;

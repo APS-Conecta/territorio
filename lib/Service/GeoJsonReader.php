@@ -93,7 +93,7 @@ class GeoJsonReader {
 	}
 
 	/** @return array<string, mixed> */
-	private function row(mixed $feature, int $index, string $datasetSlug, string $comuna = ''): array {
+	private function row(mixed $feature, int $index, string $datasetSlug, string $comuna): array {
 		if (!is_array($feature)) {
 			throw new InvalidImportException(sprintf('El feature %d no es un objeto.', $index + 1));
 		}

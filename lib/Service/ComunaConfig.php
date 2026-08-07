@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use InvalidArgumentException;
 use OCA\Territorio\AppInfo\Application;
 use OCP\IAppConfig;
+use Psr\Log\LoggerInterface;
 
 /**
  * Reads and writes which Comuna this install serves. All the judgement lives in
@@ -17,6 +19,7 @@ class ComunaConfig {
 
 	public function __construct(
 		private IAppConfig $appConfig,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -28,7 +31,7 @@ class ComunaConfig {
 
 		try {
 			return Comuna::of($cut, $this->appConfig->getValueString(Application::APP_ID, self::KEY_NAME));
-		} catch (\OCA\Territorio\Exception\InvalidFeatureException) {
+		} catch (InvalidArgumentException $e) {
 			// Something unusable was stored, before this validated or by hand. Say
 			// "not chosen" rather than throwing on every page load — setup is
 			// reachable from there and a broken value is fixed by choosing again.

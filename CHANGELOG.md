@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.15.1] — unreleased
+## [0.16.0] — unreleased
 
 The comuna, and the Unidades Vecinales that describe it.
 

@@ -48,17 +48,18 @@
 
 		<h5 v-if="limit.length > 0">Tramos del límite</h5>
 		<ul v-if="limit.length > 0" class="territorio-picker__parts">
-			<li v-for="(part, index) in limit" :key="`${part.featureId ?? 'a-mano'}-${index}`">
+			<li v-for="row in limit" :key="row.name">
 				<span>
-					{{ part.name }}
-					<!-- Says which parts follow nothing anybody could have picked. -->
-					<span v-if="part.featureId === undefined" class="territorio-picker__count">
-						a mano
-					</span>
+					{{ row.name }}
+					<!-- How much of the comuna that name stands for, like the
+					     suggestions above: one street is dozens of separate ways. -->
+					<span v-if="row.parts > 1" class="territorio-picker__count">{{ row.parts }}</span>
+					<!-- And which rows follow nothing anybody could have picked. -->
+					<span v-if="!row.picked" class="territorio-picker__count">a mano</span>
 				</span>
 				<NcButton variant="tertiary"
-					:aria-label="`Quitar ${part.name} del límite`"
-					@click="$emit('remove-part', index)">
+					:aria-label="`Quitar ${row.name} del límite`"
+					@click="$emit('remove-part', row.name)">
 					Quitar
 				</NcButton>
 			</li>
@@ -140,7 +141,7 @@ export default {
 		query: { type: String, default: '' },
 		/** Waiting for the click that says which block is the Sector (issue #14). */
 		seeding: { type: Boolean, default: false },
-		/** The Limit's parts, picked or described (issue #15). */
+		/** The Limit as rows to show — one per name (issue #15). */
 		limit: { type: Array, default: () => [] },
 		/** The same thing as one sentence, built by the caller. */
 		limitSaid: { type: String, default: '' },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partsFrom, readable, withNote, without } from '../../src/limit.js'
+import { groups, partsFrom, readable, withNote, without } from '../../src/limit.js'
 
 /**
  * A Sector's Limit — what somebody says out loud when asked where the sector
@@ -118,17 +118,52 @@ describe('withNote', () => {
 	})
 })
 
+describe('groups', () => {
+	/**
+	 * A comuna holds one street as dozens of ways, so picking a name records
+	 * dozens of parts. Listing them one per row is thirty identical lines with
+	 * thirty identical Quitar buttons — the same unreadable list #13 grouped the
+	 * suggestions to avoid.
+	 */
+	it('shows one row per name, with what it stands for', () => {
+		expect(groups([
+			{ featureId: 7, name: 'Avenida Vicuña Mackenna' },
+			{ featureId: 8, name: 'Avenida Vicuña Mackenna' },
+			{ name: 'por el canal' },
+		])).toEqual([
+			{ name: 'Avenida Vicuña Mackenna', parts: 2, picked: true },
+			{ name: 'por el canal', parts: 1, picked: false },
+		])
+	})
+
+	it('is empty for an empty Limit', () => {
+		expect(groups([])).toEqual([])
+		expect(groups(null)).toEqual([])
+	})
+})
+
 describe('without', () => {
-	it('removes one part and leaves the rest in order', () => {
+	/**
+	 * Removing is by NAME, not by row index.
+	 *
+	 * "Quitar Vicuña Mackenna" has to mean all thirty of its ways. Removing one
+	 * of them would leave the sentence unchanged — names are said once — while
+	 * the tick in the picker flipped off, so the screen would disagree with
+	 * itself and the next click would put it back.
+	 */
+	it('removes every part of one name', () => {
 		const parts = [
-			{ featureId: 7, name: 'Uno' },
-			{ name: 'dos' },
-			{ featureId: 9, name: 'Tres' },
+			{ featureId: 7, name: 'Vicuña Mackenna' },
+			{ featureId: 8, name: 'Vicuña Mackenna' },
+			{ name: 'por el canal' },
 		]
 
-		expect(without(parts, 1)).toEqual([
-			{ featureId: 7, name: 'Uno' },
-			{ featureId: 9, name: 'Tres' },
-		])
+		expect(without(parts, 'Vicuña Mackenna')).toEqual([{ name: 'por el canal' }])
+	})
+
+	it('leaves everything else alone', () => {
+		const parts = [{ featureId: 7, name: 'Uno' }, { name: 'dos' }]
+
+		expect(without(parts, 'no existe')).toEqual(parts)
 	})
 })

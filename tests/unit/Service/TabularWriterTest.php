@@ -197,6 +197,17 @@ final class TabularWriterTest extends TestCase {
 		self::assertStringContainsString('categoría', mb_strtolower($kml));
 	}
 
+	/**
+	 * The notice has to keep up with what the app stores.
+	 *
+	 * It was written when there was no Limit and stayed true by accident until
+	 * there was one. A notice listing what a file omits is only useful while it
+	 * is complete, and nothing else would notice it going stale.
+	 */
+	public function testTheKmlNoticeMentionsTheLimit(): void {
+		self::assertStringContainsString('límite', mb_strtolower((new KmlWriter())->write([])));
+	}
+
 	/** And it does not carry them, whatever the caller passed in. */
 	public function testKmlNeverCarriesContactDetails(): void {
 		$kml = (new KmlWriter())->write([self::ROW]);

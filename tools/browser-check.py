@@ -678,6 +678,24 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     offered.first.locator("button").click()
     page.wait_for_timeout(600)
 
+    # #15's first criterion, on the actual picking path: choosing a name records
+    # it as what the Sector runs along. Everything else that tests the Limit
+    # hands one to the service or types a stretch; this is the only place a real
+    # Boundary feature is picked and the result read.
+    said = picker.locator(".territorio-picker__limit")
+    if said.count() == 0 or name not in said.inner_text():
+        failures.append(
+            "picking a boundary feature did not record it as the Sector's Limit: "
+            + (said.inner_text() if said.count() > 0 else "nothing shown"),
+        )
+
+    # And it says the name ONCE, though it stands for four separate lines.
+    parts = picker.locator(".territorio-picker__parts li")
+    if parts.count() != 1:
+        failures.append(
+            f"a street picked as four lines is {parts.count()} rows in the Limit, expected 1",
+        )
+
     generate = picker.get_by_role("button", name="Generar el polígono")
     if generate.count() == 0:
         failures.append("picking lines did not offer to generate the polygon")
@@ -946,7 +964,11 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
         page.mouse.up()
         page.wait_for_timeout(500)
     else:
-        skip("the sector had no draggable vertex; the Limit survived no adjustment")
+        # A failure, not a skip. An open Sector always has draggable vertices —
+        # a_generated_polygon_is_editable asserts exactly that — so "no handle"
+        # here means something is broken, and skipping would let this check
+        # report green having adjusted nothing.
+        failures.append("the sector had no draggable vertex, so nothing was adjusted")
 
     save(page, failures, "the adjusted sector")
     page.keyboard.press("Escape")

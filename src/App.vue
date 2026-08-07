@@ -134,7 +134,7 @@
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
 					:seeding="seeding"
-					:limit="draft.limit ?? []"
+					:limit="groups(draft.limit)"
 					:limit-said="readable(draft.limit)"
 					@add-note="addLimitNote"
 					@remove-part="removeLimitPart"
@@ -174,7 +174,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
-import { partsFrom, readable, withNote, without } from './limit.js'
+import { groups, partsFrom, readable, withNote, without } from './limit.js'
 import { faceAround } from './sectors.js'
 import {
 	countsFor,
@@ -418,6 +418,7 @@ export default {
 
 	methods: {
 		isFiltered,
+		groups,
 		readable,
 
 		resetFilter() {
@@ -748,20 +749,24 @@ export default {
 		},
 
 		/**
-		 * One part removed. A picked line dropped this way is unpicked too, or the
-		 * ticks in the picker would disagree with what the Sector says it runs
-		 * along — and the next pick would put it straight back.
+		 * One name dropped from the Limit, and everything it stood for unpicked.
+		 *
+		 * By name and not by row: a street is dozens of ways, so "Quitar Vicuña
+		 * Mackenna" means all of them. Dropping one way would change nothing the
+		 * person can read — the sentence says each name once — while unticking the
+		 * street in the picker, and the next pick would put it back.
 		 */
-		removeLimitPart(index) {
+		removeLimitPart(name) {
 			if (this.draft?.limit === undefined) {
 				return
 			}
 
-			const part = this.draft.limit[index]
-			this.draft.limit = without(this.draft.limit, index)
-			if (part?.featureId !== undefined) {
-				this.draft.picked = this.draft.picked.filter((id) => id !== part.featureId)
-			}
+			const dropped = this.draft.limit
+				.filter((part) => part.name === name && part.featureId !== undefined)
+				.map((part) => part.featureId)
+
+			this.draft.limit = without(this.draft.limit, name)
+			this.draft.picked = this.draft.picked.filter((id) => !dropped.includes(id))
 		},
 
 		/**
@@ -1033,9 +1038,13 @@ export default {
 			return {
 				...this.draft,
 				colour: this.draft.colour ?? '',
-				// Sent only for a Sector. Everything else has no Limit, and sending
-				// an empty one would be a claim that it used to have something.
-				...(this.draft.limit === undefined ? {} : { limit: this.draft.limit }),
+				// Sent only for something that is a Sector RIGHT NOW. `draft.limit`
+				// is set when the editor opens and survives a change of
+				// Subcategory, so a Sector re-classified as a colegio would
+				// otherwise post a Limit onto a record that cannot have one.
+				...(this.draft.limit === undefined || !this.isSector(this.draft.subcategoryId)
+					? {}
+					: { limit: this.draft.limit }),
 				// A drawn shape wins over the coordinate fields, which the form does
 				// not even show for one. GeoJSON orders positions [longitude,
 				// latitude] — the reverse of how they are said out loud, and of the

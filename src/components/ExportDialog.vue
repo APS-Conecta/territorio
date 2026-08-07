@@ -27,7 +27,8 @@
 		<NcNoteCard v-if="format === 'kml'" type="warning">
 			Un archivo KML lleva solamente el nombre y la ubicación. No lleva
 			teléfono, correo, persona de contacto, cargo, dirección, horario, notas,
-			fuente ni categoría. Para un archivo completo, use GeoJSON.
+			fuente, categoría ni el límite de un sector. Para un archivo completo,
+			use GeoJSON.
 		</NcNoteCard>
 
 		<NcCheckboxRadioSwitch v-if="format !== 'kml'"

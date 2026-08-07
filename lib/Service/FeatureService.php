@@ -11,6 +11,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
+use JsonException;
 use OCP\AppFramework\Db\DoesNotExistException;
 
 /**
@@ -25,6 +26,18 @@ use OCP\AppFramework\Db\DoesNotExistException;
  * controller rather than a rewrite.
  */
 class FeatureService {
+	/**
+	 * How much Limit is a Limit.
+	 *
+	 * Bounds rather than validation: nothing here is a security boundary — every
+	 * user may already write every field (ADR-0005) — but this is the one field
+	 * the browser sends as a structure, into a column with no length of its own,
+	 * and a runaway client should not be able to put a megabyte of names in a
+	 * sentence somebody has to read.
+	 */
+	private const LIMIT_PARTS = 500;
+	private const LIMIT_NAME = 200;
+
 	/** Optional free-text columns, all handled identically: trim, blank becomes null. */
 	private const OPTIONAL_TEXT = [
 		'address' => 'setAddress',
@@ -415,20 +428,53 @@ class FeatureService {
 				continue;
 			}
 
-			$name = trim((string)($part['name'] ?? ''));
+			// A Limit is read aloud. Picking every street in a comuna would record
+			// eleven thousand parts into a TEXT column and produce a sentence
+			// nobody can read, so the cap is where a sentence stops being one —
+			// and it is generous, because a Sector really can follow a dozen
+			// streets held as dozens of ways each.
+			if (count($parts) >= self::LIMIT_PARTS) {
+				break;
+			}
+
+			// A name that is not a string is not a name. `(string)` on an array
+			// gives the literal "Array" and a PHP warning, which would store a part
+			// reading "Array" and blame nobody.
+			$given = $part['name'] ?? null;
+			$name = is_string($given) || is_int($given) || is_float($given)
+				? mb_substr(trim((string)$given), 0, self::LIMIT_NAME)
+				: '';
 			if ($name === '') {
 				// A part nobody can read is not a part. It would render as a gap in
 				// the sentence and there would be nothing to say about it.
 				continue;
 			}
 
+			// Whole numbers only. is_numeric() would take 12.9, " 41" and "1e3"
+			// and cast them to 12, 41 and 1000 — a part silently pointing at a
+			// different Boundary feature from the one it names.
 			$featureId = $part['featureId'] ?? null;
-			$parts[] = is_numeric($featureId)
+			$isId = is_int($featureId)
+				|| (is_string($featureId) && ctype_digit($featureId));
+
+			$parts[] = $isId
 				? ['featureId' => (int)$featureId, 'name' => $name]
 				: ['name' => $name];
 		}
 
-		return $parts === [] ? null : json_encode($parts, JSON_UNESCAPED_UNICODE);
+		if ($parts === []) {
+			return null;
+		}
+
+		try {
+			return json_encode($parts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+		} catch (JsonException $e) {
+			// Without the flag this returns false, which goes straight into the
+			// column and destroys the Limit silently — a name that is not valid
+			// UTF-8 is all it takes. Refused instead, like `colour()` two
+			// functions down refuses what it cannot store.
+			throw new InvalidFeatureException('El límite tiene texto que no se puede guardar.', 0, $e);
+		}
 	}
 
 	/**

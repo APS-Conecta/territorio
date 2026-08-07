@@ -75,7 +75,38 @@ export function withNote(parts, text) {
 	return said === '' ? parts : [...parts, { name: said }]
 }
 
-/** One part removed — a street that turned out not to be the limit after all. */
-export function without(parts, index) {
-	return parts.filter((_, at) => at !== index)
+/**
+ * The Limit as rows a person can read: one per name.
+ *
+ * A comuna holds one street as dozens of separate ways, so picking "Vicuña
+ * Mackenna" records dozens of parts. Listing them one per row is thirty
+ * identical lines with thirty identical Quitar buttons — the same list #13
+ * grouped the suggestions to avoid, for the same reason.
+ *
+ * `picked` says whether the row stands for Boundary features, because removing
+ * one has to unpick them too, and a described stretch has nothing to unpick.
+ */
+export function groups(parts) {
+	const rows = new Map()
+
+	;(parts ?? []).forEach((part) => {
+		const row = rows.get(part.name) ?? { name: part.name, parts: 0, picked: false }
+		row.parts += 1
+		row.picked = row.picked || part.featureId !== undefined
+		rows.set(part.name, row)
+	})
+
+	return [...rows.values()]
+}
+
+/**
+ * Every part of one name removed — a street that turned out not to be the limit.
+ *
+ * By name rather than by row, because a name is what the person sees and what
+ * the sentence says. Removing one of a street's thirty ways would change nothing
+ * they can read, while the tick in the picker flipped off: the screen would
+ * disagree with itself, and the next pick would put it straight back.
+ */
+export function without(parts, name) {
+	return (parts ?? []).filter((part) => part.name !== name)
 }

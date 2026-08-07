@@ -149,6 +149,29 @@ final class LimitTest extends IntegrationTestCase {
 		self::assertSame([['name' => 'Canal San Carlos']], $this->stored($id)['limit']);
 	}
 
+	/**
+	 * A Limit is read aloud, so there is a point past which it is not one.
+	 *
+	 * Nothing here is a security boundary — every user may already write every
+	 * field (ADR-0005) — but this is the one field the browser sends as a
+	 * structure, into a column with no length of its own.
+	 */
+	public function testAnAbsurdLimitIsBounded(): void {
+		$id = $this->sector('Sector con límite absurdo', [
+			...array_map(
+				static fn (int $n): array => ['featureId' => $n, 'name' => 'Calle ' . $n],
+				range(1, 900),
+			),
+			['name' => str_repeat('a', 500)],
+		]);
+
+		$stored = $this->stored($id)['limit'];
+		self::assertLessThanOrEqual(500, count($stored));
+		foreach ($stored as $part) {
+			self::assertLessThanOrEqual(200, mb_strlen($part['name']));
+		}
+	}
+
 	/** The export carries it as a sentence, because a person reads the export. */
 	public function testTheLimitAppearsInExports(): void {
 		$id = $this->sector('Sector que se exporta', self::LIMIT);

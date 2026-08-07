@@ -117,7 +117,11 @@ upstream updates the record it already has, and no Sector already drawn is moved
 GeoJSON, CSV or KML.
 
 GeoJSON is the one that goes back in: it carries the external ids, so re-importing updates rather
-than duplicates. Export it **with** contact details if you mean to re-import it. A GeoJSON written
+than duplicates. One exception, and it is deliberate: a Sector's **Limit** is written to the file as
+a sentence but is not read back. Its parts name Boundary features by id, and those ids mean nothing
+in another install — reading the sentence back would replace a Limit built from a dozen picked
+streets with one line of prose. So "lossless" covers every field a record holds except this one,
+which is exported to be read rather than to return. Export it **with** contact details if you mean to re-import it. A GeoJSON written
 without them marks itself partial and the import refuses it, because its contact fields are absent
 rather than empty and an import would read that as "these records have no telephone".
 

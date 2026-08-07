@@ -37,7 +37,24 @@
 </template>
 
 <script>
+import { readable } from '../limit.js'
 import { indexSubcategories } from '../taxonomy.js'
+
+/**
+ * The Limit's parts out of what history recorded.
+ *
+ * History stores what the column stores, which is a JSON string. A malformed one
+ * means something wrote nonsense into it — this panel is the wrong place to
+ * argue about that, so it says nothing rather than throwing inside a render.
+ */
+const parts = (value) => {
+	try {
+		const decoded = JSON.parse(value)
+		return Array.isArray(decoded) ? decoded : []
+	} catch {
+		return []
+	}
+}
 
 const ACTIONS = {
 	created: 'Creado',
@@ -61,6 +78,7 @@ const FIELDS = {
 	notes: 'Notas',
 	sourceRef: 'Fuente',
 	colour: 'Color',
+	limit: 'Límite',
 	// Derived, and in history because ADR-0008 says a reassignment must be
 	// visible like any other change. The value is a record's id, so the entry
 	// reads "Sector: 41 → 58" — honest, if terse; naming them needs the whole
@@ -115,6 +133,13 @@ export default {
 
 			if (field === 'locationQuality') {
 				return QUALITIES[value] ?? value
+			}
+
+			// Stored as JSON, said as a sentence. Left raw it would be the wall of
+			// JSON this method exists to prevent, truncated at sixty characters —
+			// which is worse than saying nothing, because it looks like data.
+			if (field === 'limit') {
+				return readable(parts(value)) || '(vacío)'
 			}
 
 			const text = String(value)

@@ -24,7 +24,8 @@ class KmlWriter {
 	/** Said in the file, where whoever opens it will see it. */
 	private const CANNOT_CARRY = 'Este archivo KML lleva solamente el nombre y la ubicación de cada '
 		. 'registro. No lleva teléfono, correo, persona de contacto, cargo, dirección, horario, '
-		. 'notas, fuente ni categoría. Para un archivo completo, exporte en formato GeoJSON.';
+		. 'notas, fuente, categoría ni el límite de un sector. Para un archivo completo, exporte '
+		. 'en formato GeoJSON.';
 
 	/** @param list<array<string, mixed>> $rows */
 	public function write(array $rows): string {

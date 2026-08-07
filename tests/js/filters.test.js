@@ -121,6 +121,27 @@ describe('search and the Capas toggles together', () => {
 		expect(filterFeatures(FEATURES, filter, SUBCATEGORIES).map((f) => f.id)).toEqual([1, 2])
 	})
 
+	/**
+	 * The other order, which is the one a person actually does: type, then reach
+	 * for a checkbox. The togglers returned a brand-new `{ hidden }` and dropped
+	 * the query on the floor, so the search silently vanished — and the test above
+	 * could never catch it, because building the filter toggle-first is the one
+	 * arrangement where nothing is lost.
+	 */
+	it('survives a toggle made after typing', () => {
+		const searched = { ...emptyFilter(), query: 'uno' }
+
+		const afterSubcategory = toggleSubcategory(searched, 21)
+		expect(afterSubcategory.query).toBe('uno')
+		expect(filterFeatures(FEATURES, afterSubcategory, SUBCATEGORIES).map((f) => f.id))
+			.toEqual([1, 2])
+
+		const afterCategory = toggleCategory(searched, TAXONOMY[0])
+		expect(afterCategory.query).toBe('uno')
+		expect(filterFeatures(FEATURES, afterCategory, SUBCATEGORIES).map((f) => f.id))
+			.toEqual([4])
+	})
+
 	it('clearing the box leaves the Capas selection standing', () => {
 		const searched = { ...toggleSubcategory(emptyFilter(), 12), query: 'CESFAM' }
 		expect(filterFeatures(FEATURES, searched, SUBCATEGORIES).map((f) => f.id)).toEqual([1])
@@ -178,7 +199,7 @@ describe('the default filter', () => {
 	it('shows everything', () => {
 		const filter = emptyFilter()
 
-		expect(filterFeatures(FEATURES, filter)).toHaveLength(4)
+		expect(filterFeatures(FEATURES, filter, SUBCATEGORIES)).toHaveLength(4)
 		expect(isSubcategoryVisible(filter, 11)).toBe(true)
 	})
 
@@ -198,7 +219,7 @@ describe('toggling a subcategory', () => {
 	it('hides only that subcategory', () => {
 		const filter = toggleSubcategory(emptyFilter(), 12)
 
-		expect(filterFeatures(FEATURES, filter).map((f) => f.id)).toEqual([1, 4])
+		expect(filterFeatures(FEATURES, filter, SUBCATEGORIES).map((f) => f.id)).toEqual([1, 4])
 		expect(isSubcategoryVisible(filter, 11)).toBe(true)
 	})
 
@@ -206,7 +227,7 @@ describe('toggling a subcategory', () => {
 		const once = toggleSubcategory(emptyFilter(), 12)
 		const twice = toggleSubcategory(once, 12)
 
-		expect(filterFeatures(FEATURES, twice)).toHaveLength(4)
+		expect(filterFeatures(FEATURES, twice, SUBCATEGORIES)).toHaveLength(4)
 	})
 
 	it('does not mutate the filter it was given', () => {
@@ -221,14 +242,14 @@ describe('toggling a category', () => {
 	it('takes its whole branch with it', () => {
 		const filter = toggleCategory(emptyFilter(), TAXONOMY[0])
 
-		expect(filterFeatures(FEATURES, filter).map((f) => f.id)).toEqual([4])
+		expect(filterFeatures(FEATURES, filter, SUBCATEGORIES).map((f) => f.id)).toEqual([4])
 	})
 
 	it('brings the whole branch back', () => {
 		const hidden = toggleCategory(emptyFilter(), TAXONOMY[0])
 		const shown = toggleCategory(hidden, TAXONOMY[0])
 
-		expect(filterFeatures(FEATURES, shown)).toHaveLength(4)
+		expect(filterFeatures(FEATURES, shown, SUBCATEGORIES)).toHaveLength(4)
 	})
 
 	/**
@@ -293,7 +314,7 @@ describe('counts for Análisis', () => {
 	 */
 	it('counts only what it is given', () => {
 		const filter = toggleSubcategory(emptyFilter(), 12)
-		const counts = countsFor(filterFeatures(FEATURES, filter), TAXONOMY)
+		const counts = countsFor(filterFeatures(FEATURES, filter, SUBCATEGORIES), TAXONOMY)
 
 		expect(counts.total).toBe(2)
 		expect(counts.categories[0].total).toBe(1)
@@ -326,6 +347,7 @@ describe('what the Datos list shows', () => {
 		const list = listFor({
 			features: FEATURES, retiredFeatures: retired, showRetired: false,
 			filter: toggleSubcategory(emptyFilter(), 12),
+			subcategories: SUBCATEGORIES,
 		})
 
 		expect(list.map((f) => f.id)).toEqual([1, 4])
@@ -341,6 +363,7 @@ describe('what the Datos list shows', () => {
 		const list = listFor({
 			features: FEATURES, retiredFeatures: retired, showRetired: true,
 			filter: toggleSubcategory(emptyFilter(), 21),
+			subcategories: SUBCATEGORIES,
 		})
 
 		expect(list.map((f) => f.name)).toEqual(['Colegio retirado'])

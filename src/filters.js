@@ -86,7 +86,10 @@ export function toggleSubcategory(filter, subcategoryId) {
 		hidden.add(subcategoryId)
 	}
 
-	return { hidden }
+	// Spread, so everything else in the View survives a toggle. Returning a bare
+	// `{ hidden }` dropped whatever had been typed, and someone who searched and
+	// then reached for a checkbox lost their search without being told.
+	return { ...filter, hidden }
 }
 
 /**
@@ -107,7 +110,8 @@ export function toggleCategory(filter, category) {
 		ids.forEach((id) => hidden.delete(id))
 	}
 
-	return { hidden }
+	// Spread, for the reason toggleSubcategory spreads.
+	return { ...filter, hidden }
 }
 
 /**
@@ -155,7 +159,7 @@ export function listFor({ features, retiredFeatures, showRetired, filter, subcat
 	// someone saying out loud what they are looking for, and ignoring it in the
 	// list they are staring at would be the app overruling an explicit
 	// instruction.
-	return retiredFeatures.filter((feature) => matches(feature, filter.query, subcategories ?? new Map()))
+	return retiredFeatures.filter((feature) => matches(feature, filter.query, subcategories))
 }
 
 /**
@@ -169,9 +173,11 @@ export function listFor({ features, retiredFeatures, showRetired, filter, subcat
  *
  * `subcategories` is the index from `indexSubcategories()`, passed in rather than
  * imported so this module stays pure and knows nothing about the taxonomy's
- * shape.
+ * shape. Required, deliberately: defaulting it to an empty Map would let a
+ * caller that forgot it return a plausible non-empty list that silently matched
+ * nothing by Category or Subcategory — a wrong answer is worse than a crash.
  */
-export function filterFeatures(features, filter, subcategories = new Map()) {
+export function filterFeatures(features, filter, subcategories) {
 	return features.filter((feature) => isSubcategoryVisible(filter, feature.subcategoryId)
 		&& matches(feature, filter.query, subcategories))
 }

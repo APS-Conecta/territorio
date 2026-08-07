@@ -199,9 +199,13 @@ export default {
 		},
 
 		/**
-		 * The Subcategory index, built once here and handed down. Search matches
-		 * against "Category · Subcategory", and rebuilding that index inside every
-		 * consumer is how the list and the map would end up matching differently.
+		 * The Subcategory index the filtering needs: search matches against
+		 * "Category · Subcategory", and `filters.js` stays pure by being handed the
+		 * index rather than importing the taxonomy itself.
+		 *
+		 * The components that draw labels and swatches derive their own from the
+		 * same `taxonomy` prop. That is not a second source of truth — the taxonomy
+		 * is the source, and `indexSubcategories` is a pure reading of it.
 		 */
 		subcategories() {
 			return indexSubcategories(this.taxonomy)

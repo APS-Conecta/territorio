@@ -5,9 +5,14 @@
 			<span v-if="filtered" class="territorio-analisis__note">con los filtros aplicados</span>
 		</h2>
 
+		<!--
+			"las capas activas" alone became untrue the moment search could empty
+			this too, and a message that names the wrong cause sends someone to the
+			wrong control to fix it.
+		-->
 		<NcEmptyContent v-if="counts.total === 0"
 			name="Nada que contar"
-			description="Ningún registro coincide con las capas activas.">
+			description="Ningún registro coincide con las capas activas ni con la búsqueda.">
 			<template #icon>
 				<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
 					<path fill="currentColor" d="M4 20h16v-2H4v2Zm2-4h3V8H6v8Zm5 0h3V4h-3v12Zm5 0h3v-5h-3v5Z" />

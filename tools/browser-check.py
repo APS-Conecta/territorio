@@ -35,6 +35,10 @@ SHOTS = Path(__file__).parent / ".browser-check"
 # Every run leaves its records behind — ADR-0005 means nothing here can be
 # deleted, only retired — so each run tags its own. That is what lets the
 # assertions be exact counts instead of "more than before".
+#
+# ponytail: two undeletable records per run, forever. Fine on a throwaway
+# instance you can `make instance-clean`; if this ever runs somewhere that must
+# persist, it needs to retire what it made on the way out.
 RUN = uuid.uuid4().hex[:6]
 
 # Our own list, not Nextcloud's: the header carries a "Buscar contactos" field
@@ -69,8 +73,11 @@ def create_a_place(page, name):
     """The #2 criterion nobody ever exercised: create a record end to end."""
     page.get_by_role("button", name="Agregar").click()
     page.get_by_label("Nombre").fill(name)
-    # Click the map so the record has a coordinate, the way a person places one.
-    page.locator('[data-testid="map-canvas"]').click(position={"x": 300, "y": 260})
+    # Click the map so the record has a coordinate, the way a person places one —
+    # well clear of where draw_a_sector() puts its polygons. Clicking inside one
+    # selects that Sector instead (#10's own behaviour) and replaces this draft,
+    # so every run after the first would silently create nothing.
+    page.locator('[data-testid="map-canvas"]').click(position={"x": 800, "y": 620})
     page.get_by_role("button", name="Guardar").click()
 
 
@@ -112,7 +119,6 @@ def search_narrows_everything(page, failures):
         return int(text.split()[0])
 
     before_rows = rows.count()
-    before_total = analysis_total()
 
     # This run's two records and nothing else: one Place, which is one pin, and
     # one Sector, which is a polygon and so has no pin at all.
@@ -122,14 +128,35 @@ def search_narrows_everything(page, failures):
         failures.append(f"search found {rows.count()} of this run's 2 records")
     if markers.count() != 1:
         failures.append(f"the map shows {markers.count()} markers, expected the one Place")
-    if analysis_total() != 2:
-        failures.append(f"Análisis counted {analysis_total()}, expected 2 — it is not reading the same set")
+    counted = analysis_total()
+    if counted != 2:
+        failures.append(f"Análisis counted {counted}, expected 2 — it is not reading the same set")
 
-    # Case and accents in the running app, not only in the predicate's unit test.
-    box.fill(f"sECTOR nAVEGADOR {RUN}".lower())
+    # Case, in the running app rather than only in the predicate's unit test.
+    box.fill(f"sECTOR nAVEGADOR {RUN}")
     page.wait_for_timeout(400)
     if rows.count() != 1:
         failures.append("search is case-sensitive in the browser")
+
+    # Type, THEN toggle — the order a person actually uses, and the one where the
+    # togglers used to return a bare {hidden} and drop the query on the floor.
+    # Both reviews found that by reading; nothing here would have.
+    box.fill(RUN)
+    page.wait_for_timeout(300)
+    # The label, not the input: NcCheckboxRadioSwitch draws a span over the box,
+    # and a person clicks the word anyway. Untick Sector and this run's Sector
+    # should leave, while its Place — and the query — stay.
+    page.locator(".territorio-capas__divisions").get_by_text("Sector").click()
+    page.wait_for_timeout(500)
+    if box.input_value() != RUN:
+        failures.append("a Capas toggle wiped the search box")
+    if rows.count() != 1:
+        failures.append(f"toggle+query left {rows.count()} rows, expected the 1 Place")
+
+    # Put Sector back, or the restore check below is comparing against a Capas
+    # selection this function changed.
+    page.locator(".territorio-capas__divisions").get_by_text("Sector").click()
+    page.wait_for_timeout(300)
 
     # Nothing matched: a message, not a bare empty list.
     box.fill("zzzz-no-existe")

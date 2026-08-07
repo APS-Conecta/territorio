@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.18.3] — unreleased
+## [0.18.8] — unreleased
 
 Saying where a Sector's limit runs.
 
@@ -25,9 +25,24 @@ Saying where a Sector's limit runs.
   anybody can make.
 - A line picked and then panned away from stays picked. It just cannot be named until it is loaded
   again, and dropping it would silently unpick it.
-- Zoom animation is off. Third time this map has lost what it was drawing to a rebuild landing
-  inside an animated zoom; the picker reloads as the view moves, which is the likeliest collision
-  of the three.
+### Fixed
+
+- The map no longer stops drawing after zooming. Its Leaflet handles lived in `data()`, so Vue 3
+  wrapped every one of them in a reactive Proxy — and Leaflet's event bus identifies a listener by
+  its context object, so a layer registered raw and unregistered through a Proxy left a handler
+  pointing at a layer whose map was already gone. The next zoom threw and the map went stale. This
+  had been reported and mis-diagnosed three times; nothing there was ever rendered, so none of it
+  needed to be reactive.
+- `tools/browser-check.py` now zooms and pans with the Limit picker open. The fault above only
+  appeared about one run in three, because a redraw has to land inside a view change to create the
+  broken handler — but once created it survives, so churning first and zooming after makes it show
+  every time. Verified by reintroducing it: three runs, three failures.
+
+### Notes
+
+- Zoom animation stays off. It was a guess at the fault above rather than its cause, and it is kept
+  because this map still rebuilds layer groups from three separate causes and an animated zoom is
+  the widest window for one to land in.
 
 ## [0.17.1] — unreleased
 

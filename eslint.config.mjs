@@ -27,6 +27,8 @@ const BROWSER = {
 	window: 'readonly',
 	setInterval: 'readonly',
 	clearInterval: 'readonly',
+	setTimeout: 'readonly',
+	clearTimeout: 'readonly',
 	ResizeObserver: 'readonly',
 	FormData: 'readonly',
 	URL: 'readonly',

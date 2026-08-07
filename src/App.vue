@@ -423,8 +423,15 @@ export default {
 			}
 		},
 
-		isDivision(subcategoryId) {
-			return divisionsOf(this.taxonomy).some((division) => division.id === subcategoryId)
+		/**
+		 * A Sector, and not merely any territorial division.
+		 *
+		 * A Unidad Vecinal is read from the national cadastre and never drawn
+		 * (CONTEXT.md), so it has no Limit to say anything about — opening the
+		 * picker over one would offer to edit a boundary this app does not own.
+		 */
+		isSector(subcategoryId) {
+			return subcategoryId === sectorSubcategoryId(this.taxonomy)
 		},
 
 		select(id) {
@@ -578,7 +585,9 @@ export default {
 		 * exists to prevent.
 		 */
 		async loadBoundaries() {
-			if (this.view === null) {
+			// Re-checked here and not only where it was armed: between the two the
+			// editor may have closed.
+			if (this.view === null || !this.editingLimit) {
 				return
 			}
 
@@ -641,7 +650,7 @@ export default {
 				// A Sector opened for editing gets the picker too, not only one being
 				// drawn. Until #15 stores a Limit there is nothing to load into it,
 				// so it starts empty either way.
-				...(this.isDivision(feature.subcategoryId) ? { picked: [] } : {}),
+				...(this.isSector(feature.subcategoryId) ? { picked: [] } : {}),
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
 				locationQuality: feature.locationQuality === 'sin_coordenada'
@@ -672,6 +681,9 @@ export default {
 		},
 
 		closeDraft() {
+			// A load armed while editing must not land after the editor closed and
+			// fetch three thousand rows for nobody.
+			clearTimeout(this.viewTimer)
 			this.draft = null
 			this.selectedId = null
 			this.history = []
@@ -718,7 +730,18 @@ export default {
 				// once our save banks 12. Letting the next poll re-deliver our own
 				// record costs one merge, and mergeFeature is idempotent.
 				this.selectedId = data.id
+				// Carried across the save. draftFrom() rebuilds the draft from what
+				// the server returned, and the server does not know about picks yet —
+				// so without this every line someone chose vanished when they pressed
+				// Guardar, silently.
+				//
+				// ponytail: they live in the draft and die with it, so closing the
+				// sidebar still loses them. #15 is what gives a Limit somewhere to be.
+				const picked = this.draft.picked
 				this.draft = this.draftFrom(data)
+				if (picked !== undefined) {
+					this.draft.picked = picked
+				}
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
 				this.error = exception.response?.data?.message

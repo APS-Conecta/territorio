@@ -27,10 +27,11 @@ class Version001200Date20260808090000 extends SimpleMigrationStep {
 
 		$features = $schema->getTable('territorio_feature');
 
-		// Latitude first: it is the narrower of the two in a comuna-shaped box, so
-		// it discards more rows before longitude is looked at.
+		// One column, not four. The read is four range comparisons and an index can
+		// only serve the first of them, so the rest are a filter over whatever this
+		// returns — adding them here would look like it helped and would not.
 		if (!$features->hasIndex('terr_feat_bbox_idx')) {
-			$features->addIndex(['min_lat', 'max_lat'], 'terr_feat_bbox_idx');
+			$features->addIndex(['min_lat'], 'terr_feat_bbox_idx');
 		}
 
 		return $schema;

@@ -177,6 +177,59 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		}
 	}
 
+	/**
+	 * The one read that asks for Boundary features rather than hiding them: the
+	 * Sector editor's (issue #13). Everything else in this file checks they stay
+	 * out of sight, so this checks the door they are allowed through.
+	 */
+	public function testTheEditorCanAskForTheOnesOnScreen(): void {
+		$this->importBoundaries();
+		$mine = array_map(
+			static fn ($feature): int => (int)$feature->getId(),
+			array_values(Server::get(FeatureMapper::class)->findByDataset($this->datasetId())),
+		);
+
+		// Membership, not totals: this runs against an instance that may already
+		// hold a comuna's worth of streets, and a count would only measure those.
+		$inView = $this->idsIn(-33.54, -70.61, -33.51, -70.57);
+		foreach ($mine as $id) {
+			self::assertContains($id, $inView);
+		}
+
+		// A box beside them holds neither.
+		$elsewhere = $this->idsIn(-33.40, -70.40, -33.39, -70.39);
+		foreach ($mine as $id) {
+			self::assertNotContains($id, $elsewhere);
+		}
+
+		// Overlapping counts: the canal runs from -70.60 to -70.58 and this box
+		// holds only the middle of it, but a line running off the edge of the view
+		// is still one you can click the visible half of.
+		self::assertNotEmpty(
+			array_intersect($mine, $this->idsIn(-33.535, -70.59, -33.525, -70.585)),
+			'a line crossing the box was not offered',
+		);
+	}
+
+	/** Retired ones are gone from the editor too (ADR-0005). */
+	public function testARetiredBoundaryIsNotOfferedToPick(): void {
+		$this->importBoundaries();
+		$one = (int)Server::get(FeatureMapper::class)->findByDataset($this->datasetId())['way/101']->getId();
+		self::assertContains($one, $this->idsIn(-33.54, -70.61, -33.51, -70.57));
+
+		Server::get(FeatureService::class)->retire($one);
+
+		self::assertNotContains($one, $this->idsIn(-33.54, -70.61, -33.51, -70.57));
+	}
+
+	/** @return int[] */
+	private function idsIn(float $south, float $west, float $north, float $east): array {
+		return array_map(
+			static fn ($feature): int => (int)$feature->getId(),
+			Server::get(FeatureMapper::class)->findBoundariesIn($south, $west, $north, $east),
+		);
+	}
+
 	/** Re-importing the same file changes nothing and spends no Revisions. */
 	public function testAnUnchangedRefreshIsRecognisedRatherThanRewritten(): void {
 		$this->importBoundaries();

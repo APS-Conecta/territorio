@@ -84,7 +84,7 @@ def console_errors(page):
     """
     found = []
     page.on("console", lambda m: found.append(m.text) if m.type == "error" else None)
-    page.on("pageerror", lambda e: found.append((e.stack or str(e))[:600]))
+    page.on("pageerror", lambda e: found.append((e.stack or str(e))[:2000]))
     return found
 
 
@@ -254,6 +254,79 @@ def the_limit_can_be_picked(page, failures):
     if picker.locator(".territorio-picker__picked li").count() != 0:
         failures.append("removing a picked line did not remove it")
 
+    # Clicking a line on the map is the other half of the same criterion, and the
+    # half nothing else exercises. It is also where a Sector polygon sitting on
+    # top swallowed the click, selected itself, and took the whole selection with
+    # it — so this asserts the picks survive as much as that one arrives.
+    lines = page.locator(".leaflet-pane[class*=pickable] path")
+    if lines.count() == 0:
+        print("SKIP  no boundary line on screen to click")
+    else:
+        box.fill("")
+        page.wait_for_timeout(300)
+        lines.first.click(force=True)
+        page.wait_for_timeout(500)
+
+        after = picker.locator(".territorio-picker__picked li")
+        if after.count() != 1:
+            failures.append(f"clicking a line picked {after.count()} things, expected 1")
+
+        lines.first.click(force=True)
+        page.wait_for_timeout(500)
+        if picker.locator(".territorio-picker__picked li").count() != 0:
+            failures.append("clicking the same line again did not unpick it")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def the_map_survives_churn(page, errors, failures):
+    """Zoom and pan with the Limit picker open, which is when groups get swapped.
+
+    The null-map error this catches — "Cannot read properties of null (reading
+    'latLngToLayerPoint')" — appears intermittently, because it needs a redraw
+    to land inside a view change. But the broken handler it leaves behind is
+    permanent: once one exists, EVERY later zoom throws and the map stops
+    drawing. So churning first and zooming after turns a fault you see one run
+    in three into one you see every run it is present.
+
+    Run with a Sector open on purpose: the picker reloads its lines on every
+    move, which is the redraw most likely to collide with one.
+    """
+    page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
+    page.wait_for_timeout(400)
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1000)
+
+    before = len(errors)
+    canvas = page.locator('[data-testid="map-canvas"]')
+    zoom_in = page.locator(".leaflet-control-zoom-in")
+    zoom_out = page.locator(".leaflet-control-zoom-out")
+
+    for _ in range(4):
+        zoom_in.click()
+        page.wait_for_timeout(250)
+        canvas.hover()
+        page.mouse.down()
+        page.mouse.move(700, 400, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(250)
+        zoom_out.click()
+        page.wait_for_timeout(250)
+
+    # The zoom that a broken handler cannot survive.
+    zoom_in.click()
+    page.wait_for_timeout(600)
+
+    if len(errors) > before:
+        failures.append(f"the map threw while being zoomed and panned: {errors[before:][:2]}")
+
+    # And it is still a map: a handler that threw mid-view-change leaves the
+    # layers where they were, so this asks whether anything is drawn at all.
+    if page.locator(MARKERS).count() == 0 and page.locator(".leaflet-tile").count() == 0:
+        failures.append("nothing is drawn on the map after zooming and panning")
+
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -409,6 +482,7 @@ def main():
         the_assignment_is_shown_and_not_editable(page, failures)
         search_narrows_everything(page, failures)
         the_limit_can_be_picked(page, failures)
+        the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 
         kml_says_what_it_cannot_carry(page, failures)

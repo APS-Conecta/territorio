@@ -44,6 +44,9 @@ const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
 /** The division whose boundaries describe the comuna (CONTEXT.md). */
 const COMUNA_EXTENT = 'unidad_vecinal'
 
+/** Between overlayPane (400) and markerPane (600): above shapes, below pins. */
+const PICKABLE_PANE = 'territorio-pickable'
+
 const escapeHtml = (value) => String(value).replace(
 	/[&<>"']/g,
 	(character) => ({
@@ -82,16 +85,36 @@ export default {
 
 	emits: ['select', 'map-click', 'draw', 'reshape', 'pick', 'view-changed'],
 
+	/**
+	 * The Leaflet handles, deliberately NOT in data().
+	 *
+	 * Vue 3 makes everything data() returns deeply reactive, which means every
+	 * Leaflet object put there is handed back as a Proxy — and Leaflet's event
+	 * bus identifies a listener by its context object. A layer registered raw
+	 * and unregistered through a proxy (or the reverse) leaves a handler on the
+	 * map pointing at a layer whose `_map` is already null, and the next zoom
+	 * calls it: "Cannot read properties of null (reading 'latLngToLayerPoint')".
+	 * The map stops drawing from there on.
+	 *
+	 * That error came back four times under three different guesses at its
+	 * cause. This is the cause. Nothing here is ever rendered — the template is
+	 * one div — so none of it needed to be reactive in the first place, and an
+	 * instance property is both the fix and less work than the proxy was.
+	 */
+	created() {
+		this.map = null
+		this.markers = null
+		this.outlines = null
+		this.draftLayer = null
+		this.pickable = null
+		this.resizeObserver = null
+	},
+
 	data() {
 		return {
 			basemap: loadState('territorio', 'basemap'),
 			tileFailed: false,
 			tileLoaded: false,
-			map: null,
-			markers: null,
-			outlines: null,
-			draftLayer: null,
-			pickable: null,
 			// The reshape we last told the parent about, cleared as soon as it comes
 			// back: redrawing on our own edit would tear the layer out from under the
 			// hand still dragging its vertex.
@@ -102,7 +125,6 @@ export default {
 			// change that happens to look identical, which is precisely what
 			// reopening a saved Sector produces.
 			reported: '',
-			resizeObserver: null,
 		}
 	},
 
@@ -174,11 +196,11 @@ export default {
 		draftColour() {
 			this.draftLayer?.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
-		boundaries: {
-			handler() {
-				this.drawPickable()
-			},
-			deep: true,
+		// Not deep: this array is replaced wholesale by a fetch, never edited in
+		// place, and walking a few thousand geometries on every change to notice
+		// that costs more than the redraw.
+		boundaries() {
+			this.drawPickable()
 		},
 		pickedIds() {
 			this.drawPickable()
@@ -192,22 +214,25 @@ export default {
 			// Leaflet's default puts the zoom control top-left, under Nextcloud's
 			// app navigation toggle on narrow screens.
 			zoomControl: false,
-			// No animated zoom, on the third occasion of the same failure.
-			//
-			// Leaflet animates a zoom by computing every layer's new screen position
-			// mid-flight. This map rebuilds layer groups from three separate causes
-			// — a five-second poll, a filter change, and the Limit picker reloading
-			// as the view moves — and a rebuild landing inside a flight leaves
-			// Leaflet reading a layer whose map is already gone. It throws, and what
-			// it was drawing does not come back.
-			//
-			// Swapping groups whole fixed the markers and the shapes. The picker
-			// reloads on movement, which is the likeliest collision of all, and it
-			// brought the error straight back. A smooth zoom is not worth a map that
-			// empties itself.
+			// No animated zoom. This was a guess at the null-map error — the third
+			// of three — and it is kept now that created() has the actual cause,
+			// because it is still true that this map rebuilds layer groups from
+			// three separate causes (a five-second poll, a filter change, and the
+			// Limit picker reloading as the view moves) and an animated zoom is the
+			// widest window for a rebuild to land in. A smooth zoom is worth less
+			// than the fourth occurrence would cost to find.
 			zoomAnimation: false,
 		})
 		L.control.zoom({ position: 'topright' }).addTo(this.map)
+
+		// A pane of its own for the lines a Limit can follow, above the Sectores
+		// and below the pins. Without it they share overlayPane with the Sector
+		// polygons, which are translucent-FILLED and so clickable across their
+		// whole area — and drawShapes() re-adds those on every poll, putting them
+		// back on top. A click meant for a street then hit the Sector, selected it,
+		// and took everything picked so far with it.
+		this.map.createPane(PICKABLE_PANE);
+		this.map.getPane(PICKABLE_PANE).style.zIndex = 450
 
 		// Open on the comuna this install serves, measured from the Unidades
 		// Vecinales it imported — they are ordinary Features, so the client already
@@ -436,12 +461,23 @@ export default {
 			const next = L.featureGroup()
 
 			this.boundaries.forEach((boundary) => {
-				if (!boundary.geometry) {
+				// Lines only. A Boundary Dataset can hold a Point — a KML import will
+				// put one there — and geometryToLayer hands back a Marker, which has
+				// no setStyle and would take the whole layer down with it.
+				if (boundary.geometry?.type !== 'LineString' && boundary.geometry?.type !== 'MultiLineString') {
 					return
 				}
 
 				const picked = this.pickedIds.includes(boundary.id)
-				const layer = L.GeoJSON.geometryToLayer(boundary.geometry)
+				const layer = L.GeoJSON.geometryToLayer(boundary.geometry, {
+					pane: PICKABLE_PANE,
+					// Out of geoman's snap list, for the reason the pins are: a few
+					// thousand polylines in it makes dragging a vertex a computation
+					// rather than a gesture. Snapping to a picked line belongs with the
+					// polygonizing (#14), where there are a handful rather than all of
+					// them.
+					snapIgnore: true,
+				})
 				layer.setStyle({
 					color: picked ? '#c2410c' : '#64748b',
 					weight: picked ? 5 : 3,
@@ -449,8 +485,15 @@ export default {
 				})
 				layer.bindTooltip(boundary.name)
 				layer.on('click', (event) => {
-					// The picker owns this click: unstopped, the map would also read it
-					// as "put the open draft here".
+					// While a draft is waiting for a coordinate the click is the map's,
+					// exactly as it is for a Sector's fill — a street lying across the
+					// spot must not swallow it.
+					if (this.placing) {
+						return
+					}
+
+					// Otherwise the picker owns it: unstopped, the map would ALSO read
+					// it as "put the open draft here".
 					L.DomEvent.stopPropagation(event)
 					this.$emit('pick', boundary.id)
 				})

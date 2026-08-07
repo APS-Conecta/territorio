@@ -235,12 +235,13 @@ class FeatureMapper extends QBMapper {
 			->andWhere($qb->expr()->gte('max_lat', $qb->createNamedParameter($south)))
 			->andWhere($qb->expr()->lte('min_lon', $qb->createNamedParameter($east)))
 			->andWhere($qb->expr()->gte('max_lon', $qb->createNamedParameter($west)))
-			// ponytail: a flat cap rather than paging. Zoomed far enough out this
-			// silently returns the first few thousand, which is why the editor asks
-			// again whenever the view moves; page it when somebody needs to pick a
-			// street they cannot see.
-			->setMaxResults($limit)
-			->orderBy('name', 'ASC');
+			// ponytail: a flat cap rather than paging, and deliberately NOT sorted by
+			// name. Sorted, the cap cut alphabetically — zoomed far enough out every
+			// street from roughly S onward disappeared, which is exactly the one
+			// somebody then cannot find by typing its name. Unsorted it cuts by
+			// nothing in particular, which is honest, and the editor asks again
+			// whenever the view settles. Page it when a comuna needs more than this.
+			->setMaxResults($limit);
 
 		return $this->findEntities($qb);
 	}

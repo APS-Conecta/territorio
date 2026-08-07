@@ -33,14 +33,23 @@ export function suggestions(boundaries, query, limit = 12) {
 		return []
 	}
 
+	// Keyed on the folded name so "LOS TOROS" and "Los Toros" are one row, and
+	// labelled with the first spelling seen.
+	//
+	// ponytail: grouped by name alone. Two genuinely different streets in one
+	// comuna that share a name collapse into a single row, and picking it picks
+	// both — the map is the way out, since clicking a line toggles it on its own.
+	// Telling them apart means clustering by position, which is a slice of its
+	// own and buys little until somebody hits it.
 	const groups = new Map()
 	boundaries.forEach((boundary) => {
-		if (!fold(boundary.name).includes(needle)) {
+		const key = fold(boundary.name)
+		if (!key.includes(needle)) {
 			return
 		}
-		const group = groups.get(boundary.name) ?? { name: boundary.name, ids: [] }
+		const group = groups.get(key) ?? { name: boundary.name, ids: [] }
 		group.ids.push(boundary.id)
-		groups.set(boundary.name, group)
+		groups.set(key, group)
 	})
 
 	// Shortest name first: someone typing "los toros" wants "Los Toros" above

@@ -20,7 +20,7 @@ declare(strict_types=1);
  * and unit-tested; only `main()` touches the network.
  */
 
-namespace Territorio\Tools;
+namespace Territorio\Tools\Boundary;
 
 use InvalidArgumentException;
 use RuntimeException;

@@ -63,6 +63,7 @@
 					:selected-id="selectedId"
 					:draft-geometry="draftGeometry"
 					:draft-colour="draft?.colour ?? null"
+					:placing="placing"
 					@select="select"
 					@map-click="placeDraft"
 					@draw="startSector"
@@ -239,6 +240,15 @@ export default {
 		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
 		draftGeometry() {
 			return this.draft?.geometry ?? null
+		},
+
+		/**
+		 * A draft is open and wants a coordinate, so the next click on the map is
+		 * for it — even a click that lands on a Sector or a Unidad Vecinal, which
+		 * would otherwise take it to select themselves.
+		 */
+		placing() {
+			return this.draft !== null && this.draft.geometry === null
 		},
 	},
 

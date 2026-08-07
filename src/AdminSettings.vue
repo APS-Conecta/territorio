@@ -1,4 +1,47 @@
 <template>
+	<div>
+		<!--
+			First, because nothing else in the app means much without it: a
+			Territorio is a portion of exactly one Comuna and never reaches into a
+			second (CONTEXT.md), so the install has to know which one it serves.
+		-->
+		<NcSettingsSection name="Comuna"
+			description="La comuna que atiende este CESFAM. Una sola por instalación,
+				identificada por su código CUT de cinco dígitos — La Florida es 13110.
+				De ella se importan las Unidades Vecinales, y un archivo de otra comuna
+				se rechaza.">
+			<NcNoteCard v-if="comunaFailed" type="error">
+				{{ comunaFailed }}
+			</NcNoteCard>
+
+			<NcNoteCard v-else-if="comunaSaved" type="success">
+				Guardado.
+			</NcNoteCard>
+
+			<NcNoteCard v-else-if="!comuna.chosen" type="warning">
+				Todavía no se ha elegido comuna.
+			</NcNoteCard>
+
+			<NcTextField v-model="cut"
+				label="Código CUT"
+				placeholder="13110"
+				inputmode="numeric"
+				:disabled="savingComuna" />
+
+			<NcTextField v-model="comunaName"
+				label="Nombre (opcional)"
+				placeholder="La Florida"
+				:disabled="savingComuna"
+				class="territorio-admin__field" />
+
+			<NcButton :disabled="savingComuna"
+				variant="primary"
+				class="territorio-admin__field"
+				@click="saveComuna">
+				Guardar
+			</NcButton>
+		</NcSettingsSection>
+
 	<NcSettingsSection name="Fondo de mapa"
 		description="De dónde vienen las imágenes de fondo del mapa. Por omisión se usan
 			las teselas públicas de OpenStreetMap, que requieren acceso a internet desde
@@ -36,6 +79,7 @@
 			Guardar
 		</NcButton>
 	</NcSettingsSection>
+	</div>
 </template>
 
 <script>
@@ -57,8 +101,15 @@ export default {
 		// declined must stay in the box that produced it, next to the warning
 		// saying why the map is still on OpenStreetMap. An empty box means unset.
 		const basemap = loadState('territorio', 'basemap')
+		const comuna = loadState('territorio', 'comuna')
 
 		return {
+			comuna,
+			cut: comuna.cut,
+			comunaName: comuna.name,
+			savingComuna: false,
+			comunaSaved: false,
+			comunaFailed: '',
 			url: basemap.url,
 			attribution: basemap.attribution,
 			saving: false,
@@ -69,6 +120,28 @@ export default {
 	},
 
 	methods: {
+		async saveComuna() {
+			this.savingComuna = true
+			this.comunaSaved = false
+			this.comunaFailed = ''
+
+			try {
+				const { data } = await axios.put(
+					generateUrl('/apps/territorio/settings/comuna'),
+					{ cut: this.cut, name: this.comunaName },
+				)
+				this.comuna = data
+				this.comunaSaved = true
+			} catch (error) {
+				// A 422 names the typo; anything else does not, and silence would
+				// leave the page looking exactly as if nobody pressed the button.
+				this.comunaFailed = error.response?.data?.message
+					?? 'No se pudo guardar. Revise la conexión e inténtelo de nuevo.'
+			} finally {
+				this.savingComuna = false
+			}
+		},
+
 		async save() {
 			this.saving = true
 			this.saved = false

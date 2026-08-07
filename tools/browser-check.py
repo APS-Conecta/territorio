@@ -69,10 +69,15 @@ def log_in(page):
 
 
 def console_errors(page):
-    """Anything the app logged that a person would never see."""
+    """Anything the app logged that a person would never see.
+
+    Stacks, not just messages: "Cannot read properties of null" names a symptom
+    and could come from anywhere, and a gate that reports only that sends
+    somebody guessing.
+    """
     found = []
     page.on("console", lambda m: found.append(m.text) if m.type == "error" else None)
-    page.on("pageerror", lambda e: found.append(str(e)))
+    page.on("pageerror", lambda e: found.append((e.stack or str(e))[:600]))
     return found
 
 
@@ -103,6 +108,10 @@ def create_a_place(page, name, failures):
         position={"x": 620 + NUDGE, "y": 560 + (NUDGE % 60)}
     )
     save(page, failures, "the Place")
+    # Close the sidebar: it covers the right of the map, and the next thing this
+    # does is click on the map.
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
 
 
 def draw_a_sector(page, name, failures, colour="#16a34a"):
@@ -171,7 +180,7 @@ def search_narrows_everything(page, failures):
     # The label, not the input: NcCheckboxRadioSwitch draws a span over the box,
     # and a person clicks the word anyway. Untick Sector and this run's Sector
     # should leave, while its Place — and the query — stay.
-    page.locator(".territorio-capas__divisions").get_by_text("Sector").click()
+    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
     page.wait_for_timeout(500)
     if box.input_value() != RUN:
         failures.append("a Capas toggle wiped the search box")
@@ -180,7 +189,7 @@ def search_narrows_everything(page, failures):
 
     # Put Sector back, or the restore check below is comparing against a Capas
     # selection this function changed.
-    page.locator(".territorio-capas__divisions").get_by_text("Sector").click()
+    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
     page.wait_for_timeout(300)
 
     # Nothing matched: a message, not a bare empty list.

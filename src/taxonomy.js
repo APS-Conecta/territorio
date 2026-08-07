@@ -72,6 +72,48 @@ export function sectorSubcategoryId(taxonomy) {
  * per-Category colour would draw every Sector the same. Everything else stays
  * coloured by its Category with nothing to set by hand.
  */
+/**
+ * The extent of everything filed under one Subcategory, as Leaflet wants it:
+ * `[[south, west], [north, east]]`, or null when there is nothing to measure.
+ *
+ * Used to open the map on the comuna the install actually serves, from the
+ * Unidades Vecinales it imported. Computed here rather than asked of the server
+ * because the client already holds those polygons — they are ordinary Features —
+ * so a round trip would buy nothing.
+ *
+ * ponytail: walks every position of every matching Feature. One comuna is a few
+ * dozen polygons and it runs once per page load; store a bounding box on the
+ * Dataset if a national install ever appears.
+ */
+export function boundsOf(features, subcategories, slug) {
+	let south = Infinity
+	let west = Infinity
+	let north = -Infinity
+	let east = -Infinity
+
+	const stretch = (node) => {
+		// A position is [lon, lat]; everything above it is a list of those, however
+		// deeply a Polygon's rings nest them.
+		if (typeof node[0] === 'number') {
+			const [lon, lat] = node
+			south = Math.min(south, lat)
+			north = Math.max(north, lat)
+			west = Math.min(west, lon)
+			east = Math.max(east, lon)
+			return
+		}
+		node.forEach(stretch)
+	}
+
+	features.forEach((feature) => {
+		if (subcategories.get(feature.subcategoryId)?.slug === slug && feature.geometry) {
+			stretch(feature.geometry.coordinates)
+		}
+	})
+
+	return south === Infinity ? null : [[south, west], [north, east]]
+}
+
 export function colourOf(feature, subcategories) {
 	return feature.colour ?? subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
 }

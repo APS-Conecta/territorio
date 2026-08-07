@@ -3,6 +3,44 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.15.1] — unreleased
+
+The comuna, and the Unidades Vecinales that describe it.
+
+### Added
+
+- Setup asks which Comuna the install serves — exactly one, by CUT code, refused unless it is five
+  digits. A Territorio is always a portion of one Comuna and never reaches into a second.
+- `tools/comuna-cut.php` cuts the national `UnidadesVecinales_2024v4` file down to one comuna,
+  keyed on `t_id_uv_ca`. The national file is 128 MB and 6,887 polygons across 346 comunas; one
+  comuna is under 100 KB, and **the app must never need the national one**.
+- A comuna's Unidades Vecinales import as a Cadastral Dataset and toggle beside the Category tree,
+  like Sectores. They are read from the cadastre, never drawn.
+- A file cut for another comuna is refused by name, before anything is written.
+- The map opens on the comuna the install serves, measured from the Unidades Vecinales it holds,
+  instead of a fixed guess at central Santiago.
+
+### Fixed
+
+- **Clicking the map to place a record no longer selects a boundary instead.** Once a comuna's
+  Unidades Vecinales are imported they tile the whole view, so every click landed on one and handed
+  the next save to the cadastre — one was renamed this way while the browser check ran. A click
+  belongs to the open draft whenever one is waiting for a coordinate.
+- **The map no longer empties itself.** Rebuilding the marker layer emptied a cluster group the map
+  was still using, so a redraw landing inside a zoom or a pending reposition left Leaflet holding
+  markers whose map was gone — it threw, and the pins did not come back. The group is now swapped
+  whole. Zoom animation is off for the same reason: a smooth zoom is not worth a map that blanks.
+
+### Notes
+
+- The cutter converts a `.shp` with `ogr2ogr`, which is GDAL's job and not a dependency of this
+  app — it runs once, on whoever cuts the file. Hand it a `.geojson` and it skips that step. The
+  conversion is the one part no test here covers; `cutComuna()`, where every decision lives, is pure
+  and tested.
+- Verified end to end on a dev instance with an invented national file of two comunas: 37 Unidades
+  Vecinales cut and imported, a file for another comuna refused by name, and a re-import spending
+  no Revisions at all.
+
 ## [0.13.0] — unreleased
 
 KML.

@@ -21,7 +21,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
-import { colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
+import { boundsOf, colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
 /**
  * OpenStreetMap's own credit, as markup, from here and never from configuration.
@@ -31,9 +31,18 @@ import { colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
 	+ ' target="_blank" rel="noreferrer noopener">OpenStreetMap</a> contributors'
 
-// ponytail: fixed opening view until the install knows its Comuna (issue #9),
-// which replaces this with that comuna's bounds.
+/**
+ * Where the map opens before there is anything to open on.
+ *
+ * Once the comuna's Unidades Vecinales are imported (issue #9) the map fits
+ * their extent instead, so a clinic sees its own territory rather than a guess
+ * at central Santiago. This stays for the install that has not imported them
+ * yet — an empty map somewhere plausible beats an empty map over the ocean.
+ */
 const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
+
+/** The division whose boundaries describe the comuna (CONTEXT.md). */
+const COMUNA_EXTENT = 'unidad_vecinal'
 
 const escapeHtml = (value) => String(value).replace(
 	/[&<>"']/g,
@@ -60,6 +69,10 @@ export default {
 		// user's edits back, so there is one geometry and not two.
 		draftGeometry: { type: Object, default: null },
 		draftColour: { type: String, default: null },
+		// Whether the open draft is waiting for a coordinate. While it is, a click
+		// anywhere places that coordinate — including on top of a Sector or a
+		// Unidad Vecinal, which otherwise swallow the click to select themselves.
+		placing: { type: Boolean, default: false },
 	},
 
 	emits: ['select', 'map-click', 'draw', 'reshape'],
@@ -83,6 +96,12 @@ export default {
 			// change that happens to look identical, which is precisely what
 			// reopening a saved Sector produces.
 			reported: '',
+			// True between zoomstart and zoomend. Rebuilding a layer group while the
+			// map is animating a zoom leaves Leaflet mid-flight holding a layer whose
+			// map is already gone — it throws on _animateZoom and the pins never come
+			// back. The map polls every five seconds, so "someone zoomed just as a
+			// poll landed" is an ordinary Tuesday rather than a rare accident.
+			zooming: false,
 			resizeObserver: null,
 		}
 	},
@@ -164,8 +183,32 @@ export default {
 			// Leaflet's default puts the zoom control top-left, under Nextcloud's
 			// app navigation toggle on narrow screens.
 			zoomControl: false,
+			// No animated zoom. Leaflet animates by computing every layer's new
+			// screen position mid-flight, and this map rebuilds its layers on a
+			// five-second poll — a rebuild landing inside a flight leaves Leaflet
+			// reading a layer whose map is already gone, it throws, and the pins do
+			// not come back. A smooth zoom is not worth a map that empties itself.
+			zoomAnimation: false,
 		})
 		L.control.zoom({ position: 'topright' }).addTo(this.map)
+
+		// Open on the comuna this install serves, measured from the Unidades
+		// Vecinales it imported — they are ordinary Features, so the client already
+		// holds them and no round trip is needed to find out where we are.
+		//
+		// Set BEFORE a single layer is added, and without animation. A zoom that
+		// happens while layers exist runs Leaflet's animation over each of them,
+		// and any redraw landing inside that flight leaves it holding a layer whose
+		// map is already gone. Moving the view first means there is nothing to
+		// animate over.
+		const comuna = boundsOf(this.features, this.subcategories, COMUNA_EXTENT)
+		if (comuna !== null) {
+			this.map.setView(
+				L.latLngBounds(comuna).getCenter(),
+				this.map.getBoundsZoom(L.latLngBounds(comuna), false, [16, 16]),
+				{ animate: false },
+			)
+		}
 
 		L.tileLayer(this.basemap.url, {
 			attribution: this.attributionHtml,
@@ -186,12 +229,20 @@ export default {
 		// is what puts a Sector's fill beneath the pins standing on it. Nothing
 		// here sets a z-index: the panes already order themselves.
 		this.outlines = L.featureGroup().addTo(this.map)
-		this.markers = L.markerClusterGroup({ showCoverageOnHover: false })
-		this.map.addLayer(this.markers)
 		this.setUpDrawing()
 		this.drawMarkers()
 		this.drawShapes()
 		this.drawDraft()
+
+		// Whatever a redraw wanted to do during the zoom happens once it lands.
+		this.map.on('zoomstart', () => {
+			this.zooming = true
+		})
+		this.map.on('zoomend', () => {
+			this.zooming = false
+			this.drawMarkers()
+			this.drawShapes()
+		})
 
 		this.map.on('click', (event) => {
 			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
@@ -217,10 +268,20 @@ export default {
 		 * ponytail: full redraw; diff only if a real catastro makes it stutter.
 		 */
 		drawMarkers() {
-			if (this.markers === null) {
+			if (this.map === null || this.zooming) {
 				return
 			}
-			this.markers.clearLayers()
+
+			// A NEW cluster group each time, swapped in whole, rather than emptying
+			// the live one. Removing markers from a group the map is still using
+			// left Leaflet repositioning a marker whose map was already gone
+			// ("latLngToLayerPoint of null") and the pins never came back. The old
+			// group is discarded in one move instead, which it cannot be caught
+			// half-way through.
+			//
+			// ponytail: still a full rebuild, now of a throwaway group. Diff the
+			// markers if a real catastro makes this stutter — it no longer breaks.
+			const next = L.markerClusterGroup({ showCoverageOnHover: false, animate: false })
 
 			this.points.forEach((feature) => {
 				const [lon, lat] = feature.geometry.coordinates
@@ -230,8 +291,15 @@ export default {
 				// dropped near one jumps onto it.
 				L.marker([lat, lon], { icon: this.iconFor(feature), snapIgnore: true })
 					.on('click', () => this.$emit('select', feature.id))
-					.addTo(this.markers)
+					.addTo(next)
 			})
+
+			const previous = this.markers
+			this.markers = next
+			this.map.addLayer(next)
+			if (previous !== null) {
+				this.map.removeLayer(previous)
+			}
 		},
 
 		/**
@@ -242,7 +310,7 @@ export default {
 		 * polygon while looking at another sitting exactly on top of it.
 		 */
 		drawShapes() {
-			if (this.outlines === null) {
+			if (this.outlines === null || this.zooming) {
 				return
 			}
 			this.outlines.clearLayers()
@@ -259,8 +327,19 @@ export default {
 				))
 				layer.bindTooltip(feature.name)
 				layer.on('click', (event) => {
-					// A path click reaches the map too, and the map click is "put the
-					// open draft here" — so selecting a Sector would also move a record.
+					// While a draft is waiting for its coordinate, the click belongs to
+					// the map: let it through untouched. Once a comuna's Unidades
+					// Vecinales are imported they tile the whole view, so swallowing
+					// the click here would make it impossible to place a record by
+					// clicking — and worse, it would select a cadastre boundary and
+					// hand the next save to that instead.
+					if (this.placing) {
+						return
+					}
+
+					// Otherwise a path click reaches the map too, and the map click is
+					// "put the open draft here" — so selecting a Sector would also move
+					// whatever record was open.
 					L.DomEvent.stopPropagation(event)
 					this.$emit('select', feature.id)
 				})

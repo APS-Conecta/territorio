@@ -60,6 +60,7 @@ class ImportService {
 		private SubcategoryMapper $subcategories,
 		private RevisionLog $revisions,
 		private ImportBatchMapper $batches,
+		private ComunaConfig $comuna,
 	) {
 	}
 
@@ -139,6 +140,8 @@ class ImportService {
 		?string $actor,
 		?bool $boundary,
 	): ImportBatch {
+		$this->refuseAnotherComuna($rows);
+
 		[$rows, $duplicates] = $this->collapseDuplicates($rows);
 		[$prepared, $unsupported] = $this->prepare($rows);
 
@@ -183,6 +186,41 @@ class ImportService {
 			},
 			$this->batches->findRecent(),
 		);
+	}
+
+	/**
+	 * Refuse a file that belongs to a different comuna.
+	 *
+	 * An install serves exactly one Comuna and a Territorio never reaches into a
+	 * second (CONTEXT.md), so a Unidad Vecinal file cut for somewhere else is a
+	 * mistake worth catching at the door — not after 300 boundaries from another
+	 * municipality are in the Registry and someone has to work out which.
+	 *
+	 * Only the UV cadastre says which comuna it is for. Everything else stays
+	 * silent and is imported as before: this is a check on a claim the file makes,
+	 * never a demand that every file make one.
+	 *
+	 * @param list<array<string, mixed>> $rows
+	 * @throws InvalidImportException
+	 */
+	private function refuseAnotherComuna(array $rows): void {
+		$comuna = $this->comuna->get();
+		if (!$comuna->isChosen()) {
+			return;
+		}
+
+		foreach ($rows as $row) {
+			$says = (string)($row['comuna'] ?? '');
+			if ($says !== '' && $says !== $comuna->cut) {
+				throw new InvalidImportException(sprintf(
+					'El archivo es de la comuna %s y esta instalación es la %s%s. '
+					. 'Corte el archivo para su comuna antes de importarlo.',
+					$says,
+					$comuna->cut,
+					$comuna->name === '' ? '' : ' (' . $comuna->name . ')',
+				));
+			}
+		}
 	}
 
 	/**

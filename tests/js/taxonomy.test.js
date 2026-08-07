@@ -3,6 +3,7 @@ import {
 	colourOf,
 	defaultSubcategoryId,
 	divisionsOf,
+	boundsOf,
 	indexSubcategories,
 	isDivision,
 	sectorSubcategoryId,
@@ -89,6 +90,41 @@ describe('what colour a record is drawn in', () => {
 
 	it('falls back again when the Subcategory is one the taxonomy no longer has', () => {
 		expect(colourOf({ subcategoryId: 999, colour: null }, subcategories)).toBe(UNKNOWN_COLOUR)
+	})
+})
+
+describe('the extent of a division', () => {
+	const subcategories = indexSubcategories(TAXONOMY)
+	const uv = (id, coordinates) => ({
+		id, subcategoryId: 21, geometry: { type: 'Polygon', coordinates },
+	})
+
+	/** Opening on the comuna the install serves, measured from its own boundaries. */
+	it('spans every ring of every matching Feature', () => {
+		const features = [
+			uv(1, [[[-70.60, -33.53], [-70.58, -33.53], [-70.58, -33.51], [-70.60, -33.53]]]),
+			uv(2, [[[-70.62, -33.55], [-70.59, -33.55], [-70.59, -33.52], [-70.62, -33.55]]]),
+		]
+
+		expect(boundsOf(features, subcategories, 'sector'))
+			.toEqual([[-33.55, -70.62], [-33.51, -70.58]])
+	})
+
+	it('ignores Features of any other Subcategory', () => {
+		const features = [
+			uv(1, [[[-70.60, -33.53], [-70.58, -33.53], [-70.58, -33.51], [-70.60, -33.53]]]),
+			{ id: 2, subcategoryId: 11, geometry: { type: 'Point', coordinates: [-71.9, -30.1] } },
+		]
+
+		expect(boundsOf(features, subcategories, 'sector'))
+			.toEqual([[-33.53, -70.60], [-33.51, -70.58]])
+	})
+
+	/** Nothing to measure is null, so the caller can keep its own opening view. */
+	it('is null when nothing matches, and when a match has no geometry', () => {
+		expect(boundsOf([], subcategories, 'sector')).toBe(null)
+		expect(boundsOf([{ id: 1, subcategoryId: 21, geometry: null }], subcategories, 'sector'))
+			.toBe(null)
 	})
 })
 

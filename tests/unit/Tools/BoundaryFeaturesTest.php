@@ -7,8 +7,8 @@ namespace OCA\Territorio\Tests\Unit\Tools;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
-use function Territorio\Tools\overpassQuery;
-use function Territorio\Tools\toGeoJson;
+use function Territorio\Tools\Boundary\overpassQuery;
+use function Territorio\Tools\Boundary\toGeoJson;
 
 require_once __DIR__ . '/../../../tools/boundary-features.php';
 

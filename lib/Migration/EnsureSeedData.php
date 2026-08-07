@@ -112,6 +112,10 @@ class EnsureSeedData implements IRepairStep {
 		'color' => '#334155',
 		'subcategories' => [
 			'sector' => 'Sector',
+			// Read from the national cadastre, never drawn (CONTEXT.md). It needs a
+			// home here for the same reason Sector does: a Unidad Vecinal is a
+			// Feature, and a Feature carries exactly one Subcategory.
+			'unidad_vecinal' => 'Unidad Vecinal',
 		],
 	];
 

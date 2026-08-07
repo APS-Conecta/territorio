@@ -75,20 +75,25 @@ class GeoJsonReader {
 			);
 		}
 
+		// Stated once at the top of the file and carried onto each row from there.
+		// The import refuses a file whose comuna is not the one this install
+		// serves, and the row is where it can see it without decoding twice.
+		$comuna = trim((string)($collection['comuna'] ?? ''));
+
 		$features = $collection['features'] ?? null;
 		if (!is_array($features)) {
 			throw new InvalidImportException('El FeatureCollection no tiene una lista de features.');
 		}
 
 		return array_values(array_map(
-			fn (mixed $feature, int $index): array => $this->row($feature, $index, $datasetSlug),
+			fn (mixed $feature, int $index): array => $this->row($feature, $index, $datasetSlug, $comuna),
 			$features,
 			array_keys($features),
 		));
 	}
 
 	/** @return array<string, mixed> */
-	private function row(mixed $feature, int $index, string $datasetSlug): array {
+	private function row(mixed $feature, int $index, string $datasetSlug, string $comuna = ''): array {
 		if (!is_array($feature)) {
 			throw new InvalidImportException(sprintf('El feature %d no es un objeto.', $index + 1));
 		}
@@ -120,6 +125,9 @@ class GeoJsonReader {
 			'openingHours' => $this->text($properties['opening_hours'] ?? null),
 			'notes' => $this->text($properties['notes'] ?? null),
 			'sourceRef' => $this->sourceRef($properties, $source),
+			// Which comuna the FILE says it is for, or '' where it does not say.
+			// Only the Unidad Vecinal cadastre says (issue #9).
+			'comuna' => $comuna,
 		];
 	}
 

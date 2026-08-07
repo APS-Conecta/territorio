@@ -13,7 +13,7 @@ use OCA\Territorio\Service\Kind;
 use OCP\IDBConnection;
 use OCP\Server;
 
-use function Territorio\Tools\toGeoJson;
+use function Territorio\Tools\Boundary\toGeoJson;
 
 require_once __DIR__ . '/../../tools/boundary-features.php';
 

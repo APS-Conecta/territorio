@@ -58,6 +58,7 @@ final class RoutesTest extends TestCase {
 			'import#revert',
 			'changes#since',
 			'adminSettings#save',
+			'adminSettings#saveComuna',
 		], $names);
 	}
 }

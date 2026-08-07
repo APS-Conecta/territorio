@@ -6,6 +6,7 @@ namespace OCA\Territorio\Settings;
 
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Service\BasemapConfig;
+use OCA\Territorio\Service\ComunaConfig;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\Settings\ISettings;
@@ -15,6 +16,7 @@ class AdminSettings implements ISettings {
 	public function __construct(
 		private IInitialState $initialState,
 		private BasemapConfig $basemapConfig,
+		private ComunaConfig $comunaConfig,
 	) {
 	}
 
@@ -27,6 +29,8 @@ class AdminSettings implements ISettings {
 		$this->initialState->provideInitialState('basemap', $stored + [
 			'rejected' => $this->basemapConfig->get()->wasRejected(),
 		]);
+
+		$this->initialState->provideInitialState('comuna', $this->comunaConfig->get()->jsonSerialize());
 
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-admin');
 

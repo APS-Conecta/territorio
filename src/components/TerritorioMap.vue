@@ -69,13 +69,18 @@ export default {
 		// user's edits back, so there is one geometry and not two.
 		draftGeometry: { type: Object, default: null },
 		draftColour: { type: String, default: null },
+		// The Boundary features on screen while a Sector is being built, and which
+		// of them are picked. Empty at every other moment: a comuna is around
+		// eleven thousand lines and they are not the map (issue #12).
+		boundaries: { type: Array, default: () => [] },
+		pickedIds: { type: Array, default: () => [] },
 		// Whether the open draft is waiting for a coordinate. While it is, a click
 		// anywhere places that coordinate — including on top of a Sector or a
 		// Unidad Vecinal, which otherwise swallow the click to select themselves.
 		placing: { type: Boolean, default: false },
 	},
 
-	emits: ['select', 'map-click', 'draw', 'reshape'],
+	emits: ['select', 'map-click', 'draw', 'reshape', 'pick', 'view-changed'],
 
 	data() {
 		return {
@@ -86,6 +91,7 @@ export default {
 			markers: null,
 			outlines: null,
 			draftLayer: null,
+			pickable: null,
 			// The reshape we last told the parent about, cleared as soon as it comes
 			// back: redrawing on our own edit would tear the layer out from under the
 			// hand still dragging its vertex.
@@ -168,6 +174,15 @@ export default {
 		draftColour() {
 			this.draftLayer?.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
+		boundaries: {
+			handler() {
+				this.drawPickable()
+			},
+			deep: true,
+		},
+		pickedIds() {
+			this.drawPickable()
+		},
 	},
 
 	mounted() {
@@ -177,6 +192,20 @@ export default {
 			// Leaflet's default puts the zoom control top-left, under Nextcloud's
 			// app navigation toggle on narrow screens.
 			zoomControl: false,
+			// No animated zoom, on the third occasion of the same failure.
+			//
+			// Leaflet animates a zoom by computing every layer's new screen position
+			// mid-flight. This map rebuilds layer groups from three separate causes
+			// — a five-second poll, a filter change, and the Limit picker reloading
+			// as the view moves — and a rebuild landing inside a flight leaves
+			// Leaflet reading a layer whose map is already gone. It throws, and what
+			// it was drawing does not come back.
+			//
+			// Swapping groups whole fixed the markers and the shapes. The picker
+			// reloads on movement, which is the likeliest collision of all, and it
+			// brought the error straight back. A smooth zoom is not worth a map that
+			// empties itself.
+			zoomAnimation: false,
 		})
 		L.control.zoom({ position: 'topright' }).addTo(this.map)
 
@@ -220,6 +249,11 @@ export default {
 		this.map.on('click', (event) => {
 			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
 		})
+
+		// The editor asks for the Boundary features on screen, so it has to know
+		// when "on screen" changes. moveend covers panning and zooming both.
+		this.map.on('moveend', () => this.announceView())
+		this.announceView()
 
 		// A Leaflet map sized before its container settles renders grey. Nextcloud
 		// animates the sidebar and navigation, so observe rather than guess.
@@ -374,6 +408,61 @@ export default {
 				layer.remove()
 				this.$emit('draw', geometry)
 			})
+		},
+
+		/** Which part of the comuna is on screen, for whoever needs to load it. */
+		announceView() {
+			const bounds = this.map.getBounds()
+
+			this.$emit('view-changed', {
+				south: bounds.getSouth(),
+				west: bounds.getWest(),
+				north: bounds.getNorth(),
+				east: bounds.getEast(),
+			})
+		},
+
+		/**
+		 * The lines a Limit can follow, thin and grey until picked.
+		 *
+		 * Swapped whole like every other group here: emptying one the map is still
+		 * using leaves Leaflet holding layers whose map is already gone.
+		 */
+		drawPickable() {
+			if (this.map === null) {
+				return
+			}
+
+			const next = L.featureGroup()
+
+			this.boundaries.forEach((boundary) => {
+				if (!boundary.geometry) {
+					return
+				}
+
+				const picked = this.pickedIds.includes(boundary.id)
+				const layer = L.GeoJSON.geometryToLayer(boundary.geometry)
+				layer.setStyle({
+					color: picked ? '#c2410c' : '#64748b',
+					weight: picked ? 5 : 3,
+					opacity: picked ? 1 : 0.55,
+				})
+				layer.bindTooltip(boundary.name)
+				layer.on('click', (event) => {
+					// The picker owns this click: unstopped, the map would also read it
+					// as "put the open draft here".
+					L.DomEvent.stopPropagation(event)
+					this.$emit('pick', boundary.id)
+				})
+				next.addLayer(layer)
+			})
+
+			const previous = this.pickable
+			this.pickable = next
+			this.map.addLayer(next)
+			if (previous !== null) {
+				this.map.removeLayer(previous)
+			}
 		},
 
 		/**

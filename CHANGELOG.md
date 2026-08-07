@@ -3,6 +3,32 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.18.3] — unreleased
+
+Saying where a Sector's limit runs.
+
+### Added
+
+- While a Sector is open, the comuna's streets, canals and railways load for the view on screen and
+  can be picked — by clicking a line, or by typing a name. Both land in the same selection, which
+  is listed and individually removable. They unload when the editor closes.
+- `GET /boundaries` returns the Boundary features overlapping a box, and only that: they are absent
+  from every other read because a comuna is around eleven thousand lines (issue #12).
+
+### Notes
+
+- The app never resolves a street NAME (ADR-0007). Typing offers every name that matches and picks
+  none of them: "Los Toros" and "Pasaje Los Toros Norte" are two rows, and choosing between them is
+  the person's job, in one click, rather than a geocoder's guess.
+- Names are grouped, because a comuna holds one street as dozens of separate ways. Picking the name
+  picks all of it, and the count says how much that is — thirty identical rows is not a choice
+  anybody can make.
+- A line picked and then panned away from stays picked. It just cannot be named until it is loaded
+  again, and dropping it would silently unpick it.
+- Zoom animation is off. Third time this map has lost what it was drawing to a rebuild landing
+  inside an animated zoom; the picker reloads as the view moves, which is the likeliest collision
+  of the three.
+
 ## [0.17.1] — unreleased
 
 Where a record falls, worked out rather than typed.

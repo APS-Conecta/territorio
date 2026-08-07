@@ -56,6 +56,7 @@ final class RoutesTest extends TestCase {
 			'import#upload',
 			'import#batches',
 			'import#revert',
+			'boundary#inView',
 			'changes#since',
 			'adminSettings#save',
 			'adminSettings#saveComuna',

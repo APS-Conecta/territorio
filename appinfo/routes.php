@@ -24,6 +24,11 @@ return [
 		// Undo one run (ADR-0009). There is no backup feature; this is it.
 		['name' => 'import#revert', 'url' => '/import/{id}/revert', 'verb' => 'POST'],
 
+		// The Sector editor asks for the Boundary features on screen, and only
+		// while it is open (ADR-0007). Everything else in the app is careful to
+		// leave them out.
+		['name' => 'boundary#inView', 'url' => '/boundaries', 'verb' => 'GET'],
+
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],
 

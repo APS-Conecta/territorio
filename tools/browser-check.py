@@ -212,6 +212,53 @@ def the_assignment_is_shown_and_not_editable(page, failures):
     page.wait_for_timeout(400)
 
 
+def the_limit_can_be_picked(page, failures):
+    """#13: pick the lines a Sector's Limit runs along, by name or by clicking.
+
+    Needs boundary features on the instance; skipped with a word rather than a
+    false pass when there are none.
+    """
+    page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
+    page.wait_for_timeout(400)
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+
+    picker = page.locator(".territorio-picker")
+    if picker.count() == 0:
+        failures.append("opening a Sector did not open the Limit picker")
+        return
+
+    box = picker.locator("input")
+    # A letter, not a word: the loaded names are whatever streets this comuna
+    # actually has, and the check should not need to know them.
+    box.fill("a")
+    page.wait_for_timeout(600)
+
+    offered = picker.locator(".territorio-picker__suggestions li")
+    if offered.count() == 0:
+        print("SKIP  no boundary features in view to pick from")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    # Picking by name puts it in the chosen list…
+    offered.first.locator("button").click()
+    page.wait_for_timeout(500)
+    chosen = picker.locator(".territorio-picker__picked li")
+    if chosen.count() != 1:
+        failures.append(f"picking a name chose {chosen.count()} things, expected 1")
+
+    # …and removing it takes it out again.
+    chosen.first.get_by_role("button", name="Quitar").click()
+    page.wait_for_timeout(500)
+    if picker.locator(".territorio-picker__picked li").count() != 0:
+        failures.append("removing a picked line did not remove it")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def search_narrows_everything(page, failures):
     """#19: the box narrows the Datos list, the map and the counts together.
 
@@ -361,6 +408,7 @@ def main():
         clicking_places_the_coordinate(page, failures)
         the_assignment_is_shown_and_not_editable(page, failures)
         search_narrows_everything(page, failures)
+        the_limit_can_be_picked(page, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 
         kml_says_what_it_cannot_carry(page, failures)

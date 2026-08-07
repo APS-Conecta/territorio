@@ -206,6 +206,46 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
+	 * The Boundary features overlapping a box — the inverse of every other read.
+	 *
+	 * They are excluded everywhere else because a comuna is around eleven
+	 * thousand lines and nobody browses those (issue #12). This is the one place
+	 * that wants them: the Sector editor, while a boundary is being built out of
+	 * them (ADR-0007), and only the ones on screen.
+	 *
+	 * Overlap rather than containment: a street that runs off the edge of the view
+	 * is still one you can click the visible half of.
+	 *
+	 * @return Feature[]
+	 */
+	public function findBoundariesIn(float $south, float $west, float $north, float $east, int $limit = 3000): array {
+		$boundaries = $this->datasets->boundaryIds();
+		if ($boundaries === []) {
+			return [];
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->andWhere($qb->expr()->in('dataset_id', $qb->createNamedParameter(
+				$boundaries, IQueryBuilder::PARAM_INT_ARRAY,
+			)))
+			->andWhere($qb->expr()->lte('min_lat', $qb->createNamedParameter($north)))
+			->andWhere($qb->expr()->gte('max_lat', $qb->createNamedParameter($south)))
+			->andWhere($qb->expr()->lte('min_lon', $qb->createNamedParameter($east)))
+			->andWhere($qb->expr()->gte('max_lon', $qb->createNamedParameter($west)))
+			// ponytail: a flat cap rather than paging. Zoomed far enough out this
+			// silently returns the first few thousand, which is why the editor asks
+			// again whenever the view moves; page it when somebody needs to pick a
+			// street they cannot see.
+			->setMaxResults($limit)
+			->orderBy('name', 'ASC');
+
+		return $this->findEntities($qb);
+	}
+
+	/**
 	 * Leave out everything belonging to a Boundary-feature Dataset.
 	 *
 	 * Applied to the ordinary reads and to no others. `findByDataset()` must see

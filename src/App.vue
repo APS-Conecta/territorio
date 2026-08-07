@@ -64,6 +64,10 @@
 					:draft-geometry="draftGeometry"
 					:draft-colour="draft?.colour ?? null"
 					:placing="placing"
+					:boundaries="editingLimit ? boundaryFeatures : []"
+					:picked-ids="draft?.picked ?? []"
+					@pick="togglePicked"
+					@view-changed="onViewChanged"
 					@select="select"
 					@map-click="placeDraft"
 					@draw="startSector"
@@ -87,7 +91,15 @@
 				</NcButton>
 			</NcNoteCard>
 
-			<FeatureDetail :draft="draft"
+			<BoundaryPicker v-if="editingLimit"
+					:suggestions="boundarySuggestions"
+					:picked="pickedBoundaries"
+					:picked-ids="draft.picked"
+					:query="boundaryQuery"
+					@toggle-group="togglePickedGroup"
+					@update:query="boundaryQuery = $event" />
+
+				<FeatureDetail :draft="draft"
 				:taxonomy="taxonomy"
 				:boundaries="boundaries"
 				:saving="saving"
@@ -110,11 +122,13 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import AnalisisView from './components/AnalisisView.vue'
+import BoundaryPicker from './components/BoundaryPicker.vue'
 import CapasPanel from './components/CapasPanel.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
+import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
 import {
 	countsFor,
 	emptyFilter,
@@ -154,6 +168,7 @@ export default {
 
 	components: {
 		AnalisisView,
+		BoundaryPicker,
 		CapasPanel,
 		FeatureDetail,
 		FeatureList,
@@ -188,6 +203,12 @@ export default {
 			error: '',
 			pollTimer: null,
 			pollFailed: false,
+			// Loaded only while a Sector's Limit is being built, and thrown away
+			// when it is not: a comuna is around eleven thousand lines (issue #12).
+			boundaryFeatures: [],
+			boundaryQuery: '',
+			view: null,
+			viewTimer: null,
 		}
 	},
 
@@ -249,6 +270,24 @@ export default {
 			return this.features.filter((feature) => divisions.has(feature.subcategoryId))
 		},
 
+		/**
+		 * Whether a Sector is open and its Limit is being built (ADR-0007).
+		 *
+		 * The one moment the Boundary features are wanted, and the reason they are
+		 * absent from every other read.
+		 */
+		editingLimit() {
+			return this.draft !== null && this.draft.picked !== undefined
+		},
+
+		boundarySuggestions() {
+			return suggestions(this.boundaryFeatures, this.boundaryQuery)
+		},
+
+		pickedBoundaries() {
+			return pickedGroups(this.boundaryFeatures, this.draft?.picked ?? [])
+		},
+
 		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
 		draftGeometry() {
 			return this.draft?.geometry ?? null
@@ -270,6 +309,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		clearTimeout(this.viewTimer)
 		this.stopPolling()
 		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 	},
@@ -383,12 +423,21 @@ export default {
 			}
 		},
 
+		isDivision(subcategoryId) {
+			return divisionsOf(this.taxonomy).some((division) => division.id === subcategoryId)
+		},
+
 		select(id) {
 			this.selectedId = id
 			const feature = this.listed.find((candidate) => candidate.id === id)
 			this.draft = feature === undefined ? null : this.draftFrom(feature)
 			this.error = ''
 			this.history = []
+			this.boundaryQuery = ''
+			this.boundaryFeatures = []
+			if (this.editingLimit) {
+				this.loadBoundaries()
+			}
 			if (feature !== undefined) {
 				this.loadHistory(id)
 			}
@@ -479,6 +528,67 @@ export default {
 				subcategoryId,
 				geometry,
 				colour: DEFAULT_SECTOR_COLOUR,
+				// Only a Sector draft carries these, and carrying them is what opens
+				// the picker (issue #13). #15 is what makes them outlive the draft.
+				picked: [],
+			}
+			this.boundaryQuery = ''
+			this.boundaryFeatures = []
+			this.loadBoundaries()
+		},
+
+		/** Clicking a line on the map is the same pick as choosing its name. */
+		togglePicked(id) {
+			if (this.draft?.picked !== undefined) {
+				this.draft.picked = togglePick(this.draft.picked, id)
+			}
+		},
+
+		togglePickedGroup(ids) {
+			if (this.draft?.picked !== undefined) {
+				this.draft.picked = toggleGroup(this.draft.picked, ids)
+			}
+		},
+
+		/**
+		 * The map moved, so what is on screen changed.
+		 *
+		 * Remembered even when nothing is being edited: opening the editor then
+		 * loads what is already in view rather than waiting for the first pan.
+		 */
+		onViewChanged(view) {
+			this.view = view
+			if (!this.editingLimit) {
+				return
+			}
+
+			// Settled, not while moving. A person panning across a comuna fires this
+			// repeatedly, and asking the server on each one is both wasteful and the
+			// window where rebuilding the layer collides with the map still redrawing
+			// itself.
+			clearTimeout(this.viewTimer)
+			this.viewTimer = setTimeout(() => this.loadBoundaries(), 250)
+		},
+
+		/**
+		 * Fetch the lines a Limit could follow, for the view we are looking at.
+		 *
+		 * Only ever while the editor is open. They are excluded from every other
+		 * read on purpose, and loading them wholesale is what that exclusion
+		 * exists to prevent.
+		 */
+		async loadBoundaries() {
+			if (this.view === null) {
+				return
+			}
+
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/boundaries'), {
+					params: this.view,
+				})
+				this.boundaryFeatures = data
+			} catch (exception) {
+				console.warn('territorio: could not load the boundary features', exception)
 			}
 		},
 
@@ -528,6 +638,10 @@ export default {
 				// so the sidebar can name them without asking the server again.
 				sectorId: feature.sectorId ?? null,
 				unidadVecinalId: feature.unidadVecinalId ?? null,
+				// A Sector opened for editing gets the picker too, not only one being
+				// drawn. Until #15 stores a Limit there is nothing to load into it,
+				// so it starts empty either way.
+				...(this.isDivision(feature.subcategoryId) ? { picked: [] } : {}),
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
 				locationQuality: feature.locationQuality === 'sin_coordenada'
@@ -561,6 +675,10 @@ export default {
 			this.draft = null
 			this.selectedId = null
 			this.history = []
+			// Unloaded on leaving the editor, which is the other half of loading
+			// them only inside it: eleven thousand lines are not the map.
+			this.boundaryFeatures = []
+			this.boundaryQuery = ''
 		},
 
 		payload() {

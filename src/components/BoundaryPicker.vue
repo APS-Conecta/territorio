@@ -1,5 +1,5 @@
 <template>
-	<section class="territorio-picker">
+	<section class="territorio-picker" data-testid="boundary-picker">
 		<h4>Límite</h4>
 
 		<p class="territorio-picker__hint">
@@ -56,6 +56,25 @@
 		<p v-else class="territorio-picker__hint">
 			Todavía no ha elegido nada. Un Sector dibujado a mano es igual de válido.
 		</p>
+
+		<!--
+			Only offered once there is something to build from, and never instead of
+			drawing (ADR-0007). What comes out is a starting point: real limits run
+			along a canal, the edge of a park, or a line two teams agreed on years
+			ago, and none of that is in any dataset.
+		-->
+		<NcButton v-if="picked.length > 0"
+			class="territorio-picker__generate"
+			variant="secondary"
+			:pressed="seeding"
+			@click="$emit('generate')">
+			{{ seeding ? 'Haga clic dentro del sector…' : 'Generar el polígono' }}
+		</NcButton>
+
+		<p v-if="picked.length > 0" class="territorio-picker__hint">
+			Se puede ajustar arrastrando los vértices, y siempre se puede dibujar a
+			mano en vez de generar.
+		</p>
 	</section>
 </template>
 
@@ -75,9 +94,11 @@ export default {
 		picked: { type: Array, default: () => [] },
 		pickedIds: { type: Array, default: () => [] },
 		query: { type: String, default: '' },
+		/** Waiting for the click that says which block is the Sector (issue #14). */
+		seeding: { type: Boolean, default: false },
 	},
 
-	emits: ['toggle-group', 'update:query'],
+	emits: ['generate', 'toggle-group', 'update:query'],
 
 	methods: {
 		/** A whole street counts as picked only when every line of it is. */
@@ -116,6 +137,10 @@ export default {
 	justify-content: space-between;
 	gap: 8px;
 	padding: 2px 0;
+}
+
+.territorio-picker__generate {
+	margin-top: 8px;
 }
 
 .territorio-picker__count {

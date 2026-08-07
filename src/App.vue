@@ -133,6 +133,8 @@
 					:picked="pickedBoundaries"
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
+					:seeding="seeding"
+					@generate="startSeeding"
 					@toggle-group="togglePickedGroup"
 					@update:query="boundaryQuery = $event" />
 
@@ -168,6 +170,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
+import { faceAround } from './sectors.js'
 import {
 	countsFor,
 	emptyFilter,
@@ -244,6 +247,10 @@ export default {
 			// twice while the request is in flight.
 			resolving: null,
 			exporting: false,
+			// Waiting for the click that says which enclosed block is the Sector
+			// (issue #14). Only the person knows: four streets crossing make
+			// several blocks and the picked lines say nothing about which one.
+			seeding: false,
 			importing: false,
 			history: [],
 			selectedId: null,
@@ -382,7 +389,7 @@ export default {
 		 * would otherwise take it to select themselves.
 		 */
 		placing() {
-			return this.draft !== null && this.draft.geometry === null
+			return (this.draft !== null && this.draft.geometry === null) || this.seeding
 		},
 	},
 
@@ -741,6 +748,48 @@ export default {
 			}
 		},
 
+		/**
+		 * Build the Sector from the picked lines and the block the person clicks.
+		 *
+		 * Two steps rather than one because the seed cannot be guessed. The centre
+		 * of the picked lines is not inside the Sector when its limit runs along
+		 * an L of two avenues, and picking a face for somebody is exactly the kind
+		 * of quiet decision ADR-0007 refuses.
+		 */
+		startSeeding() {
+			this.seeding = true
+			this.error = 'Haga clic dentro del sector, entre las calles que eligió.'
+		},
+
+		/**
+		 * The click that names the block, and the polygon that comes of it.
+		 *
+		 * A failure here is ordinary rather than exceptional: the lines someone
+		 * picked genuinely may not close, because a real limit runs along things
+		 * no dataset holds. So it says so and leaves everything as it was —
+		 * hand-drawing is still there, and it is still the way ADR-0007 expects
+		 * most limits to be finished.
+		 */
+		seedSector({ lat, lon }) {
+			this.seeding = false
+
+			const picked = this.boundaryFeatures
+				.filter((boundary) => this.draft.picked.includes(boundary.id))
+				.map((boundary) => boundary.geometry)
+			const face = faceAround(picked, [lon, lat])
+
+			if (face === null) {
+				this.error = 'Las calles elegidas no cierran alrededor de ese punto. '
+					+ 'Elija más tramos, haga clic en otro lugar, o dibuje el sector a mano.'
+				return
+			}
+
+			// Straight into the ordinary draft, so every vertex is draggable from
+			// this moment on and nothing downstream knows this shape was generated.
+			this.draft.geometry = face
+			this.error = ''
+		},
+
 		/** A dragged vertex, straight from the map. */
 		reshapeDraft(geometry) {
 			if (this.draft !== null) {
@@ -813,6 +862,13 @@ export default {
 		 * by dragging its vertices instead.
 		 */
 		placeDraft({ lat, lon }) {
+			// The seed comes first: while the editor is waiting for one, that click
+			// is what it is for and not a coordinate for the record.
+			if (this.seeding) {
+				this.seedSector({ lat, lon })
+				return
+			}
+
 			if (this.draft === null || this.draft.geometry !== null) {
 				return
 			}
@@ -831,6 +887,8 @@ export default {
 			// them only inside it: eleven thousand lines are not the map.
 			this.boundaryFeatures = []
 			this.boundaryQuery = ''
+			// Or the next draft opens already waiting for a click nobody asked for.
+			this.seeding = false
 		},
 
 		payload() {

@@ -3,6 +3,40 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.21.4] — unreleased
+
+Building a Sector from the streets around it.
+
+### Added
+
+- **Generar el polígono**, in the Limit picker once something is picked: click inside the block and
+  the picked lines become a Sector polygon, straight into the ordinary editor with every vertex
+  draggable.
+- Ordering, ring closure and repeated names need no intervention. The picked lines are cut into
+  every enclosed face they make and the one containing the click is kept, which disposes of all
+  three at once rather than solving them one at a time.
+- When the lines do not close around the point, it says so and nothing changes. Hand-drawing stays
+  available throughout (ADR-0007).
+
+### Notes
+
+- The generated polygon is a starting point, never the final answer. Real limits run along a canal,
+  the edge of a park, or a line two teams agreed on years ago — none of which is in any dataset.
+- The seed click is the person's, and cannot be guessed. Four streets crossing make several blocks,
+  and the centre of the picked lines is outside the Sector whenever its limit runs along an L of two
+  avenues.
+- Nested faces resolve to the smallest one containing the click, so a Sector inside a ring of picked
+  streets is the Sector rather than everything around it.
+- `@turf/polygonize` and `@turf/boolean-point-in-polygon` are new dependencies. Polygonizing by hand
+  is a graph traversal with an edge case for every way a street can join another one.
+
+### Fixed
+
+- Two integration tests asserted a record's Sector was `null` after a boundary moved away from it.
+  That is a claim about every Sector on the instance, not about the one that moved, and the browser
+  gate broke it the moment it started building four-kilometre Sectors. They now assert the record
+  let go of *that* boundary. The gate retires its own Sector at the end of a run.
+
 ## [0.20.7] — unreleased
 
 Taking the filtered set out of the app.

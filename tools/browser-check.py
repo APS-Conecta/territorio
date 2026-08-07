@@ -30,6 +30,7 @@ else. That took this from passing two runs in three to nine of nine.
 """
 
 import json
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -603,6 +604,244 @@ def the_server_refuses_an_unconfirmed_export(page, failures):
             )
 
 
+def a_sector_can_be_built_from_picked_lines(page, failures):
+    """#14: picked lines plus a click inside become an editable polygon.
+
+    The lines are imported through `occ`, which is the only way to make a
+    Boundary Dataset — the UI deliberately has no control for it, because
+    boundaries are a cadastre somebody loads once and not a thing a person
+    creates (ADR-0007, issue #12). That is a real coupling to the dev instance,
+    and it is why this skips with a word rather than failing if the command does
+    not run: a check that cannot set up its own data has nothing to say.
+
+    A square four kilometres across, centred where this instance's data is, so
+    that a click at the middle of the canvas is inside it whatever the map
+    happens to be fitted to. Its four sides share one name, so picking the name
+    picks all four — which is also the "duplicate names need no intervention"
+    half of the criterion.
+    """
+    name = f"Cuadro {RUN}"
+    south, west, north, east = -33.54, -70.60, -33.50, -70.56
+    corners = [(west, south), (east, south), (east, north), (west, north)]
+    sides = [
+        {
+            "type": "Feature",
+            "properties": {"id": f"cuadro-{RUN}-{index}", "name": name},
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [list(corners[index]), list(corners[(index + 1) % 4])],
+            },
+        }
+        for index in range(4)
+    ]
+    geojson = json.dumps({"type": "FeatureCollection", "features": sides})
+
+    if not import_boundaries(geojson, f"cuadro-{RUN}"):
+        print("SKIP  could not import boundary lines through occ; polygonize unchecked")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1500)
+
+    # Open the Sector this run drew earlier, which is what opens the picker.
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+    box = picker.locator("input")
+    box.fill(name)
+    page.wait_for_timeout(800)
+    offered = picker.locator(".territorio-picker__suggestions li")
+    if offered.count() == 0:
+        print("SKIP  the imported square is not in view; polygonize unchecked")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    # One click picks all four sides, because they share a name.
+    offered.first.locator("button").click()
+    page.wait_for_timeout(600)
+
+    generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.count() == 0:
+        failures.append("picking lines did not offer to generate the polygon")
+        return
+
+    generate.click()
+    page.wait_for_timeout(400)
+    if picker.get_by_text("Haga clic dentro del sector").count() == 0:
+        failures.append("pressing Generar did not ask where the sector is")
+
+    canvas = page.locator('[data-testid="map-canvas"]')
+    size = canvas.bounding_box()
+    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
+    page.wait_for_timeout(1200)
+
+    if page.get_by_text("no cierran", exact=False).count() != 0:
+        failures.append("generating over a closed square said the lines do not close")
+
+    # Saved and read back, because the Sector this opens ALREADY had a shape —
+    # it was drawn by hand earlier in this run. "The draft now has a geometry"
+    # was true before the button was pressed, so the only honest question is
+    # whether the shape became THIS square, and the only way to ask it is to
+    # look at what was stored.
+    save(page, failures, "the generated sector")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(600)
+
+    corners = exported_corners(page, f"Sector Navegador {RUN}", failures)
+    if corners is None:
+        return
+
+    wanted = sorted({(round(west, 2), round(south, 2)), (round(east, 2), round(south, 2)),
+                     (round(east, 2), round(north, 2)), (round(west, 2), round(north, 2))})
+    if corners != wanted:
+        failures.append(
+            f"the generated sector is not the square that was picked: {corners} against {wanted}",
+        )
+
+
+def retire_the_generated_sector(page, name):
+    """Take the run's own Sector off the map again (ADR-0005: retire, not delete).
+
+    Run once, at the end. After the polygonize check this Sector is four
+    kilometres across and covers most of what the dev instance holds, so leaving
+    it behind reassigns half the Registry to it — which is what a Sector is FOR,
+    and exactly why a run must not leave one lying about. It broke two
+    integration tests that way before this existed.
+    """
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(700)
+    if page.locator(ROWS).count() == 0:
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+
+    # Two clicks: retiring asks first, because nothing else in this app does.
+    ask = page.get_by_role("button", name="Retirar del mapa")
+    if ask.count() > 0:
+        ask.first.click()
+        page.wait_for_timeout(400)
+        page.get_by_role("button", name="Retirar", exact=True).first.click()
+        page.wait_for_timeout(1500)
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def exported_corners(page, name, failures):
+    """The saved geometry of one record, read back through the export.
+
+    Through the export rather than by reading the map, because a shape on screen
+    is a path in pixels and what this needs to know is what was STORED — the same
+    reason every other check here reloads rather than trusting the browser.
+    """
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.wait_for_timeout(600)
+
+    with page.expect_download(timeout=20_000) as download:
+        page.get_by_role("button", name="Exportar", exact=True).last.click()
+    written = json.loads(Path(download.value.path()).read_text())
+
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+    shapes = [f for f in written["features"] if f["geometry"]["type"] == "Polygon"]
+    if len(shapes) != 1:
+        failures.append(f"expected one polygon named {name!r}, exported {len(shapes)}")
+        return None
+
+    return sorted({(round(x, 2), round(y, 2)) for x, y in shapes[0]["geometry"]["coordinates"][0]})
+
+
+def the_editor_says_so_when_the_lines_do_not_close(page, failures):
+    """#14: "When no closed face contains the seed point, the user is told."
+
+    One line cannot enclose anything, so this is the failure every time rather
+    than sometimes — and it is the criterion that matters most, because a real
+    limit often runs along something no dataset holds and this is what happens
+    then. Silence here would leave somebody clicking the map waiting.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+    picker.locator("input").fill("a")
+    page.wait_for_timeout(800)
+    offered = picker.locator(".territorio-picker__suggestions li")
+    if offered.count() == 0:
+        print("SKIP  no boundary features in view to pick from")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    offered.first.locator("button").click()
+    page.wait_for_timeout(600)
+    picker.get_by_role("button", name="Generar el polígono").click()
+    page.wait_for_timeout(400)
+
+    canvas = page.locator('[data-testid="map-canvas"]')
+    size = canvas.bounding_box()
+    canvas.click(position={"x": size["width"] * 0.8, "y": size["height"] * 0.8})
+    page.wait_for_timeout(1000)
+
+    if page.get_by_text("no cierran", exact=False).count() == 0:
+        failures.append("lines that do not close said nothing when generating")
+
+    # ADR-0007: hand-drawing is available throughout, including after this.
+    if page.locator(".leaflet-pm-icon-polygon").count() == 0:
+        failures.append("hand-drawing is no longer available after a failed generate")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def open_the_runs_sector(page, failures):
+    """Open this run's own Sector, which is what opens the Limit picker."""
+    page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
+    page.wait_for_timeout(800)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"'Sector Navegador {RUN}' is not in the list to edit")
+        page.locator(SEARCH).fill("")
+        return False
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1500)
+    if page.locator('[data-testid="boundary-picker"]').count() == 0:
+        failures.append("opening a Sector did not open the Limit picker")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return False
+
+    return True
+
+
+def import_boundaries(geojson, dataset):
+    """Load lines as a Boundary Dataset, the only way there is: occ."""
+    container = ["docker", "compose", "-f", "compose.dev.yaml", "exec", "-T",
+                 "-u", "www-data", "nextcloud"]
+    written = subprocess.run(
+        [*container, "sh", "-c", f"cat > /tmp/{dataset}.geojson"],
+        input=geojson.encode(), capture_output=True, timeout=120,
+    )
+    if written.returncode != 0:
+        return False
+
+    done = subprocess.run(
+        [*container, "php", "occ", "territorio:import", f"/tmp/{dataset}.geojson",
+         f"--dataset={dataset}", "--boundary"],
+        capture_output=True, timeout=300,
+    )
+
+    return done.returncode == 0
+
+
 def the_map_survives_churn(page, errors, failures):
     """Zoom and pan with the Limit picker open, which is when groups get swapped.
 
@@ -806,8 +1045,17 @@ def main():
         the_limit_can_be_picked(page, failures)
         the_duplicate_queue_works(page, failures)
         exports_ask_for_a_password_only_when_earned(page, failures)
+        # The failure case first: the check that succeeds retires the Sector both
+        # of them open, because a four-kilometre Sector left on a shared instance
+        # reassigns half the Registry to itself.
+        the_editor_says_so_when_the_lines_do_not_close(page, failures)
+        a_sector_can_be_built_from_picked_lines(page, failures)
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
+
+        # Last, and after every check that needs this run's Sector: it is left
+        # four kilometres across by the polygonize check above.
+        retire_the_generated_sector(page, f"Sector Navegador {RUN}")
 
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)

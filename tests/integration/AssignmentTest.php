@@ -83,7 +83,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		$outside = $this->place('Queda dentro', ['geometry' => self::at(-70.53, -33.52)]);
 
 		self::assertSame($sector, $this->stored($inside)->getSectorId());
-		self::assertNull($this->stored($outside)->getSectorId());
+		self::assertNotSame($sector, $this->stored($outside)->getSectorId());
 
 		// Drag the whole boundary east.
 		Server::get(FeatureService::class)->update($sector, [
@@ -92,7 +92,12 @@ final class AssignmentTest extends IntegrationTestCase {
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::EAST],
 		]);
 
-		self::assertNull($this->stored($inside)->getSectorId(), 'the one it left');
+		// Not null — NOT THIS ONE. This runs against an instance other things have
+		// written to, including the browser gate, and any Sector somebody else
+		// drew may legitimately contain this coordinate. What the redraw promises
+		// is that the record let go of the boundary that moved away from it, and
+		// asserting null asserts something about the whole instance instead.
+		self::assertNotSame($sector, $this->stored($inside)->getSectorId(), 'the one it left');
 		self::assertSame($sector, $this->stored($outside)->getSectorId(), 'the one it reached');
 
 		// Visible, not silent: the reassignment is its own entry, and it says what
@@ -158,7 +163,9 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 
 		Server::get(FeatureService::class)->retire($sector);
-		self::assertNull($this->stored($place)->getSectorId());
+		// Not this one any more. Null would be a claim about every Sector on the
+		// instance, and this one is shared.
+		self::assertNotSame($sector, $this->stored($place)->getSectorId());
 
 		Server::get(FeatureService::class)->restore($sector);
 		self::assertSame($sector, $this->stored($place)->getSectorId(), 'and takes it back');

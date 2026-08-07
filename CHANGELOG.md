@@ -3,6 +3,30 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.12.0] — unreleased
+
+Search, and an answer for the app next door.
+
+### Added
+
+- A search box narrows the Datos list, the map and the Análisis counts together, because it is a
+  predicate on the one filtered set rather than a mechanism beside it. Case- and accent-insensitive:
+  "castanos" finds "Los Castaños". It matches name, address, contact person and the
+  "Categoría · Subcategoría" label, and it composes with the Capas toggles in either order.
+- `OCA\Territorio\Service\RegistryService` — counts and lookups for other apps on the instance, by
+  injection. No OCS route and no external API, and a test keeps it that way.
+
+### Notes
+
+- Search reaches the retired list, where the Capas toggles deliberately do not. A toggle is a
+  background setting someone forgot they left on; a query is someone saying what they are looking
+  for, and ignoring it in the list they are staring at would overrule them.
+- The service reads through `FeatureMapper::findAll()` rather than querying for itself, so what it
+  answers and what the app shows cannot drift: retired records are out, and so are the
+  Boundary-feature Datasets.
+- Counts by Sector and Unidad Vecinal are not there yet. ADR-0008 derives an assignment from
+  geometry and stores it, and nothing stores one until issue #11.
+
 ## [0.10.0] — unreleased
 
 Guardar works. It never had.

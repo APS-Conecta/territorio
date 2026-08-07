@@ -64,6 +64,31 @@ the URL identical and the browser keeps serving the copy it already has. After `
 **hard-reload** (Ctrl/Cmd+Shift+R). If you are handing the instance to someone else to look at,
 bump the app version instead — that changes the URL for everyone.
 
+## Asking Territorio things from another app
+
+Apps on the same Nextcloud consume each other by injection, not over HTTP — it is faster, it joins
+the caller's transaction, and there is no request to authenticate. Inject
+`OCA\Territorio\Service\RegistryService`:
+
+```php
+public function __construct(
+    private \OCA\Territorio\Service\RegistryService $territorio,
+) {}
+
+$counts = $this->territorio->counts();
+$counts['categories']['organizacion_social']['subcategories']['taller'];   // how many talleres
+$this->territorio->inSubcategory('organizacion_social', 'taller');          // and which ones
+$this->territorio->find($id);                                              // one record, or null
+```
+
+Keyed by slug, never by id: ids differ per install, slugs are what the seed and the imports use.
+
+Everything reads through the same set the app's own screens read, so retired records and the
+Boundary-feature Datasets are absent — a comuna's eleven thousand streets are not places anyone
+means to count. **No OCS route and no external API is registered**, and a test asserts that stays
+true. Counts by Sector and Unidad Vecinal arrive with issue #11, which is what first stores an
+assignment (ADR-0008).
+
 ## Boundary features
 
 The lines a Sector's Limit can run along — the comuna's named streets, canals and railways — come

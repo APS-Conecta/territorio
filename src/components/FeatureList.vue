@@ -21,7 +21,37 @@
 			</div>
 		</div>
 
-		<NcEmptyContent v-if="features.length === 0"
+		<!--
+			type="search" rather than a plain text field: the browser draws its own
+			clear button and handles Escape, which is two behaviours not written here.
+		-->
+		<div class="territorio-list__search">
+			<NcTextField :model-value="query"
+				type="search"
+				label="Buscar"
+				:show-trailing-button="query !== ''"
+				trailing-button-label="Limpiar la búsqueda"
+				@update:model-value="$emit('update:query', $event)"
+				@trailing-button-click="$emit('update:query', '')" />
+		</div>
+
+		<!--
+			Three empty states, not two. "Nothing matched" is a different fact from
+			"there is nothing here", and showing the second when the first is true
+			reads as data loss.
+		-->
+		<NcEmptyContent v-if="features.length === 0 && query !== ''"
+			name="Nada coincide con la búsqueda"
+			:description="`Ningún registro contiene «${query}». Pruebe con menos palabras, o limpie la búsqueda.`">
+			<template #icon>
+				<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
+					<path fill="currentColor"
+						d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3Zm0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z" />
+				</svg>
+			</template>
+		</NcEmptyContent>
+
+		<NcEmptyContent v-else-if="features.length === 0"
 			:name="showRetired ? 'No hay registros retirados' : 'Todavía no hay registros'"
 			:description="showRetired
 				? 'Lo que se retira del mapa aparece aquí y se puede restaurar.'
@@ -55,21 +85,25 @@ import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { colourOf, indexSubcategories } from '../taxonomy.js'
 
 export default {
 	name: 'FeatureList',
 
-	components: { NcAppContentList, NcButton, NcEmptyContent, NcListItem },
+	components: { NcAppContentList, NcButton, NcEmptyContent, NcListItem, NcTextField },
 
 	props: {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
 		showRetired: { type: Boolean, default: false },
+		// Owned by App.vue and part of the one filter, so the map and Análisis
+		// narrow with the list rather than beside it.
+		query: { type: String, default: '' },
 	},
 
-	emits: ['select', 'create', 'import', 'update:showRetired'],
+	emits: ['select', 'create', 'import', 'update:showRetired', 'update:query'],
 
 	computed: {
 		subcategories() {
@@ -114,6 +148,11 @@ export default {
 .territorio-list__count {
 	color: var(--color-text-maxcontrast);
 	font-size: 0.9em;
+}
+
+.territorio-list__search {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-list__swatch {

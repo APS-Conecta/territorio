@@ -23,13 +23,25 @@ slice that has a screen; when that stops fitting, it wants a real suite.
 """
 
 import sys
+import uuid
 from pathlib import Path
 
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import sync_playwright
 
 BASE = "http://localhost:8083"
 USER, PASSWORD = "admin", "dev"
 SHOTS = Path(__file__).parent / ".browser-check"
+
+# Every run leaves its records behind — ADR-0005 means nothing here can be
+# deleted, only retired — so each run tags its own. That is what lets the
+# assertions be exact counts instead of "more than before".
+RUN = uuid.uuid4().hex[:6]
+
+# Our own list, not Nextcloud's: the header carries a "Buscar contactos" field
+# and a menu full of list items, and unscoped selectors find those first.
+ROWS = ".app-content-list .list-item"
+MARKERS = ".leaflet-marker-icon"
+SEARCH = ".territorio-list__search input"
 
 
 def log_in(page):
@@ -81,6 +93,57 @@ def draw_a_sector(page, name, colour="#16a34a"):
     page.get_by_role("button", name="Guardar").click()
 
 
+def search_narrows_everything(page, failures):
+    """#19: the box narrows the Datos list, the map and the counts together.
+
+    Scoped to our own box: Nextcloud's header has a "Buscar contactos" field of
+    its own, and `get_by_label("Buscar")` finds three things.
+    """
+    box = page.locator(SEARCH)
+    rows = page.locator(ROWS)
+    markers = page.locator(MARKERS)
+
+    def analysis_total():
+        page.get_by_role("button", name="Análisis").click()
+        page.wait_for_timeout(200)
+        text = page.locator(".territorio-analisis h2").inner_text()
+        page.get_by_role("button", name="Mapa").click()
+        page.wait_for_timeout(200)
+        return int(text.split()[0])
+
+    before_rows = rows.count()
+    before_total = analysis_total()
+
+    # This run's two records and nothing else: one Place, which is one pin, and
+    # one Sector, which is a polygon and so has no pin at all.
+    box.fill(RUN)
+    page.wait_for_timeout(500)
+    if rows.count() != 2:
+        failures.append(f"search found {rows.count()} of this run's 2 records")
+    if markers.count() != 1:
+        failures.append(f"the map shows {markers.count()} markers, expected the one Place")
+    if analysis_total() != 2:
+        failures.append(f"Análisis counted {analysis_total()}, expected 2 — it is not reading the same set")
+
+    # Case and accents in the running app, not only in the predicate's unit test.
+    box.fill(f"sECTOR nAVEGADOR {RUN}".lower())
+    page.wait_for_timeout(400)
+    if rows.count() != 1:
+        failures.append("search is case-sensitive in the browser")
+
+    # Nothing matched: a message, not a bare empty list.
+    box.fill("zzzz-no-existe")
+    page.wait_for_timeout(400)
+    if page.get_by_text("Nada coincide con la búsqueda").count() == 0:
+        failures.append("an empty search result said nothing")
+
+    # Clearing restores exactly what Capas alone selects.
+    box.fill("")
+    page.wait_for_timeout(400)
+    if rows.count() != before_rows:
+        failures.append(f"clearing did not restore the list ({rows.count()} vs {before_rows})")
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -93,19 +156,22 @@ def main():
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
-        create_a_place(page, "Plaza del Navegador")
-        draw_a_sector(page, "Sector Navegador")
+        create_a_place(page, f"Plaza del Navegador {RUN}")
+        draw_a_sector(page, f"Sector Navegador {RUN}")
 
         # Reload rather than trust the screen: a record that only exists in the
         # browser's memory looks identical to one that was saved.
         page.reload(wait_until="domcontentloaded")
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
-        for name in ("Plaza del Navegador", "Sector Navegador"):
+        for name in (f"Plaza del Navegador {RUN}", f"Sector Navegador {RUN}"):
             if page.get_by_text(name).count() == 0:
                 failures.append(f"{name!r} is not in the list after a reload")
 
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
+
+        search_narrows_everything(page, failures)
+        page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
         browser.close()
 
     if errors:

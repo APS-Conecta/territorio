@@ -18,10 +18,12 @@
 						:taxonomy="taxonomy"
 						:selected-id="selectedId"
 						:show-retired="showRetired"
+						:query="filter.query"
 						@select="select"
 						@create="startNew"
 						@import="importing = true"
-						@update:show-retired="toggleRetired" />
+						@update:show-retired="toggleRetired"
+						@update:query="search" />
 				</div>
 			</template>
 
@@ -120,7 +122,12 @@ import {
 	toggleCategory,
 	toggleSubcategory,
 } from './filters.js'
-import { DEFAULT_SECTOR_COLOUR, defaultSubcategoryId, sectorSubcategoryId } from './taxonomy.js'
+import {
+	DEFAULT_SECTOR_COLOUR,
+	defaultSubcategoryId,
+	indexSubcategories,
+	sectorSubcategoryId,
+} from './taxonomy.js'
 
 /**
  * ADR-0002: seconds of latency is fine for territorial editing, and this instance
@@ -188,16 +195,26 @@ export default {
 		 * how a count ends up disagreeing with what is on screen.
 		 */
 		liveFiltered() {
-			return filterFeatures(this.features, this.filter)
+			return filterFeatures(this.features, this.filter, this.subcategories)
 		},
 
-		/** See listFor(): the retired list is a recovery screen, never filtered. */
+		/**
+		 * The Subcategory index, built once here and handed down. Search matches
+		 * against "Category · Subcategory", and rebuilding that index inside every
+		 * consumer is how the list and the map would end up matching differently.
+		 */
+		subcategories() {
+			return indexSubcategories(this.taxonomy)
+		},
+
+		/** See listFor(): Capas never touches the retired list, but a search does. */
 		listed() {
 			return listFor({
 				features: this.features,
 				retiredFeatures: this.retiredFeatures,
 				showRetired: this.showRetired,
 				filter: this.filter,
+				subcategories: this.subcategories,
 			})
 		},
 
@@ -244,6 +261,15 @@ export default {
 
 		onToggleSubcategory(subcategoryId) {
 			this.filter = toggleSubcategory(this.filter, subcategoryId)
+		},
+
+		/**
+		 * Typing narrows the same set the toggles narrow. A new object rather than
+		 * a mutation, like every other filter change, so nothing downstream has to
+		 * wonder who else might be holding it.
+		 */
+		search(query) {
+			this.filter = { ...this.filter, query }
 		},
 
 		startPolling() {

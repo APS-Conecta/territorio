@@ -7,9 +7,11 @@ import {
 	isFiltered,
 	isSubcategoryVisible,
 	listFor,
+	matches,
 	toggleCategory,
 	toggleSubcategory,
 } from '../../src/filters.js'
+import { indexSubcategories } from '../../src/taxonomy.js'
 
 /**
  * The Capas panel is the Category tree itself — there is no Layer object
@@ -45,12 +47,132 @@ const TAXONOMY = [
 
 const feature = (id, subcategoryId, name = `f${id}`) => ({ id, subcategoryId, name })
 
+const SUBCATEGORIES = indexSubcategories(TAXONOMY)
+
 const FEATURES = [
 	feature(1, 11, 'CESFAM Uno'),
 	feature(2, 12, 'Farmacia Uno'),
 	feature(3, 12, 'Farmacia Dos'),
 	feature(4, 21, 'Colegio Uno'),
 ]
+
+describe('searching', () => {
+	/**
+	 * The criterion this whole slice is named for. Nobody types "Los Castaños"
+	 * with the tilde when they are looking for something in a hurry, and a search
+	 * that only matches the accented form is a search that quietly finds nothing.
+	 */
+	it('ignores accents and case', () => {
+		const castanos = feature(9, 11, 'Escuela Los Castaños')
+
+		expect(matches(castanos, 'castanos', SUBCATEGORIES)).toBe(true)
+		expect(matches(castanos, 'CASTAÑOS', SUBCATEGORIES)).toBe(true)
+		expect(matches(castanos, 'liceo', SUBCATEGORIES)).toBe(false)
+	})
+
+	/** What a person actually reaches for: where it is, who to ask, what it is. */
+	it('looks at the address, the contact person and the classification', () => {
+		const farmacia = {
+			...feature(9, 12, 'Sin nombre útil'),
+			address: 'Avenida Vicuña Mackenna 1234',
+			contactPerson: 'Alejandra Pérez',
+		}
+
+		expect(matches(farmacia, 'mackenna', SUBCATEGORIES)).toBe(true)
+		expect(matches(farmacia, 'perez', SUBCATEGORIES)).toBe(true)
+		// The index holds "Salud · Farmacia", so one comparison covers both levels.
+		expect(matches(farmacia, 'farmacia', SUBCATEGORIES)).toBe(true)
+		expect(matches(farmacia, 'salud', SUBCATEGORIES)).toBe(true)
+	})
+
+	/** A record missing every optional field must not throw, it must just not match. */
+	it('survives a record with nothing but a name', () => {
+		expect(matches(feature(9, 11, 'Solo nombre'), 'nada', SUBCATEGORIES)).toBe(false)
+	})
+
+	/**
+	 * A Feature whose Subcategory the taxonomy no longer has is still searchable
+	 * by everything else — the same reasoning as countsFor keeping it in the
+	 * totals rather than dropping it.
+	 */
+	it('still searches a record whose subcategory is unknown', () => {
+		expect(matches(feature(9, 404, 'Huérfano'), 'huerfano', SUBCATEGORIES)).toBe(true)
+	})
+
+	it('matches everything when the box is empty or only spaces', () => {
+		const anything = feature(9, 11, 'Cualquiera')
+
+		expect(matches(anything, '', SUBCATEGORIES)).toBe(true)
+		expect(matches(anything, '   ', SUBCATEGORIES)).toBe(true)
+	})
+})
+
+describe('search and the Capas toggles together', () => {
+	/**
+	 * The criterion the issue is really about: search is a predicate on the one
+	 * filtered set, not a second mechanism beside it. Built as its own path, the
+	 * list and the map end up disagreeing about what is visible.
+	 */
+	it('compose — neither clears the other', () => {
+		// Colegio hidden by Capas leaves 1, 2, 3; "uno" then takes 3 as well. Both
+		// narrowings have to be visible in the answer or the test proves nothing.
+		const filter = { ...toggleSubcategory(emptyFilter(), 21), query: 'uno' }
+
+		expect(filterFeatures(FEATURES, filter, SUBCATEGORIES).map((f) => f.id)).toEqual([1, 2])
+	})
+
+	it('clearing the box leaves the Capas selection standing', () => {
+		const searched = { ...toggleSubcategory(emptyFilter(), 12), query: 'CESFAM' }
+		expect(filterFeatures(FEATURES, searched, SUBCATEGORIES).map((f) => f.id)).toEqual([1])
+
+		// Only the query goes; Farmacia is still hidden, so 2 and 3 stay away.
+		const cleared = { ...searched, query: '' }
+		expect(filterFeatures(FEATURES, cleared, SUBCATEGORIES).map((f) => f.id)).toEqual([1, 4])
+	})
+
+	/**
+	 * Records with no coordinate are Datos-only and must stay searchable — the
+	 * catastro this app inherits holds organisations whose address never resolved.
+	 */
+	it('finds a record that has no coordinate', () => {
+		const sinCoordenada = { ...feature(9, 11, 'Junta sin coordenada'), geometry: null }
+
+		expect(filterFeatures([sinCoordenada], { ...emptyFilter(), query: 'junta' }, SUBCATEGORIES))
+			.toHaveLength(1)
+	})
+
+	it('starts empty, so a fresh View shows everything', () => {
+		expect(emptyFilter().query).toBe('')
+		expect(filterFeatures(FEATURES, emptyFilter(), SUBCATEGORIES)).toHaveLength(4)
+	})
+
+	/** "Ver todo" and the Análisis notice both key off this. */
+	it('a query counts as filtering, so the way back stays offered', () => {
+		expect(isFiltered({ ...emptyFilter(), query: 'uno' })).toBe(true)
+		expect(isFiltered(emptyFilter())).toBe(false)
+	})
+
+	/**
+	 * The retired list is the recovery screen and Capas deliberately does not
+	 * touch it (ADR-0005) — but a search is not a background filter, it is someone
+	 * saying what they are looking for. Refusing to narrow the list they are
+	 * staring at would be the app ignoring an explicit instruction.
+	 */
+	it('narrows the retired list too, which the Capas toggles do not', () => {
+		const retired = [feature(7, 21, 'Colegio retirado'), feature(8, 11, 'CESFAM retirado')]
+
+		const list = listFor({
+			features: FEATURES,
+			retiredFeatures: retired,
+			showRetired: true,
+			// Colegio hidden, which must NOT apply here — only the query does.
+			filter: { ...toggleSubcategory(emptyFilter(), 21), query: 'colegio' },
+			subcategories: SUBCATEGORIES,
+		})
+
+		expect(list.map((f) => f.id)).toEqual([7])
+	})
+})
 
 describe('the default filter', () => {
 	it('shows everything', () => {

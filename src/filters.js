@@ -18,14 +18,60 @@
  * (CONTEXT.md), and changing it changes nothing for anyone else.
  */
 
-/** Nothing hidden: everything is on screen. */
+/** Nothing hidden and nothing typed: everything is on screen. */
 export function emptyFilter() {
-	return { hidden: new Set() }
+	return { hidden: new Set(), query: '' }
 }
 
-/** Whether anything is being hidden at all — what "Ver todo" keys off. */
+/**
+ * Text as it is compared: lower-cased and stripped of accents.
+ *
+ * Nobody types "Los Castaños" with the tilde when they are looking for something
+ * in a hurry, and a search that only matches the accented form is a search that
+ * quietly finds nothing. NFD splits a letter from its diacritic so the diacritic
+ * can be dropped on its own; \p{Diacritic} then covers every accent Spanish uses
+ * rather than a hand-written list of five.
+ */
+const fold = (value) => String(value ?? '')
+	.normalize('NFD')
+	.replace(/\p{Diacritic}/gu, '')
+	.toLowerCase()
+
+/**
+ * Whether a record answers to what someone typed.
+ *
+ * Matches what a person would actually reach for looking for a record: its name,
+ * where it is, who to talk to, and what it is. The Subcategory index already
+ * holds "Category · Subcategory" as one string, so one comparison covers both
+ * levels of the taxonomy.
+ *
+ * ponytail: substring over folded text, no ranking and no fuzzy matching. One
+ * comuna is hundreds of records in memory; reach for an index when a search
+ * actually feels slow.
+ */
+export function matches(feature, query, subcategories) {
+	const needle = fold(query).trim()
+	if (needle === '') {
+		return true
+	}
+
+	return [
+		feature.name,
+		feature.address,
+		feature.contactPerson,
+		subcategories.get(feature.subcategoryId)?.label,
+	].some((field) => fold(field).includes(needle))
+}
+
+/**
+ * Whether anything is being narrowed at all — what "Ver todo" keys off, and what
+ * tells Análisis its numbers describe a slice rather than the Registry.
+ *
+ * A typed query counts. Someone who searched and found little needs the same way
+ * back as someone who unticked half the tree.
+ */
 export function isFiltered(filter) {
-	return filter.hidden.size > 0
+	return filter.hidden.size > 0 || (filter.query ?? '').trim() !== ''
 }
 
 export function isSubcategoryVisible(filter, subcategoryId) {
@@ -99,12 +145,35 @@ export function categoryState(filter, category) {
  * This decision lives here rather than in the component so it can be tested;
  * when it lived in a computed property it was wrong and nothing noticed.
  */
-export function listFor({ features, retiredFeatures, showRetired, filter }) {
-	return showRetired ? retiredFeatures : filterFeatures(features, filter)
+export function listFor({ features, retiredFeatures, showRetired, filter, subcategories }) {
+	if (!showRetired) {
+		return filterFeatures(features, filter, subcategories)
+	}
+
+	// The search DOES reach the retired list, where the Capas toggles do not. A
+	// toggle is a background setting someone forgot they left on; a query is
+	// someone saying out loud what they are looking for, and ignoring it in the
+	// list they are staring at would be the app overruling an explicit
+	// instruction.
+	return retiredFeatures.filter((feature) => matches(feature, filter.query, subcategories ?? new Map()))
 }
 
-export function filterFeatures(features, filter) {
-	return features.filter((feature) => isSubcategoryVisible(filter, feature.subcategoryId))
+/**
+ * The one filtered set: what Capas leaves visible, narrowed again by what was
+ * typed.
+ *
+ * Both narrowings are applied here, in one place, rather than search being a
+ * mechanism of its own beside the toggles. That is what keeps the map, the Datos
+ * list and the Análisis counts agreeing about what is on screen — they all read
+ * this, and a second path is how they would drift apart.
+ *
+ * `subcategories` is the index from `indexSubcategories()`, passed in rather than
+ * imported so this module stays pure and knows nothing about the taxonomy's
+ * shape.
+ */
+export function filterFeatures(features, filter, subcategories = new Map()) {
+	return features.filter((feature) => isSubcategoryVisible(filter, feature.subcategoryId)
+		&& matches(feature, filter.query, subcategories))
 }
 
 /**

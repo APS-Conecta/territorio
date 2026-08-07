@@ -24,3 +24,6 @@ pnpm-debug.log*
 .DS_Store
 .cache/
 .vite/
+
+# Screenshots from tools/browser-check.py — evidence for a person, not source.
+tools/.browser-check/

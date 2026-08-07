@@ -26,6 +26,18 @@
 			</template>
 
 			<div class="territorio-main">
+				<!--
+					A refusal that happens before there is a draft has nowhere else to
+					go: the sidebar that normally shows `error` only exists while one is
+					open, so a failure in startSector() was written to a component that
+					was not mounted and the drawn polygon vanished with no explanation.
+				-->
+				<NcNoteCard v-if="error !== '' && draft === null"
+					type="error"
+					class="territorio-main__error">
+					{{ error }}
+				</NcNoteCard>
+
 				<div class="territorio-main__switch">
 					<NcButton :pressed="pane === 'mapa'" @click="pane = 'mapa'">
 						Mapa
@@ -572,6 +584,11 @@ export default {
 	flex-direction: column;
 	height: 100%;
 	min-height: 0;
+}
+
+.territorio-main__error {
+	margin: 12px 12px 0;
+	flex: 0 0 auto;
 }
 
 .territorio-main__switch {

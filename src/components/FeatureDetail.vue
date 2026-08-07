@@ -63,11 +63,15 @@
 		<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
 
+		<!-- `type`, not `native-type`. In @nextcloud/vue 9 `type` IS the native
+		     button type and `variant` carries the appearance; `nativeType` was the
+		     v8 prop and no longer exists, so it fell through as an inert attribute
+		     and left the button a type="button" that never submitted its form. -->
 		<NcButton v-if="!retired"
 			class="territorio-detail__field"
 			variant="primary"
 			:disabled="saving"
-			native-type="submit">
+			type="submit">
 			{{ saving ? 'Guardando…' : 'Guardar' }}
 		</NcButton>
 

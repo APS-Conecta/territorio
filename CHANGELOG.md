@@ -3,6 +3,36 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.10.0] — unreleased
+
+Guardar works. It never had.
+
+### Fixed
+
+- The save button submits the form. `FeatureDetail.vue` passed `native-type="submit"` to `NcButton`
+  — the @nextcloud/vue **8** prop name. Under 9 it is `type`, so the prop fell through as an inert
+  HTML attribute, the button stayed a `type="button"`, and a `type="button"` inside a form does not
+  submit it. `@submit.prevent` never fired and `App.vue::save()` was unreachable from the UI. It had
+  been that way since the first Places slice: **not one record in this app's history had ever been
+  written from a browser** — every revision carried a null actor, meaning `occ` or a test.
+- A refusal that happens before a draft exists is now visible. `startSector()` wrote its error into
+  the sidebar, which only renders while a draft is open, so a failed draw removed the polygon and
+  said nothing at all.
+
+### Added
+
+- `tools/browser-check.py` — drives the running app with Playwright: creates a Place through the
+  form, draws and saves a Sector, reloads, and asserts both survived. It checks the Registry rather
+  than the screen, because a green screen over an empty table is the failure it exists to catch.
+- A static guard for props @nextcloud/vue 9 no longer has. Vue passes an unknown prop straight
+  through as an attribute, so a stale name is silent — no warning, no build error.
+
+### Notes
+
+- Three suites, a webpack build and a two-axis review on every slice passed for eight slices while
+  the app's primary action did nothing. None of them loads a component or opens the app. That is the
+  gap the browser check closes.
+
 ## [0.9.1] — unreleased
 
 The comuna's streets, canals and railways — in the Registry, off the map.

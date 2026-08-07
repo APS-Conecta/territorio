@@ -4,17 +4,19 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Every helper a component uses is imported.
+ * Static checks over the components, for mistakes that compile and ship.
  *
- * This exists because it didn't: `listFor` was called in App.vue without being
- * imported, the `listed` computed threw a ReferenceError, and the whole Datos
- * column went with it — shipped, in a build, past three green suites. Nothing
- * caught it. The unit tests exercise `filters.js` directly and never load a
- * component, webpack is happy to emit a call to a name it cannot see, and there
- * is no JS linter here.
+ * Both of these exist because they happened, and because the same three things
+ * missed each one: the unit suites exercise `filters.js` and `taxonomy.js`
+ * directly and never load a component, webpack emits whatever it is given, and
+ * nothing in the repo drives the app.
  *
- * A linter would cover this and much more; until there is one, this is the
- * cheapest thing that fails on exactly that mistake.
+ * 1. `listFor` was called in App.vue without being imported. The `listed`
+ *    computed threw a ReferenceError and the whole Datos column went with it.
+ * 2. `native-type="submit"` was passed to `NcButton`, which is the v8 prop name.
+ *    In v9 it is `type`, so the prop fell through as an inert HTML attribute,
+ *    the button stayed a `type="button"`, and Guardar never submitted its form —
+ *    for eight slices, since the very first one.
  */
 // fileURLToPath, not .pathname: the repo lives under a directory with a space
 // in its name, and .pathname hands back the %20 still escaped.
@@ -56,6 +58,35 @@ describe('component imports', () => {
 
 				expect(names, `${file} calls ${name}() from ${module}`).toContain(name)
 			})
+		})
+	})
+})
+
+/**
+ * Props that @nextcloud/vue removed.
+ *
+ * Vue passes an unknown prop straight through as an HTML attribute, so a stale
+ * prop name is silent: no warning, no build error, just a component that quietly
+ * keeps its default. `native-type` is the one that cost this project every save
+ * it never made — v8's name for what v9 calls `type`, which on a button IS the
+ * native type, so the button stayed `type="button"` inside a form.
+ *
+ * ponytail: a hard-coded list of two, matched as source text. A real check reads
+ * the installed component's prop types — that is `vue-tsc`, and this is the
+ * cheapest thing that fails on what has actually bitten us.
+ */
+describe('props @nextcloud/vue 9 no longer has', () => {
+	const GONE = {
+		'native-type': 'type',
+		nativeType: 'type',
+	}
+
+	it.each(componentFiles)('%s uses none of them', (file) => {
+		const source = readFileSync(file, 'utf8')
+
+		Object.entries(GONE).forEach(([dead, live]) => {
+			expect(source, `${file}: "${dead}" is a v8 prop — v9 calls it "${live}"`)
+				.not.toMatch(new RegExp(`(^|[\\s:])${dead}\\s*=`, 'm'))
 		})
 	})
 })

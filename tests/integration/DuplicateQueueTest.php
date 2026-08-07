@@ -11,6 +11,7 @@ use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\Action;
 use OCA\Territorio\Service\DuplicateService;
 use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Service\ImportService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Server;
@@ -142,6 +143,84 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		// gone while everyone can see it.
 		self::assertNull($restored->getMergedInto());
 		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	/**
+	 * The criterion says IMPORT flags them, and both formats reach the same code.
+	 *
+	 * Through KML rather than GeoJSON on purpose: importKml() and importGeoJson()
+	 * both funnel into importRows(), and a test of the format that is already
+	 * covered everywhere else would not notice if one of them stopped.
+	 */
+	public function testImportingAKmlFlagsThePairsInIt(): void {
+		$twins = <<<'XML'
+			<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+			  <Folder><name>Salud</name>
+			    <Placemark><name>Balneario Municipal KML</name>
+			      <Point><coordinates>-70.5811,-33.5211</coordinates></Point>
+			    </Placemark>
+			    <Placemark><name>Piscina Municipal KML</name>
+			      <Point><coordinates>-70.5811,-33.5211</coordinates></Point>
+			    </Placemark>
+			  </Folder>
+			</Document></kml>
+			XML;
+
+		Server::get(ImportService::class)->importKml($twins, 'gemelos-kml-' . uniqid());
+
+		$made = [];
+		foreach ($this->features->listAll() as $feature) {
+			if (str_ends_with($feature->getName(), 'Municipal KML')) {
+				$made[] = (int)$feature->getId();
+				$this->created[] = (int)$feature->getId();
+			}
+		}
+
+		self::assertCount(2, $made, 'the import should have merged nothing');
+
+		$pair = $this->pairOf($made[0], $made[1]);
+		self::assertNotNull($pair, 'importing two records at one coordinate offered no pair');
+		$this->pairs[] = (int)$pair->getId();
+	}
+
+	/**
+	 * Restoring the SURVIVOR of a merge does not reopen the pair.
+	 *
+	 * A survivor can be retired later for a reason of its own, and restoring it
+	 * must not put back a question whose other half is still gone — the queue
+	 * would then hold a pair with one visible member, which renders as a card
+	 * with one side and counts toward the number on the pane.
+	 */
+	public function testRestoringTheSurvivorDoesNotReopenThePair(): void {
+		[, $second, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+
+		$this->service->merge((int)$pair->getId(), $second);
+		$this->features->retire($second);
+		$this->features->restore($second);
+
+		self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	/** A pair whose records are no longer visible is not a question anybody can answer. */
+	public function testAPairWithARetiredMemberIsNotOffered(): void {
+		[$first,, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+
+		$offered = static fn (array $out): bool => in_array(
+			(int)$pair->getId(),
+			array_column($out['pairs'], 'id'),
+			true,
+		);
+		self::assertTrue($offered($this->service->outstanding()));
+
+		// Retired on its own, not merged: this is what reverting the import that
+		// created them does to both of them (ADR-0009).
+		$this->features->retire($first);
+		self::assertFalse($offered($this->service->outstanding()));
+
+		// And it comes back with the record, still pending and still the same
+		// question.
+		$this->features->restore($first);
+		self::assertTrue($offered($this->service->outstanding()));
 	}
 
 	public function testADismissedPairStopsBeingOffered(): void {

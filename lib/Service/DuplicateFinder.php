@@ -39,11 +39,34 @@ final class DuplicateFinder {
 	 * 85 keeps "Cesfam Bellavista" and "CESFAM Bellavista" together while leaving
 	 * "Escuela Bellavista" and "Liceo Bellavista" apart — they share a lot of
 	 * letters and are two different schools.
+	 *
+	 * ponytail: one number, tuned against the two shapes the real data contains
+	 * and nothing else. It measures shared characters, so it has no idea that
+	 * "Escuela" and "Liceo" mean different things while "CESFAM" and "Cesfam"
+	 * mean the same. Reach for token overlap with the generic words weighted down
+	 * when somebody shows a pair it gets wrong — and note that being wrong here
+	 * costs a question in a queue, not a merge (ADR-0011).
 	 */
 	private const ALIKE = 85.0;
 
 	/** Metres per degree of latitude, near enough anywhere. */
 	private const METRES_PER_DEGREE = 111_320.0;
+
+	/**
+	 * The narrowest a degree of longitude is allowed to get when sizing a cell.
+	 *
+	 * A degree of longitude shrinks by cos(latitude) — in Santiago it is about
+	 * 93 km against latitude's 111 — so cells measured in degrees of latitude are
+	 * NARROWER than they are tall, and an east-west pair inside the rule can land
+	 * two cells apart and never be compared. Dividing by cos(60°) makes a cell at
+	 * least as wide as it is tall anywhere up to 60° from the equator, which is
+	 * every inhabited latitude in Chile and then some.
+	 *
+	 * Wider cells hold more records and cost more comparisons. That is the right
+	 * side to be wrong on: a comparison too many is arithmetic, and a comparison
+	 * too few is two records for one place that nobody is ever told about.
+	 */
+	private const NARROWEST_DEGREE = 0.5;
 
 	/**
 	 * Every pair worth a person's attention, each offered once.
@@ -106,8 +129,13 @@ final class DuplicateFinder {
 	 * by length before it means anything.
 	 */
 	private static function alike(string $one, string $other): bool {
-		$one = self::fold($one);
-		$other = self::fold($other);
+		// Sorted, because similar_text() is not symmetric: it takes the longest
+		// common substring and recurses either side, and which string it walks
+		// first changes the answer near the threshold. A pair must not appear or
+		// vanish according to the order two rows came back from the database.
+		$folded = [self::fold($one), self::fold($other)];
+		sort($folded);
+		[$one, $other] = $folded;
 
 		if ($one === '' || $other === '') {
 			return false;
@@ -128,16 +156,26 @@ final class DuplicateFinder {
 	/**
 	 * Accents off, case down, runs of whitespace to one space.
 	 *
-	 * The same folding the Registry search does, for the same reason: two sources
-	 * disagreeing about an accent are not describing two places.
+	 * Decompose, then drop the combining marks — the same way `src/filters.js`
+	 * folds for the Registry search, for the same reason: two sources disagreeing
+	 * about an accent are not describing two places. Whitespace collapsing is the
+	 * one thing this adds, because "Cesfam  Bellavista" out of a CSV column is a
+	 * spelling difference too and the search never sees double spaces.
+	 *
+	 * Not iconv's ASCII//TRANSLIT, which is the obvious one-liner and depends on
+	 * the process locale: under a locale that cannot transliterate, "Rayún"
+	 * becomes "Ray?n" and quietly stops matching "Rayun".
+	 *
+	 * Not `KmlReader`'s accent map either, which is seven Spanish letters for
+	 * building a slug. It is the right size for that job and too small for this
+	 * one — a name is whatever two sources typed, including the ones with
+	 * characters nobody put in that list.
 	 */
 	private static function fold(string $value): string {
-		$folded = @iconv('UTF-8', 'ASCII//TRANSLIT', $value);
-		if ($folded === false) {
-			$folded = $value;
-		}
+		$decomposed = \Normalizer::normalize($value, \Normalizer::FORM_D);
+		$stripped = preg_replace('/\p{Mn}/u', '', $decomposed === false ? $value : $decomposed);
 
-		return trim((string)preg_replace('/\s+/', ' ', mb_strtolower($folded)));
+		return trim((string)preg_replace('/\s+/', ' ', mb_strtolower((string)$stripped)));
 	}
 
 	/**
@@ -145,20 +183,24 @@ final class DuplicateFinder {
 	 *
 	 * A comuna's cadastre is thousands of records and comparing every one against
 	 * every other is millions of comparisons for a handful of answers. Records go
-	 * into cells a little larger than the widest rule, and each is compared with
-	 * its own cell and the three neighbouring cells that have not been done yet —
+	 * into cells at least as large as the widest rule, and each is compared with
+	 * its own cell and the four neighbouring cells that have not been done yet —
 	 * so every nearby pair is seen exactly once and distant ones never are.
+	 *
+	 * The half-ring is the other half of that: taking the whole ring would offer
+	 * every straddling pair twice, once from each side of the edge.
 	 *
 	 * @param list<array{id: int, name: string, lat: ?float, lon: ?float}> $records
 	 * @return \Generator<int, array{0: array<string, mixed>, 1: array<string, mixed>}>
 	 */
 	private static function neighbours(array $records): \Generator {
-		$size = self::SAME_BLOCK / self::METRES_PER_DEGREE;
+		$tall = self::SAME_BLOCK / self::METRES_PER_DEGREE;
+		$wide = $tall / self::NARROWEST_DEGREE;
 
 		$cells = [];
 		foreach ($records as $record) {
-			$row = (int)floor($record['lat'] / $size);
-			$column = (int)floor($record['lon'] / $size);
+			$row = (int)floor($record['lat'] / $tall);
+			$column = (int)floor($record['lon'] / $wide);
 			$cells[$row . ':' . $column][] = $record;
 		}
 
@@ -186,11 +228,11 @@ final class DuplicateFinder {
 	/**
 	 * Metres between two coordinates.
 	 *
-	 * Equirectangular rather than haversine: over the couple of hundred metres
-	 * these rules care about the difference is millimetres, and the thresholds are
-	 * judgement calls to a tolerance of tens of metres. Latitude is scaled by
-	 * cos(lat) so it stays right at Santiago's -33° rather than only at the
-	 * equator.
+	 * ponytail: equirectangular rather than haversine. Over the couple of hundred
+	 * metres these rules care about, the difference is millimetres and the
+	 * thresholds are judgement calls to a tolerance of tens of metres. Longitude
+	 * is scaled by cos(lat), so it is right at Santiago's -33° rather than only at
+	 * the equator; it would drift near the poles, where this app does not go.
 	 */
 	private static function metresBetween(float $lat, float $lon, float $otherLat, float $otherLon): float {
 		$dLat = ($otherLat - $lat) * self::METRES_PER_DEGREE;

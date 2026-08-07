@@ -1,11 +1,15 @@
 # Local test image: PHP 8.3 CLI + composer, nothing else.
 #
 # The tested core deliberately depends on no OCP class, so PHPUnit needs no
-# Nextcloud and no extensions beyond the defaults. Anything that must touch
-# IAppConfig, QBMapper or occ runs against compose.dev.yaml instead.
+# Nextcloud. Anything that must touch IAppConfig, QBMapper or occ runs against
+# compose.dev.yaml instead.
 FROM php:8.3-cli
 # zip is composer's, not ours — without it composer cannot unpack a dist archive.
+#
+# intl is ours, and it is here so that this image can be wrong about production
+# in one fewer way. Nextcloud requires intl, DuplicateFinder folds accents with
+# Normalizer, and without it here the accent tests passed by not running.
 COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/bin/
-RUN install-php-extensions zip
+RUN install-php-extensions zip intl
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /app

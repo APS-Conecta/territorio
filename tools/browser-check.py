@@ -346,10 +346,10 @@ def the_duplicate_queue_works(page, failures):
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(300)
 
-    button = page.locator(".territorio-main__switch").get_by_role("button", name="Duplicados")
+    button = page.locator(".territorio-main__switch").get_by_role("button", name="Posibles duplicados")
     if "(" not in button.inner_text():
         failures.append(
-            f"the Duplicados button does not say how many are outstanding: {button.inner_text()!r}",
+            f"the pane button does not say how many are outstanding: {button.inner_text()!r}",
         )
     button.click()
     page.wait_for_timeout(800)

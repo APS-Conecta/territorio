@@ -129,7 +129,9 @@ _Avoid_: deleted, archived, inactive, soft-deleted
 Two records that might be the same place, put together for somebody to decide about. Nothing is
 merged on similarity (ADR-0011): both stay visible and usable until the pair is resolved, either
 by merging them or by saying they are different places.
-_Avoid_: duplicate, match, conflict
+_Avoid_: calling an unresolved pair "a duplicate" — in prose or on screen. Whether the two are one
+place is the question, not the answer, which is why the pane says "Posibles duplicados".
+_Avoid_: match, conflict
 
 **Merged**:
 The state of a record somebody decided was the same place as another one. It is retired and points

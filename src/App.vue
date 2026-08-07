@@ -54,7 +54,7 @@
 						as news rather than furniture.
 					-->
 					<NcButton :pressed="pane === 'duplicados'" @click="pane = 'duplicados'">
-						Duplicados<span v-if="duplicates.length > 0"> ({{ duplicates.length }})</span>
+						Posibles duplicados<span v-if="duplicates.length > 0"> ({{ duplicates.length }})</span>
 					</NcButton>
 				</div>
 

@@ -40,26 +40,18 @@ class DuplicateMapper extends QBMapper {
 
 		return $this->findEntities($qb);
 	}
-
-	public function countPending(): int {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select($qb->func()->count('*', 'total'))
-			->from($this->getTableName())
-			->where($qb->expr()->eq('status', $qb->createNamedParameter(Duplicate::PENDING)));
-
-		$result = $qb->executeQuery();
-		$total = (int)$result->fetchOne();
-		$result->closeCursor();
-
-		return $total;
-	}
-
 	/**
-	 * The pending pair either of these belongs to, if there is one.
+	 * The resolved merge this record was the LOSER of, if there is one.
 	 *
 	 * Asked when a record is restored: a merge that is undone has to put its pair
 	 * back in the queue, or the two would be visible again with nothing saying
 	 * they might be one place.
+	 *
+	 * Only the loser, which is why the caller checks `mergedInto` before asking.
+	 * Matching either side would reopen a pair when the SURVIVOR is restored
+	 * after an unrelated retirement — and the loser is still retired, so the
+	 * queue would then hold a pair with one visible member and offer a card with
+	 * one side and no question.
 	 */
 	public function findMergeOf(int $featureId): ?Duplicate {
 		$qb = $this->db->getQueryBuilder();

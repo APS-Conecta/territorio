@@ -168,6 +168,7 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro no está retirado.');
 		}
 
+		$mergedInto = $feature->getMergedInto();
 		$restored = $this->features->restore($feature);
 		// And a restored one takes back what falls inside it.
 		$this->reassignAround($restored, null);
@@ -176,7 +177,12 @@ class FeatureService {
 		// map again and still look like one place, so the question is open again —
 		// and leaving it closed would mean the only way to reconsider a merge is to
 		// wait for an import to notice the pair a second time.
-		$merge = $this->duplicates->findMergeOf($id);
+		//
+		// Read from the record BEFORE the restore cleared it, and only for the
+		// record that lost: restoring the survivor of a merge, retired later for
+		// some unrelated reason, must not reopen a pair whose other member is
+		// still gone.
+		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id);
 		if ($merge !== null) {
 			$merge->setStatus(Duplicate::PENDING);
 			$merge->setResolvedBy(null);

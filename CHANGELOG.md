@@ -3,13 +3,13 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.19.3] — unreleased
+## [0.19.4] — unreleased
 
 Two records that might be one place, decided by a person.
 
 ### Added
 
-- A **Duplicados** pane listing candidate pairs, with the outstanding count on the button that
+- A **Posibles duplicados** pane listing candidate pairs, with the outstanding count on the button that
   opens it. Each pair says why it was offered, shows both records side by side, and offers three
   answers: keep this one, keep that one, or they are not duplicates.
 - Import flags candidate pairs and merges nothing (ADR-0011). Two shapes are detected, both of

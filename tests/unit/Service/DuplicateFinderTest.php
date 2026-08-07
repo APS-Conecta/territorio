@@ -118,6 +118,34 @@ final class DuplicateFinderTest extends TestCase {
 		));
 	}
 
+	/**
+	 * A pair inside the rule is found wherever on the map it happens to sit.
+	 *
+	 * Swept rather than sampled, and east-west on purpose. Whatever this bins
+	 * records into to avoid comparing a comuna against itself, the bins have
+	 * edges — and a pair that straddles one is exactly the pair a person would
+	 * never know had been missed. A degree of longitude in Santiago is about 93 km
+	 * against latitude's 111, so an east-west pair covers more of a bin than a
+	 * north-south one and is the first to fall through.
+	 */
+	public function testAPairInsideTheRuleIsFoundWhereverItSits(): void {
+		// ~140 m apart, inside the rule and close enough to its edge to straddle
+		// anything the size of the rule.
+		$apart = 140 / (111_320 * cos(deg2rad(33.5)));
+
+		for ($step = 0; $step < 40; $step++) {
+			$lon = -70.58 + $step * $apart / 7;
+			self::assertCount(
+				1,
+				$this->pairs(
+					[1, 'CESFAM Bellavista', -33.52, $lon],
+					[2, 'Cesfam Bellavista', -33.52, $lon + $apart],
+				),
+				sprintf('missed the pair at longitude %.6f', $lon),
+			);
+		}
+	}
+
 	/** A record with no coordinate cannot be near anything. */
 	public function testARecordWithoutACoordinateIsNeverPaired(): void {
 		self::assertSame([], $this->pairs(

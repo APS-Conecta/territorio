@@ -71,16 +71,32 @@ class DuplicateService {
 	 *
 	 * Only ids go out. The client already holds every visible record for the list
 	 * and the map, so sending names and addresses again would be a second copy
-	 * that can disagree with the first — and both members of a pending pair are
-	 * visible by definition, so the lookup always succeeds.
+	 * that can disagree with the first.
+	 *
+	 * Pairs whose members are not BOTH visible are left out. A pair can outlive
+	 * its records: retire one by hand, or revert the import that created them
+	 * (ADR-0009 retires rather than deletes, so nothing removes the row), and the
+	 * pair is still pending with nothing to show. The client would render a card
+	 * with one side, or none, and a live "no son duplicados" button on a question
+	 * that no longer exists — and it would count toward the number on the pane.
+	 *
+	 * Left pending rather than resolved, deliberately: restoring the records
+	 * brings the question back, and it is the same question it always was.
 	 *
 	 * @return array{pairs: list<array<string, mixed>>, total: int}
 	 */
 	public function outstanding(): array {
-		$pairs = array_map(
-			static fn (Duplicate $pair): array => $pair->toClient(),
-			$this->duplicates->findPending(),
-		);
+		$visible = [];
+		foreach ($this->features->findAll() as $feature) {
+			$visible[(int)$feature->getId()] = true;
+		}
+
+		$pairs = [];
+		foreach ($this->duplicates->findPending() as $pair) {
+			if (isset($visible[$pair->getFirstId()], $visible[$pair->getSecondId()])) {
+				$pairs[] = $pair->toClient();
+			}
+		}
 
 		return ['pairs' => $pairs, 'total' => count($pairs)];
 	}

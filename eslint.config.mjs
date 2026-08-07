@@ -33,6 +33,7 @@ const BROWSER = {
 	FormData: 'readonly',
 	URL: 'readonly',
 	OC: 'readonly',
+	Date: 'readonly',
 }
 
 export default [

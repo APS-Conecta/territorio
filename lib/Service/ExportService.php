@@ -69,26 +69,32 @@ class ExportService {
 	 * @return array{filename: string, mime: string, body: string}
 	 * @throws InvalidFeatureException
 	 */
-	public function export(array $ids, string $format, bool $contacts): array {
+	public function export(array $ids, string $format, bool $contacts, string $scope = ''): array {
 		if (!in_array($format, self::FORMATS, true)) {
 			throw new InvalidFeatureException('Formato desconocido: ' . $format);
 		}
 
+		// A KML carries no contact details whatever is asked for, so a KML on the
+		// confirmed route is a password prompt for a file with nothing personal in
+		// it — the unearned prompt ADR-0006 exists to avoid. Refused rather than
+		// quietly downgraded, because a request nobody can mean is a bug in the
+		// caller and silently doing something else hides it.
+		if ($format === 'kml' && $contacts) {
+			throw new InvalidFeatureException(
+				'Un archivo KML no lleva datos de contacto; expórtelo sin marcarlos.',
+			);
+		}
+
 		$rows = $this->rows($ids);
 
-		// KML carries no contact details in any case, so asking for them changes
-		// nothing about the file. It still counts as a contact-bearing export for
-		// the confirmation, because the person asked for one — but there is no
-		// point recording that a KML took contacts out of the building when it
-		// demonstrably did not.
 		$body = match ($format) {
 			'geojson' => $this->geoJson->write($rows, $contacts),
 			'csv' => $this->csv->write($rows, $contacts),
 			'kml' => $this->kml->write($rows),
 		};
 
-		if ($contacts && $format !== 'kml') {
-			$this->record($format, count($rows));
+		if ($contacts) {
+			$this->record($format, count($rows), $scope);
 		}
 
 		return [
@@ -110,7 +116,7 @@ class ExportService {
 		);
 	}
 
-	private function record(string $format, int $records): void {
+	private function record(string $format, int $records, string $scope): void {
 		$entry = new ExportRecord();
 		// An export always has a person behind it — the route requires a confirmed
 		// password — so an empty actor here would mean something has gone wrong
@@ -119,7 +125,10 @@ class ExportService {
 		$entry->setExportedAt(new DateTime());
 		$entry->setFormat($format);
 		$entry->setRecords($records);
-		$entry->setContacts(true);
+		// What the person had on screen, in their own words — "búsqueda: plaza"
+		// rather than a filter object. ADR-0006 asks for the scope, and a count
+		// alone says how much left the building without saying what.
+		$entry->setScope(mb_substr($scope, 0, 255));
 
 		$this->log->insert($entry);
 	}
@@ -134,6 +143,13 @@ class ExportService {
 	 * Retired records are left out. They are absent from every default read for
 	 * the same reason (ADR-0005), and a person exporting what is on their screen
 	 * is not asking for what used to be there.
+	 *
+	 * ponytail: reads the whole Registry and keeps the ids asked for, rather than
+	 * a `findByIds`. One comuna is hundreds of rows and the Datos list already
+	 * loads all of them on every page load, so a second full read at the moment
+	 * somebody presses Exportar is not what will make this app slow. Add
+	 * `FeatureMapper::findByIds()` when a comuna outgrows one page of memory —
+	 * the same threshold `findAll()` itself is waiting on.
 	 *
 	 * @param int[] $ids
 	 * @return list<array<string, mixed>>

@@ -34,6 +34,19 @@ class GeoJsonReader {
 	 */
 	private const COORDINATE_PLACES = 7;
 
+	/**
+	 * A file this app wrote WITHOUT the contact fields, which must not come back
+	 * in (ADR-0006).
+	 *
+	 * The fields are absent rather than empty, so an import would read absence as
+	 * deletion and quietly clear every telephone number it matched. Refused at
+	 * the door instead: the person who wants a file that goes back in can export
+	 * one with contact details, which is confirmed and recorded like any other.
+	 */
+	private const REFUSE_PARTIAL = 'El archivo se exportó sin datos de contacto y volver a importarlo '
+		. 'borraría los teléfonos y correos que ya están guardados. Exporte de nuevo '
+		. 'marcando "Incluir datos de contacto" si quiere volver a importarlo.';
+
 	/** What `ubicacion` says, and what Location quality calls it. */
 	private const QUALITIES = [
 		'exacta' => 'exacta',
@@ -73,6 +86,13 @@ class GeoJsonReader {
 			throw new InvalidImportException(
 				'El archivo debe ser un FeatureCollection de GeoJSON.',
 			);
+		}
+
+		// Refused before a single row is read, like every other reason a file is
+		// refused here: this one would not fail, it would succeed and delete
+		// things.
+		if (($collection[ContactFields::PARTIAL] ?? false) === true) {
+			throw new InvalidImportException(self::REFUSE_PARTIAL);
 		}
 
 		// Stated once at the top of the file and carried onto each row from there.

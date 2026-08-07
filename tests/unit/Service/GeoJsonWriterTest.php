@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
+use OCA\Territorio\Exception\InvalidImportException;
+use OCA\Territorio\Service\ContactFields;
 use OCA\Territorio\Service\GeoJsonReader;
 use OCA\Territorio\Service\GeoJsonWriter;
 use PHPUnit\Framework\TestCase;
@@ -118,6 +120,23 @@ final class GeoJsonWriterTest extends TestCase {
 		// And what is left is still a usable record.
 		self::assertSame('Junta de Vecinos Los Navegantes', $properties['name']);
 		self::assertSame('Los Navegantes 1234', $properties['address']);
+	}
+
+	/**
+	 * …and the file says so, so that it cannot be read back as deletion.
+	 *
+	 * Absent fields and empty fields look identical to an import: it would match
+	 * on the external id, see a phone number where the file has none, and clear
+	 * it. The marker is how a file distinguishes "these records have no
+	 * telephone" from "this file was not about telephones", which GeoJSON itself
+	 * has no way to say.
+	 */
+	public function testAFileWrittenWithoutContactsSaysSoAndIsRefusedOnTheWayBack(): void {
+		$json = (new GeoJsonWriter())->write([self::FULL], false);
+		self::assertTrue(json_decode($json, true)[ContactFields::PARTIAL] ?? false);
+
+		$this->expectException(InvalidImportException::class);
+		(new GeoJsonReader())->read($json, 'catastro');
 	}
 
 	/** A geometry is written as GeoJSON says, not as a string of our own. */

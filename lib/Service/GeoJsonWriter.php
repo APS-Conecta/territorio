@@ -20,11 +20,7 @@ namespace OCA\Territorio\Service;
  */
 class GeoJsonWriter {
 	/**
-	 * The properties that describe a person rather than a place (ADR-0006).
-	 *
-	 * `address` is not among them on purpose: where a junta meets is a fact about
-	 * the territory, and it is on the sign. A name, a phone number and an email
-	 * address are the presidenta's.
+	 * What `ContactFields::KEYS` are called in a GeoJSON file.
 	 *
 	 * @var array<string, string> row key → GeoJSON property name
 	 */
@@ -55,11 +51,25 @@ class GeoJsonWriter {
 			$rows,
 		);
 
+		$collection = ['type' => 'FeatureCollection'];
+
+		// Said at the top of the file, where a person opening it sees it before
+		// the data. A file written without contact fields is not a file saying
+		// these records have none, and re-importing it as though it were would
+		// delete a comuna's telephone numbers one quiet "Actualizado" at a time.
+		// GeoJSON has no way to express "not asked about", so this does, and the
+		// reader refuses a file that carries it.
+		if (!$contacts) {
+			$collection[ContactFields::PARTIAL] = true;
+		}
+
+		// array_values, because a caller filtering its rows leaves gaps in the
+		// keys and json_encode would then write an object where GeoJSON requires
+		// an array.
+		$collection['features'] = array_values($features);
+
 		return (string)json_encode(
-			// array_values, because a caller filtering its rows leaves gaps in the
-			// keys and json_encode would then write an object where GeoJSON
-			// requires an array.
-			['type' => 'FeatureCollection', 'features' => array_values($features)],
+			$collection,
 			JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT,
 		);
 	}

@@ -113,7 +113,10 @@
 			a second implementation of "the filtered set", able to disagree with the
 			one the person can see.
 		-->
-		<ExportDialog v-if="exporting" :ids="exportableIds" @close="exporting = false" />
+		<ExportDialog v-if="exporting"
+			:ids="exportableIds"
+			:scope="exportScope"
+			@close="exporting = false" />
 
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
@@ -305,6 +308,25 @@ export default {
 			return this.listed
 				.filter((feature) => !feature.retired)
 				.map((feature) => feature.id)
+		},
+
+		/**
+		 * How the screen was narrowed, as a sentence for the export log (ADR-0006).
+		 *
+		 * Written here because this is where the filter lives, and written as
+		 * words because an administrator reading the report months later needs to
+		 * know what left the building, not to reconstruct a filter object.
+		 */
+		exportScope() {
+			const said = []
+			if (this.filter.query !== '') {
+				said.push(`búsqueda: "${this.filter.query}"`)
+			}
+			if (isFiltered({ ...this.filter, query: '' })) {
+				said.push('con capas filtradas')
+			}
+
+			return said.length === 0 ? 'todo el Registro' : said.join(', ')
 		},
 
 		/**

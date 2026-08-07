@@ -49,6 +49,11 @@ SHOTS = Path(__file__).parent / ".browser-check"
 # persist, it needs to retire what it made on the way out.
 RUN = uuid.uuid4().hex[:6]
 
+# What a GeoJSON written WITHOUT contact fields is marked with, so the check can
+# tell a partial export from a complete one. Kept in step with
+# lib/Service/ContactFields.php by the test that reads it there.
+ContactFieldsPartial = "territorio_sin_contactos"
+
 # Where this run clicks, nudged so it never lands on what the last run left.
 # Clicking a marker selects that record and clicking inside a polygon selects
 # that Sector — both replace the open draft, so a fixed spot means every run
@@ -429,9 +434,23 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
         page.get_by_role("button", name="Exportar", exact=True).click()
         page.wait_for_timeout(600)
 
+    # A record with a telephone number in it, because the criterion is about
+    # contact fields and the Places the other checks make have none — asserting
+    # "the file carries the phone" against a record without one would pass or
+    # fail for reasons that have nothing to do with exporting.
+    contact = f"Contacto Navegador {RUN}"
+    page.get_by_role("button", name="Agregar").click()
+    page.get_by_label("Nombre").fill(contact)
+    page.get_by_label("Latitud").fill(f"-33.5{400 + NUDGE}")
+    page.get_by_label("Longitud").fill(f"-70.5{400 + NUDGE}")
+    page.get_by_label("Teléfono").fill("+56 9 8765 4321")
+    save(page, failures, "the record with contact details")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
     # A filtered set, so what comes back is checkable rather than the whole
     # comuna: this is also the "current filtered set" half of the criterion.
-    page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
+    page.locator(SEARCH).fill(contact)
     page.wait_for_timeout(600)
     open_dialog()
 
@@ -467,17 +486,36 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     # for a password field rather than for anything this app renders.
     page.get_by_role("button", name="Exportar", exact=True).last.click()
     page.wait_for_timeout(2500)
-    if page.locator('input[type="password"]').count() == 0:
+    password = page.locator('input[type="password"]')
+    if password.count() == 0:
         failures.append("a contact-bearing export did not ask for the password (ADR-0006)")
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    else:
+        # Answered rather than dismissed, so the rest of the criterion — the file
+        # carries the contacts, and the export is recorded — can be checked at
+        # all. Nothing downstream of the prompt is reachable without going
+        # through it.
+        password.first.fill(PASSWORD)
+        with page.expect_download(timeout=30_000) as download:
+            page.keyboard.press("Enter")
+        confirmed = download.value
+        written = json.loads(Path(confirmed.path()).read_text())
+        if written["features"][0]["properties"].get("phone") != "+56 9 8765 4321":
+            failures.append(
+                "the confirmed export did not carry the contact fields: "
+                + repr(written["features"][0]["properties"]),
+            )
+        if ContactFieldsPartial in Path(confirmed.path()).read_text():
+            failures.append("a confirmed export was marked as written without contacts")
 
-    # Reloaded rather than dismissed. Nextcloud's confirmation modal is not this
-    # app's, it does not close on Escape, and it blocks every click underneath it
-    # — so guessing at its close button would make this check depend on the
-    # markup of a dialog that belongs to the server.
+    # Reloaded before carrying on. Nextcloud's confirmation dialog belongs to the
+    # server, not to this app, and whatever it leaves behind — an overlay, a
+    # focus trap — is not this check's to unpick by guessing at its markup.
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
     page.wait_for_timeout(1000)
-    page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
+    page.locator(SEARCH).fill(contact)
     page.wait_for_timeout(600)
 
     # KML says what it cannot carry, before the export runs.
@@ -498,6 +536,35 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     page.wait_for_timeout(400)
 
     the_server_refuses_an_unconfirmed_export(page, failures)
+    the_administrator_can_read_the_export_log(page, failures)
+
+
+def the_administrator_can_read_the_export_log(page, failures):
+    """ADR-0006: "An administrator can read that list as a report."
+
+    On the page an administrator actually opens, not as a route somebody would
+    have to curl. The export above is the entry this expects to find, which is
+    also why that one is carried through the password prompt rather than
+    cancelled at it.
+    """
+    page.goto("http://localhost:8083/settings/admin/territorio", wait_until="domcontentloaded")
+    page.wait_for_timeout(2500)
+
+    table = page.locator(".territorio-admin__exports")
+    if table.count() == 0:
+        failures.append("the admin settings page shows no export log")
+        return
+
+    if table.get_by_text("admin").count() == 0:
+        failures.append("the export log does not name who exported")
+    if table.get_by_text("búsqueda", exact=False).count() == 0:
+        failures.append("the export log does not say what the export was of (ADR-0006 asks for scope)")
+
+    # Back to the app. This is the only check that leaves it, and everything
+    # after it assumes the Registry is on screen.
+    page.goto("http://localhost:8083/apps/territorio/", wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1000)
 
 
 def the_server_refuses_an_unconfirmed_export(page, failures):

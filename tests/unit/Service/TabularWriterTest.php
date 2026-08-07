@@ -145,6 +145,37 @@ final class TabularWriterTest extends TestCase {
 		self::assertSame('Av. La Florida 1234, depto 5', $row['Dirección']);
 	}
 
+	/**
+	 * A note that looks like a formula must not become one.
+	 *
+	 * Excel and LibreOffice execute a cell beginning with =, +, - or @ when the
+	 * file is opened. Every user of this instance can edit every record
+	 * (ADR-0005), so "somebody typed it" is not a defence: a note reading
+	 * `=HYPERLINK(...)` would run on the machine of whoever opened the export,
+	 * which is usually not the person who typed it.
+	 */
+	public function testAValueThatLooksLikeAFormulaIsNotOne(): void {
+		$rows = $this->parse((new CsvWriter())->write([[
+			'name' => '=HYPERLINK("http://ejemplo.cl","haga clic")',
+			'notes' => '@SUM(1+1)',
+			'geometry' => null,
+		]], true));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertStringStartsNotWith('=', $row['Nombre']);
+		self::assertStringStartsNotWith('@', $row['Notas']);
+		// The text is still all there — quoted, not censored.
+		self::assertStringContainsString('HYPERLINK("http://ejemplo.cl","haga clic")', $row['Nombre']);
+	}
+
+	/** An ordinary value is untouched, or every cell would carry punctuation. */
+	public function testAnOrdinaryValueIsNotQuoted(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::ROW], true));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertSame('Junta de Vecinos Los Navegantes', $row['Nombre']);
+	}
+
 	/** KML carries the geometry and the name, and that is the whole claim. */
 	public function testKmlCarriesTheNameAndTheGeometry(): void {
 		$kml = (new KmlWriter())->write([self::ROW]);

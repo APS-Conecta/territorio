@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.20.4] — unreleased
+## [0.20.7] — unreleased
 
 Taking the filtered set out of the app.
 
@@ -17,9 +17,9 @@ Taking the filtered set out of the app.
   recorded with who, when, which format and how many records (ADR-0006). An export carrying none
   asks for nothing, because a prompt that appears every time teaches people to type their password
   without reading why.
-- An administrator can read the export log at `GET /export/history`. It is the only route in the
-  app that is not open to every user, because it is the list of who took personal data out of the
-  building.
+- An administrator reads the export log in **Administración → Territorio**: who, when, which
+  format, how many records and what the export was of. It is the only route in the app that is not
+  open to every user, because it is the list of who took personal data out of the building.
 
 ### Notes
 
@@ -38,6 +38,16 @@ Taking the filtered set out of the app.
   authority published, and an export of ours is not the authority.
 - A CSV gives latitude and longitude only for a single point. A Sector is a polygon and its centre
   is not where the Sector is.
+- A GeoJSON exported WITHOUT contact details cannot be imported back. Its contact fields are absent
+  rather than empty, and an import reads absence as deletion — re-importing one would clear a
+  comuna's telephone numbers, one silent "Actualizado" per record. The file says it is partial and
+  the reader refuses it.
+- A CSV value beginning with `=`, `+`, `-` or `@` is written as text. Excel executes such a cell
+  when the file is opened, every user can edit every record (ADR-0005), and the formula would run
+  on the machine of whoever opened the export rather than whoever typed it.
+- A KML cannot be exported "with contact details" at all. It carries none, so the request can only
+  be a mistake, and honouring it would mean a password prompt for a file with nothing personal in
+  it — the unearned prompt ADR-0006 exists to avoid.
 
 ## [0.19.4] — unreleased
 

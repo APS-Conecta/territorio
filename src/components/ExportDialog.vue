@@ -85,6 +85,15 @@ export default {
 	props: {
 		/** The ids on screen right now. The filter is personal and lives here. */
 		ids: { type: Array, required: true },
+		/**
+		 * How the person had narrowed the screen, in their own words.
+		 *
+		 * ADR-0006 asks the log to record the SCOPE of an export. A count is its
+		 * size: "42 registros" does not say whose. This is the sentence that says
+		 * whose, and only this component knows it, because the filter is personal
+		 * and never leaves the browser (CONTEXT.md).
+		 */
+		scope: { type: String, default: '' },
 	},
 
 	emits: ['close'],
@@ -125,7 +134,7 @@ export default {
 					generateUrl(this.carriesContacts
 						? '/apps/territorio/export/contacts'
 						: '/apps/territorio/export'),
-					{ ids: this.ids, format: this.format },
+					{ ids: this.ids, format: this.format, scope: this.scope },
 					{
 						// Blob, not JSON: this response is a file, and letting axios
 						// parse it would turn a CSV into a string with the encoding
@@ -145,15 +154,38 @@ export default {
 				this.save(data, headers['content-disposition'])
 				this.$emit('close')
 			} catch (exception) {
-				// A cancelled password prompt rejects too, and telling somebody
-				// "no se pudo exportar" when they decided not to is worse than
-				// saying nothing.
-				if (exception?.message !== 'Password confirmation cancelled') {
-					this.error = exception.response?.data?.message
-						?? 'No se pudo exportar. Inténtelo de nuevo.'
+				// Deciding not to type your password is not a failure, and saying
+				// "no se pudo exportar" to somebody who just pressed Cancelar is
+				// worse than saying nothing. The string is the one
+				// @nextcloud/password-confirmation actually throws — it is not
+				// exported as a constant, so this is checked against the installed
+				// version and pinned by the test below it in tests/js.
+				if (exception?.message !== 'Dialog closed') {
+					this.error = await this.reasonFrom(exception)
 				}
 			} finally {
 				this.working = false
+			}
+		},
+
+		/**
+		 * What the server said, out of a response we asked for as a Blob.
+		 *
+		 * `responseType: 'blob'` applies to the error body too, so
+		 * `error.response.data.message` is always undefined and every Spanish
+		 * message the controller writes would go unread — the caller would be
+		 * told "inténtelo de nuevo" about a file that will never work.
+		 */
+		async reasonFrom(exception) {
+			const body = exception.response?.data
+			const fallback = 'No se pudo exportar. Inténtelo de nuevo.'
+
+			try {
+				return JSON.parse(await body.text()).message ?? fallback
+			} catch {
+				// Not JSON, not a Blob, or no response at all — a dropped
+				// connection looks like this.
+				return fallback
 			}
 		},
 
@@ -166,9 +198,12 @@ export default {
 			document.body.appendChild(link)
 			link.click()
 			link.remove()
-			// Revoked, or the whole file stays in memory until the tab closes —
-			// and a comuna's catastro is not a small string.
-			URL.revokeObjectURL(url)
+			// Revoked, or the whole file stays in memory until the tab closes, and
+			// a comuna's catastro is not a small string. On a turn of the event
+			// loop rather than immediately: Firefox aborts a download whose object
+			// URL is revoked in the same tick as the click, and Chromium does not
+			// — so the browser gate would never have found it.
+			setTimeout(() => URL.revokeObjectURL(url), 0)
 		},
 
 		/** The server names the file; this is the fallback when it did not. */

@@ -22,20 +22,22 @@ use OCP\AppFramework\Db\Entity;
  * @method void setFormat(string $format)
  * @method int getRecords()
  * @method void setRecords(int $records)
- * @method bool getContacts()
- * @method void setContacts(bool $contacts)
+ * @method string getScope()
+ * @method void setScope(string $scope)
  */
 class ExportRecord extends Entity {
 	protected $actor = '';
 	protected $exportedAt = null;
 	protected $format = '';
 	protected $records = 0;
-	protected $contacts = true;
+	// What the person had on screen when they exported — their search and which
+	// layers were on. ADR-0006 asks for the scope, and "42 registros" says how
+	// much left the building without saying what.
+	protected $scope = '';
 
 	public function __construct() {
 		$this->addType('exportedAt', 'datetime');
 		$this->addType('records', 'integer');
-		$this->addType('contacts', 'boolean');
 	}
 
 	/** @return array<string, mixed> */
@@ -46,7 +48,7 @@ class ExportRecord extends Entity {
 			'exportedAt' => $this->getExportedAt()?->format(\DateTimeInterface::ATOM),
 			'format' => $this->getFormat(),
 			'records' => $this->getRecords(),
-			'contacts' => (bool)$this->getContacts(),
+			'scope' => $this->getScope(),
 		];
 	}
 }

@@ -111,6 +111,20 @@ the whole collection out. They are loaded only while a Sector's boundary is bein
 Refreshing them later is just re-running both commands. Ids come from OSM, so a street redrawn
 upstream updates the record it already has, and no Sector already drawn is moved.
 
+## Exporting
+
+`Exportar`, beside the search, writes what the list is showing — layers and search applied — as
+GeoJSON, CSV or KML.
+
+GeoJSON is the one that goes back in: it carries the external ids, so re-importing updates rather
+than duplicates. Export it **with** contact details if you mean to re-import it. A GeoJSON written
+without them marks itself partial and the import refuses it, because its contact fields are absent
+rather than empty and an import would read that as "these records have no telephone".
+
+An export carrying contact details asks for your Nextcloud password and is recorded — who, when,
+what format, how many records and what it was of. An administrator reads that list in
+**Administración → Territorio**. Exports carrying none ask for nothing (ADR-0006).
+
 ## The basemap
 
 Tiles come from OpenStreetMap by default. An administrator can repoint them at any tile server

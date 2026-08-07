@@ -10,6 +10,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\Origin;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Exception\InvalidFeatureException;
+use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ExportService;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
@@ -64,6 +65,17 @@ final class ExportTest extends IntegrationTestCase {
 			static fn ($entry): int => (int)$entry->getId(),
 			Server::get(ExportRecordMapper::class)->findRecent(),
 		);
+	}
+
+	/** One entry, found among the recent ones — the mapper has no find-by-id. */
+	private function entry(int $id): \OCA\Territorio\Db\ExportRecord {
+		foreach (Server::get(ExportRecordMapper::class)->findRecent() as $entry) {
+			if ((int)$entry->getId() === $id) {
+				return $entry;
+			}
+		}
+
+		self::fail("no export log entry $id");
 	}
 
 	/**
@@ -148,6 +160,28 @@ final class ExportTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * The export that leaves the contact fields out must not be re-importable.
+	 *
+	 * It is the DEFAULT export, and re-importing one would tell the Registry that
+	 * every record in it has no telephone number — which is what the file says,
+	 * because the fields are absent. `ImportService::differs()` sees a change,
+	 * `input()` writes the nulls, and a comuna's contact details are gone in one
+	 * quiet "Actualizado" per record.
+	 *
+	 * So the file says it is partial and the reader refuses it. Loudly: an
+	 * accidental wipe is silent, and a refusal is a sentence on the screen.
+	 */
+	public function testAnExportWithoutContactsCannotBeImportedBackOverTheOriginals(): void {
+		$dataset = 'export-partial-' . uniqid();
+		$id = $this->place('Conserva su teléfono', ['phone' => '+56 9 6666 6666']);
+
+		$file = $this->exports->export([$id], 'geojson', false);
+
+		$this->expectException(InvalidImportException::class);
+		Server::get(ImportService::class)->importGeoJson($file['body'], $dataset);
+	}
+
+	/**
 	 * ADR-0012, and the reason the log is not a Revision: an export changes
 	 * nothing, so it must not move the cursor every open browser polls.
 	 */
@@ -167,15 +201,18 @@ final class ExportTest extends IntegrationTestCase {
 		$id = $this->place('Con contacto', ['phone' => '+56 9 4444 4444']);
 
 		$added = $this->logging(function () use ($id): void {
-			$this->exports->export([$id], 'csv', true);
+			$this->exports->export([$id], 'csv', true, 'búsqueda: "contacto"');
 		});
 
 		self::assertCount(1, $added);
-		$entry = Server::get(ExportRecordMapper::class)->find($added[0]);
+		$entry = $this->entry($added[0]);
 		self::assertSame('csv', $entry->getFormat());
 		self::assertSame(1, $entry->getRecords());
-		self::assertTrue($entry->getContacts());
 		self::assertNotSame('', $entry->getActor());
+		self::assertNotNull($entry->getExportedAt());
+		// ADR-0006 asks for actor, moment and SCOPE. A count is the size of an
+		// export; this is what it was of.
+		self::assertSame('búsqueda: "contacto"', $entry->getScope());
 	}
 
 	/** An export without contact fields is an ordinary download (ADR-0006). */
@@ -191,20 +228,30 @@ final class ExportTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * A KML carries no contact details whatever was asked for, so recording it as
-	 * an export of contact data would put a false entry in the one log that is
-	 * meant to say who took personal data out of the building.
+	 * A KML cannot carry contact details, so asking for one that does is refused.
+	 *
+	 * Not quietly downgraded: it would mean a password prompt for a file with
+	 * nothing personal in it, which is the unearned prompt ADR-0006 exists to
+	 * avoid, and a log entry claiming contact data left the building when none
+	 * did.
 	 */
-	public function testAKmlIsNotRecordedAsCarryingContacts(): void {
+	public function testAKmlCannotBeAskedForWithContacts(): void {
 		$id = $this->place('KML', ['phone' => '+56 9 5555 5555']);
+
+		try {
+			$this->exports->export([$id], 'kml', true);
+			self::fail('a KML with contacts should be refused');
+		} catch (InvalidFeatureException) {
+			// as expected
+		}
 
 		$file = null;
 		$added = $this->logging(function () use ($id, &$file): void {
-			$file = $this->exports->export([$id], 'kml', true);
+			$file = $this->exports->export([$id], 'kml', false);
 		});
 
 		self::assertStringNotContainsString('+56 9 5555 5555', $file['body']);
-		self::assertSame([], $added);
+		self::assertSame([], $added, 'a KML carries nobody, so there is nothing to record');
 	}
 
 	public function testARetiredRecordIsNotExportedEvenIfAskedFor(): void {

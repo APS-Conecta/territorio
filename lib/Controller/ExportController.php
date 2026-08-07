@@ -79,6 +79,7 @@ class ExportController extends Controller {
 				$ids,
 				(string)$this->request->getParam('format'),
 				$contacts,
+				(string)$this->request->getParam('scope', ''),
 			);
 		} catch (InvalidFeatureException $e) {
 			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);

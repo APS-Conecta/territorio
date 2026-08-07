@@ -37,10 +37,10 @@ class Version001400Date20260808180000 extends SimpleMigrationStep {
 			$table->addColumn('exported_at', Types::DATETIME, ['notnull' => true]);
 			$table->addColumn('format', Types::STRING, ['notnull' => true, 'length' => 16]);
 			$table->addColumn('records', Types::INTEGER, ['notnull' => true, 'default' => 0]);
-			// Every row here has contacts today (ADR-0012: only those are logged).
-			// The column is here so that the report says what it means rather than
-			// relying on the reader knowing that rule.
-			$table->addColumn('contacts', Types::BOOLEAN, ['notnull' => true, 'default' => true]);
+			// What the person had on screen: their search, and which layers were on.
+			// ADR-0006 asks for the scope of an export, and a count is its size —
+			// "42 registros" does not say whose.
+			$table->addColumn('scope', Types::STRING, ['notnull' => true, 'default' => '', 'length' => 255]);
 
 			$table->setPrimaryKey(['id']);
 			// The report reads newest first and nothing else reads this at all.

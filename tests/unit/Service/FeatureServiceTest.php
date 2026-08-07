@@ -105,6 +105,14 @@ final class FeatureServiceTest extends TestCase {
 		], $overrides);
 	}
 
+	/** A closed ring, as geoman hands one over. */
+	private static function polygon(): array {
+		return [
+			'type' => 'Polygon',
+			'coordinates' => [[[-70.6, -33.5], [-70.5, -33.5], [-70.5, -33.4], [-70.6, -33.5]]],
+		];
+	}
+
 	public function testItCreatesAPlaceFromAPoint(): void {
 		$feature = $this->service->create($this->valid());
 
@@ -121,20 +129,71 @@ final class FeatureServiceTest extends TestCase {
 		self::assertSame(Kind::Place->value, $feature->getKind());
 	}
 
-	/**
-	 * Slice boundary, not a limitation of Geometry: it measures a Polygon
-	 * perfectly well, but nothing draws a Zone yet, so one would land on the map
-	 * as a single pin on an arbitrary vertex. Lifted when Sectores get their own
-	 * rendering (issue #10).
-	 */
-	public function testANonPointGeometryIsRefusedForNow(): void {
-		$this->expectException(InvalidFeatureException::class);
-		$this->service->create($this->valid([
-			'geometry' => json_decode(
-				'{"type":"Polygon","coordinates":[[[-70.6,-33.5],[-70.5,-33.5],[-70.5,-33.4],[-70.6,-33.5]]]}',
-				true,
-			),
+	/** A drawn Sector: a Polygon, measured across its ring like any other Zone. */
+	public function testAPolygonIsStoredAsAZoneAndMeasured(): void {
+		$feature = $this->service->create($this->valid(['geometry' => self::polygon()]));
+
+		self::assertSame(Kind::Zone->value, $feature->getKind());
+		self::assertEqualsWithDelta(-70.6, $feature->getMinLon(), 1e-9);
+		self::assertEqualsWithDelta(-33.4, $feature->getMaxLat(), 1e-9);
+	}
+
+	public function testALineStringIsStoredAsARoute(): void {
+		$feature = $this->service->create($this->valid([
+			'geometry' => ['type' => 'LineString', 'coordinates' => [[-70.6, -33.5], [-70.5, -33.4]]],
 		]));
+
+		self::assertSame(Kind::Route->value, $feature->getKind());
+	}
+
+	/**
+	 * A Sector's colour belongs to the Sector, not to its Subcategory: a clinic
+	 * gives each one its own so teams can tell them apart at a glance.
+	 */
+	public function testAColourIsKeptOnTheRecord(): void {
+		$feature = $this->service->create($this->valid([
+			'geometry' => self::polygon(),
+			'colour' => '#A1B2C3',
+		]));
+
+		self::assertSame('#a1b2c3', $feature->getColour());
+	}
+
+	public function testAColourIsOptionalAndSendingItEmptyClearsIt(): void {
+		self::assertNull($this->service->create($this->valid())->getColour());
+
+		$feature = new Feature();
+		$feature->setId(4);
+		$feature->setColour('#a1b2c3');
+		$this->features->method('find')->willReturn($feature);
+
+		self::assertNull($this->service->update(4, $this->valid(['colour' => '  ']))->getColour());
+	}
+
+	/**
+	 * The colour reaches the browser inside a style attribute. Anything that is
+	 * not a hex colour is refused here rather than escaped downstream, so there is
+	 * one place to be right about it instead of one per template.
+	 */
+	public function testAColourThatIsNotAHexColourIsRefused(): void {
+		$this->expectException(InvalidFeatureException::class);
+		$this->service->create($this->valid(['colour' => 'red; background: url(x)']));
+	}
+
+	/**
+	 * Naming is clinic-specific and stays unconstrained (issue #10): a CESFAM may
+	 * call its sectores "3", "Rojo" or "Sector Sur", and Territorio does not know
+	 * which — so nothing here may reserve, reformat or reject any of them.
+	 */
+	public function testASectorNameCanBeABareNumberOrAColourWord(): void {
+		foreach (['3', 'Rojo', 'Sector Sur', '2 Norte'] as $name) {
+			$feature = $this->service->create($this->valid([
+				'name' => $name,
+				'geometry' => self::polygon(),
+			]));
+
+			self::assertSame($name, $feature->getName());
+		}
 	}
 
 	/**

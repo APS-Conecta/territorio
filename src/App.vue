@@ -47,8 +47,12 @@
 					:features="liveFiltered"
 					:taxonomy="taxonomy"
 					:selected-id="selectedId"
+					:draft-geometry="draftGeometry"
+					:draft-colour="draft?.colour ?? null"
 					@select="select"
-					@map-click="placeDraft" />
+					@map-click="placeDraft"
+					@draw="startSector"
+					@reshape="reshapeDraft" />
 
 				<AnalisisView v-if="pane === 'analisis'"
 					:counts="counts"
@@ -104,7 +108,7 @@ import {
 	toggleCategory,
 	toggleSubcategory,
 } from './filters.js'
-import { defaultSubcategoryId } from './taxonomy.js'
+import { defaultSubcategoryId, sectorSubcategoryId } from './taxonomy.js'
 
 /**
  * ADR-0002: seconds of latency is fine for territorial editing, and this instance
@@ -112,6 +116,12 @@ import { defaultSubcategoryId } from './taxonomy.js'
  * most of them answered by one indexed read.
  */
 const POLL_INTERVAL_MS = 5000
+
+/**
+ * What a new Sector starts out as. Any colour would do — this one is only
+ * somewhere to begin, and the picker is right there in the sidebar.
+ */
+const NEW_SECTOR_COLOUR = '#2563eb'
 
 /** Chilean keyboards produce a decimal comma; Leaflet and GeoJSON want a dot. */
 const toNumber = (value) => {
@@ -197,6 +207,11 @@ export default {
 		selectedIsRetired() {
 			return this.showRetired
 				&& this.retiredFeatures.some((feature) => feature.id === this.selectedId)
+		},
+
+		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
+		draftGeometry() {
+			return this.draft?.geometry ?? null
 		},
 	},
 
@@ -381,10 +396,50 @@ export default {
 		startNew() {
 			this.selectedId = null
 			this.error = ''
+			this.draft = { ...this.blankDraft(), subcategoryId: defaultSubcategoryId(this.taxonomy) }
+		},
+
+		/**
+		 * A Sector someone has just drawn (ADR-0007's fallback path, which is not
+		 * second-class): the shape is already agreed, so all that is left is a name
+		 * and a colour.
+		 */
+		startSector(geometry) {
+			const subcategoryId = sectorSubcategoryId(this.taxonomy)
+			if (subcategoryId === null) {
+				// The seed that files sectores runs on install and on every upgrade,
+				// so this means the install is broken, not that the user did anything
+				// wrong. Saying so beats a 422 about a subcategory id of null.
+				this.error = 'Falta la subcategoría "Sector". Actualice la app e inténtelo de nuevo.'
+				return
+			}
+
+			this.selectedId = null
+			this.error = ''
 			this.draft = {
+				...this.blankDraft(),
+				subcategoryId,
+				geometry,
+				colour: NEW_SECTOR_COLOUR,
+			}
+		},
+
+		/** A dragged vertex, straight from the map. */
+		reshapeDraft(geometry) {
+			if (this.draft !== null) {
+				this.draft.geometry = geometry
+			}
+		},
+
+		blankDraft() {
+			return {
 				id: null,
 				name: '',
-				subcategoryId: defaultSubcategoryId(this.taxonomy),
+				subcategoryId: null,
+				// Set only for a drawn shape. A Place carries lat/lon instead, which
+				// is what the form offers when this is null.
+				geometry: null,
+				colour: null,
 				lat: '',
 				lon: '',
 				locationQuality: 'exacta',
@@ -400,12 +455,15 @@ export default {
 		},
 
 		draftFrom(feature) {
-			const [lon, lat] = feature.geometry?.coordinates ?? [null, null]
+			const isPoint = feature.geometry?.type === 'Point'
+			const [lon, lat] = isPoint ? feature.geometry.coordinates : [null, null]
 
 			return {
 				id: feature.id,
 				name: feature.name,
 				subcategoryId: feature.subcategoryId,
+				geometry: isPoint ? null : (feature.geometry ?? null),
+				colour: feature.colour ?? null,
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
 				locationQuality: feature.locationQuality === 'sin_coordenada'
@@ -422,9 +480,13 @@ export default {
 			}
 		},
 
-		/** Clicking the map fills in the open draft's coordinates. */
+		/**
+		 * Clicking the map fills in the open draft's coordinates — unless the draft
+		 * is a drawn shape, which has no single coordinate to fill in and is edited
+		 * by dragging its vertices instead.
+		 */
 		placeDraft({ lat, lon }) {
-			if (this.draft === null) {
+			if (this.draft === null || this.draft.geometry !== null) {
 				return
 			}
 			this.draft.lat = lat.toFixed(7)
@@ -443,11 +505,14 @@ export default {
 
 			return {
 				...this.draft,
-				// GeoJSON orders positions [longitude, latitude] — the reverse of
-				// how they are said out loud, and of the form's field order.
-				geometry: lat === null || lon === null
+				colour: this.draft.colour ?? '',
+				// A drawn shape wins over the coordinate fields, which the form does
+				// not even show for one. GeoJSON orders positions [longitude,
+				// latitude] — the reverse of how they are said out loud, and of the
+				// form's field order.
+				geometry: this.draft.geometry ?? (lat === null || lon === null
 					? null
-					: { type: 'Point', coordinates: [lon, lat] },
+					: { type: 'Point', coordinates: [lon, lat] }),
 			}
 		},
 

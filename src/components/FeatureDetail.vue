@@ -6,14 +6,30 @@
 
 		<NcTextField v-model="draft.name" label="Nombre" required />
 
-		<NcSelect v-model="subcategory"
+		<!-- Nothing constrains the name. A CESFAM may call its sectores "3",
+		     "Rojo" or "Sector Sur", and Territorio does not know which. -->
+
+		<NcSelect v-if="!isDivision"
+			v-model="subcategory"
 			class="territorio-detail__field"
 			input-label="Subcategoría"
 			:options="subcategoryOptions"
 			:clearable="false"
 			label="label" />
 
-		<fieldset class="territorio-detail__field territorio-detail__coords">
+		<!-- Native colour input: the browser already has a picker, and it is one
+		     line against a component to configure. -->
+		<label v-if="isDivision" class="territorio-detail__field territorio-detail__colour">
+			<span>Color</span>
+			<input v-model="draft.colour" type="color">
+		</label>
+
+		<p v-if="hasShape" class="territorio-detail__field territorio-detail__hint">
+			El límite se dibuja en el mapa. Arrastre los vértices para ajustarlo;
+			se pegan a los bordes ya dibujados.
+		</p>
+
+		<fieldset v-if="!hasShape" class="territorio-detail__field territorio-detail__coords">
 			<legend>Ubicación</legend>
 			<p class="territorio-detail__hint">
 				Haga clic en el mapa para situar el registro, o escriba las coordenadas.
@@ -89,7 +105,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
-import { subcategoryOptions } from '../taxonomy.js'
+import { divisionsOf, subcategoryOptions, treeOf } from '../taxonomy.js'
 
 // Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
 // from having no geometry, and these options only appear when there is one.
@@ -130,8 +146,24 @@ export default {
 	},
 
 	computed: {
+		/**
+		 * The tree only. A territorial division is not something a record is
+		 * reclassified INTO — filing a colegio as a Sector would put it behind the
+		 * Sectores toggle and colour it like a boundary.
+		 */
 		subcategoryOptions() {
-			return subcategoryOptions(this.taxonomy)
+			return subcategoryOptions(treeOf(this.taxonomy))
+		},
+
+		/** A Sector: it is what it is, so there is no Subcategoría to choose. */
+		isDivision() {
+			return divisionsOf(this.taxonomy)
+				.some((division) => division.id === this.draft.subcategoryId)
+		},
+
+		/** Drawn on the map rather than typed as a coordinate. */
+		hasShape() {
+			return this.draft.geometry !== null && this.draft.geometry !== undefined
 		},
 
 		qualityOptions() {
@@ -177,6 +209,18 @@ export default {
 
 .territorio-detail__field {
 	margin-top: 12px;
+}
+
+.territorio-detail__colour {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.territorio-detail__colour input {
+	inline-size: 48px;
+	block-size: 32px;
+	padding: 2px;
 }
 
 .territorio-detail__coords {

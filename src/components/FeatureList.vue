@@ -55,7 +55,7 @@ import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
-import { indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
+import { colourOf, indexSubcategories } from '../taxonomy.js'
 
 export default {
 	name: 'FeatureList',
@@ -87,8 +87,9 @@ export default {
 			return this.subcategories.get(feature.subcategoryId)?.label ?? 'Clasificación desconocida'
 		},
 
+		/** The record's own colour if it has one — which is how sectores differ. */
 		colourOf(feature) {
-			return this.subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
+			return colourOf(feature, this.subcategories)
 		},
 	},
 }

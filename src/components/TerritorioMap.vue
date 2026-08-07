@@ -19,7 +19,9 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
-import { indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
+import '@geoman-io/leaflet-geoman-free'
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
+import { colourOf, indexSubcategories } from '../taxonomy.js'
 
 /**
  * OpenStreetMap's own credit, as markup, from here and never from configuration.
@@ -53,9 +55,14 @@ export default {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
+		// The shape the open draft carries, drawn dashed and with its vertices
+		// draggable. Owned by App.vue: this component renders it and reports the
+		// user's edits back, so there is one geometry and not two.
+		draftGeometry: { type: Object, default: null },
+		draftColour: { type: String, default: null },
 	},
 
-	emits: ['select', 'map-click'],
+	emits: ['select', 'map-click', 'draw', 'reshape'],
 
 	data() {
 		return {
@@ -64,6 +71,12 @@ export default {
 			tileLoaded: false,
 			map: null,
 			markers: null,
+			outlines: null,
+			draftLayer: null,
+			// What we last told the parent. A reshape comes straight back as a new
+			// draftGeometry, and redrawing on it would tear the layer out from under
+			// the hand still dragging its vertex.
+			reported: '',
 			resizeObserver: null,
 		}
 	},
@@ -98,17 +111,41 @@ export default {
 		mappable() {
 			return this.features.filter((feature) => feature.geometry !== null)
 		},
+
+		/** A single location gets a pin… */
+		points() {
+			return this.mappable.filter((feature) => feature.geometry.type === 'Point')
+		},
+
+		/** …and anything with an extent — a Sector, a route — is drawn as itself. */
+		shapes() {
+			return this.mappable.filter((feature) => feature.geometry.type !== 'Point')
+		},
 	},
 
 	watch: {
 		mappable: {
 			handler() {
 				this.drawMarkers()
+				this.drawShapes()
 			},
 			deep: true,
 		},
 		selectedId() {
 			this.drawMarkers()
+			this.drawShapes()
+		},
+		draftGeometry(geometry) {
+			// Our own reshape, coming back around. Everything else — a draft opened,
+			// closed, or saved and re-read from the server — is a real change.
+			if (JSON.stringify(geometry) === this.reported) {
+				return
+			}
+			this.drawDraft()
+			this.drawShapes()
+		},
+		draftColour() {
+			this.draftLayer?.setStyle(this.styleFor({ colour: this.draftColour }, true))
 		},
 	},
 
@@ -137,9 +174,16 @@ export default {
 			})
 			.addTo(this.map)
 
+		// Shapes live in Leaflet's overlayPane and markers in its markerPane, which
+		// is what puts a Sector's fill beneath the pins standing on it. Nothing
+		// here sets a z-index: the panes already order themselves.
+		this.outlines = L.featureGroup().addTo(this.map)
 		this.markers = L.markerClusterGroup({ showCoverageOnHover: false })
 		this.map.addLayer(this.markers)
+		this.setUpDrawing()
 		this.drawMarkers()
+		this.drawShapes()
+		this.drawDraft()
 
 		this.map.on('click', (event) => {
 			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
@@ -170,11 +214,8 @@ export default {
 			}
 			this.markers.clearLayers()
 
-			this.mappable.forEach((feature) => {
-				const [lon, lat] = this.anchorOf(feature.geometry)
-				if (lat === null) {
-					return
-				}
+			this.points.forEach((feature) => {
+				const [lon, lat] = feature.geometry.coordinates
 				L.marker([lat, lon], { icon: this.iconFor(feature) })
 					.on('click', () => this.$emit('select', feature.id))
 					.addTo(this.markers)
@@ -182,20 +223,130 @@ export default {
 		},
 
 		/**
-		 * Where to put the pin. Only Points exist in this slice; Zones and Routes
-		 * arrive with their own rendering, so their first vertex is a placeholder
-		 * that keeps them visible rather than silently absent.
+		 * The Sectores and other Zones, redrawn wholesale like the markers.
+		 *
+		 * The one being edited is skipped: the draft layer is already showing that
+		 * shape, and drawing both would leave the user dragging the vertices of one
+		 * polygon while looking at another sitting exactly on top of it.
 		 */
-		anchorOf(geometry) {
-			let node = geometry.coordinates
-			while (Array.isArray(node) && Array.isArray(node[0])) {
-				node = node[0]
+		drawShapes() {
+			if (this.outlines === null) {
+				return
 			}
-			return Array.isArray(node) && node.length >= 2 ? node : [null, null]
+			this.outlines.clearLayers()
+
+			this.shapes.forEach((feature) => {
+				if (this.draftGeometry !== null && feature.id === this.selectedId) {
+					return
+				}
+
+				const layer = L.GeoJSON.geometryToLayer(feature.geometry)
+				layer.setStyle(this.styleFor(feature, feature.id === this.selectedId))
+				layer.bindTooltip(feature.name)
+				layer.on('click', (event) => {
+					// A path click reaches the map too, and the map click is "put the
+					// open draft here" — so selecting a Sector would also move a record.
+					L.DomEvent.stopPropagation(event)
+					this.$emit('select', feature.id)
+				})
+				this.outlines.addLayer(layer)
+			})
+		},
+
+		/**
+		 * Turn on drawing and snapping.
+		 *
+		 * Only the polygon tool is offered. Geoman brings a whole toolbar —
+		 * circles, rectangles, cut, rotate — and every one of those is a shape the
+		 * Registry has no meaning for. Deleting is off too: retiring is how a record
+		 * leaves the map (ADR-0005), and a rubbish-bin button beside it would be a
+		 * second, silent way that skips the history.
+		 */
+		setUpDrawing() {
+			this.map.pm.setLang('es')
+			// Snapping is what makes adjacent sectores share an exact edge instead of
+			// leaving slivers between them. It works against whatever vector layers
+			// are on the map, so it will cover the Unidad Vecinal boundaries too once
+			// they are imported — they are Features drawn by drawShapes like any other.
+			this.map.pm.setGlobalOptions({
+				snappable: true,
+				snapDistance: 20,
+				allowSelfIntersection: false,
+			})
+			this.map.pm.addControls({
+				position: 'topright',
+				drawMarker: false,
+				drawCircle: false,
+				drawCircleMarker: false,
+				drawPolyline: false,
+				drawRectangle: false,
+				drawText: false,
+				editMode: false,
+				dragMode: false,
+				cutPolygon: false,
+				removalMode: false,
+				rotateMode: false,
+			})
+
+			// Geoman hands over the finished layer; it becomes the draft layer as it
+			// is, so the shape someone just drew stays on screen and stays editable
+			// while they name it.
+			this.map.on('pm:create', ({ layer }) => {
+				this.adoptDraft(layer)
+				this.report('draw', layer)
+			})
+		},
+
+		/** Draw the open draft's shape, dashed, with its vertices draggable. */
+		drawDraft() {
+			this.draftLayer?.remove()
+			this.draftLayer = null
+
+			if (this.draftGeometry === null || this.map === null) {
+				return
+			}
+
+			this.adoptDraft(L.GeoJSON.geometryToLayer(this.draftGeometry).addTo(this.map))
+		},
+
+		adoptDraft(layer) {
+			if (layer !== this.draftLayer) {
+				this.draftLayer?.remove()
+			}
+			this.draftLayer = layer
+
+			layer.setStyle(this.styleFor({ colour: this.draftColour }, true))
+			layer.pm.enable({ allowSelfIntersection: false })
+			// Both events: pm:edit covers a dragged vertex, pm:update the end of a
+			// move. Reporting twice is harmless — the parent just stores it again.
+			layer.on('pm:edit pm:update', () => this.report('reshape', layer))
+		},
+
+		report(event, layer) {
+			const geometry = layer.toGeoJSON().geometry
+			this.reported = JSON.stringify(geometry)
+			this.$emit(event, geometry)
+		},
+
+		/**
+		 * A light translucent fill under a clear outline: a Sector has to be
+		 * readable as an area without hiding the basemap or the records inside it.
+		 */
+		styleFor(feature, selected = false) {
+			const colour = colourOf(feature, this.subcategories)
+
+			return {
+				color: colour,
+				weight: selected ? 4 : 2,
+				opacity: 1,
+				fillColor: colour,
+				fillOpacity: 0.15,
+				dashArray: selected ? '6 4' : null,
+			}
 		},
 
 		iconFor(feature) {
-			const colour = this.subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
+			const colour = colourOf(feature, this.subcategories)
 			const selected = feature.id === this.selectedId
 
 			return L.divIcon({

@@ -230,9 +230,35 @@ class FeatureService {
 			$feature->$setter($value === '' ? null : $value);
 		}
 
+		if (array_key_exists('colour', $input)) {
+			$feature->setColour(self::colour($input['colour']));
+		}
+
 		$this->applyGeometry($feature, $input);
 
 		return $feature;
+	}
+
+	/**
+	 * A Sector's own colour, or null for a record that takes its Category's.
+	 *
+	 * Checked here rather than escaped downstream: the colour reaches the browser
+	 * inside a `style` attribute and a Leaflet path option, so refusing anything
+	 * that is not a hex colour leaves one place to be right about it instead of
+	 * one per template. Stored lower-case so `#A1B2C3` and `#a1b2c3` do not read
+	 * as a change in history.
+	 */
+	private static function colour(mixed $value): ?string {
+		$colour = strtolower(trim((string)$value));
+		if ($colour === '') {
+			return null;
+		}
+
+		if (preg_match('/^#[0-9a-f]{6}$/', $colour) !== 1) {
+			throw new InvalidFeatureException(sprintf('Color inválido: "%s". Use #rrggbb.', $colour));
+		}
+
+		return $colour;
 	}
 
 	/**
@@ -255,17 +281,6 @@ class FeatureService {
 		}
 
 		$geometry = Geometry::fromArray($raw);
-
-		// Places only, for now. Geometry can measure a Zone or a Route perfectly
-		// well, but nothing in this slice draws one — a Polygon would land on the
-		// map as a single pin on an arbitrary vertex, which is worse than a clear
-		// refusal. Lift this when Sectores get their own rendering (issue #10).
-		if ($geometry->kind() !== Kind::Place) {
-			throw new InvalidFeatureException(sprintf(
-				'Por ahora solo se admiten puntos; %s llegará con los sectores y las rutas.',
-				$geometry->type(),
-			));
-		}
 
 		$feature->setGeometry($geometry->toJson());
 		$feature->setBoundingBox($geometry->boundingBox());

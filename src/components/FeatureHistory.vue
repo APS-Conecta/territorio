@@ -59,6 +59,7 @@ const FIELDS = {
 	openingHours: 'Horario',
 	notes: 'Notas',
 	sourceRef: 'Fuente',
+	colour: 'Color',
 }
 
 const QUALITIES = {

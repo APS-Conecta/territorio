@@ -25,11 +25,26 @@
 			</NcButton>
 
 			<!--
+				One toggle per territorial division, beside the Category tree rather
+				than inside it (CONTEXT.md). A Sector is a Feature and so carries a
+				Subcategory like everything else, but nobody thinks of it as a branch
+				of "what this place is about" — it is the division the places sit in.
+			-->
+			<div v-if="divisions.length > 0" class="territorio-capas__divisions">
+				<NcCheckboxRadioSwitch v-for="division in divisions"
+					:key="division.id"
+					:model-value="isVisible(division.id)"
+					@update:model-value="$emit('toggle-subcategory', division.id)">
+					{{ division.label }}
+				</NcCheckboxRadioSwitch>
+			</div>
+
+			<!--
 				Generated from the taxonomy, never from a hard-coded list: adding a
 				Subcategory row is a data change and has to appear here without
 				anyone touching this file.
 			-->
-			<details v-for="category in taxonomy" :key="category.id" class="territorio-capas__category">
+			<details v-for="category in tree" :key="category.id" class="territorio-capas__category">
 				<summary class="territorio-capas__category-summary">
 					<!-- Stops the click reaching <summary>, so ticking the box filters
 					     instead of expanding the branch. -->
@@ -59,6 +74,7 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
+import { divisionsOf, treeOf } from '../taxonomy.js'
 
 export default {
 	name: 'CapasPanel',
@@ -75,6 +91,14 @@ export default {
 	computed: {
 		anythingHidden() {
 			return isFiltered(this.filter)
+		},
+
+		tree() {
+			return treeOf(this.taxonomy)
+		},
+
+		divisions() {
+			return divisionsOf(this.taxonomy)
 		},
 	},
 
@@ -121,6 +145,12 @@ export default {
 
 .territorio-capas__reset {
 	margin-bottom: 4px;
+}
+
+.territorio-capas__divisions {
+	padding-bottom: 6px;
+	margin-bottom: 6px;
+	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-capas__category-summary {

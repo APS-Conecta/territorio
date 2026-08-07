@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Migration;
 
 use OCA\Territorio\Db\RevisionLog;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\IRepairStep;
@@ -92,6 +93,30 @@ class EnsureSeedData implements IRepairStep {
 		]],
 	];
 
+	/**
+	 * The territorial divisions a CESFAM draws or imports, which are Features
+	 * like any other and so need somewhere in the taxonomy to live.
+	 *
+	 * Unlike the eleven above, this one is structural: without it there is no
+	 * Subcategory to file a Sector under and the app cannot save one. So it is
+	 * ensured on every run and restored if it is deleted, where an ordinary
+	 * Category a clinic removed stays removed.
+	 *
+	 * The panel does not draw these in the Category tree — CONTEXT.md puts one
+	 * toggle per territorial division beside the tree, not inside it.
+	 *
+	 * @var array{label: string, color: string, subcategories: array<string, string>}
+	 */
+	private const DIVISIONS = [
+		'label' => 'División territorial',
+		'color' => '#334155',
+		'subcategories' => [
+			'sector' => 'Sector',
+		],
+	];
+
+	public const DIVISIONS_SLUG = 'division_territorial';
+
 	public function __construct(
 		private IDBConnection $db,
 	) {
@@ -104,6 +129,7 @@ class EnsureSeedData implements IRepairStep {
 	public function run(IOutput $output): void {
 		$this->ensureCursor($output);
 		$this->ensureTaxonomy($output);
+		$this->ensureDivisions($output);
 	}
 
 	/** Without this row the first write has nothing to increment. */
@@ -146,6 +172,62 @@ class EnsureSeedData implements IRepairStep {
 		}
 
 		$output->info(sprintf('Territorio: seeded %d categories', count(self::TAXONOMY)));
+	}
+
+	/**
+	 * Put the "División territorial" Category and its Subcategories in place,
+	 * each one only if its slug is missing. Idempotent row by row rather than
+	 * "seed if the table is empty": this runs on installs that already hold a
+	 * taxonomy, and a Sector needs its Subcategory to exist on every one of them.
+	 */
+	private function ensureDivisions(IOutput $output): void {
+		if (!$this->db->tableExists('territorio_category')) {
+			return;
+		}
+
+		$categoryId = $this->idOf('territorio_category', ['slug' => self::DIVISIONS_SLUG]);
+		if ($categoryId === null) {
+			$insert = $this->db->getQueryBuilder();
+			$insert->insert('territorio_category')->values([
+				'slug' => $insert->createNamedParameter(self::DIVISIONS_SLUG),
+				'label' => $insert->createNamedParameter(self::DIVISIONS['label']),
+				'color' => $insert->createNamedParameter(self::DIVISIONS['color']),
+			])->executeStatement();
+			$categoryId = (int)$insert->getLastInsertId();
+			$output->info('Territorio: added the "División territorial" category');
+		}
+
+		foreach (self::DIVISIONS['subcategories'] as $slug => $label) {
+			if ($this->idOf('territorio_subcategory', ['slug' => $slug, 'category_id' => $categoryId]) !== null) {
+				continue;
+			}
+
+			$insert = $this->db->getQueryBuilder();
+			$insert->insert('territorio_subcategory')->values([
+				'category_id' => $insert->createNamedParameter($categoryId),
+				'slug' => $insert->createNamedParameter($slug),
+				'label' => $insert->createNamedParameter($label),
+			])->executeStatement();
+			$output->info(sprintf('Territorio: added the "%s" subcategory', $label));
+		}
+	}
+
+	/** @param array<string, string|int> $where */
+	private function idOf(string $table, array $where): ?int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')->from($table);
+		foreach ($where as $column => $value) {
+			$qb->andWhere($qb->expr()->eq($column, $qb->createNamedParameter(
+				$value,
+				is_int($value) ? IQueryBuilder::PARAM_INT : IQueryBuilder::PARAM_STR,
+			)));
+		}
+
+		$result = $qb->executeQuery();
+		$id = $result->fetchOne();
+		$result->closeCursor();
+
+		return $id === false ? null : (int)$id;
 	}
 
 	private function hasRows(string $table): bool {

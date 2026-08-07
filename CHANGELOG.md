@@ -3,6 +3,34 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.8.0] — unreleased
+
+Sectores, drawn by hand.
+
+### Added
+
+- A Sector is drawn on the map with the polygon tool, named however the clinic names things, given
+  a colour of its own, and saved. It renders as a light translucent fill under a clear outline,
+  beneath the pins standing on it.
+- Vertices snap to boundaries already on the map while drawing, so adjacent sectores share an
+  exact edge instead of leaving slivers between them.
+- An existing Sector reopens editable: select it and drag its vertices. The edit is an ordinary
+  change, so it appears in history like any other.
+- Sectores have their own toggle in Capas, beside the Category tree rather than inside it.
+
+### Notes
+
+- A Sector is a Feature, not a table of its own ([ADR-0010](docs/adr/0010-a-sector-is-a-feature-not-a-table-of-its-own.md)):
+  it gets history, retirement, the change cursor and the revert without any of them being written
+  a second time.
+- This is the fallback path of ADR-0007 and it ships first. When the street picker arrives it
+  produces a starting polygon and hands it to exactly this editor — hand-drawing stays fully
+  supported, never second-class.
+- Zones and Routes are no longer refused on the way in. The restriction was only ever "nothing
+  draws one yet"; the geometry code has measured polygons correctly all along.
+- Snapping works against whatever is on the map, so it will cover Unidad Vecinal boundaries as
+  soon as they are imported — they are Features drawn by the same code.
+
 ## [0.7.3] — unreleased
 
 ### Fixed

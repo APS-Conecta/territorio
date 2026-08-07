@@ -47,6 +47,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setNotes(?string $notes)
  * @method ?string getSourceRef()
  * @method void setSourceRef(?string $sourceRef)
+ * @method ?string getColour()
+ * @method void setColour(?string $colour)
  * @method int getRevision()
  * @method void setRevision(int $revision)
  * @method bool getRetired()
@@ -78,6 +80,10 @@ class Feature extends Entity {
 	protected $openingHours = null;
 	protected $notes = null;
 	protected $sourceRef = null;
+	// A Sector's own colour, because a clinic tells its sectores apart by colour
+	// and they all share one Subcategory. Null everywhere else: the record then
+	// takes its Category's colour, so nothing has to be coloured by hand.
+	protected $colour = null;
 	protected $revision = 0;
 	protected $retired = false;
 	protected $datasetId = null;
@@ -132,6 +138,7 @@ class Feature extends Entity {
 			'openingHours' => $this->getOpeningHours(),
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
+			'colour' => $this->getColour(),
 			'revision' => $this->getRevision(),
 			// Ships even though retired records are absent from every default
 			// read: the change feed deliberately carries them, so a client learns
@@ -172,6 +179,7 @@ class Feature extends Entity {
 			'openingHours' => $this->getOpeningHours(),
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
+			'colour' => $this->getColour(),
 		];
 	}
 }

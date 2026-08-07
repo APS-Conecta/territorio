@@ -22,6 +22,7 @@
 						@select="select"
 						@create="startNew"
 						@import="importing = true"
+						@export="exporting = true"
 						@update:show-retired="toggleRetired"
 						@update:query="search" />
 				</div>
@@ -105,6 +106,15 @@
 
 		<ImportDialog v-if="importing" @close="importing = false" @imported="afterImport" />
 
+		<!--
+			Given the ids on screen, not a filter. The View is personal (CONTEXT.md)
+			and lives in this browser, so what a person is looking at is something
+			only this component knows — asking the server to reconstruct it would be
+			a second implementation of "the filtered set", able to disagree with the
+			one the person can see.
+		-->
+		<ExportDialog v-if="exporting" :ids="exportableIds" @close="exporting = false" />
+
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
 			@close="closeDraft">
@@ -151,6 +161,7 @@ import CapasPanel from './components/CapasPanel.vue'
 import DuplicatesView from './components/DuplicatesView.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
+import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
@@ -197,6 +208,7 @@ export default {
 		CapasPanel,
 		DuplicatesView,
 		FeatureDetail,
+		ExportDialog,
 		FeatureList,
 		ImportDialog,
 		NcAppContent,
@@ -228,6 +240,7 @@ export default {
 			// The pair being resolved right now, so its buttons cannot be pressed
 			// twice while the request is in flight.
 			resolving: null,
+			exporting: false,
 			importing: false,
 			history: [],
 			selectedId: null,
@@ -277,6 +290,21 @@ export default {
 				filter: this.filter,
 				subcategories: this.subcategories,
 			})
+		},
+
+		/**
+		 * What an export would carry: the list as shown, minus retired records.
+		 *
+		 * `listed` is the honest answer to "what is on screen", and it includes
+		 * retired ones when somebody has ticked to see them. An export is not
+		 * asking for what used to be there, and the server leaves them out anyway
+		 * (ADR-0005) — sending them would make the dialog promise a count it
+		 * cannot deliver.
+		 */
+		exportableIds() {
+			return this.listed
+				.filter((feature) => !feature.retired)
+				.map((feature) => feature.id)
 		},
 
 		/**

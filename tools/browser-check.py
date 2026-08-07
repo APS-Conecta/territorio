@@ -282,6 +282,25 @@ def the_limit_can_be_picked(page, failures):
     page.wait_for_timeout(400)
 
 
+def settles(page, predicate, timeout=15_000):
+    """Wait for something to become true, rather than sleeping and hoping.
+
+    A fixed wait is a bet on how long a round trip takes, and this app answers a
+    click by posting, re-polling the change feed and re-reading the queue. The
+    bet is usually right, which is worse than usually wrong: the check passes
+    most runs and fails a few, and a gate that gets re-run is a gate nobody
+    believes.
+    """
+    waited = 0
+    while waited < timeout:
+        if predicate():
+            return True
+        page.wait_for_timeout(250)
+        waited += 250
+
+    return predicate()
+
+
 def the_duplicate_queue_works(page, failures):
     """#16: an import FLAGS two records that look like one place, and merges none.
 
@@ -298,7 +317,13 @@ def the_duplicate_queue_works(page, failures):
     # shared token is how the check finds both of them again.
     token = f"Gemelo{RUN}"
     twin = f"Balneario {token}"
-    lat, lon = -33.47 - NUDGE / 10_000, -70.47 - NUDGE / 10_000
+    partner = f"Piscina {token}"
+    # Half a degree apart between runs, not a ten-thousandth. Every run leaves its
+    # records behind, and at 11 m apart one run's twins are inside the 150 m rule
+    # of the last run's — so the queue legitimately offered this run's record
+    # paired with an older leftover, and merging one card left the other standing.
+    # Detection was right; the check was reading the wrong card.
+    lat, lon = -33.47 - NUDGE / 200, -70.47 - NUDGE / 200
 
     # Two records, one coordinate, two names — the first of the two shapes the
     # real data actually contains.
@@ -312,7 +337,7 @@ def the_duplicate_queue_works(page, failures):
             },
             {
                 "type": "Feature",
-                "properties": {"id": f"nav-{RUN}-b", "name": f"Piscina {token}"},
+                "properties": {"id": f"nav-{RUN}-b", "name": partner},
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
             },
         ],
@@ -338,8 +363,7 @@ def the_duplicate_queue_works(page, failures):
     # Both are in the Registry. The criterion that matters most: nothing was
     # merged on similarity, so both are still there for somebody to look at.
     page.locator(SEARCH).fill(token)
-    page.wait_for_timeout(600)
-    if page.locator(ROWS).count() != 2:
+    if not settles(page, lambda: page.locator(ROWS).count() == 2):
         failures.append(
             f"importing two records at one coordinate left {page.locator(ROWS).count()} in the list, expected 2",
         )
@@ -354,7 +378,13 @@ def the_duplicate_queue_works(page, failures):
     button.click()
     page.wait_for_timeout(800)
 
-    card = page.locator(".territorio-duplicados__pair").filter(has_text=twin)
+    # Scoped to BOTH of this run's names. A card naming one of them and a record
+    # from some earlier run is a real candidate pair and none of this check's
+    # business; asserting on "any card mentioning this name" made the check fail
+    # for a queue that was working correctly.
+    card = (page.locator(".territorio-duplicados__pair")
+            .filter(has_text=twin)
+            .filter(has_text=partner))
     if card.count() == 0:
         failures.append("the imported pair was not offered in the queue")
         page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
@@ -368,20 +398,142 @@ def the_duplicate_queue_works(page, failures):
     card.locator(".territorio-duplicados__side").first.get_by_role(
         "button", name="Conservar este",
     ).click()
-    page.wait_for_timeout(2000)
 
-    if page.locator(".territorio-duplicados__pair").filter(has_text=twin).count() != 0:
+    if not settles(
+        page,
+        lambda: (page.locator(".territorio-duplicados__pair")
+                 .filter(has_text=twin)
+                 .filter(has_text=partner).count() == 0),
+    ):
         failures.append("the pair is still in the queue after being merged")
 
     page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
     page.locator(SEARCH).fill(token)
-    page.wait_for_timeout(600)
-    if page.locator(ROWS).count() != 1:
+    if not settles(page, lambda: page.locator(ROWS).count() == 1):
         failures.append(
             f"merging left {page.locator(ROWS).count()} visible records, expected 1",
         )
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(300)
+
+
+def exports_ask_for_a_password_only_when_earned(page, failures):
+    """#17: three formats, and the prompt appears only when contacts are in.
+
+    The criterion this checks is a NEGATIVE one as much as a positive one —
+    "exports without contact fields need no confirmation" (ADR-0006) — because a
+    prompt that appears every time teaches people to type their password without
+    reading why, which is the failure the rule exists to avoid.
+    """
+    def open_dialog():
+        page.get_by_role("button", name="Exportar", exact=True).click()
+        page.wait_for_timeout(600)
+
+    # A filtered set, so what comes back is checkable rather than the whole
+    # comuna: this is also the "current filtered set" half of the criterion.
+    page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
+    page.wait_for_timeout(600)
+    open_dialog()
+
+    if "1 registro" not in page.locator(".territorio-export__count").inner_text():
+        failures.append(
+            "the export dialog does not say it will export the filtered set: "
+            + page.locator(".territorio-export__count").inner_text(),
+        )
+
+    # GeoJSON without contacts: no prompt, and a file arrives.
+    with page.expect_download(timeout=20_000) as download:
+        page.get_by_role("button", name="Exportar", exact=True).last.click()
+    geojson = download.value
+    if not geojson.suggested_filename.endswith(".geojson"):
+        failures.append(f"the GeoJSON export arrived as {geojson.suggested_filename!r}")
+    else:
+        written = json.loads(Path(geojson.path()).read_text())
+        if len(written.get("features", [])) != 1:
+            failures.append(
+                f"the export carried {len(written.get('features', []))} records, expected the 1 on screen",
+            )
+        elif "phone" in written["features"][0]["properties"]:
+            failures.append("an export without contacts carried a phone number")
+
+    # Turning contacts on says so before anything is downloaded.
+    open_dialog()
+    page.get_by_text("Incluir datos de contacto").click()
+    page.wait_for_timeout(300)
+    if page.get_by_text("Se le pedirá su contraseña").count() == 0:
+        failures.append("turning on contact details did not say a password would be asked for")
+
+    # And it does ask. Nextcloud's own dialog, not one of ours — so this looks
+    # for a password field rather than for anything this app renders.
+    page.get_by_role("button", name="Exportar", exact=True).last.click()
+    page.wait_for_timeout(2500)
+    if page.locator('input[type="password"]').count() == 0:
+        failures.append("a contact-bearing export did not ask for the password (ADR-0006)")
+
+    # Reloaded rather than dismissed. Nextcloud's confirmation modal is not this
+    # app's, it does not close on Escape, and it blocks every click underneath it
+    # — so guessing at its close button would make this check depend on the
+    # markup of a dialog that belongs to the server.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1000)
+    page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
+    page.wait_for_timeout(600)
+
+    # KML says what it cannot carry, before the export runs.
+    open_dialog()
+    page.get_by_text("KML —").click()
+    page.wait_for_timeout(300)
+    if page.get_by_text("No lleva teléfono").count() == 0:
+        failures.append("choosing KML did not say what it cannot carry")
+
+    with page.expect_download(timeout=20_000) as download:
+        page.get_by_role("button", name="Exportar", exact=True).last.click()
+    kml = download.value
+    if not kml.suggested_filename.endswith(".kml"):
+        failures.append(f"the KML export arrived as {kml.suggested_filename!r}")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+    the_server_refuses_an_unconfirmed_export(page, failures)
+
+
+def the_server_refuses_an_unconfirmed_export(page, failures):
+    """The protection itself, rather than the prompt in front of it.
+
+    Everything above checks that the dialog ASKS. That is client-side: delete
+    `#[PasswordConfirmationRequired]` from the controller and every check above
+    still passes, because the browser would go on prompting and the server would
+    go on accepting. Nothing about a rule that guards personal data should live
+    only in the code that draws the button.
+
+    So this posts the same request with the session's own cookies and no
+    confirmation at all, the way anything but this app's dialog would, and asks
+    the server what it does about it (ADR-0006).
+    """
+    token = page.evaluate("() => document.head.querySelector('meta[name=csp-nonce]') && window.OC?.requestToken")
+    if not token:
+        failures.append("could not read the request token; the unconfirmed-export check did not run")
+        return
+
+    for path, expected in (
+        ("/apps/territorio/export/contacts", 403),
+        # The unconfirmed route must keep working, or "the prompt appears only
+        # when it is earned" would be satisfied by refusing everything.
+        ("/apps/territorio/export", 200),
+    ):
+        response = page.request.post(
+            f"http://localhost:8083{path}",
+            headers={"requesttoken": token, "OCS-APIRequest": "true"},
+            data={"ids": [], "format": "geojson"},
+        )
+        if response.status != expected:
+            failures.append(
+                f"POST {path} without a password confirmation answered "
+                f"{response.status}, expected {expected}",
+            )
 
 
 def the_map_survives_churn(page, errors, failures):
@@ -586,6 +738,7 @@ def main():
         search_narrows_everything(page, failures)
         the_limit_can_be_picked(page, failures)
         the_duplicate_queue_works(page, failures)
+        exports_ask_for_a_password_only_when_earned(page, failures)
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

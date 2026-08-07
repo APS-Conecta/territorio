@@ -3,6 +3,42 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.20.4] — unreleased
+
+Taking the filtered set out of the app.
+
+### Added
+
+- **Exportar**, beside the search, exporting exactly what the list is showing — layers and search
+  applied. GeoJSON (complete, and it goes back in through import), CSV (for a spreadsheet) and KML
+  (name and location only).
+- An export carrying contact details asks for the user's own password, using Nextcloud's
+  `PasswordConfirmationRequired(strict: true)` rather than any credential invented here, and is
+  recorded with who, when, which format and how many records (ADR-0006). An export carrying none
+  asks for nothing, because a prompt that appears every time teaches people to type their password
+  without reading why.
+- An administrator can read the export log at `GET /export/history`. It is the only route in the
+  app that is not open to every user, because it is the list of who took personal data out of the
+  building.
+
+### Notes
+
+- The export log is its own table, not a Revision (ADR-0012). `territorio_revision` IS the change
+  cursor every open browser polls, and an export changes nothing — logging one there would make
+  every open map in a clinic refetch for a change that does not exist.
+- The confirmed and unconfirmed exports are two routes, not one route with a flag.
+  `PasswordConfirmationRequired` is an attribute on a method, so a single endpoint deciding for
+  itself would put the whole protection behind an `if` that a later edit can invert.
+- KML carries no contact details whatever is asked for, and says so inside the file rather than
+  only in the dialog — the file is what gets emailed to somebody who never saw the dialog.
+- The CSV starts with a byte-order mark. Excel does not ask about encoding, it guesses Latin-1, and
+  "Ñuñoa" opens as mojibake on the machines this file is actually opened on.
+- Re-importing a GeoJSON export updates rather than duplicates, and every field a person can see
+  survives. It does count as one update: an import rewrites `official`, the record of what the
+  authority published, and an export of ours is not the authority.
+- A CSV gives latitude and longitude only for a single point. A Sector is a polygon and its centre
+  is not where the Sector is.
+
 ## [0.19.4] — unreleased
 
 Two records that might be one place, decided by a person.

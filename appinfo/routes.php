@@ -36,6 +36,15 @@ return [
 		['name' => 'duplicate#merge', 'url' => '/duplicates/{id}/merge', 'verb' => 'POST'],
 		['name' => 'duplicate#dismiss', 'url' => '/duplicates/{id}/dismiss', 'verb' => 'POST'],
 
+		// Exports (ADR-0006). Two routes for one operation because
+		// #[PasswordConfirmationRequired] is an attribute on a method: the
+		// confirmed one is the only one that can carry contact details, and the
+		// plain one structurally cannot. The report is admin-only — it is the
+		// list of who took personal data out of the building.
+		['name' => 'export#plain', 'url' => '/export', 'verb' => 'POST'],
+		['name' => 'export#withContacts', 'url' => '/export/contacts', 'verb' => 'POST'],
+		['name' => 'export#history', 'url' => '/export/history', 'verb' => 'GET'],
+
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],
 

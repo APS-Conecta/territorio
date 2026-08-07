@@ -138,6 +138,12 @@ The state of a record somebody decided was the same place as another one. It is 
 at the survivor, so it can be brought back like any retired record and the mapping is kept.
 _Avoid_: deduplicated, absorbed, deleted
 
+**Export log**:
+The record of who took contact details out of the app, when, in what format and how many records.
+Kept forever (ADR-0006) and separate from the change log, because an export changes nothing
+(ADR-0012).
+_Avoid_: audit, download history
+
 ### Distinctions that matter
 
 **Junta de Vecinos**:

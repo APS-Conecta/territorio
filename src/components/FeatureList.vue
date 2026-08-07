@@ -15,6 +15,12 @@
 				<NcButton variant="tertiary" @click="$emit('import')">
 					Importar / deshacer
 				</NcButton>
+				<!-- Exports what this list is showing, filters and search included
+				     (issue #17), which is why it lives beside the search and not in
+				     a settings menu somewhere. -->
+				<NcButton variant="tertiary" @click="$emit('export')">
+					Exportar
+				</NcButton>
 				<NcButton v-if="!showRetired" variant="primary" @click="$emit('create')">
 					Agregar
 				</NcButton>
@@ -103,7 +109,7 @@ export default {
 		query: { type: String, default: '' },
 	},
 
-	emits: ['select', 'create', 'import', 'update:showRetired', 'update:query'],
+	emits: ['select', 'create', 'import', 'export', 'update:showRetired', 'update:query'],
 
 	computed: {
 		subcategories() {

@@ -61,13 +61,13 @@ class KmlReader {
 			throw new InvalidImportException('El archivo no es XML válido; se esperaba un KML.');
 		}
 
-		// KML declares a default namespace, which SimpleXML's element access
-		// ignores unless it is registered. Stripping it once is less to get wrong
-		// than naming it at every step of every path below.
-		$document->registerXPathNamespace('kml', 'http://www.opengis.net/kml/2.2');
-
+		// Matched by local name, because KML files do not agree on a namespace:
+		// OGC writes `opengis.net/kml/2.2` and Google Earth still writes
+		// `earth.google.com/kml/2.1`. Naming one of them found nothing in the
+		// others and told the person their file held no Placemarks, which blames
+		// the file for the reader's assumption.
 		$features = [];
-		foreach ($document->xpath('//kml:Placemark | //Placemark') ?: [] as $placemark) {
+		foreach ($document->xpath('//*[local-name()="Placemark"]') ?: [] as $placemark) {
 			$feature = $this->feature($placemark);
 			if ($feature !== null) {
 				$features[] = $feature;
@@ -82,21 +82,27 @@ class KmlReader {
 	}
 
 	/**
-	 * One Placemark, or null where it holds no geometry this app can store.
+	 * One Placemark, or null where there is no record in it.
 	 *
-	 * Null rather than an exception: a MyMaps folder can hold a styling entry or
-	 * a placemark someone left empty, and refusing the whole file over one is the
-	 * opposite of what the import does everywhere else.
+	 * A named Placemark whose geometry cannot be read still becomes a record,
+	 * with no geometry — that is a valid state here (the catastro holds
+	 * organisations whose address never resolved) and it is better than dropping
+	 * a row silently, which is what the batch's counts exist to prevent.
+	 *
+	 * A Placemark with no name at all is dropped, and only that. It is a styling
+	 * or scaffolding entry rather than a record, and passing it on would abort the
+	 * whole file — the reader downstream refuses a nameless row, rightly.
 	 *
 	 * @return ?array<string, mixed>
 	 */
 	private function feature(SimpleXMLElement $placemark): ?array {
-		$geometry = $this->geometry($placemark);
-		if ($geometry === null) {
+		$name = trim((string)$placemark->name);
+		if ($name === '') {
 			return null;
 		}
 
-		$properties = ['name' => trim((string)$placemark->name)];
+		$geometry = $this->geometry($placemark);
+		$properties = ['name' => $name];
 
 		$description = trim((string)$placemark->description);
 		if ($description !== '') {
@@ -179,6 +185,12 @@ class KmlReader {
 	 * "Movilidad y transporte" → `movilidad_transporte`, which is the slug the
 	 * seed uses. Short words are dropped for the same reason the seed leaves them
 	 * out: nobody writes `movilidad_y_transporte`.
+	 *
+	 * ponytail: a heuristic that happens to reproduce all twelve seeded slugs —
+	 * checked, not assumed. A Category a clinic adds later can miss it ("Casa de
+	 * la cultura" slugs to `casa_cultura`), and the row lands in Sin clasificar
+	 * rather than anywhere wrong. Match on the Category's label instead when that
+	 * starts costing somebody real re-filing.
 	 */
 	private function slug(string $name): string {
 		$folded = strtolower(strtr($name, self::ACCENTS));

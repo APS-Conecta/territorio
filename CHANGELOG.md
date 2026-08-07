@@ -11,10 +11,11 @@ KML.
 
 - KML imports through the same pipeline as GeoJSON: same Dataset, same batch, same derived ids,
   same revert. Points, lines and areas all arrive.
-- A Folder name becomes the Category, which works because a MyMaps export's folders were built
-  from these Categories. Where the pair `categoría/subcategoría` misses, the row falls to that
-  Category's own **Otro** rather than all the way to Sin clasificar — without that tier every
-  record in a MyMaps file landed unclassified while its Folder sat there naming the right one.
+- A Folder name becomes the Category — and where the folder names a Subcategory instead, that is
+  found too. Both matter for the real file: without the first, every record lands unclassified
+  while its Folder names the right Category; without the second, "Ciclovías" and "Plazas y parques"
+  alone leave 309 of 865 records, 36% of the export, in Sin clasificar while `ciclovia` and `plaza`
+  sit in the seed.
 - The import dialog says what KML cannot carry **before** the import runs, while a person can
   still choose a different file.
 
@@ -27,6 +28,11 @@ KML.
   is a fact about the format, not a caution.
 - Parsed with SimpleXML, which PHP already has. A library to read five tag names would be a
   dependency for nothing.
+- Placemarks are matched by local name, because KML files do not agree on a namespace: Google Earth
+  still writes `earth.google.com/kml/2.1`, and naming the OGC one alone found nothing in those and
+  told the person their file was empty.
+- A named Placemark whose geometry cannot be read still becomes a record, with no coordinate. That
+  is a valid state here, and dropping the row silently is what the batch's counts exist to prevent.
 
 ## [0.12.0] — unreleased
 

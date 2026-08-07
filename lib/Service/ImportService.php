@@ -86,7 +86,7 @@ class ImportService {
 	}
 
 	/** Whether this filename says KML, whatever case it was typed in. */
-	public static function isKml(string $filename): bool {
+	private static function isKml(string $filename): bool {
 		return str_ends_with(strtolower(trim($filename)), '.kml');
 	}
 
@@ -453,18 +453,22 @@ class ImportService {
 		];
 	}
 
-	/** @return array<string, int> "categorySlug/subcategorySlug" → Subcategory id */
 	/**
-	 * Where a row lands in the taxonomy, in three tries.
+	 * Where a row lands in the taxonomy.
 	 *
-	 * The middle one exists for KML (issue #8). A Google MyMaps export names a
-	 * Folder and nothing finer, so it yields a Category and never a Subcategory —
-	 * and matching only on the pair would send every record in the file to Sin
-	 * clasificar while the Folder sat there naming the right Category. Falling to
-	 * that Category's own "Otro" keeps what the file actually said.
+	 * The named pair first. Then — only when the file named a Category and NO
+	 * Subcategory — that Category's own "Otro". That case is KML (issue #8): a
+	 * Google MyMaps export names a Folder and nothing finer, and matching on the
+	 * pair alone would send every record in the file to Sin clasificar while the
+	 * Folder sat there naming the right Category.
 	 *
-	 * Sin clasificar · Otro is the last resort, and it means the file named
-	 * something this install does not have.
+	 * Deliberately not applied when the file DID name a Subcategory and this
+	 * install has no such thing. Falling to that Category's Otro would be a guess
+	 * about what was meant, and it would also change where existing records live:
+	 * `differs()` compares the Subcategory, so re-importing an unchanged GeoJSON
+	 * would quietly move rows out of Sin clasificar and spend a Revision doing it.
+	 * Sin clasificar · Otro says the honest thing — the file named something this
+	 * install does not have.
 	 *
 	 * @param array<string, mixed> $row
 	 * @param array<string, int> $subcategories
@@ -475,12 +479,51 @@ class ImportService {
 			return $fallback;
 		}
 
-		return $subcategories[$category . '/' . $row['subcategorySlug']]
-			?? $subcategories[$category . '/otro']
-			?? $fallback;
+		if ($row['subcategorySlug'] === null) {
+			return $subcategories[$category . '/otro']
+				?? $this->asSubcategory($category, $subcategories)
+				?? $fallback;
+		}
+
+		return $subcategories[$category . '/' . $row['subcategorySlug']] ?? $fallback;
 	}
 
-	/** @return array<string, int> */
+	/**
+	 * The name of a Subcategory, where a file named one and called it a Category.
+	 *
+	 * Not every MyMaps folder is a Category. Two of the thirteen in the real La
+	 * Florida export are Subcategory-level — "Ciclovías" over 39 placemarks and
+	 * "Plazas y parques" over 270 — so matching Categories alone left 309 of 865
+	 * records, 36% of the file, in Sin clasificar while `ciclovia` and `plaza`
+	 * sat in the seed.
+	 *
+	 * ponytail: exact match first, then each word with a Spanish plural taken off
+	 * — enough for "ciclovias" → `ciclovia` and "plazas_parques" → `plaza`, and
+	 * checked against those two real folder names. It is a heuristic and it will
+	 * miss something eventually; a miss costs Sin clasificar, which is where the
+	 * row was going anyway. Match on the Subcategory's label when that is not
+	 * good enough.
+	 *
+	 * @param array<string, int> $subcategories keyed "categorySlug/subcategorySlug"
+	 */
+	private function asSubcategory(string $named, array $subcategories): ?int {
+		$bySlug = [];
+		foreach ($subcategories as $key => $id) {
+			$bySlug[substr($key, (int)strpos($key, '/') + 1)] ??= $id;
+		}
+
+		foreach ([$named, ...explode('_', $named)] as $word) {
+			foreach ([$word, preg_replace('/(es|s)$/', '', $word)] as $candidate) {
+				if ($candidate !== '' && isset($bySlug[$candidate])) {
+					return $bySlug[$candidate];
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/** @return array<string, int> "categorySlug/subcategorySlug" → Subcategory id */
 	private function subcategoryIndex(): array {
 		$categorySlugs = [];
 		foreach ($this->categories->findAll() as $category) {

@@ -78,6 +78,73 @@ final class KmlImportTest extends IntegrationTestCase {
 		self::assertSame('Deporte y recreación · Otro', $labels['Parque de Prueba']);
 	}
 
+	/**
+	 * The Category-only tier is for a file that named no Subcategory at all,
+	 * which is KML. A GeoJSON that DID name one this install lacks keeps falling
+	 * to Sin clasificar: guessing at that Category's Otro would also move records
+	 * that already exist, because `differs()` compares the Subcategory — an
+	 * unchanged re-import would quietly re-file rows and spend a Revision.
+	 */
+	public function testNamingASubcategoryThatDoesNotExistStillLandsInSinClasificar(): void {
+		$json = json_encode([
+			'type' => 'FeatureCollection',
+			'features' => [[
+				'type' => 'Feature',
+				'id' => 'geo/1',
+				'properties' => ['name' => 'Con subcategoría inventada', 'category' => 'salud', 'subcategory' => 'no_existe'],
+				'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
+			]],
+		], JSON_THROW_ON_ERROR);
+
+		Server::get(ImportService::class)->importFile($json, 'inventada.geojson', self::SLUG, null, 'prueba');
+		$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
+		$this->datasets[] = $id;
+		$stored = Server::get(FeatureMapper::class)->findByDataset($id)['geo/1'];
+		$this->created[] = (int)$stored->getId();
+
+		self::assertSame('Sin clasificar · Otro', $this->labelOf($stored->getSubcategoryId()));
+	}
+
+	/**
+	 * Not every MyMaps folder is a Category. Two of the thirteen in the real
+	 * export are Subcategory-level — "Ciclovías" holds 39 placemarks and "Plazas
+	 * y parques" 270 — so matching Categories alone left 309 of 865 records, 36%
+	 * of the file, in Sin clasificar while `ciclovia` and `plaza` sat in the seed.
+	 *
+	 * The folder names here are the real ones, because that is the whole point of
+	 * the test; the placemarks under them are invented.
+	 */
+	public function testAFolderNamedAfterASubcategoryFindsIt(): void {
+		$kml = <<<'XML'
+			<?xml version="1.0" encoding="UTF-8"?>
+			<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+			  <Folder><name>Ciclovías</name>
+			    <Placemark><name>Ciclovía de Prueba</name>
+			      <LineString><coordinates>-70.60,-33.53 -70.58,-33.53</coordinates></LineString>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Plazas y parques</name>
+			    <Placemark><name>Plaza de Prueba</name>
+			      <Point><coordinates>-70.59,-33.52</coordinates></Point>
+			    </Placemark>
+			  </Folder>
+			</Document></kml>
+			XML;
+
+		Server::get(ImportService::class)->importFile($kml, 'folders.kml', self::SLUG, null, 'prueba');
+		$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
+		$this->datasets[] = $id;
+
+		$labels = [];
+		foreach (Server::get(FeatureMapper::class)->findByDataset($id) as $feature) {
+			$this->created[] = (int)$feature->getId();
+			$labels[$feature->getName()] = $this->labelOf($feature->getSubcategoryId());
+		}
+
+		self::assertSame('Movilidad y transporte · Ciclovía', $labels['Ciclovía de Prueba']);
+		self::assertSame('Deporte y recreación · Plaza o parque', $labels['Plaza de Prueba']);
+	}
+
 	/** A Folder this install has no Category for still imports, unclassified. */
 	public function testAnUnknownFolderLandsInSinClasificar(): void {
 		$this->import();

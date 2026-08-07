@@ -116,7 +116,59 @@ final class KmlReaderTest extends TestCase {
 		self::assertCount(3, array_unique($first));
 	}
 
-	public function testAPlacemarkWithNoNameIsRefusedLikeAnyOtherRow(): void {
+	/**
+	 * KML files name several different namespaces depending on what wrote them —
+	 * Google Earth desktop still emits `earth.google.com/kml/2.1`. Matching on the
+	 * OGC one alone found nothing in those and told the person their file was
+	 * empty, which blames the file for the reader's assumption.
+	 *
+	 * @dataProvider namespaces
+	 */
+	public function testItReadsWhicheverNamespaceWroteTheFile(string $xmlns): void {
+		$xml = sprintf(
+			'<kml%s><Document><Folder><name>Salud</name><Placemark><name>CESFAM de Prueba</name>'
+			. '<Point><coordinates>-70.58,-33.52</coordinates></Point>'
+			. '</Placemark></Folder></Document></kml>',
+			$xmlns,
+		);
+
+		$rows = $this->reader->read($xml, 'prueba');
+
+		self::assertCount(1, $rows, 'no Placemark found for ' . ($xmlns ?: 'no namespace'));
+		self::assertSame('salud', $rows[0]['categorySlug']);
+	}
+
+	/** @return array<string, array{string}> */
+	public static function namespaces(): array {
+		return [
+			'OGC 2.2' => [' xmlns="http://www.opengis.net/kml/2.2"'],
+			'Google Earth 2.2' => [' xmlns="http://earth.google.com/kml/2.2"'],
+			'Google Earth 2.1' => [' xmlns="http://earth.google.com/kml/2.1"'],
+			'none at all' => [''],
+		];
+	}
+
+	/**
+	 * A Placemark with no name is scaffolding, not a record — and passing it on
+	 * would abort the whole file, because the reader downstream refuses a nameless
+	 * row. So it is dropped, and a file that holds nothing else is refused as
+	 * empty rather than as invalid.
+	 */
+	public function testANamelessPlacemarkIsDroppedRatherThanAbortingTheFile(): void {
+		$rows = $this->reader->read(
+			'<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+			. '<Placemark><Point><coordinates>-70.58,-33.52</coordinates></Point></Placemark>'
+			. '<Placemark><name>Con nombre</name>'
+			. '<Point><coordinates>-70.59,-33.52</coordinates></Point></Placemark>'
+			. '</Document></kml>',
+			'prueba',
+		);
+
+		self::assertCount(1, $rows);
+		self::assertSame('Con nombre', $rows[0]['name']);
+	}
+
+	public function testAFileOfNothingButNamelessPlacemarksIsRefused(): void {
 		$this->expectException(InvalidImportException::class);
 		$this->reader->read(
 			'<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>'
@@ -124,6 +176,24 @@ final class KmlReaderTest extends TestCase {
 			. '</Placemark></Document></kml>',
 			'prueba',
 		);
+	}
+
+	/**
+	 * A named Placemark whose geometry cannot be read is still a record, with no
+	 * coordinate — which is a valid state here. Dropping it would lose a row
+	 * silently, and the batch's counts exist precisely so nothing does.
+	 */
+	public function testANamedPlacemarkWithUnreadableGeometryStillArrives(): void {
+		$rows = $this->reader->read(
+			'<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>'
+			. '<name>Sin ubicación</name><MultiGeometry/>'
+			. '</Placemark></Document></kml>',
+			'prueba',
+		);
+
+		self::assertCount(1, $rows);
+		self::assertSame('Sin ubicación', $rows[0]['name']);
+		self::assertNull($rows[0]['geometry']);
 	}
 
 	public function testSomethingThatIsNotKmlIsRefusedWithSomethingUsable(): void {

@@ -13,7 +13,8 @@ Sectores, drawn by hand.
   a colour of its own, and saved. It renders as a light translucent fill under a clear outline,
   beneath the pins standing on it.
 - Vertices snap to boundaries already on the map while drawing, so adjacent sectores share an
-  exact edge instead of leaving slivers between them.
+  exact edge instead of leaving slivers between them. Pins are excluded: a limit runs along a
+  street, a river or another Sector, never through the middle of a school.
 - An existing Sector reopens editable: select it and drag its vertices. The edit is an ordinary
   change, so it appears in history like any other.
 - Sectores have their own toggle in Capas, beside the Category tree rather than inside it.

@@ -185,7 +185,7 @@ class EnsureSeedData implements IRepairStep {
 			return;
 		}
 
-		$categoryId = $this->idOf('territorio_category', ['slug' => self::DIVISIONS_SLUG]);
+		$categoryId = $this->categoryIdOf(self::DIVISIONS_SLUG);
 		if ($categoryId === null) {
 			$insert = $this->db->getQueryBuilder();
 			$insert->insert('territorio_category')->values([
@@ -198,7 +198,7 @@ class EnsureSeedData implements IRepairStep {
 		}
 
 		foreach (self::DIVISIONS['subcategories'] as $slug => $label) {
-			if ($this->idOf('territorio_subcategory', ['slug' => $slug, 'category_id' => $categoryId]) !== null) {
+			if ($this->hasSubcategory($categoryId, $slug)) {
 				continue;
 			}
 
@@ -212,22 +212,33 @@ class EnsureSeedData implements IRepairStep {
 		}
 	}
 
-	/** @param array<string, string|int> $where */
-	private function idOf(string $table, array $where): ?int {
+	private function categoryIdOf(string $slug): ?int {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('id')->from($table);
-		foreach ($where as $column => $value) {
-			$qb->andWhere($qb->expr()->eq($column, $qb->createNamedParameter(
-				$value,
-				is_int($value) ? IQueryBuilder::PARAM_INT : IQueryBuilder::PARAM_STR,
-			)));
-		}
+		$qb->select('id')->from('territorio_category')
+			->where($qb->expr()->eq('slug', $qb->createNamedParameter($slug)));
 
 		$result = $qb->executeQuery();
 		$id = $result->fetchOne();
 		$result->closeCursor();
 
 		return $id === false ? null : (int)$id;
+	}
+
+	/** Slugs repeat across Categories — "otro" is in nearly all of them. */
+	private function hasSubcategory(int $categoryId, string $slug): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')->from('territorio_subcategory')
+			->where($qb->expr()->eq('slug', $qb->createNamedParameter($slug)))
+			->andWhere($qb->expr()->eq(
+				'category_id',
+				$qb->createNamedParameter($categoryId, IQueryBuilder::PARAM_INT),
+			));
+
+		$result = $qb->executeQuery();
+		$found = $result->fetchOne();
+		$result->closeCursor();
+
+		return $found !== false;
 	}
 
 	private function hasRows(string $table): bool {

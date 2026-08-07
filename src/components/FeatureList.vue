@@ -41,7 +41,7 @@
 			:force-display-actions="false"
 			@click="$emit('select', feature.id)">
 			<template #icon>
-				<span class="territorio-list__swatch" :style="{ background: colourOf(feature) }" />
+				<span class="territorio-list__swatch" :style="{ background: swatchFor(feature) }" />
 			</template>
 			<template #subname>
 				{{ subcategoryLabel(feature) }}<span v-if="feature.geometry === null"> · sin coordenada</span>
@@ -88,7 +88,7 @@ export default {
 		},
 
 		/** The record's own colour if it has one — which is how sectores differ. */
-		colourOf(feature) {
+		swatchFor(feature) {
 			return colourOf(feature, this.subcategories)
 		},
 	},

@@ -21,7 +21,7 @@
 		     line against a component to configure. -->
 		<label v-if="isDivision" class="territorio-detail__field territorio-detail__colour">
 			<span>Color</span>
-			<input v-model="draft.colour" type="color">
+			<input v-model="colour" type="color">
 		</label>
 
 		<p v-if="hasShape" class="territorio-detail__field territorio-detail__hint">
@@ -105,7 +105,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
-import { divisionsOf, subcategoryOptions, treeOf } from '../taxonomy.js'
+import { DEFAULT_SECTOR_COLOUR, divisionsOf, subcategoryOptions, treeOf } from '../taxonomy.js'
 
 // Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
 // from having no geometry, and these options only appear when there is one.
@@ -164,6 +164,20 @@ export default {
 		/** Drawn on the map rather than typed as a coordinate. */
 		hasShape() {
 			return this.draft.geometry !== null && this.draft.geometry !== undefined
+		},
+
+		/**
+		 * A colour input has no empty state — left with a null it shows black while
+		 * the record would save with no colour at all, so what is on screen is not
+		 * what is stored. Reading through the default keeps the two the same.
+		 */
+		colour: {
+			get() {
+				return this.draft.colour ?? DEFAULT_SECTOR_COLOUR
+			},
+			set(value) {
+				this.draft.colour = value
+			},
 		},
 
 		qualityOptions() {

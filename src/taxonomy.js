@@ -19,6 +19,14 @@ const DIVISIONS_SLUG = 'division_territorial'
 /** Sector's slug within it. Nothing else may be filed under this. */
 const SECTOR_SLUG = 'sector'
 
+/**
+ * What a Sector is coloured when nobody has chosen. Any colour would do — it is
+ * only somewhere to begin, and the picker is right there in the sidebar. Shared
+ * so the swatch the form shows is the value that will be saved: a colour input
+ * has no empty state, and left to itself it would show black and store nothing.
+ */
+export const DEFAULT_SECTOR_COLOUR = '#2563eb'
+
 export function isDivision(category) {
 	return category.slug === DIVISIONS_SLUG
 }

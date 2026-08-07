@@ -45,7 +45,16 @@ class ImportService {
 	/** Where a row goes when its Category or Subcategory is not one we hold. */
 	private const FALLBACK = ['sin_clasificar', 'otro'];
 
-	/** Only Places are drawn yet; Zones and Routes arrive with issue #10. */
+	/**
+	 * Import brings in Places only.
+	 *
+	 * The map draws Zones and Routes now (issue #10), so this is no longer about
+	 * rendering: it is that no import in this app produces one yet. The boundary
+	 * datasets that will — the Unidad Vecinal cadastre (issue #9) and the
+	 * boundary features from Overpass (issue #12) — arrive with the loading and
+	 * matching rules those need, and lifting this before them would import a
+	 * comuna's worth of lines into the ordinary map with none of it.
+	 */
 	private const SUPPORTED_GEOMETRY = 'Point';
 
 	public function __construct(
@@ -131,8 +140,8 @@ class ImportService {
 
 		foreach ($rows as $externalId => $row) {
 			if ($row['geometry'] !== null && ($row['geometry']['type'] ?? null) !== self::SUPPORTED_GEOMETRY) {
-				// Read, understood, and not imported: a Zone would land on the map
-				// as a pin on an arbitrary vertex until issue #10 draws it properly.
+				// Read, understood, and counted rather than imported — see
+				// SUPPORTED_GEOMETRY for why the boundary datasets bring their own way in.
 				$unsupported++;
 				continue;
 			}

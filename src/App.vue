@@ -108,7 +108,7 @@ import {
 	toggleCategory,
 	toggleSubcategory,
 } from './filters.js'
-import { defaultSubcategoryId, sectorSubcategoryId } from './taxonomy.js'
+import { DEFAULT_SECTOR_COLOUR, defaultSubcategoryId, sectorSubcategoryId } from './taxonomy.js'
 
 /**
  * ADR-0002: seconds of latency is fine for territorial editing, and this instance
@@ -116,12 +116,6 @@ import { defaultSubcategoryId, sectorSubcategoryId } from './taxonomy.js'
  * most of them answered by one indexed read.
  */
 const POLL_INTERVAL_MS = 5000
-
-/**
- * What a new Sector starts out as. Any colour would do — this one is only
- * somewhere to begin, and the picker is right there in the sidebar.
- */
-const NEW_SECTOR_COLOUR = '#2563eb'
 
 /** Chilean keyboards produce a decimal comma; Leaflet and GeoJSON want a dot. */
 const toNumber = (value) => {
@@ -420,7 +414,7 @@ export default {
 				...this.blankDraft(),
 				subcategoryId,
 				geometry,
-				colour: NEW_SECTOR_COLOUR,
+				colour: DEFAULT_SECTOR_COLOUR,
 			}
 		},
 

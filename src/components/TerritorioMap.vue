@@ -21,7 +21,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
-import { colourOf, indexSubcategories } from '../taxonomy.js'
+import { colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
 /**
  * OpenStreetMap's own credit, as markup, from here and never from configuration.
@@ -73,9 +73,15 @@ export default {
 			markers: null,
 			outlines: null,
 			draftLayer: null,
-			// What we last told the parent. A reshape comes straight back as a new
-			// draftGeometry, and redrawing on it would tear the layer out from under
-			// the hand still dragging its vertex.
+			// The reshape we last told the parent about, cleared as soon as it comes
+			// back: redrawing on our own edit would tear the layer out from under the
+			// hand still dragging its vertex.
+			//
+			// ponytail: compares the serialised geometry, which is exact here because
+			// both sides are the same numbers from the same layer. It is only ever
+			// allowed to skip ONE redraw — holding it would silence a later, real
+			// change that happens to look identical, which is precisely what
+			// reopening a saved Sector produces.
 			reported: '',
 			resizeObserver: null,
 		}
@@ -136,16 +142,18 @@ export default {
 			this.drawShapes()
 		},
 		draftGeometry(geometry) {
-			// Our own reshape, coming back around. Everything else — a draft opened,
-			// closed, or saved and re-read from the server — is a real change.
+			// Our own reshape, coming back around; skipped once and then forgotten.
+			// Everything else — a draft opened, closed, or reopened later — is a real
+			// change, including one that stringifies to exactly the same thing.
 			if (JSON.stringify(geometry) === this.reported) {
+				this.reported = ''
 				return
 			}
 			this.drawDraft()
 			this.drawShapes()
 		},
 		draftColour() {
-			this.draftLayer?.setStyle(this.styleFor({ colour: this.draftColour }, true))
+			this.draftLayer?.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
 	},
 
@@ -216,7 +224,11 @@ export default {
 
 			this.points.forEach((feature) => {
 				const [lon, lat] = feature.geometry.coordinates
-				L.marker([lat, lon], { icon: this.iconFor(feature) })
+				// snapIgnore keeps the pins out of geoman's snap list. A Sector's
+				// limit runs along boundaries — a street, a river, another Sector —
+				// never through the middle of a school, and without this a vertex
+				// dropped near one jumps onto it.
+				L.marker([lat, lon], { icon: this.iconFor(feature), snapIgnore: true })
 					.on('click', () => this.$emit('select', feature.id))
 					.addTo(this.markers)
 			})
@@ -241,7 +253,10 @@ export default {
 				}
 
 				const layer = L.GeoJSON.geometryToLayer(feature.geometry)
-				layer.setStyle(this.styleFor(feature, feature.id === this.selectedId))
+				layer.setStyle(this.styleFor(
+					colourOf(feature, this.subcategories),
+					feature.id === this.selectedId,
+				))
 				layer.bindTooltip(feature.name)
 				layer.on('click', (event) => {
 					// A path click reaches the map too, and the map click is "put the
@@ -288,16 +303,24 @@ export default {
 				rotateMode: false,
 			})
 
-			// Geoman hands over the finished layer; it becomes the draft layer as it
-			// is, so the shape someone just drew stays on screen and stays editable
-			// while they name it.
+			// Geoman's own layer is dropped and the shape comes back as the draft
+			// layer, drawn from the geometry the parent now holds. One round trip
+			// instead of two layers to keep in step — and if the parent refuses the
+			// draft, nothing is left stranded on the map.
 			this.map.on('pm:create', ({ layer }) => {
-				this.adoptDraft(layer)
-				this.report('draw', layer)
+				const geometry = layer.toGeoJSON().geometry
+				layer.remove()
+				this.$emit('draw', geometry)
 			})
 		},
 
-		/** Draw the open draft's shape, dashed, with its vertices draggable. */
+		/**
+		 * Draw the open draft's shape, dashed, with its vertices draggable.
+		 *
+		 * The layer is built fresh every time rather than kept and patched, so
+		 * there is exactly one draft layer with exactly one set of handlers on it —
+		 * a layer adopted twice would report every drag twice.
+		 */
 		drawDraft() {
 			this.draftLayer?.remove()
 			this.draftLayer = null
@@ -306,35 +329,25 @@ export default {
 				return
 			}
 
-			this.adoptDraft(L.GeoJSON.geometryToLayer(this.draftGeometry).addTo(this.map))
-		},
-
-		adoptDraft(layer) {
-			if (layer !== this.draftLayer) {
-				this.draftLayer?.remove()
-			}
-			this.draftLayer = layer
-
-			layer.setStyle(this.styleFor({ colour: this.draftColour }, true))
+			const layer = L.GeoJSON.geometryToLayer(this.draftGeometry).addTo(this.map)
+			layer.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
 			layer.pm.enable({ allowSelfIntersection: false })
-			// Both events: pm:edit covers a dragged vertex, pm:update the end of a
-			// move. Reporting twice is harmless — the parent just stores it again.
-			layer.on('pm:edit pm:update', () => this.report('reshape', layer))
+			// pm:edit covers a dragged vertex, pm:update the end of a move.
+			layer.on('pm:edit pm:update', () => this.report(layer))
+			this.draftLayer = layer
 		},
 
-		report(event, layer) {
+		report(layer) {
 			const geometry = layer.toGeoJSON().geometry
 			this.reported = JSON.stringify(geometry)
-			this.$emit(event, geometry)
+			this.$emit('reshape', geometry)
 		},
 
 		/**
 		 * A light translucent fill under a clear outline: a Sector has to be
 		 * readable as an area without hiding the basemap or the records inside it.
 		 */
-		styleFor(feature, selected = false) {
-			const colour = colourOf(feature, this.subcategories)
-
+		styleFor(colour, selected = false) {
 			return {
 				color: colour,
 				weight: selected ? 4 : 2,

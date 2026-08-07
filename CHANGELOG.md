@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.21.4] — unreleased
+## [0.21.8] — unreleased
 
 Building a Sector from the streets around it.
 
@@ -27,6 +27,9 @@ Building a Sector from the streets around it.
   avenues.
 - Nested faces resolve to the smallest one containing the click, so a Sector inside a ring of picked
   streets is the Sector rather than everything around it.
+- The shape of each line is kept the moment it is picked. The list of lines on screen is replaced
+  every time the map settles and capped at three thousand rows, so building a Sector from four
+  avenues — which means panning along them — otherwise lost picks silently.
 - `@turf/polygonize` and `@turf/boolean-point-in-polygon` are new dependencies. Polygonizing by hand
   is a graph traversal with an edge case for every way a street can join another one.
 

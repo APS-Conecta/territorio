@@ -19,8 +19,8 @@
  * returns null rather than inventing a shape when the lines do not close.
  */
 
-import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
-import polygonize from '@turf/polygonize'
+import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon'
+import { polygonize } from '@turf/polygonize'
 
 /** GeoJSON types that carry line work; anything else a Dataset holds is not one. */
 const LINES = ['LineString', 'MultiLineString']
@@ -41,11 +41,14 @@ export function faceAround(lines, seed) {
 	let faces
 	try {
 		faces = polygonize({ type: 'FeatureCollection', features: segments })
-	} catch {
-		// polygonize throws on input it cannot make sense of rather than
-		// returning nothing. From here that is the same answer: these lines do
-		// not enclose anything, which is a thing the person is told and draws
-		// around by hand.
+	} catch (exception) {
+		// NOT the "these lines do not close" path — that one comes back as an
+		// empty collection and is handled below. Reaching here means polygonize
+		// refused input this built, which is a bug in this file rather than
+		// anything the person did. Said out loud, then treated as no face: the
+		// editor still works and hand-drawing is still there (ADR-0007).
+		console.error('territorio: could not polygonize the picked lines', exception)
+
 		return null
 	}
 
@@ -55,7 +58,7 @@ export function faceAround(lines, seed) {
 	// only one the person can have meant.
 	const containing = faces.features
 		.filter((face) => booleanPointInPolygon(seed, face))
-		.sort((one, other) => spanOf(one) - spanOf(other))
+		.sort((one, other) => areaOf(one) - areaOf(other))
 
 	return containing.length === 0 ? null : containing[0].geometry
 }
@@ -96,7 +99,7 @@ function stretchesOf(geometry) {
  * square metres would be arithmetic nobody reads. Absolute, because the sign of
  * the shoelace formula reports winding order rather than size.
  */
-function spanOf(face) {
+function areaOf(face) {
 	const ring = face.geometry.coordinates[0] ?? []
 	let twiceArea = 0
 

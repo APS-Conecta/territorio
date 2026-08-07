@@ -384,9 +384,15 @@ export default {
 		},
 
 		/**
-		 * A draft is open and wants a coordinate, so the next click on the map is
-		 * for it — even a click that lands on a Sector or a Unidad Vecinal, which
-		 * would otherwise take it to select themselves.
+		 * The next click on the map belongs to the draft rather than to whatever
+		 * it lands on — a Sector or a Unidad Vecinal would otherwise take it to
+		 * select themselves.
+		 *
+		 * Two reasons for that, and they are different things: a draft with no
+		 * geometry is waiting for its coordinate, and a Sector being built is
+		 * waiting for the click that says which block it is (issue #14). Both want
+		 * the same thing from the map, which is why they share one flag; anything
+		 * that replaces the draft clears the second (see stopSeeding).
 		 */
 		placing() {
 			return (this.draft !== null && this.draft.geometry === null) || this.seeding
@@ -526,6 +532,7 @@ export default {
 		},
 
 		select(id) {
+			this.stopSeeding()
 			this.selectedId = id
 			const feature = this.listed.find((candidate) => candidate.id === id)
 			this.draft = feature === undefined ? null : this.draftFrom(feature)
@@ -655,6 +662,7 @@ export default {
 		},
 
 		startNew() {
+			this.stopSeeding()
 			this.selectedId = null
 			this.error = ''
 			this.draft = { ...this.blankDraft(), subcategoryId: defaultSubcategoryId(this.taxonomy) }
@@ -666,6 +674,7 @@ export default {
 		 * and a colour.
 		 */
 		startSector(geometry) {
+			this.stopSeeding()
 			const subcategoryId = sectorSubcategoryId(this.taxonomy)
 			if (subcategoryId === null) {
 				// The seed that files sectores runs on install and on every upgrade,
@@ -695,13 +704,52 @@ export default {
 		togglePicked(id) {
 			if (this.draft?.picked !== undefined) {
 				this.draft.picked = togglePick(this.draft.picked, id)
+				this.keepPickedGeometry([id])
 			}
 		},
 
 		togglePickedGroup(ids) {
 			if (this.draft?.picked !== undefined) {
 				this.draft.picked = toggleGroup(this.draft.picked, ids)
+				this.keepPickedGeometry(ids)
 			}
+		},
+
+		/**
+		 * Keep the shape of a line the moment it is picked, on the draft.
+		 *
+		 * `boundaryFeatures` is what is ON SCREEN: it is replaced wholesale every
+		 * time the map settles, and capped at three thousand rows against a
+		 * comuna's eleven thousand. Building a Sector from four avenues means
+		 * panning along them, and zooming out to click inside the block refetches
+		 * — so a line picked five minutes ago is very often not in that list any
+		 * more.
+		 *
+		 * Re-deriving the geometries from it at generate time therefore dropped
+		 * picks silently, and the two ways that shows are both bad: "las calles no
+		 * cierran" about lines that do, or a LARGER face accepted as the Sector
+		 * because the line that would have closed the small one was missing. The
+		 * second is silent and wrong, which is the kind this app has been bitten
+		 * by before.
+		 */
+		keepPickedGeometry(ids) {
+			const kept = { ...(this.draft.pickedGeometry ?? {}) }
+			const onScreen = new Map(this.boundaryFeatures.map((each) => [each.id, each]))
+
+			ids.forEach((id) => {
+				if (!this.draft.picked.includes(id)) {
+					// Unpicked: forget it, or a line removed on purpose would keep
+					// shaping the polygon.
+					delete kept[id]
+					return
+				}
+				const geometry = onScreen.get(id)?.geometry
+				if (geometry !== undefined) {
+					kept[id] = geometry
+				}
+			})
+
+			this.draft.pickedGeometry = kept
 		},
 
 		/**
@@ -758,7 +806,12 @@ export default {
 		 */
 		startSeeding() {
 			this.seeding = true
-			this.error = 'Haga clic dentro del sector, entre las calles que eligió.'
+			// Deliberately NOT written to `error`. It renders red, and "click
+			// inside the sector" is an instruction rather than a refusal — the
+			// picker's own button already says it, in the place the person is
+			// looking, and saying it twice in the wrong colour is worse than
+			// saying it once in the right one.
+			this.error = ''
 		},
 
 		/**
@@ -772,10 +825,17 @@ export default {
 		 */
 		seedSector({ lat, lon }) {
 			this.seeding = false
+			// A draft can be closed or replaced between pressing the button and
+			// clicking the map, and a Place draft has nothing picked at all.
+			if (this.draft?.picked === undefined) {
+				return
+			}
 
-			const picked = this.boundaryFeatures
-				.filter((boundary) => this.draft.picked.includes(boundary.id))
-				.map((boundary) => boundary.geometry)
+			// From what was picked, not from what is on screen — see
+			// keepPickedGeometry(). The two disagree the moment the map moves.
+			const picked = this.draft.picked
+				.map((id) => this.draft.pickedGeometry?.[id])
+				.filter((geometry) => geometry !== undefined)
 			const face = faceAround(picked, [lon, lat])
 
 			if (face === null) {
@@ -795,6 +855,19 @@ export default {
 			if (this.draft !== null) {
 				this.draft.geometry = geometry
 			}
+		},
+
+		/**
+		 * Anything that replaces the draft cancels a seed in progress.
+		 *
+		 * Left true, the next map click would be read as a seed for a draft that
+		 * never asked for one — reaching for `picked` on a Place, which does not
+		 * have it — and until then every click on a Sector or a boundary line
+		 * would be swallowed, because `placing` is what tells the map those
+		 * clicks are the draft's.
+		 */
+		stopSeeding() {
+			this.seeding = false
 		},
 
 		blankDraft() {
@@ -888,7 +961,7 @@ export default {
 			this.boundaryFeatures = []
 			this.boundaryQuery = ''
 			// Or the next draft opens already waiting for a click nobody asked for.
-			this.seeding = false
+			this.stopSeeding()
 		},
 
 		payload() {

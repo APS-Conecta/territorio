@@ -124,6 +124,37 @@ describe('faceAround', () => {
 	})
 
 	/**
+	 * The same shape where this app actually runs.
+	 *
+	 * Every case above is integers between 0 and 8, which is where a geometry
+	 * library is least likely to be wrong. La Florida is around -33.5, -70.6:
+	 * six decimal places, both negative, and the numbers that matter differing in
+	 * the fourth. Node deduplication and the winding of a ring behave differently
+	 * there, and it is the only place the answer counts.
+	 */
+	it('works at La Florida coordinates, not only at the origin', () => {
+		const block = [
+			{ type: 'LineString', coordinates: [[-70.5900, -33.5300], [-70.5850, -33.5300]] },
+			{ type: 'LineString', coordinates: [[-70.5850, -33.5300], [-70.5850, -33.5250]] },
+			{ type: 'LineString', coordinates: [[-70.5850, -33.5250], [-70.5900, -33.5250]] },
+			{ type: 'LineString', coordinates: [[-70.5900, -33.5250], [-70.5900, -33.5300]] },
+		]
+
+		const polygon = faceAround(block, [-70.5875, -33.5275])
+
+		expect(polygon).not.toBeNull()
+		expect([...new Set(polygon.coordinates[0].map(([x, y]) => `${x.toFixed(4)},${y.toFixed(4)}`))].sort())
+			.toEqual([
+				'-70.5850,-33.5250', '-70.5850,-33.5300',
+				'-70.5900,-33.5250', '-70.5900,-33.5300',
+			])
+
+		// And a click outside it is still outside it at this scale — 200 m away,
+		// which a tolerance that made sense at the origin would swallow.
+		expect(faceAround(block, [-70.5820, -33.5275])).toBeNull()
+	})
+
+	/**
 	 * A Boundary Dataset can hold a Point — a KML import puts one there — and it
 	 * is not a line. Skipped rather than crashing the editor.
 	 */

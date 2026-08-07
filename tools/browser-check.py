@@ -55,6 +55,17 @@ RUN = uuid.uuid4().hex[:6]
 # lib/Service/ContactFields.php by the test that reads it there.
 ContactFieldsPartial = "territorio_sin_contactos"
 
+# Checks that could not run, for the summary. A skip is not a pass: this gate
+# exists because three green suites hid a save button that did nothing, and a
+# green line hiding "the polygonize checks never ran" would be the same mistake
+# in a smaller way.
+SKIPPED = []
+
+
+def skip(reason):
+    SKIPPED.append(reason)
+    print(f"SKIP  {reason}")
+
 # Where this run clicks, nudged so it never lands on what the last run left.
 # Clicking a marker selects that record and clicking inside a polygon selects
 # that Sector — both replace the open draft, so a fixed spot means every run
@@ -243,7 +254,7 @@ def the_limit_can_be_picked(page, failures):
 
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
-        print("SKIP  no boundary features in view to pick from")
+        skip("no boundary features in view to pick from")
         page.keyboard.press("Escape")
         page.locator(SEARCH).fill("")
         return
@@ -267,7 +278,7 @@ def the_limit_can_be_picked(page, failures):
     # it — so this asserts the picks survive as much as that one arrives.
     lines = page.locator(".leaflet-pane[class*=pickable] path")
     if lines.count() == 0:
-        print("SKIP  no boundary line on screen to click")
+        skip("no boundary line on screen to click")
     else:
         box.fill("")
         page.wait_for_timeout(300)
@@ -637,7 +648,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     geojson = json.dumps({"type": "FeatureCollection", "features": sides})
 
     if not import_boundaries(geojson, f"cuadro-{RUN}"):
-        print("SKIP  could not import boundary lines through occ; polygonize unchecked")
+        skip("could not import boundary lines through occ; polygonize unchecked")
         return
 
     page.reload(wait_until="domcontentloaded")
@@ -654,7 +665,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     page.wait_for_timeout(800)
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
-        print("SKIP  the imported square is not in view; polygonize unchecked")
+        skip("the imported square is not in view; polygonize unchecked")
         page.keyboard.press("Escape")
         page.locator(SEARCH).fill("")
         return
@@ -700,6 +711,43 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         failures.append(
             f"the generated sector is not the square that was picked: {corners} against {wanted}",
         )
+        return
+
+    a_generated_polygon_is_editable(page, wanted, failures)
+
+
+def a_generated_polygon_is_editable(page, square, failures):
+    """#14: "The result is immediately editable — vertices drag."
+
+    Worth its own check because it was the criterion nothing exercised: the
+    geometry goes into the ordinary draft, so it LOOKS obviously true, and a
+    generated shape replaces a layer that was already on the map — which is not
+    the path a hand-drawn one takes.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    if handles.count() == 0:
+        failures.append("the generated polygon has no draggable vertices")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    handle = handles.first.bounding_box()
+    page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(handle["x"] + 60, handle["y"] + 60, steps=8)
+    page.mouse.up()
+    page.wait_for_timeout(600)
+
+    save(page, failures, "the dragged sector")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(600)
+
+    moved = exported_corners(page, f"Sector Navegador {RUN}", failures)
+    if moved is not None and moved == square:
+        failures.append("dragging a vertex of the generated polygon changed nothing")
 
 
 def retire_the_generated_sector(page, name):
@@ -775,7 +823,7 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
     page.wait_for_timeout(800)
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
-        print("SKIP  no boundary features in view to pick from")
+        skip("no boundary features in view to pick from")
         page.keyboard.press("Escape")
         page.locator(SEARCH).fill("")
         return
@@ -1071,6 +1119,8 @@ def main():
 
     print("OK    a Place and a Sector were created in the browser and survived a reload")
     print(f"      screenshot: {SHOTS / 'after-reload.png'}")
+    for reason in SKIPPED:
+        print(f"      NOT CHECKED: {reason}")
     return 0
 
 

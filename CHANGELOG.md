@@ -3,6 +3,35 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.22.5] — unreleased
+
+Writing down what a Sector runs along.
+
+### Added
+
+- A Sector keeps its **Limit**: the Boundary features it was built from, by name, plus any
+  stretches somebody types in because no dataset holds them. Shown as one sentence — "Va por
+  Vicuña Mackenna, el canal y por detrás del colegio" — with each part removable.
+- The Limit comes back when the Sector is reopened, and survives adjusting the shape by hand.
+- It appears in the GeoJSON and CSV exports as that sentence.
+
+### Notes
+
+- **The Limit records intent; the geometry records the agreed line.** They match when a Sector is
+  generated and stop matching the moment a vertex moves, which is expected rather than drift to be
+  corrected. Nothing compares them or tries to keep them in step.
+- Names are stored beside the ids, not looked up later. The lines are loaded only while the editor
+  is open and only for what is on screen, so a Limit holding bare ids would read as blanks the
+  moment somebody scrolled away — or after the Boundary Dataset was re-imported.
+- A repeated name is said once. A comuna holds one street as dozens of ways, so picking "Vicuña
+  Mackenna" records dozens of parts.
+- A Sector drawn entirely by hand has no Limit at all, and that is valid (ADR-0007).
+- Omitting the Limit from a save leaves it alone, like every other optional field. That is what
+  makes it survive hand-adjustment: a client dragging a vertex must not have to remember to send
+  the Limit back unchanged in order to keep it.
+- The column is `boundary_limit`, not `limit`: the latter is reserved in every database this could
+  run on, and a column needing quotes everywhere is one somebody eventually forgets to quote.
+
 ## [0.21.8] — unreleased
 
 Building a Sector from the streets around it.

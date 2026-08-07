@@ -27,6 +27,7 @@ class CsvWriter {
 		'Horario' => 'openingHours',
 		'Notas' => 'notes',
 		'Fuente' => 'sourceRef',
+		'Límite' => 'limit',
 		'Ubicación' => 'locationQuality',
 	];
 

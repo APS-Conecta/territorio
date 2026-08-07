@@ -130,7 +130,7 @@ def create_a_place(page, name, failures):
     a click does is checked on its own in clicking_places_the_coordinate(), where
     it is the subject rather than a step on the way to something else.
     """
-    page.get_by_role("button", name="Agregar").click()
+    page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
     page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
@@ -191,7 +191,7 @@ def clicking_places_the_coordinate(page, failures):
     selected it — the draft was replaced and the next save edited the cadastre.
     One Unidad Vecinal was renamed that way before this was fixed.
     """
-    page.get_by_role("button", name="Agregar").click()
+    page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(f"Prueba de clic {RUN}")
 
     page.locator('[data-testid="map-canvas"]').click(position={"x": 420, "y": 300})
@@ -246,7 +246,9 @@ def the_limit_can_be_picked(page, failures):
         failures.append("opening a Sector did not open the Limit picker")
         return
 
-    box = picker.locator("input")
+    # By label: the picker has a second field now, for the stretches of a limit
+    # that follow nothing anybody could pick (issue #15).
+    box = picker.get_by_label("Buscar una calle")
     # A letter, not a word: the loaded names are whatever streets this comuna
     # actually has, and the check should not need to know them.
     box.fill("a")
@@ -451,7 +453,7 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     # "the file carries the phone" against a record without one would pass or
     # fail for reasons that have nothing to do with exporting.
     contact = f"Contacto Navegador {RUN}"
-    page.get_by_role("button", name="Agregar").click()
+    page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(contact)
     page.get_by_label("Latitud").fill(f"-33.5{400 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{400 + NUDGE}")
@@ -660,7 +662,9 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         return
 
     picker = page.locator('[data-testid="boundary-picker"]')
-    box = picker.locator("input")
+    # By label: the picker has a second field now, for the stretches of a limit
+    # that follow nothing anybody could pick (issue #15).
+    box = picker.get_by_label("Buscar una calle")
     box.fill(name)
     page.wait_for_timeout(800)
     offered = picker.locator(".territorio-picker__suggestions li")
@@ -819,7 +823,7 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
         return
 
     picker = page.locator('[data-testid="boundary-picker"]')
-    picker.locator("input").fill("a")
+    picker.get_by_label("Buscar una calle").fill("a")
     page.wait_for_timeout(800)
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
@@ -888,6 +892,77 @@ def import_boundaries(geojson, dataset):
     )
 
     return done.returncode == 0
+
+
+def the_limit_is_kept_and_survives_adjustment(page, failures):
+    """#15: what a Sector runs along is written down, and stays written down.
+
+    The criterion that matters is the last one: adjusting the shape by hand must
+    not lose it. That is the moment a person would lose what they wrote — the
+    first time they nudge a corner — and it is invisible unless something
+    reopens the record and looks.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+
+    # A stretch nobody could pick, which is half of what a real limit follows.
+    stretch = f"por detrás del colegio {RUN}"
+    picker.get_by_label("Agregar un tramo a mano").fill(stretch)
+    picker.get_by_role("button", name="Agregar tramo").click()
+    page.wait_for_timeout(400)
+
+    if picker.get_by_text("Va por", exact=False).count() == 0:
+        failures.append("the Limit is not shown in readable form on the Sector")
+
+    save(page, failures, "the sector with a limit")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(600)
+
+    # Reopened, because a Limit that only exists in this browser's memory looks
+    # exactly like one that was stored.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1200)
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+    if picker.get_by_text(stretch, exact=False).count() == 0:
+        failures.append("the Limit did not survive a reload")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    # Now adjust the shape by hand and save again. The Limit is intent; the
+    # geometry is the agreed line, and moving one must not erase the other.
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    if handles.count() > 0:
+        handle = handles.first.bounding_box()
+        page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(handle["x"] + 40, handle["y"] + 40, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(500)
+    else:
+        skip("the sector had no draggable vertex; the Limit survived no adjustment")
+
+    save(page, failures, "the adjusted sector")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(600)
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1200)
+    if not open_the_runs_sector(page, failures):
+        return
+
+    if page.locator('[data-testid="boundary-picker"]').get_by_text(stretch, exact=False).count() == 0:
+        failures.append("adjusting the geometry by hand lost the Limit")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
 
 def the_map_survives_churn(page, errors, failures):
@@ -1098,6 +1173,7 @@ def main():
         # reassigns half the Registry to itself.
         the_editor_says_so_when_the_lines_do_not_close(page, failures)
         a_sector_can_be_built_from_picked_lines(page, failures)
+        the_limit_is_kept_and_survives_adjustment(page, failures)
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

@@ -195,7 +195,48 @@ class ExportService {
 			'openingHours' => $feature->getOpeningHours(),
 			'notes' => $feature->getNotes(),
 			'sourceRef' => $feature->getSourceRef(),
+			// As a sentence, not as the stored parts. An export is read by a
+			// person or opened in a spreadsheet, and "Vicuña Mackenna y el canal"
+			// is the answer; a list of ids into a Boundary Dataset the reader does
+			// not have is not (issue #15).
+			'limit' => self::readableLimit($feature->getBoundaryLimit()),
 		];
+	}
+
+	/**
+	 * A Sector's Limit as somebody would say it.
+	 *
+	 * The same rule as the browser's `readable()` in `src/limit.js`, and the same
+	 * reason for the deduplication: a comuna holds one street as dozens of ways,
+	 * so a Limit records thirty parts named "Vicuña Mackenna" and saying it thirty
+	 * times is not what anybody said.
+	 */
+	private static function readableLimit(?string $stored): ?string {
+		if ($stored === null) {
+			return null;
+		}
+
+		$parts = json_decode($stored, true);
+		if (!is_array($parts)) {
+			return null;
+		}
+
+		$names = [];
+		foreach ($parts as $part) {
+			$name = is_array($part) ? (string)($part['name'] ?? '') : '';
+			if ($name !== '' && !in_array($name, $names, true)) {
+				$names[] = $name;
+			}
+		}
+
+		if ($names === []) {
+			return null;
+		}
+
+		$last = array_pop($names);
+
+		// "A, B y C" — Spanish takes no comma before the final "y".
+		return $names === [] ? $last : implode(', ', $names) . ' y ' . $last;
 	}
 
 	/**

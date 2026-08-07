@@ -371,6 +371,14 @@ class FeatureService {
 			$feature->setColour(self::colour($input['colour']));
 		}
 
+		// Omitted leaves it alone, like every optional field above — and that is
+		// what makes the Limit survive hand-adjustment (issue #15). A client
+		// dragging a vertex sends the geometry; it must not have to remember to
+		// send the Limit back unchanged in order to keep it.
+		if (array_key_exists('limit', $input)) {
+			$feature->setBoundaryLimit(self::limit($input['limit']));
+		}
+
 		$this->applyGeometry($feature, $input);
 
 		// Derived here, at the one door every write comes through, so no caller can
@@ -380,6 +388,47 @@ class FeatureService {
 		$this->assignments->assign($feature);
 
 		return $feature;
+	}
+
+	/**
+	 * What a Sector runs along, as JSON, or null.
+	 *
+	 * Rebuilt part by part rather than stored as it arrived. This is the one
+	 * field the browser sends as a structure rather than a string, so it is the
+	 * one place a request could put arbitrary shapes into a column that is read
+	 * back and rendered — and a name is a name whatever else came with it.
+	 *
+	 * An empty Limit is null rather than `[]`: a Sector drawn by hand has no
+	 * Limit at all (ADR-0007), and "[]" and "no answer" reading differently in
+	 * history would be a distinction with nothing behind it.
+	 *
+	 * @return ?string JSON
+	 */
+	private static function limit(mixed $value): ?string {
+		if (!is_array($value)) {
+			return null;
+		}
+
+		$parts = [];
+		foreach ($value as $part) {
+			if (!is_array($part)) {
+				continue;
+			}
+
+			$name = trim((string)($part['name'] ?? ''));
+			if ($name === '') {
+				// A part nobody can read is not a part. It would render as a gap in
+				// the sentence and there would be nothing to say about it.
+				continue;
+			}
+
+			$featureId = $part['featureId'] ?? null;
+			$parts[] = is_numeric($featureId)
+				? ['featureId' => (int)$featureId, 'name' => $name]
+				: ['name' => $name];
+		}
+
+		return $parts === [] ? null : json_encode($parts, JSON_UNESCAPED_UNICODE);
 	}
 
 	/**

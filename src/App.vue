@@ -134,6 +134,10 @@
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
 					:seeding="seeding"
+					:limit="draft.limit ?? []"
+					:limit-said="readable(draft.limit)"
+					@add-note="addLimitNote"
+					@remove-part="removeLimitPart"
 					@generate="startSeeding"
 					@toggle-group="togglePickedGroup"
 					@update:query="boundaryQuery = $event" />
@@ -170,6 +174,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
+import { partsFrom, readable, withNote, without } from './limit.js'
 import { faceAround } from './sectors.js'
 import {
 	countsFor,
@@ -413,6 +418,7 @@ export default {
 
 	methods: {
 		isFiltered,
+		readable,
 
 		resetFilter() {
 			this.filter = emptyFilter()
@@ -705,6 +711,7 @@ export default {
 			if (this.draft?.picked !== undefined) {
 				this.draft.picked = togglePick(this.draft.picked, id)
 				this.keepPickedGeometry([id])
+				this.recordLimit()
 			}
 		},
 
@@ -712,6 +719,48 @@ export default {
 			if (this.draft?.picked !== undefined) {
 				this.draft.picked = toggleGroup(this.draft.picked, ids)
 				this.keepPickedGeometry(ids)
+				this.recordLimit()
+			}
+		},
+
+		/**
+		 * The Limit follows what is picked, keeping what is already written down.
+		 *
+		 * Names are taken from the lines on screen at the moment of picking and
+		 * then kept, because a Limit outlives the picker: the lines load only
+		 * while the editor is open and only for the part of the comuna in view
+		 * (issue #12), so a Limit holding bare ids would read as blanks as soon as
+		 * anybody scrolled away.
+		 */
+		recordLimit() {
+			this.draft.limit = partsFrom(
+				this.draft.picked,
+				this.boundaryFeatures,
+				this.draft.limit ?? [],
+			)
+		},
+
+		/** A stretch that follows nothing anybody could pick. */
+		addLimitNote(text) {
+			if (this.draft?.limit !== undefined) {
+				this.draft.limit = withNote(this.draft.limit, text)
+			}
+		},
+
+		/**
+		 * One part removed. A picked line dropped this way is unpicked too, or the
+		 * ticks in the picker would disagree with what the Sector says it runs
+		 * along — and the next pick would put it straight back.
+		 */
+		removeLimitPart(index) {
+			if (this.draft?.limit === undefined) {
+				return
+			}
+
+			const part = this.draft.limit[index]
+			this.draft.limit = without(this.draft.limit, index)
+			if (part?.featureId !== undefined) {
+				this.draft.picked = this.draft.picked.filter((id) => id !== part.featureId)
 			}
 		},
 
@@ -910,9 +959,22 @@ export default {
 				sectorId: feature.sectorId ?? null,
 				unidadVecinalId: feature.unidadVecinalId ?? null,
 				// A Sector opened for editing gets the picker too, not only one being
-				// drawn. Until #15 stores a Limit there is nothing to load into it,
-				// so it starts empty either way.
-				...(this.isSector(feature.subcategoryId) ? { picked: [] } : {}),
+				// drawn — and it comes back with what it was built from (issue #15).
+				//
+				// `picked` is derived from the Limit rather than stored twice: the
+				// Limit is the record, and the ticks in the picker are a view of it.
+				// The geometries are NOT reloaded — they arrive as the map brings
+				// each line into view — so a Limit reopened and saved untouched keeps
+				// its names either way.
+				...(this.isSector(feature.subcategoryId)
+					? {
+						limit: feature.limit ?? [],
+						picked: (feature.limit ?? [])
+							.filter((part) => part.featureId !== undefined)
+							.map((part) => part.featureId),
+						pickedGeometry: {},
+					}
+					: {}),
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
 				locationQuality: feature.locationQuality === 'sin_coordenada'
@@ -971,6 +1033,9 @@ export default {
 			return {
 				...this.draft,
 				colour: this.draft.colour ?? '',
+				// Sent only for a Sector. Everything else has no Limit, and sending
+				// an empty one would be a claim that it used to have something.
+				...(this.draft.limit === undefined ? {} : { limit: this.draft.limit }),
 				// A drawn shape wins over the coordinate fields, which the form does
 				// not even show for one. GeoJSON orders positions [longitude,
 				// latitude] — the reverse of how they are said out loud, and of the

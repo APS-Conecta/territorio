@@ -39,6 +39,11 @@ class GeoJsonWriter {
 		'address' => 'address',
 		'openingHours' => 'opening_hours',
 		'notes' => 'notes',
+		// A Sector's Limit, in words (issue #15). Not read back on import: it is
+		// what a person SAYS the sector runs along, and re-importing an export
+		// must not turn a sentence into a claim about which Boundary features
+		// this install holds.
+		'limit' => 'limite',
 	];
 
 	/**

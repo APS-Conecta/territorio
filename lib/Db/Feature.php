@@ -69,6 +69,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setOverridden(bool $overridden)
  * @method ?int getMergedInto()
  * @method void setMergedInto(?int $mergedInto)
+ * @method ?string getBoundaryLimit()
+ * @method void setBoundaryLimit(?string $boundaryLimit)
  */
 class Feature extends Entity {
 	protected $subcategoryId = 0;
@@ -108,6 +110,10 @@ class Feature extends Entity {
 	// "we retired this one, which record replaced it?" — is asked of the retired
 	// record, so it lives here rather than on the pair.
 	protected $mergedInto = null;
+	// What a Sector runs along, in words (issue #15). JSON, like `geometry`
+	// beside it. Null on everything that is not a Sector, and legitimately empty
+	// on a Sector somebody drew by hand — ADR-0007 keeps that just as valid.
+	protected $boundaryLimit = null;
 
 	public function __construct() {
 		$this->addType('subcategoryId', 'integer');
@@ -196,6 +202,11 @@ class Feature extends Entity {
 			// Ships for the same reason `retired` does: a client holding the losing
 			// record needs to be able to say where it went rather than just drop it.
 			'mergedInto' => $this->getMergedInto(),
+			// Decoded here rather than on the client: it is a list of parts, and
+			// every reader of it wants the list.
+			'limit' => $this->getBoundaryLimit() === null
+				? null
+				: json_decode($this->getBoundaryLimit(), true),
 			'official' => $this->getOfficial() === null
 				? null
 				: json_decode($this->getOfficial(), true),
@@ -226,6 +237,10 @@ class Feature extends Entity {
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
 			'colour' => $this->getColour(),
+			// In history on purpose: changing what a Sector runs along is a decision
+			// about the territory, and "quién cambió el límite" is exactly the kind
+			// of question history exists to answer (issue #15).
+			'limit' => $this->getBoundaryLimit(),
 			// In history on purpose. ADR-0008: "Redrawing a Sector reassigns every
 			// Place inside it. That is the point, and it must be visible in history
 			// like any other change."

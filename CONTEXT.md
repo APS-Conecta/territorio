@@ -71,6 +71,12 @@ one toggle per territorial division.
 
 ### How a boundary is expressed
 
+**The Limit records intent; the geometry records the agreed line.**
+They match when a Sector is generated from picked features and stop matching the moment somebody
+drags a vertex. That is expected and is never drift to be corrected: the geometry is where the
+line actually runs, and the Limit is what the team says when asked where the sector ends.
+
+
 **Limit**:
 What bounds a Sector, stated as the real-world features it runs along — a street, a river, a rail
 line — plus any stretch drawn by hand where no such feature exists. It is what a person would say
@@ -143,6 +149,12 @@ The record of who took contact details out of the app, when, in what format and 
 Kept forever (ADR-0006) and separate from the change log, because an export changes nothing
 (ADR-0012).
 _Avoid_: audit, download history
+
+**Limit**:
+What a Sector runs along, in words — "Vicuña Mackenna, el canal, y por detrás del colegio". Built
+from picked Boundary features and from stretches somebody describes, because a real limit follows
+things no dataset holds.
+_Avoid_: border, perimeter, outline — those describe the shape, and the shape is the geometry
 
 ### Distinctions that matter
 

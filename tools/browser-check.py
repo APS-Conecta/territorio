@@ -196,6 +196,42 @@ def search_narrows_everything(page, failures):
         failures.append(f"clearing did not restore the list ({rows.count()} vs {before_rows})")
 
 
+def kml_says_what_it_cannot_carry(page, failures):
+    """#8: "The import preview states plainly which fields KML cannot carry."
+
+    Before the import runs, not after — the point is that someone expecting
+    their phone numbers can still choose a different file.
+    """
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.wait_for_timeout(600)
+
+    warning = page.get_by_text("No trae teléfono")
+    if warning.count() != 0:
+        failures.append("the KML warning is shown before a file is even chosen")
+
+    # A GeoJSON must not raise it either, or the warning means nothing.
+    page.locator('input[type="file"]').set_input_files({
+        "name": "algo.geojson",
+        "mimeType": "application/geo+json",
+        "buffer": b'{"type":"FeatureCollection","features":[]}',
+    })
+    page.wait_for_timeout(400)
+    if warning.count() != 0:
+        failures.append("the KML warning is shown for a GeoJSON file")
+
+    page.locator('input[type="file"]').set_input_files({
+        "name": "mymaps.kml",
+        "mimeType": "application/vnd.google-earth.kml+xml",
+        "buffer": b'<?xml version="1.0"?><kml/>',
+    })
+    page.wait_for_timeout(400)
+    if warning.count() == 0:
+        failures.append("choosing a KML said nothing about what it cannot carry")
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -224,6 +260,9 @@ def main():
 
         search_narrows_everything(page, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
+
+        kml_says_what_it_cannot_carry(page, failures)
+        page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
         browser.close()
 
     if errors:

@@ -3,6 +3,31 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.13.0] — unreleased
+
+KML.
+
+### Added
+
+- KML imports through the same pipeline as GeoJSON: same Dataset, same batch, same derived ids,
+  same revert. Points, lines and areas all arrive.
+- A Folder name becomes the Category, which works because a MyMaps export's folders were built
+  from these Categories. Where the pair `categoría/subcategoría` misses, the row falls to that
+  Category's own **Otro** rather than all the way to Sin clasificar — without that tier every
+  record in a MyMaps file landed unclassified while its Folder sat there naming the right one.
+- The import dialog says what KML cannot carry **before** the import runs, while a person can
+  still choose a different file.
+
+### Notes
+
+- KML does not become rows of its own. It becomes a GeoJSON FeatureCollection and is then read by
+  the reader that already existed, so the two formats cannot drift into importing differently.
+- Checked against the real `La_Florida_Google_MyMaps.kml`: 865 placemarks, not one `ExtendedData`
+  element between them. So no phone, email, contact person, opening hours or source — the warning
+  is a fact about the format, not a caution.
+- Parsed with SimpleXML, which PHP already has. A library to read five tag names would be a
+  dependency for nothing.
+
 ## [0.12.0] — unreleased
 
 An answer for the app next door.

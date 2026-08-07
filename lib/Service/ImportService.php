@@ -19,7 +19,11 @@ use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Exception\InvalidImportException;
 
 /**
- * Brings a GeoJSON file into a Dataset, once or repeatedly.
+ * Brings a file into a Dataset, once or repeatedly.
+ *
+ * GeoJSON or KML — the format decides only which reader runs. Both produce the
+ * same rows, so the batch, the matching, the local-override rule and the revert
+ * are one implementation and cannot drift apart between the two.
  *
  * Three rules do most of the work here, and all three are ADRs rather than
  * preferences:
@@ -48,6 +52,7 @@ class ImportService {
 
 	public function __construct(
 		private GeoJsonReader $reader,
+		private KmlReader $kml,
 		private DatasetMapper $datasets,
 		private FeatureMapper $features,
 		private FeatureService $featureService,
@@ -59,8 +64,51 @@ class ImportService {
 	}
 
 	/**
-	 * @throws InvalidImportException when the file, or any row in it, is unusable
+	 * Import a file, reading it according to what it is.
+	 *
+	 * The name is used only to choose the reader — everything downstream is the
+	 * same batch, the same matching and the same revert, whichever format it
+	 * arrived in (issue #8).
+	 *
+	 * @throws InvalidImportException
 	 */
+	public function importFile(
+		string $contents,
+		string $filename,
+		string $datasetSlug,
+		?string $label = null,
+		?string $actor = null,
+		?bool $boundary = null,
+	): ImportBatch {
+		return self::isKml($filename)
+			? $this->importKml($contents, $datasetSlug, $label, $actor, $boundary)
+			: $this->importGeoJson($contents, $datasetSlug, $label, $actor, $boundary);
+	}
+
+	/** Whether this filename says KML, whatever case it was typed in. */
+	public static function isKml(string $filename): bool {
+		return str_ends_with(strtolower(trim($filename)), '.kml');
+	}
+
+	/**
+	 * @throws InvalidImportException
+	 */
+	public function importKml(
+		string $xml,
+		string $datasetSlug,
+		?string $label = null,
+		?string $actor = null,
+		?bool $boundary = null,
+	): ImportBatch {
+		return $this->importRows(
+			$this->kml->read($xml, $datasetSlug),
+			$datasetSlug,
+			$label,
+			$actor,
+			$boundary,
+		);
+	}
+
 	public function importGeoJson(
 		string $json,
 		string $datasetSlug,
@@ -68,7 +116,29 @@ class ImportService {
 		?string $actor = null,
 		?bool $boundary = null,
 	): ImportBatch {
-		$rows = $this->reader->read($json, $datasetSlug);
+		return $this->importRows(
+			$this->reader->read($json, $datasetSlug),
+			$datasetSlug,
+			$label,
+			$actor,
+			$boundary,
+		);
+	}
+
+	/**
+	 * Everything after the file has been read, which is everything both formats
+	 * share.
+	 *
+	 * @param list<array<string, mixed>> $rows
+	 * @throws InvalidImportException
+	 */
+	private function importRows(
+		array $rows,
+		string $datasetSlug,
+		?string $label,
+		?string $actor,
+		?bool $boundary,
+	): ImportBatch {
 		[$rows, $duplicates] = $this->collapseDuplicates($rows);
 		[$prepared, $unsupported] = $this->prepare($rows);
 
@@ -180,8 +250,7 @@ class ImportService {
 				continue;
 			}
 
-			$key = $row['categorySlug'] . '/' . $row['subcategorySlug'];
-			$row['subcategoryId'] = $subcategories[$key] ?? $fallback;
+			$row['subcategoryId'] = $this->classify($row, $subcategories, $fallback);
 			$prepared[$externalId] = $row;
 		}
 
@@ -385,6 +454,33 @@ class ImportService {
 	}
 
 	/** @return array<string, int> "categorySlug/subcategorySlug" → Subcategory id */
+	/**
+	 * Where a row lands in the taxonomy, in three tries.
+	 *
+	 * The middle one exists for KML (issue #8). A Google MyMaps export names a
+	 * Folder and nothing finer, so it yields a Category and never a Subcategory —
+	 * and matching only on the pair would send every record in the file to Sin
+	 * clasificar while the Folder sat there naming the right Category. Falling to
+	 * that Category's own "Otro" keeps what the file actually said.
+	 *
+	 * Sin clasificar · Otro is the last resort, and it means the file named
+	 * something this install does not have.
+	 *
+	 * @param array<string, mixed> $row
+	 * @param array<string, int> $subcategories
+	 */
+	private function classify(array $row, array $subcategories, int $fallback): int {
+		$category = $row['categorySlug'];
+		if ($category === null) {
+			return $fallback;
+		}
+
+		return $subcategories[$category . '/' . $row['subcategorySlug']]
+			?? $subcategories[$category . '/otro']
+			?? $fallback;
+	}
+
+	/** @return array<string, int> */
 	private function subcategoryIndex(): array {
 		$categorySlugs = [];
 		foreach ($this->categories->findAll() as $category) {

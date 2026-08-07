@@ -66,8 +66,10 @@ class ImportController extends Controller {
 		}
 
 		try {
-			$batch = $this->import->importGeoJson(
+			$batch = $this->import->importFile(
 				$contents,
+				// The browser's own name for the file, used only to pick a reader.
+				(string)($file['name'] ?? ''),
 				$dataset,
 				trim((string)$this->request->getParam('label', '')) ?: null,
 				$this->userSession->getUser()?->getUID(),

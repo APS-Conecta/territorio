@@ -13,9 +13,22 @@
 			</NcNoteCard>
 
 			<p v-else class="territorio-import__hint">
-				El archivo debe ser un FeatureCollection de GeoJSON. Se revisa entero antes
-				de escribir nada: si una fila es inválida, no se importa ninguna.
+				GeoJSON (un FeatureCollection) o KML. Se revisa entero antes de escribir
+				nada: si una fila es inválida, no se importa ninguna.
 			</p>
+
+			<!--
+				Said before the import runs, not after. A MyMaps export carries no
+				ExtendedData at all — checked against the real 865-placemark file —
+				so a person who expects their phone numbers to arrive needs to know
+				that while they can still choose a different file.
+			-->
+			<NcNoteCard v-if="isKml" type="warning" class="territorio-import__field">
+				KML trae menos que GeoJSON. De este archivo se importan la geometría, el
+				nombre, la carpeta (como categoría) y la descripción (como notas).
+				<strong>No trae teléfono, correo, persona de contacto, horario ni fuente</strong>:
+				esos campos quedan vacíos y se pueden completar después, registro a registro.
+			</NcNoteCard>
 
 			<NcTextField v-model="dataset"
 				class="territorio-import__field"
@@ -26,7 +39,7 @@
 			<label class="territorio-import__field territorio-import__file">
 				<span>Archivo</span>
 				<input type="file"
-					accept=".geojson,.json,application/geo+json,application/json"
+					accept=".geojson,.json,.kml,application/geo+json,application/json,application/vnd.google-earth.kml+xml"
 					:disabled="working"
 					@change="pick">
 			</label>
@@ -110,6 +123,15 @@ export default {
 	computed: {
 		canImport() {
 			return !this.working && this.file !== null && this.dataset.trim() !== ''
+		},
+
+		/**
+		 * Whether the chosen file is KML, which decides whether the lossiness
+		 * notice is shown. By extension, like the server: the same rule in both
+		 * places, so what the notice warns about is what the import will do.
+		 */
+		isKml() {
+			return (this.file?.name ?? '').toLowerCase().trim().endsWith('.kml')
 		},
 
 		/**

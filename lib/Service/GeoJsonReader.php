@@ -53,13 +53,29 @@ class GeoJsonReader {
 			);
 		}
 
-		if (!is_array($decoded) || ($decoded['type'] ?? null) !== 'FeatureCollection') {
+		return $this->fromCollection(is_array($decoded) ? $decoded : [], $datasetSlug);
+	}
+
+	/**
+	 * The same reading, from a FeatureCollection already in memory.
+	 *
+	 * This is the seam `KmlReader` comes in through: KML becomes a
+	 * FeatureCollection and then IS a GeoJSON import — same derived ids, same
+	 * refusal of a nameless row, same row shape. Two readers producing rows
+	 * separately is how the two formats would drift into importing differently.
+	 *
+	 * @param array<string, mixed> $collection
+	 * @return list<array<string, mixed>>
+	 * @throws InvalidImportException
+	 */
+	public function fromCollection(array $collection, string $datasetSlug): array {
+		if (($collection['type'] ?? null) !== 'FeatureCollection') {
 			throw new InvalidImportException(
 				'El archivo debe ser un FeatureCollection de GeoJSON.',
 			);
 		}
 
-		$features = $decoded['features'] ?? null;
+		$features = $collection['features'] ?? null;
 		if (!is_array($features)) {
 			throw new InvalidImportException('El FeatureCollection no tiene una lista de features.');
 		}

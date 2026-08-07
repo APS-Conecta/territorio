@@ -30,8 +30,8 @@ class Import extends Command {
 
 	protected function configure(): void {
 		$this->setName('territorio:import')
-			->setDescription('Importa un GeoJSON a un conjunto de datos')
-			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson')
+			->setDescription('Importa un GeoJSON o KML a un conjunto de datos')
+			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson o .kml')
 			->addOption('dataset', null, InputOption::VALUE_REQUIRED, 'Slug del conjunto de datos')
 			->addOption('label', null, InputOption::VALUE_REQUIRED, 'Nombre visible del conjunto, si es nuevo')
 			// There is no logged-in user on the command line, so the batch would
@@ -67,8 +67,9 @@ class Import extends Command {
 		}
 
 		try {
-			$batch = $this->import->importGeoJson(
+			$batch = $this->import->importFile(
 				(string)file_get_contents($path),
+				$path,
 				$dataset,
 				$input->getOption('label') === null ? null : (string)$input->getOption('label'),
 				(string)$input->getOption('actor'),

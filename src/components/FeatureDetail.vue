@@ -54,6 +54,19 @@
 				label="label" />
 		</fieldset>
 
+		<!--
+			Shown, never editable (ADR-0008). Both are derived from where the record
+			is: correcting one means correcting a boundary, which is the honest fix,
+			and a box to type into here would be a promise the app cannot keep.
+		-->
+		<p v-if="!isDivision" class="territorio-detail__field territorio-detail__derived">
+			<span>Sector: <strong>{{ sectorName }}</strong></span>
+			<span>Unidad Vecinal: <strong>{{ unidadVecinalName }}</strong></span>
+			<span class="territorio-detail__hint">
+				Se deducen de la ubicación. Para corregirlos, corrija el límite.
+			</span>
+		</p>
+
 		<NcTextField v-model="draft.address" class="territorio-detail__field" label="Dirección" />
 		<NcTextField v-model="draft.phone" class="territorio-detail__field" label="Teléfono" />
 		<NcTextField v-model="draft.email" class="territorio-detail__field" label="Correo" />
@@ -131,6 +144,9 @@ export default {
 		// second place for the two to disagree.
 		draft: { type: Object, required: true },
 		taxonomy: { type: Array, required: true },
+		// The Sectores and Unidades Vecinales the app holds, so a stored id can be
+		// shown as the name a person would recognise.
+		boundaries: { type: Array, default: () => [] },
 		saving: { type: Boolean, default: false },
 		error: { type: String, default: '' },
 	},
@@ -163,6 +179,15 @@ export default {
 		isDivision() {
 			return divisionsOf(this.taxonomy)
 				.some((division) => division.id === this.draft.subcategoryId)
+		},
+
+		/** What the record's Sector is called, or that it is in none. */
+		sectorName() {
+			return this.nameOf(this.draft.sectorId)
+		},
+
+		unidadVecinalName() {
+			return this.nameOf(this.draft.unidadVecinalId)
 		},
 
 		/** Drawn on the map rather than typed as a coordinate. */
@@ -212,6 +237,19 @@ export default {
 	},
 
 	methods: {
+		/**
+		 * A boundary's name, from the records the app already holds. "Sin asignar"
+		 * covers both real answers — no coordinate, and a coordinate outside every
+		 * boundary — because from here they are the same fact: nothing to show.
+		 */
+		nameOf(id) {
+			if (id === null || id === undefined) {
+				return 'sin asignar'
+			}
+
+			return this.boundaries.find((feature) => feature.id === id)?.name ?? 'sin asignar'
+		},
+
 		clearCoordinates() {
 			this.draft.lat = ''
 			this.draft.lon = ''
@@ -227,6 +265,12 @@ export default {
 
 .territorio-detail__field {
 	margin-top: 12px;
+}
+
+.territorio-detail__derived {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
 }
 
 .territorio-detail__colour {

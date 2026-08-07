@@ -11,6 +11,7 @@ use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
+use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\LocationQuality;
@@ -52,7 +53,14 @@ final class FeatureServiceTest extends TestCase {
 		$this->features->method('insert')->willReturnArgument(0);
 		$this->features->method('update')->willReturnArgument(0);
 
-		$this->service = new FeatureService($this->features, $this->subcategories, $this->revisions);
+		// A real one would need the whole Registry to resolve against; what this
+		// suite is about is what the service builds from what a person typed.
+		$this->service = new FeatureService(
+			$this->features,
+			$this->subcategories,
+			$this->revisions,
+			$this->createMock(AssignmentService::class),
+		);
 	}
 
 	public function testNothingChangedCostsOneQueryAndReturnsNoFeatures(): void {

@@ -39,6 +39,7 @@ class FeatureService {
 		private FeatureMapper $features,
 		private SubcategoryMapper $subcategories,
 		private RevisionLog $revisions,
+		private AssignmentService $assignments,
 	) {
 	}
 
@@ -158,7 +159,44 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro está retirado. Restáurelo antes de editarlo.');
 		}
 
-		return $this->write($feature, $input, $provenance, markOverride: $provenance === null);
+		// Read before the entity is mutated: reassigning after a boundary moves
+		// needs the shape it used to have as well as the one it has now, or a
+		// record the Sector no longer covers is never let go of.
+		$before = $feature->getGeometry();
+		$written = $this->write($feature, $input, $provenance, markOverride: $provenance === null);
+		$this->reassignAround($written, $before);
+
+		return $written;
+	}
+
+	/**
+	 * Redrawing a boundary reassigns everything it gained or lost.
+	 *
+	 * ADR-0008 is explicit that this is the point rather than a side effect, and
+	 * that it "must be visible in history like any other change" — so each
+	 * reassignment is an ordinary write with its own Revision and its own history
+	 * entry, not a silent column update.
+	 *
+	 * Only when the shape actually moved. Renaming a Sector or recolouring it
+	 * changes nobody's assignment, and spending a Revision per Place to discover
+	 * that would make every edit to a boundary expensive.
+	 */
+	private function reassignAround(Feature $boundary, ?string $before): void {
+		if ($boundary->getGeometry() === $before || !$this->assignments->isBoundary($boundary)) {
+			return;
+		}
+
+		foreach ($this->assignments->affectedBy($boundary, $before) as $affected) {
+			$was = [$affected->getSectorId(), $affected->getUnidadVecinalId()];
+			$this->assignments->assign($affected);
+
+			// Only where it really changed: the box around a redrawn Sector holds
+			// plenty of records whose answer is the same as before, and writing
+			// those would fill history with entries whose diff is empty.
+			if ($was !== [$affected->getSectorId(), $affected->getUnidadVecinalId()]) {
+				$this->features->update($affected);
+			}
+		}
 	}
 
 	/**
@@ -246,6 +284,12 @@ class FeatureService {
 		}
 
 		$this->applyGeometry($feature, $input);
+
+		// Derived here, at the one door every write comes through, so no caller can
+		// save a record whose stored Sector disagrees with where it now is
+		// (ADR-0008). It lands in this save's Revision and history entry rather
+		// than a second one.
+		$this->assignments->assign($feature);
 
 		return $feature;
 	}

@@ -42,6 +42,19 @@ final class BoundingBox {
 		return $this->maxLat;
 	}
 
+	/**
+	 * Whether a coordinate falls in the box.
+	 *
+	 * The cheap half of resolving an assignment (ADR-0008): four comparisons that
+	 * reject almost every boundary before anything walks a ring. Inclusive at the
+	 * edges, like the point-in-polygon test it stands in front of — a box that
+	 * excluded its own border would throw away points that ARE inside.
+	 */
+	public function holds(float $lon, float $lat): bool {
+		return $lat >= $this->minLat && $lat <= $this->maxLat
+			&& $lon >= $this->minLon && $lon <= $this->maxLon;
+	}
+
 	public function maxLon(): float {
 		return $this->maxLon;
 	}

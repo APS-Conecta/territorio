@@ -31,9 +31,9 @@ use OCA\Territorio\Db\FeatureMapper;
  * rather than writing fresh queries is what keeps this service's answer and the
  * app's own screens the same answer.
  *
- * Counts by Sector and Unidad Vecinal are NOT here yet: ADR-0008 says an
- * assignment is derived from geometry and stored, and nothing stores one until
- * issue #11. They belong on this class when it does.
+ * Counts by Sector and Unidad Vecinal read the ids stored on each record
+ * (ADR-0008) rather than resolving geometry per request — which is the whole
+ * reason those ids are stored.
  */
 class RegistryService {
 	public function __construct(
@@ -53,7 +53,7 @@ class RegistryService {
 	 * restating it in SQL — reach for an aggregate query when a real catastro
 	 * makes this slow, and move the retired-and-boundary rule with it.
 	 *
-	 * @return array{total: int, unknownSubcategory: int, categories: array<string, array{label: string, total: int, subcategories: array<string, int>}>}
+	 * @return array{total: int, unknownSubcategory: int, categories: array<string, array{label: string, total: int, subcategories: array<string, int>}>, bySector: array<int, int>, byUnidadVecinal: array<int, int>}
 	 */
 	public function counts(): array {
 		$perSubcategory = [];
@@ -82,8 +82,26 @@ class RegistryService {
 			];
 		}
 
+		// By the stored assignment, never by asking the geometry again: ADR-0008
+		// stores it precisely so that counting stays an ordinary read. Keyed by
+		// the boundary's own id, since a Sector is named whatever a clinic names
+		// it and two of them may share a name.
+		$bySector = [];
+		$byUnidadVecinal = [];
+		foreach ($live as $feature) {
+			if ($feature->getSectorId() !== null) {
+				$bySector[$feature->getSectorId()] = ($bySector[$feature->getSectorId()] ?? 0) + 1;
+			}
+			if ($feature->getUnidadVecinalId() !== null) {
+				$id = $feature->getUnidadVecinalId();
+				$byUnidadVecinal[$id] = ($byUnidadVecinal[$id] ?? 0) + 1;
+			}
+		}
+
 		return [
 			'total' => count($live),
+			'bySector' => $bySector,
+			'byUnidadVecinal' => $byUnidadVecinal,
 			// NOT "unclassified": "Sin clasificar" is a real seeded Category that
 			// someone may have deliberately filed a record under, and it is counted
 			// like any other above. This is the other thing — a record pointing at a

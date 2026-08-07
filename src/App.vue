@@ -89,6 +89,7 @@
 
 			<FeatureDetail :draft="draft"
 				:taxonomy="taxonomy"
+				:boundaries="boundaries"
 				:saving="saving"
 				:error="error"
 				:history="history"
@@ -126,6 +127,7 @@ import {
 import {
 	DEFAULT_SECTOR_COLOUR,
 	defaultSubcategoryId,
+	divisionsOf,
 	indexSubcategories,
 	sectorSubcategoryId,
 } from './taxonomy.js'
@@ -235,6 +237,16 @@ export default {
 		selectedIsRetired() {
 			return this.showRetired
 				&& this.retiredFeatures.some((feature) => feature.id === this.selectedId)
+		},
+
+		/**
+		 * The Sectores and Unidades Vecinales the app holds, so the sidebar can turn
+		 * a stored assignment id into the name somebody would recognise.
+		 */
+		boundaries() {
+			const divisions = new Set(divisionsOf(this.taxonomy).map((division) => division.id))
+
+			return this.features.filter((feature) => divisions.has(feature.subcategoryId))
 		},
 
 		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
@@ -486,6 +498,8 @@ export default {
 				// is what the form offers when this is null.
 				geometry: null,
 				colour: null,
+				sectorId: null,
+				unidadVecinalId: null,
 				lat: '',
 				lon: '',
 				locationQuality: 'exacta',
@@ -510,6 +524,10 @@ export default {
 				subcategoryId: feature.subcategoryId,
 				geometry: isPoint ? null : (feature.geometry ?? null),
 				colour: feature.colour ?? null,
+				// Read-only, shown rather than edited (ADR-0008). Carried on the draft
+				// so the sidebar can name them without asking the server again.
+				sectorId: feature.sectorId ?? null,
+				unidadVecinalId: feature.unidadVecinalId ?? null,
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
 				locationQuality: feature.locationQuality === 'sin_coordenada'

@@ -3,6 +3,32 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.17.0] — unreleased
+
+Where a record falls, worked out rather than typed.
+
+### Added
+
+- A Place's Sector and Unidad Vecinal are resolved from its coordinate and stored (ADR-0008).
+  Ray-casting point-in-polygon in about forty lines of PHP with a bounding-box pre-check — no
+  PostGIS, which is not in the database image, no GEOS, no geometry library.
+- Redrawing a boundary reassigns everything it gained and everything it lost, each as an ordinary
+  write with its own Revision and history entry. ADR-0008 asks for exactly that: the reassignment
+  is the point, and it has to be visible.
+- The sidebar shows a record's Sector and Unidad Vecinal and offers nowhere to type them.
+- `RegistryService` counts by Sector and by Unidad Vecinal, which is the half issue #18 had to
+  leave until something stored an assignment.
+
+### Notes
+
+- A point on a boundary counts as inside. Ray casting alone answers that differently depending on
+  which way the ray leaves, and a record on the line between two sectores belongs to one of them
+  rather than to neither — "neither" is the answer that looks like a bug to whoever finds it.
+- Renaming or recolouring a boundary reassigns nobody and spends no Revisions. Only a moved shape
+  can change an answer.
+- Null is a real answer, twice over: a record with no coordinate, and one outside every boundary
+  the install holds. The catastro this app inherits has plenty of both.
+
 ## [0.16.0] — unreleased
 
 The comuna, and the Unidades Vecinales that describe it.

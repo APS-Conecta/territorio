@@ -10,8 +10,10 @@ use OCP\AppFramework\Db\Entity;
 /**
  * One record in the Registry that has a geometry — see `CONTEXT.md`.
  *
- * Sector and Unidad Vecinal are absent by design: they are derived from
- * geometry, not stored as editable fields (ADR-0008).
+ * Sector and Unidad Vecinal are here as ids and are never editable fields
+ * (ADR-0008): they are resolved from the geometry and stored, so that filtering
+ * and counting by them stay ordinary indexed reads. Correcting an assignment
+ * means correcting a boundary, which is the honest fix.
  *
  * @method int getSubcategoryId()
  * @method void setSubcategoryId(int $subcategoryId)
@@ -49,6 +51,10 @@ use OCP\AppFramework\Db\Entity;
  * @method void setSourceRef(?string $sourceRef)
  * @method ?string getColour()
  * @method void setColour(?string $colour)
+ * @method ?int getSectorId()
+ * @method void setSectorId(?int $sectorId)
+ * @method ?int getUnidadVecinalId()
+ * @method void setUnidadVecinalId(?int $unidadVecinalId)
  * @method int getRevision()
  * @method void setRevision(int $revision)
  * @method bool getRetired()
@@ -84,6 +90,10 @@ class Feature extends Entity {
 	// and they all share one Subcategory. Null everywhere else: the record then
 	// takes its Category's colour, so nothing has to be coloured by hand.
 	protected $colour = null;
+	// Derived, never typed (ADR-0008). Null is a real answer: no coordinate, or a
+	// coordinate outside every boundary this install holds.
+	protected $sectorId = null;
+	protected $unidadVecinalId = null;
 	protected $revision = 0;
 	protected $retired = false;
 	protected $datasetId = null;
@@ -97,6 +107,8 @@ class Feature extends Entity {
 		$this->addType('retired', 'boolean');
 		$this->addType('datasetId', 'integer');
 		$this->addType('overridden', 'boolean');
+		$this->addType('sectorId', 'integer');
+		$this->addType('unidadVecinalId', 'integer');
 		$this->addType('minLat', 'float');
 		$this->addType('minLon', 'float');
 		$this->addType('maxLat', 'float');
@@ -139,6 +151,10 @@ class Feature extends Entity {
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
 			'colour' => $this->getColour(),
+			// The client filters and counts on these rather than asking the geometry
+			// again — which is the whole reason they are stored (ADR-0008).
+			'sectorId' => $this->getSectorId(),
+			'unidadVecinalId' => $this->getUnidadVecinalId(),
 			'revision' => $this->getRevision(),
 			// Ships even though retired records are absent from every default
 			// read: the change feed deliberately carries them, so a client learns
@@ -180,6 +196,11 @@ class Feature extends Entity {
 			'notes' => $this->getNotes(),
 			'sourceRef' => $this->getSourceRef(),
 			'colour' => $this->getColour(),
+			// In history on purpose. ADR-0008: "Redrawing a Sector reassigns every
+			// Place inside it. That is the point, and it must be visible in history
+			// like any other change."
+			'sectorId' => $this->getSectorId(),
+			'unidadVecinalId' => $this->getUnidadVecinalId(),
 		];
 	}
 }

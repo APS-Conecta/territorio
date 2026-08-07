@@ -190,6 +190,28 @@ def clicking_places_the_coordinate(page, failures):
     page.wait_for_timeout(400)
 
 
+def the_assignment_is_shown_and_not_editable(page, failures):
+    """#11: Sector and Unidad Vecinal are shown, never typed (ADR-0008)."""
+    page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
+    page.wait_for_timeout(400)
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(600)
+
+    sidebar = page.locator(".territorio-detail")
+    if sidebar.get_by_text("Unidad Vecinal:").count() == 0:
+        failures.append("the sidebar does not say which Unidad Vecinal the record is in")
+
+    # The criterion is that there is nowhere to type one. Any input carrying the
+    # word would be exactly the promise ADR-0008 says the app cannot keep.
+    for label in ("Sector", "Unidad Vecinal"):
+        if page.get_by_role("textbox", name=label, exact=True).count() > 0:
+            failures.append(f"{label} is an editable field, which ADR-0008 forbids")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def search_narrows_everything(page, failures):
     """#19: the box narrows the Datos list, the map and the counts together.
 
@@ -201,10 +223,13 @@ def search_narrows_everything(page, failures):
     markers = page.locator(MARKERS)
 
     def analysis_total():
-        page.get_by_role("button", name="Análisis").click()
+        # Scoped to our own switch: with a record open the sidebar carries a
+        # "Mapa" control too, and an unscoped role lookup finds both.
+        switch = page.locator(".territorio-main__switch")
+        switch.get_by_role("button", name="Análisis").click()
         page.wait_for_timeout(200)
         text = page.locator(".territorio-analisis h2").inner_text()
-        page.get_by_role("button", name="Mapa").click()
+        switch.get_by_role("button", name="Mapa").click()
         page.wait_for_timeout(200)
         return int(text.split()[0])
 
@@ -334,6 +359,7 @@ def main():
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
 
         clicking_places_the_coordinate(page, failures)
+        the_assignment_is_shown_and_not_editable(page, failures)
         search_narrows_everything(page, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

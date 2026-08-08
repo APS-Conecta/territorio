@@ -3,6 +3,185 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.27.0] — unreleased
+
+A pin that says what kind of place it is.
+
+### Added
+
+- **Every Category is drawn with its own pictogram**, from Maki (CC0-1.0): a cross for Salud, a
+  school, a pitch, a police badge, a recycling mark, a community block, a town hall, a bus, a place
+  of worship, a shop, and an open ring for "Sin clasificar". They appear in the map pin, the list
+  swatch and the Capas legend, all from one function — so the legend cannot disagree with the map.
+- `place-of-worship` rather than `religious-christian`, because the app must not assume a
+  denomination. `circle-stroked` for "Sin clasificar", because that is a real seeded Category
+  meaning *nobody has decided yet* and must not read as an error.
+- A Category a clinic adds later, and a Feature whose Subcategory no longer exists, both fall back
+  to the neutral glyph rather than rendering a blank dot — a blank reads as a rendering failure.
+
+### Changed
+
+- **Pins are 22px, not 18px; list swatches 18px; Capas swatches 16px.** Maki draws on a 15-unit grid
+  and needs roughly 12px of actual mark before its detail survives. At 11px inside an 18px dot,
+  `hospital` and `bus` still read but `school`, `police` and `place-of-worship` turned to mush —
+  checked by rendering all eleven at four sizes and looking. The pin is the only place a glyph has
+  no label beside it, so it is the one sized for legibility on its own.
+- `webpack.config.js` loads `@mapbox/maki` as `asset/source`. The Nextcloud default for SVG is
+  `asset/inline`, a data URI, which cannot be recoloured and cannot be inlined into the Leaflet
+  `divIcon` — and both are needed.
+
+### Notes
+
+This is the half of ADR-0013 that does the identifying. Hue only groups the eleven Categories into
+six families, because `2·C·sin(Δh/2)` says eleven separated hues need a chroma louder than the
+palette that was replaced. **A dichromacy touches the hue and never the shape**, which is why the
+glyph carries identity and the ramp is allowed to stay quiet.
+
+The browser gate creates a Salud record, asserts its pin carries the `hospital` glyph filled with
+the seed's own `salud` colour, and retires it again. Removing the glyph makes it report `None`;
+mapping Salud to the wrong icon makes it report `'shop'`.
+
+## [0.25.0] — unreleased
+
+Geometry that draws correctly and means nothing.
+
+### Fixed
+
+Three ways a boundary could look right on the map and be wrong underneath. All silent — the shape
+drew, the import succeeded, and nothing anywhere said the geometry was broken.
+
+- **An unclosed ring contained nobody.** GeoJSON requires a ring to repeat its first position last
+  (RFC 7946 §3.1.6) and real files do not always do it. `PointInPolygon` needs four positions before
+  a ring has an inside, so an unclosed **triangle** assigned every Place inside it to nothing —
+  while Leaflet, which closes rings when it draws, showed a perfectly ordinary Sector. An unclosed
+  **quad** already has four positions and worked, so closure was silently required at three vertices
+  and silently optional at four. Rings are now closed once, on the way in, in `Geometry` — which is
+  also what stops the app **re-exporting invalid GeoJSON** to whoever asked for it. A ring that
+  cannot bound an area at all is refused with a message naming the ring.
+- **KML holes were dropped.** `KmlReader` read `<outerBoundaryIs>` and ignored `<innerBoundaryIs>`,
+  so a park drawn around a lagoon claimed every record standing in the lagoon.
+- **A `<MultiGeometry>` placemark imported shapeless.** One shape inside is now unwrapped — MyMaps
+  writes that often enough that refusing it would throw away ordinary records. Several shapes make a
+  Multi\* geometry this app does not store, and it now arrives as a type the import **refuses**, so
+  the batch counts and reports it. Arriving with no geometry made it indistinguishable from a record
+  somebody never located.
+- **One degenerate line poisoned a whole street.** A KML `<LineString>` with a repeated coordinate
+  imports as `[[x,y],[x,y]]` — two positions and no length — which passed the picker's length check
+  and made `polygonize` refuse the entire collection. The editor reported that as *"las calles
+  elegidas no cierran alrededor de ese punto"*, which was untrue; the streets closed perfectly. And
+  because picking by name picks every fragment of a street, one bad row broke the whole pick.
+
+### Notes
+
+Each fix fails its own test when reintroduced. The unclosed ring is pinned twice: in `GeometryTest`
+on what gets stored, and end to end in `AssignmentTest`, where removing the fix leaves a Place
+inside a triangle assigned to nobody.
+
+## [0.24.0] — unreleased
+
+Making undo finish the job, and stopping a Sector handing its shape to the next record.
+
+### Fixed
+
+- **Closing an edited Sector wrote its polygon onto whatever record you opened next.** Drag a vertex,
+  click another record in the list, save it — and it saved with the Sector's shape, because a drawn
+  shape wins over typed coordinates. Geoman binds `remove` to `disable()`, and `disable()` fires
+  `pm:update` when a vertex has been dragged, so tearing down the draft layer ran a handler that was
+  still bound and emitted the *old* record's geometry into the *new* record's draft. One line:
+  unbind before removing. The browser gate now drags a vertex, switches records, saves, and reads
+  the geometry back out of the change feed — removing the fix makes it say
+  *"was saved with a Polygon after an edited Sector was closed — it took the Sector's shape"*.
+
+A revert is the only recovery path this app has — ADR-0009 chose that over a backup feature — and
+it had three holes. All of them silent, and all of them reported as success.
+
+- **Undoing an import that created a Sector or a Unidad Vecinal left every Place still pointing at
+  it.** `RevertService` retired the boundary through the mapper, which writes the column; only
+  `FeatureService` also lets go of what the boundary covered (ADR-0008). So the Registry held an
+  assignment to a record no read will resolve, and the sidebar said "sin asignar" about a record the
+  database said was assigned. Registry-wide, and the revert counted those records as updated.
+- **Undoing a redraw put the old shape back and left the assignments where they were.** Same duty,
+  the other path: `FeatureService::revertTo()` wrote the geometry without reassigning, so a boundary
+  that shrank off a Place left the Place still claiming to be inside it.
+- **A batch that touched one record twice was only half undone.** A revert stamps its own Revisions
+  as it goes, so after undoing the newer entry the older one saw the revert's own write and decided
+  a colleague had been there. The record stayed on the map, counted as **"omitido"** — which reads
+  as deliberately protected rather than missed. It happens whenever one file holds a Place and a
+  boundary covering it, because importing the boundary reassigns the Place inside the same batch.
+- `Action::Merged` had no arm in the revert's `match`, so a merge recorded under an import id would
+  have been a 500 mid-revert. Unreachable today; a revert is the wrong moment to fall over.
+
+### Notes
+
+`RevisionLog::forImport()` carried a comment asserting no import touches one record twice. That was
+true of duplicate rows, which are collapsed before anything is written, and missed reassignment
+entirely. Corrected.
+
+`tests/integration/RevertAssignmentTest.php` crosses revert and assignment, which nothing did
+before — each of the three fixes fails exactly one of its tests when reintroduced.
+
+## [0.23.0] — unreleased
+
+Making the map's colours mean one thing each.
+
+### Changed
+
+- The eleven **Category colours** are now a designed low-chroma ramp instead of a Tailwind-600
+  grab-bag. Hue carries a *family* of six, lightness distinguishes the two members inside a family,
+  and identity will be carried by a pictogram (#20). The reason it has to work that way is
+  arithmetic, not taste: `2·C·sin(Δh/2)` says eleven separated hues need a chroma louder than the
+  palette being replaced. See [ADR-0013](docs/adr/0013-hue-groups-categories-the-glyph-identifies-them.md).
+- The ramp is **quiet on purpose**, so that a Sector's boundary and its name can be the loudest
+  thing on the map rather than competing with eleven category dots.
+
+### Fixed
+
+- A Sector nobody recoloured was drawn in **exactly the colour of every school** —
+  `DEFAULT_SECTOR_COLOUR` and Educación were both `#2563eb`, byte for byte.
+- `comercio_economia` sat at **2.94:1** against a white page, and `seguridad` at **2.27:1** against
+  the dark theme. Both were below the 3:1 that non-text UI needs and nothing had ever measured them.
+- `medioambiente` and `movilidad_transporte` were ΔE 0.049 apart — one colour at 18px. Under
+  tritanopia **five** pairs fell below that threshold and **three** of them were literally the same
+  colour (ΔE 0.006, 0.009 and 0.015).
+- `UNKNOWN_COLOUR`, which marks a Feature whose Subcategory no longer exists, was byte-identical to
+  `sin_clasificar`. The list already refuses to *label* those two alike; the colour said they were
+  the same thing anyway.
+
+### Added
+
+- `EnsureSeedData::ensureRamp()` — the repair step that carries the ramp to an install that already
+  exists. `ensureTaxonomy()` returns the moment the Category table has rows, so without this a
+  change to the seed reaches only a brand-new install. It repaints **row by row, guarded on the old
+  colour**, so a Category a clinic recoloured for itself survives untouched; that guard is pinned by
+  `tests/integration/RampRepaintTest.php` against a real database.
+- `tools/ramp-check.py`, run by `make lint`. It reads the colours the app actually ships — out of
+  the PHP seed and out of `src/taxonomy.js` — rather than holding a copy that could agree with
+  itself while the app disagreed with both. It gates on contrast, on normal-vision separation, and
+  on a catastrophe floor under each of the three dichromacies.
+- `docs/design/map-legibility.md`, the working-out behind issues #20–#26, and
+  [ADR-0013](docs/adr/0013-hue-groups-categories-the-glyph-identifies-them.md) for the decision
+  inside it that binds.
+
+### Vocabulary
+
+- **Sector** now says what it is *for*: it divides the population as much as the ground, and each
+  one has a fixed team so the same families are seen by the same people. That purpose is what makes
+  a Sector the figure and a Unidad Vecinal the ground, and it was nowhere in the repo.
+- **Unidad Vecinal** now says it is a unit of *community* organisation — the basis on which a Junta
+  de Vecinos is formed — that the clinic uses as **reference**, not as a working division.
+
+### Known gap
+
+`ensureRamp()` repaints `territorio_category` only. Every Sector **already drawn** keeps the colour
+stored on its own row, including the old `#2563eb` default — so those are now saturated blue on a
+deliberately quiet map. Issue #21 owns it.
+
+### Notes
+
+This is **not** a colour-blindness fix and is not claimed as one. The new ramp collapses more pairs
+under protanopia and tritanopia than the one it replaces, and fewer under deuteranopia; the numbers
+are in the ADR. No palette makes eleven categories safe on hue — the glyph does, and that is #20.
+
 ## [0.22.7] — unreleased
 
 Writing down what a Sector runs along.

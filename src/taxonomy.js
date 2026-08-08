@@ -6,8 +6,20 @@
  * separately is how the map ends up drawing a colour the legend disagrees with.
  */
 
-/** Used when a Feature points at a Subcategory the taxonomy no longer has. */
-export const UNKNOWN_COLOUR = '#6b7280'
+/**
+ * Used when a Feature points at a Subcategory the taxonomy no longer has.
+ *
+ * A broken reference must look different from a record somebody correctly left
+ * unclassified — the rule the list already follows by refusing to LABEL this case
+ * "Sin clasificar" (FeatureList.vue). It was `#6b7280`, byte-identical to the old
+ * `sin_clasificar`, so the colour said they were the same thing while the label
+ * said they were not.
+ *
+ * Separated from it by dE 0.055 — barely. Three neutrals share the lightness band
+ * where a colour clears 3:1 against both a white page and the dark theme, and
+ * there is no room for a fourth. Checked by tools/ramp-check.py.
+ */
+export const UNKNOWN_COLOUR = '#62676c'
 
 /**
  * The Category holding the territorial divisions — Sector now, Unidad Vecinal
@@ -20,12 +32,21 @@ const DIVISIONS_SLUG = 'division_territorial'
 const SECTOR_SLUG = 'sector'
 
 /**
- * What a Sector is coloured when nobody has chosen. Any colour would do — it is
- * only somewhere to begin, and the picker is right there in the sidebar. Shared
- * so the swatch the form shows is the value that will be saved: a colour input
- * has no empty state, and left to itself it would show black and store nothing.
+ * What a Sector is coloured when nobody has chosen. Neutral, because a clinic
+ * names its sectores "words, numbers or colours" (CONTEXT.md) and only one of
+ * those three is a colour — so colour cannot be the identity. ADR-0013.
+ *
+ * `#949494` and not any grey: the lightest that still clears 3:1 against a white
+ * page while staying dE 0.101 from `sin_clasificar`. An earlier `#7d7d7d` sat
+ * dE 0.026 away, so an un-recoloured Sector read as an unclassified record —
+ * which is why tools/ramp-check.py measures this constant rather than merely
+ * checking it differs from the Categories.
+ *
+ * Not the same as absent: App.vue writes it onto a new draft, so it is stored
+ * like any other colour. And it is shared with the form because a colour input
+ * has no empty state — left to itself it shows black and saves nothing.
  */
-export const DEFAULT_SECTOR_COLOUR = '#2563eb'
+export const DEFAULT_SECTOR_COLOUR = '#949494'
 
 export function isDivision(category) {
 	return category.slug === DIVISIONS_SLUG

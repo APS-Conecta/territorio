@@ -11,7 +11,16 @@
 	<details class="territorio-capas" open>
 		<summary class="territorio-capas__summary">
 			Capas
-			<span v-if="anythingHidden" class="territorio-capas__badge">
+			<!--
+				Counts what is hidden, so it is gated on that and not on
+				`anythingHidden` — which is `isFiltered()`, and is also true for a
+				typed search. Searching with nothing ticked off rendered
+				"0 ocultas", a badge announcing its own irrelevance.
+
+				"Ver todo" below stays on `anythingHidden`: a search DOES need
+				clearing, so there the wider question is the right one.
+			-->
+			<span v-if="filter.hidden.size > 0" class="territorio-capas__badge">
 				{{ filter.hidden.size }} ocultas
 			</span>
 		</summary>
@@ -53,7 +62,9 @@
 							:indeterminate="stateOf(category) === 'some'"
 							@update:model-value="$emit('toggle-category', category)" />
 					</span>
-					<span class="territorio-capas__swatch" :style="{ background: category.color }" />
+					<span class="territorio-capas__swatch" :style="{ background: category.color }">
+						<NcIconSvgWrapper :svg="glyphFor(category.slug)" :size="11" />
+					</span>
 					<span class="territorio-capas__name">{{ category.label }}</span>
 				</summary>
 
@@ -73,13 +84,15 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import { glyphFor } from '../glyphs.js'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
 import { divisionsOf, treeOf } from '../taxonomy.js'
 
 export default {
 	name: 'CapasPanel',
 
-	components: { NcButton, NcCheckboxRadioSwitch },
+	components: { NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper },
 
 	props: {
 		taxonomy: { type: Array, required: true },
@@ -103,6 +116,8 @@ export default {
 	},
 
 	methods: {
+		glyphFor,
+
 		stateOf(category) {
 			return categoryState(this.filter, category)
 		},
@@ -166,11 +181,20 @@ export default {
 }
 
 .territorio-capas__swatch {
-	display: inline-block;
-	width: 12px;
-	height: 12px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* 16px, not the 12px it was. A Maki glyph is drawn on a 15-unit grid and
+	   needs about 12px of mark to hold its detail; this is the legend for the
+	   map, so the two have to read as the same pictogram. */
+	width: 16px;
+	height: 16px;
 	border-radius: 50%;
 	flex: 0 0 auto;
+}
+
+.territorio-capas__swatch :deep(svg) {
+	fill: #fff;
 }
 
 .territorio-capas__name {

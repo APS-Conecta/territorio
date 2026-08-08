@@ -309,11 +309,25 @@ class FeatureService {
 	 * record as overridden, and every future import would then skip them for good
 	 * (ADR-0003), which is a strange and permanent consequence of pressing undo.
 	 *
+	 * It still has to reassign, though, which is the half this skipped. Putting a
+	 * boundary's old shape back moves the line, and ADR-0008 says what falls
+	 * inside a boundary is derived from that line rather than stored by hand — so
+	 * a revert that restored the geometry and left the assignments alone produced
+	 * exactly the state ADR-0008 exists to prevent. Only the override marking is
+	 * different from `update()`; the geometry consequences are identical.
+	 *
 	 * @param array<string, mixed> $input
 	 * @throws DoesNotExistException
 	 */
 	public function revertTo(int $id, array $input): Feature {
-		return $this->write($this->features->find($id), $input, null, markOverride: false);
+		$feature = $this->features->find($id);
+		// Read before the entity is mutated, exactly as update() does: letting go
+		// of what a boundary no longer covers needs the shape it used to have.
+		$before = $feature->getGeometry();
+		$written = $this->write($feature, $input, null, markOverride: false);
+		$this->reassignAround($written, $before);
+
+		return $written;
 	}
 
 	/** @param array<string, mixed> $input */

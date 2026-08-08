@@ -77,7 +77,9 @@
 			:force-display-actions="false"
 			@click="$emit('select', feature.id)">
 			<template #icon>
-				<span class="territorio-list__swatch" :style="{ background: swatchFor(feature) }" />
+				<span class="territorio-list__swatch" :style="{ background: swatchFor(feature) }">
+					<NcIconSvgWrapper :svg="glyphFor(categorySlugOf(feature))" :size="12" />
+				</span>
 			</template>
 			<template #subname>
 				{{ subcategoryLabel(feature) }}<span v-if="feature.geometry === null"> · sin coordenada</span>
@@ -91,13 +93,15 @@ import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { glyphFor } from '../glyphs.js'
 import { colourOf, indexSubcategories } from '../taxonomy.js'
 
 export default {
 	name: 'FeatureList',
 
-	components: { NcAppContentList, NcButton, NcEmptyContent, NcListItem, NcTextField },
+	components: { NcAppContentList, NcButton, NcEmptyContent, NcIconSvgWrapper, NcListItem, NcTextField },
 
 	props: {
 		features: { type: Array, required: true },
@@ -118,6 +122,13 @@ export default {
 	},
 
 	methods: {
+		glyphFor,
+
+		/** Which Category a record belongs to, for its pictogram. */
+		categorySlugOf(feature) {
+			return this.subcategories.get(feature.subcategoryId)?.categorySlug ?? null
+		},
+
 		/**
 		 * The fallback deliberately does NOT read "Sin clasificar": that is a real
 		 * seeded Category, and using its name here would make a broken reference
@@ -162,9 +173,20 @@ export default {
 }
 
 .territorio-list__swatch {
-	display: block;
-	width: 16px;
-	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* The label sits beside it, so this only has to be recognisable as the
+	   same mark the pin uses — see TerritorioMap for why 12px is the floor. */
+	width: 18px;
+	height: 18px;
 	border-radius: 50%;
+}
+
+/* White for the reason the map pin's glyph is white: the ramp was validated
+   against white, and the dot underneath is a data colour that does not follow
+   the theme. */
+.territorio-list__swatch :deep(svg) {
+	fill: #fff;
 }
 </style>

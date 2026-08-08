@@ -37,6 +37,24 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 	}
 
+	/**
+	 * A ring GeoJSON would call invalid still has to work, because the files real
+	 * cadastres ship are not always valid and a boundary that claims nobody says
+	 * nothing about it — it draws correctly and assigns no one.
+	 *
+	 * Three positions, first not repeated last. `PointInPolygon` needs four before
+	 * a ring has an inside, so before Geometry closed rings on the way in this
+	 * Sector contained nothing at all.
+	 */
+	public function testAnUnclosedRingStillClaimsWhatIsInsideIt(): void {
+		$triangle = [[[-70.60, -33.54], [-70.56, -33.54], [-70.56, -33.50]]];
+		$sector = $this->sector('Sector triángulo', $triangle);
+
+		$place = $this->place('Escuela dentro del triángulo', ['geometry' => self::at(-70.58, -33.53)]);
+
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+	}
+
 	public function testAPlaceOutsideEveryBoundaryIsAssignedToNone(): void {
 		$this->sector('Sector Poniente', self::WEST);
 		$place = $this->place('Escuela lejos', ['geometry' => self::at(-70.40, -33.52)]);

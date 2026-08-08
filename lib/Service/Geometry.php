@@ -78,7 +78,64 @@ final class Geometry {
 			throw new InvalidGeometryException($type . ' has no coordinates');
 		}
 
+		if ($type === 'Polygon') {
+			$coordinates = self::closedRings($coordinates);
+		}
+
 		return new self($type, $coordinates, self::flatten($coordinates, self::NESTING[$type]));
+	}
+
+	/**
+	 * Every ring with its first position repeated last, as GeoJSON requires
+	 * (RFC 7946 §3.1.6).
+	 *
+	 * Real files do not always do it, and KML rings arrive through GeoJsonReader
+	 * the same way, so there are two doors. Closing here — once, on the way in —
+	 * rather than tolerating an open ring later, because left open it failed in
+	 * three places and announced itself in none:
+	 *
+	 * - `PointInPolygon` needs four positions before a ring has an inside, so an
+	 *   unclosed TRIANGLE contained nothing at all and every Place inside it was
+	 *   assigned to nobody. Leaflet closes rings when it draws, so the boundary
+	 *   looked perfectly correct on the map.
+	 * - An unclosed QUAD already has four positions and worked, which made
+	 *   closure silently required at three vertices and silently optional at four.
+	 * - The app re-exports what it stored, so an invalid ring went back out as
+	 *   invalid GeoJSON — to a municipality, in the format they asked for.
+	 *
+	 * @param array<int, mixed> $rings
+	 * @return array<int, array<int, array{float, float}>>
+	 */
+	private static function closedRings(array $rings): array {
+		foreach ($rings as $index => $ring) {
+			if (!is_array($ring) || $ring === []) {
+				throw new InvalidGeometryException('a Polygon ring must be a list of positions');
+			}
+
+			$positions = array_values($ring);
+			$first = $positions[0];
+			// `==` and not `===`: JSON decodes -70 as int and -70.0 as float, and a
+			// ring closed with the same coordinate written differently is closed.
+			if (count($positions) > 1 && end($positions) == $first) {
+				array_pop($positions);
+			}
+
+			// Three distinct corners is the least that can bound an area. Fewer
+			// stores and draws as a line and then contains nothing, which is the
+			// same silence in a smaller shape.
+			if (count($positions) < 3) {
+				throw new InvalidGeometryException(sprintf(
+					'a Polygon ring needs at least three positions to bound an area; ring %d has %d',
+					$index,
+					count($positions),
+				));
+			}
+
+			$positions[] = $first;
+			$rings[$index] = $positions;
+		}
+
+		return $rings;
 	}
 
 	/**

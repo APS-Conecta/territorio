@@ -27,3 +27,6 @@ pnpm-debug.log*
 
 # Screenshots from tools/browser-check.py — evidence for a person, not source.
 tools/.browser-check/
+
+# tools/browser-check.py imports tools/ramp-check.py, so Python caches it here.
+__pycache__/

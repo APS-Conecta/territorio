@@ -124,30 +124,77 @@ class KmlReader {
 		return ['type' => 'Feature', 'properties' => $properties, 'geometry' => $geometry];
 	}
 
-	/** @return ?array<string, mixed> */
+	/**
+	 * The placemark's geometry, looking through a MultiGeometry wrapper.
+	 *
+	 * MyMaps wraps a single shape in `<MultiGeometry>` often enough that treating
+	 * that as unreadable would throw away ordinary records, so one shape inside
+	 * is simply that shape. Several make a Multi* geometry, which this app does
+	 * not store — and it has to arrive as a type `Geometry::supports()` REFUSES,
+	 * so the import counts it and the batch reports it. Returning null instead
+	 * imported the placemark shapeless, which is indistinguishable from a record
+	 * somebody never located.
+	 *
+	 * @return ?array<string, mixed>
+	 */
 	private function geometry(SimpleXMLElement $placemark): ?array {
-		if (isset($placemark->Point->coordinates)) {
-			$positions = $this->positions((string)$placemark->Point->coordinates);
+		if (!isset($placemark->MultiGeometry)) {
+			return $this->shapeIn($placemark);
+		}
+
+		$inside = $placemark->MultiGeometry;
+		$shapes = count($inside->Point) + count($inside->LineString) + count($inside->Polygon);
+
+		if ($shapes === 1) {
+			return $this->shapeIn($inside);
+		}
+
+		return $shapes === 0 ? null : ['type' => 'GeometryCollection', 'coordinates' => []];
+	}
+
+	/**
+	 * The one shape held directly by an element — a Placemark, or a
+	 * MultiGeometry wrapping exactly one.
+	 *
+	 * @return ?array<string, mixed>
+	 */
+	private function shapeIn(SimpleXMLElement $container): ?array {
+		if (isset($container->Point->coordinates)) {
+			$positions = $this->positions((string)$container->Point->coordinates);
 
 			return $positions === [] ? null : ['type' => 'Point', 'coordinates' => $positions[0]];
 		}
 
-		if (isset($placemark->LineString->coordinates)) {
-			$positions = $this->positions((string)$placemark->LineString->coordinates);
+		if (isset($container->LineString->coordinates)) {
+			$positions = $this->positions((string)$container->LineString->coordinates);
 
 			return $positions === [] ? null : ['type' => 'LineString', 'coordinates' => $positions];
 		}
 
-		$ring = $placemark->Polygon->outerBoundaryIs->LinearRing->coordinates ?? null;
-		if ($ring !== null) {
-			$positions = $this->positions((string)$ring);
-
-			// A KML ring is one flat list of positions; GeoJSON wraps it, because a
-			// Polygon has rings — an outer one and any number of holes.
-			return $positions === [] ? null : ['type' => 'Polygon', 'coordinates' => [$positions]];
+		$ring = $container->Polygon->outerBoundaryIs->LinearRing->coordinates ?? null;
+		if ($ring === null) {
+			return null;
 		}
 
-		return null;
+		$outer = $this->positions((string)$ring);
+		if ($outer === []) {
+			return null;
+		}
+
+		// A KML ring is one flat list of positions; GeoJSON wraps it, because a
+		// Polygon has rings — an outer one and any number of holes. The holes used
+		// to be dropped here, which left the boundary claiming every record
+		// standing in the lagoon it was drawn around. Nothing said so: the shape
+		// still drew and still assigned, just wrongly.
+		$rings = [$outer];
+		foreach ($container->Polygon->innerBoundaryIs ?? [] as $inner) {
+			$hole = $this->positions((string)($inner->LinearRing->coordinates ?? ''));
+			if ($hole !== []) {
+				$rings[] = $hole;
+			}
+		}
+
+		return ['type' => 'Polygon', 'coordinates' => $rings];
 	}
 
 	/**

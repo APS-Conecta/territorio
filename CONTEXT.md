@@ -21,13 +21,18 @@ _Avoid_: catchment, coverage area, jurisdiction, the comuna
 
 **Unidad Vecinal**:
 An official municipal subdivision of a Comuna, numbered within it and carrying a nationally
-unique id. Its boundary comes from the national cadastre — the clinic reads it, never draws it.
+unique id. It exists to organise neighbours who share needs and nearby spaces, and it is the basis
+on which a Junta de Vecinos is formed — it is a unit of *community* organisation, not of clinical
+work. Its boundary comes from the national cadastre: the clinic reads it, never draws it, and uses
+it as **reference**. The clinic's own working division is the Sector.
 _Avoid_: UV as a bare number, neighbourhood, barrio, junta de vecinos
 
 **Sector**:
-A division of its own territory that a CESFAM draws for itself, to assign teams. Its boundary
-follows streets, it is named however that clinic names things — words, numbers or colours — and
-it is independent of Unidades Vecinales: neither one nests inside the other.
+A division of its own territory that a CESFAM draws for itself. It divides the **population** as
+much as the ground: each Sector has one fixed team, so the same families are seen by the same
+people over time, which is the whole point of drawing one. Its boundary follows streets, it is
+named however that clinic names things — words, numbers or colours — and it is independent of
+Unidades Vecinales: neither one nests inside the other.
 _Avoid_: zone, area, quadrant, sub-territory
 
 ### Shared vs personal

@@ -30,6 +30,7 @@ else. That took this from passing two runs in three to nine of nine.
 """
 
 import json
+import re
 import subprocess
 import sys
 import uuid
@@ -772,10 +773,11 @@ def a_generated_polygon_is_editable(page, square, failures):
         failures.append("dragging a vertex of the generated polygon changed nothing")
 
 
-def retire_the_generated_sector(page, name):
-    """Take the run's own Sector off the map again (ADR-0005: retire, not delete).
+def retire_the_runs_record(page, name):
+    """Take one of the run's own records off the map again (ADR-0005: retire,
+    not delete).
 
-    Run once, at the end. After the polygonize check this Sector is four
+    Used for two things. The Sector, once, at the end: after the polygonize check this Sector is four
     kilometres across and covers most of what the dev instance holds, so leaving
     it behind reassigns half the Registry to it — which is what a Sector is FOR,
     and exactly why a run must not leave one lying about. It broke two
@@ -1148,6 +1150,268 @@ def kml_says_what_it_cannot_carry(page, failures):
     page.wait_for_timeout(400)
 
 
+def a_pin_says_what_kind_of_place_it_is(page, failures):
+    """#20: the pictogram, where it has to work — a pin with no label beside it.
+
+    Hue only groups Categories into six families (ADR-0013), so this glyph is
+    what tells a colegio from a farmacia, and it is the half a dichromacy cannot
+    take away. On the map there is no text to fall back on.
+
+    Creates its own Salud record rather than trusting the instance to hold one:
+    a check that cannot set up its own data has nothing to say. The expected fill
+    is read out of the seed for the same reason the Capás check reads it —
+    a copy here could agree with itself while the app disagreed with both.
+    """
+    salud = _seeded_categories().get("salud")
+    if salud is None:
+        failures.append("the seed has no 'salud' Category, so the glyph check could not run")
+        return
+
+    name = f"CESFAM del Navegador {RUN}"
+
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.get_by_label("Nombre").fill(name)
+    page.get_by_label("Latitud").fill(f"-33.5{340 + NUDGE}")
+    page.get_by_label("Longitud").fill(f"-70.5{340 + NUDGE}")
+
+    # NcSelect labels its options "Category · Subcategory", because "Otro"
+    # appears in nearly every Category and means something different in each.
+    page.get_by_label("Subcategoría").click()
+    page.get_by_label("Subcategoría").fill("Salud · CESFAM")
+    page.wait_for_timeout(500)
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(300)
+
+    save(page, failures, "the Salud place")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} did not reach the Registry, so its pin was not checked")
+        return
+
+    # Narrow the map to this one record: a pin inside a cluster is not rendered.
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(1200)
+
+    pin = page.locator(".territorio-pin__dot").first
+    if pin.count() == 0:
+        failures.append(f"{name!r} is in the Registry but drew no pin")
+        page.locator(SEARCH).fill("")
+        return
+
+    painted = pin.evaluate(
+        """(dot) => {
+            const svg = dot.querySelector('svg')
+            const path = dot.querySelector('svg path')
+            const rgb = getComputedStyle(dot).backgroundColor.match(/\\d+/g) || []
+            return {
+                fill: '#' + rgb.slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join(''),
+                glyph: svg ? svg.id : null,
+                glyphFill: path ? getComputedStyle(path).fill : null,
+            }
+        }""",
+    )
+
+    if painted["glyph"] != "hospital":
+        failures.append(
+            f"a Salud pin carries the {painted['glyph']!r} glyph, expected 'hospital' — the "
+            f"pictogram is what identifies a Category on the map",
+        )
+    if painted["fill"] != salud.lower():
+        failures.append(f"a Salud pin is filled {painted['fill']}, but the seed says {salud}")
+    if painted["glyphFill"] != "rgb(255, 255, 255)":
+        failures.append(
+            f"the glyph is drawn {painted['glyphFill']}, not white — the ramp clears 3:1 "
+            f"against white and was never checked against anything else",
+        )
+
+    # Retired again, so this run still leaves behind exactly the Place and the
+    # Sector that the later count assertions are written against. Retiring rather
+    # than deleting because ADR-0005 has no delete — and it is the app's own way
+    # of taking something off the map, so it costs nothing to exercise it.
+    retire_the_runs_record(page, name)
+
+
+def registry_feature(page, name):
+    """One record as the Registry holds it, by name. None if it is not there.
+
+    Through the app's own change feed rather than the screen or the database:
+    it is the read a second browser would do, so it proves the record was
+    written rather than that a form still has values in it.
+    """
+    features = page.evaluate(
+        """async () => {
+            const response = await fetch(
+                '/index.php/apps/territorio/changes?since=0',
+                { headers: { requesttoken: window.OC.requestToken } },
+            )
+            const body = await response.json()
+            return body.features || []
+        }""",
+    )
+
+    return next((feature for feature in features if feature.get("name") == name), None)
+
+
+def a_dragged_vertex_stays_with_its_own_record(page, failures):
+    """#31: closing an edited Sector must not hand its shape to the next record.
+
+    Geoman binds `remove` to `disable()`, and `disable()` fires `pm:update` when a
+    vertex has been dragged. So tearing down the draft layer used to run the
+    still-bound handler, emit `reshape` carrying the OLD polygon, and let App.vue
+    write it onto the draft that had already become a different record — which
+    then saved with somebody else's geometry, because a drawn shape wins over
+    typed coordinates.
+
+    Nothing caught it: no unit test loads a component, and the map's own checks
+    never switch records mid-edit. It is the same shape of bug as `Guardar` doing
+    nothing for eight slices, and it is why this gate exists.
+
+    Asserted on the Registry, not the form. The screen would look right either
+    way — the sidebar re-reads from the draft it was just handed.
+    """
+    place = f"Plaza del Navegador {RUN}"
+    sector = f"Sector Navegador {RUN}"
+
+    before = registry_feature(page, place)
+    if before is None or (before.get("geometry") or {}).get("type") != "Point":
+        skip(f"{place!r} is not a Point in the Registry, so the vertex-drag check did not run")
+        return
+
+    page.locator(SEARCH).fill(sector)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() == 0:
+        skip("this run's Sector was not in the list, so the vertex-drag check did not run")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    if handles.count() == 0:
+        failures.append("the open Sector had no draggable vertex, so nothing was dragged")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    handle = handles.first.bounding_box()
+    page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(handle["x"] + 40, handle["y"] + 40, steps=6)
+    page.mouse.up()
+    page.wait_for_timeout(400)
+
+    # Switch records WITHOUT saving the Sector. This is the whole point: the
+    # teardown happens because the draft is being replaced.
+    page.locator(SEARCH).fill(place)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{place!r} vanished from the list while switching records")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(800)
+    save(page, failures, "the Place after leaving an edited Sector")
+
+    after = registry_feature(page, place)
+    kind = (after.get("geometry") or {}).get("type") if after else None
+    if kind != "Point":
+        failures.append(
+            f"{place!r} was saved with a {kind} after an edited Sector was closed — it took "
+            f"the Sector's shape",
+        )
+    elif after["geometry"]["coordinates"] != before["geometry"]["coordinates"]:
+        failures.append(
+            f"{place!r} moved from {before['geometry']['coordinates']} to "
+            f"{after['geometry']['coordinates']} without anybody editing it",
+        )
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def _seeded_categories():
+    """The colours the seed ships, borrowed from tools/ramp-check.py.
+
+    Imported rather than re-parsed. The hyphen in the filename keeps it off the
+    normal import path, and a second copy of the regex here is exactly the drift
+    this whole check exists to catch.
+    """
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "ramp-check.py"
+    spec = importlib.util.spec_from_file_location("ramp_check", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module.seeded_categories()
+
+
+def every_category_reaches_the_browser_with_its_colour(page, failures):
+    """The colours in the seed are the colours on the screen.
+
+    Compares against the seeded values, not against an invariant. The first
+    version of this check asserted only "non-blank and all different", and a
+    review pointed out that the old palette satisfies both — eleven distinct,
+    non-blank colours — so the check could not fail for the exact reason its own
+    docstring gave for existing. It was theatre.
+
+    The failure it now actually catches: `ensureTaxonomy()` returns early on an
+    install that already has rows, so a seed change reaches an existing install
+    only through `ensureRamp()`. Narrow that guard and the screen keeps serving
+    the old palette while every other suite stays green — which is the shape of
+    bug this gate was built for (`Guardar` did nothing for eight slices).
+
+    Asserts on what the Registry served, per SKILL.md § 5: these colours come out
+    of the database, through initial state, into Vue. Nothing else here reads
+    that path end to end.
+    """
+    seeded = _seeded_categories()
+    swatches = page.locator(".territorio-capas__swatch")
+    count = swatches.count()
+
+    if count == 0:
+        failures.append("the Capas panel drew no Category swatches at all")
+        return
+
+    def as_hex(painted):
+        numbers = re.findall(r"\d+", painted or "")
+        if len(numbers) < 3:
+            return painted
+        return "#" + "".join(f"{int(n):02x}" for n in numbers[:3])
+
+    painted = {
+        as_hex(swatches.nth(i).evaluate("e => getComputedStyle(e).backgroundColor"))
+        for i in range(count)
+    }
+    expected = {colour.lower() for colour in seeded.values()}
+
+    stale = expected - painted
+    if stale:
+        failures.append(
+            f"the seed ships {sorted(stale)} but the browser never painted them — the taxonomy "
+            f"the Registry served is not the one EnsureSeedData holds",
+        )
+
+    unexpected = painted - expected
+    if unexpected:
+        failures.append(
+            f"the browser painted {sorted(unexpected)}, which no Category in the seed carries",
+        )
+
+    # Whether the Sector default is far enough from a Category is NOT checked
+    # here. It is a question about perceptual distance — the first attempt at
+    # that fix shipped a grey sitting dE 0.026 from `sin_clasificar`, which no
+    # equality test can see — and `tools/ramp-check.py` owns it, because it is
+    # the only thing here that can measure OKLab. This gate proves the round
+    # trip; that check proves the colour.
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -1170,6 +1434,8 @@ def main():
         ).count() > 0:
             toggle_division(page, "Unidad Vecinal")
 
+        every_category_reaches_the_browser_with_its_colour(page, failures)
+
         create_a_place(page, f"Plaza del Navegador {RUN}", failures)
         draw_a_sector(page, f"Sector Navegador {RUN}", failures)
 
@@ -1183,6 +1449,12 @@ def main():
                 failures.append(f"{name!r} is not in the list after a reload")
 
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
+
+        # Before the polygonize check below, which grows this run's Sector to four
+        # kilometres across: a vertex of the small drawn one is on screen and
+        # draggable, which is what this needs.
+        a_dragged_vertex_stays_with_its_own_record(page, failures)
+        a_pin_says_what_kind_of_place_it_is(page, failures)
 
         clicking_places_the_coordinate(page, failures)
         the_assignment_is_shown_and_not_editable(page, failures)
@@ -1201,7 +1473,7 @@ def main():
 
         # Last, and after every check that needs this run's Sector: it is left
         # four kilometres across by the polygonize check above.
-        retire_the_generated_sector(page, f"Sector Navegador {RUN}")
+        retire_the_runs_record(page, f"Sector Navegador {RUN}")
 
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)

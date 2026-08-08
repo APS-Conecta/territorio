@@ -66,6 +66,79 @@ final class KmlReaderTest extends TestCase {
 	 * Slugified here rather than matched against the taxonomy: the reader knows
 	 * nothing about what Categories exist, which is the import's job.
 	 */
+	/**
+	 * A hole is part of what bounds the area. Dropped, the boundary claims every
+	 * record standing in the lagoon it is drawn around — and nothing says so,
+	 * because the shape still draws and still assigns, just wrongly.
+	 */
+	public function testAPolygonKeepsItsHoles(): void {
+		$kml = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Parque con laguna</name><Polygon>
+		    <outerBoundaryIs><LinearRing><coordinates>
+		      -70.62,-33.55 -70.60,-33.55 -70.60,-33.54 -70.62,-33.54 -70.62,-33.55
+		    </coordinates></LinearRing></outerBoundaryIs>
+		    <innerBoundaryIs><LinearRing><coordinates>
+		      -70.615,-33.548 -70.605,-33.548 -70.605,-33.543 -70.615,-33.548
+		    </coordinates></LinearRing></innerBoundaryIs>
+		  </Polygon></Placemark>
+		</Document></kml>
+		XML;
+
+		$rings = $this->reader->read($kml, 'prueba')[0]['geometry']['coordinates'];
+
+		self::assertCount(2, $rings, 'the hole was dropped, so the area claims what is inside it');
+		self::assertSame([-70.615, -33.548], $rings[1][0]);
+	}
+
+	/**
+	 * MyMaps wraps a single shape in a MultiGeometry often enough that treating
+	 * that as unreadable would throw away ordinary records.
+	 */
+	public function testAMultiGeometryAroundOneShapeIsUnwrapped(): void {
+		$kml = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Plaza envuelta</name><MultiGeometry>
+		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
+		  </MultiGeometry></Placemark>
+		</Document></kml>
+		XML;
+
+		$geometry = $this->reader->read($kml, 'prueba')[0]['geometry'];
+
+		self::assertSame('Point', $geometry['type'] ?? null);
+		self::assertSame([-70.58, -33.52], $geometry['coordinates']);
+	}
+
+	/**
+	 * More than one shape is a Multi* geometry, which this app does not store.
+	 * It must arrive as something `Geometry::supports()` refuses, so the import
+	 * COUNTS it as unsupported and says so — the established answer for a
+	 * MultiPolygon in a cadastre. Arriving with no geometry at all would import
+	 * it shapeless instead, which looks like a record somebody never located.
+	 */
+	public function testAMultiGeometryAroundSeveralShapesArrivesUnsupportedRatherThanShapeless(): void {
+		$kml = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Dos plazas</name><MultiGeometry>
+		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
+		    <Point><coordinates>-70.57,-33.51</coordinates></Point>
+		  </MultiGeometry></Placemark>
+		</Document></kml>
+		XML;
+
+		$geometry = $this->reader->read($kml, 'prueba')[0]['geometry'];
+
+		self::assertNotNull($geometry, 'it arrived shapeless, so the import will not count it');
+		self::assertFalse(
+			\OCA\Territorio\Service\Geometry::supports($geometry['type'] ?? null),
+			'the type must be one the import refuses, so the batch reports it',
+		);
+	}
+
 	public function testTheFolderNameBecomesTheCategory(): void {
 		$rows = $this->reader->read(self::KML, 'prueba');
 

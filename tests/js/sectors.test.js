@@ -35,6 +35,21 @@ const cornersOf = (polygon) => [...new Set(polygon.coordinates[0]
 	.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`))].sort()
 
 describe('faceAround', () => {
+	it('ignores a line whose two points are the same place', () => {
+		// A KML <LineString> with a repeated coordinate imports as this. It has two
+		// positions, so the old length check let it through, and polygonize then
+		// refused the whole collection — "Each LinearRing of a Polygon must have 4
+		// or more Positions". The editor caught that and told the person "las
+		// calles elegidas no cierran alrededor de ese punto", which was untrue:
+		// the streets closed perfectly. And because picking by name picks every
+		// fragment of a street, one bad row poisoned the whole pick.
+		const degenerate = { type: 'LineString', coordinates: [[9, 9], [9, 9]] }
+		const polygon = faceAround([...SQUARE, degenerate], [2, 2])
+
+		expect(polygon).not.toBeNull()
+		expect(cornersOf(polygon)).toEqual(['0,0', '0,4', '4,0', '4,4'])
+	})
+
 	it('closes a ring from segments that arrive in no particular order', () => {
 		const shuffled = [SQUARE[2], SQUARE[0], SQUARE[3], SQUARE[1]]
 		const polygon = faceAround(shuffled, [2, 2])

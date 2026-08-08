@@ -21,6 +21,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
+import { glyphFor } from '../glyphs.js'
 import { boundsOf, colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
 /**
@@ -516,6 +517,19 @@ export default {
 		 * a layer adopted twice would report every drag twice.
 		 */
 		drawDraft() {
+			// Unbind BEFORE removing, or the layer reports its shape on the way
+			// out and hands it to whatever draft is open by then.
+			//
+			// Geoman binds `remove` to `disable()` (leaflet-geoman.js:13837), and
+			// `disable()` fires `pm:update` when a vertex was dragged
+			// (:13850, guarded by `_layerEdited`). So closing Sector A after
+			// dragging one of its vertices ran report(A) during teardown, emitted
+			// `reshape` with A's polygon, and App.vue wrote it onto the draft that
+			// had already become record B — which then saved B with A's geometry,
+			// silently, because save() prefers a drawn shape over typed
+			// coordinates. It also poisoned `reported`, swallowing the next real
+			// redraw.
+			this.draftLayer?.off('pm:edit pm:update')
 			this.draftLayer?.remove()
 			this.draftLayer = null
 
@@ -555,13 +569,22 @@ export default {
 		iconFor(feature) {
 			const colour = colourOf(feature, this.subcategories)
 			const selected = feature.id === this.selectedId
+			// What the pin actually says. Hue only groups Categories into six
+			// families; this is what tells a colegio from a farmacia, and it is the
+			// half a dichromacy cannot take away (ADR-0013).
+			//
+			// Interpolated unescaped, unlike the colour beside it: this markup is a
+			// bundled Maki asset resolved at build time, not a stored value. The
+			// colour is something a person typed into a picker, which is why that
+			// one goes through escapeHtml.
+			const glyph = glyphFor(this.subcategories.get(feature.subcategoryId)?.categorySlug)
 
 			return L.divIcon({
 				className: 'territorio-pin',
 				html: `<span class="territorio-pin__dot${selected ? ' territorio-pin__dot--selected' : ''}"`
-					+ ` style="background:${escapeHtml(colour)}"></span>`,
-				iconSize: [18, 18],
-				iconAnchor: [9, 9],
+					+ ` style="background:${escapeHtml(colour)}">${glyph}</span>`,
+				iconSize: [22, 22],
+				iconAnchor: [11, 11],
 			})
 		},
 	},
@@ -590,12 +613,35 @@ export default {
 <style lang="scss">
 /* Not scoped: Leaflet builds the marker element itself, outside Vue's tree. */
 .territorio-pin__dot {
-	display: block;
-	width: 18px;
-	height: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/*
+	 * 22px, not the 18px this was. A Maki icon is drawn on a 15-unit grid and
+	 * needs about 12px of actual mark before its detail survives — at 11px inside
+	 * an 18px dot, `hospital` and `bus` still read but `school`, `police` and
+	 * `place-of-worship` turn to mush. This is the one place a glyph has no label
+	 * beside it, so it is the one that has to be legible on its own.
+	 */
+	width: 22px;
+	height: 22px;
 	border-radius: 50%;
 	border: 2px solid var(--color-main-background, #fff);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+	/*
+	 * White, and not a theme variable. The ramp was validated against white
+	 * specifically — every Category clears 3:1 against it (WCAG 1.4.11,
+	 * tools/ramp-check.py) — and the dot's fill is a data colour that does not
+	 * change with the theme, so a glyph that did would stop clearing on one of
+	 * them. 11px inside a dot whose border leaves 14px.
+	 */
+	svg {
+		width: 14px;
+		height: 14px;
+		fill: #fff;
+		flex: 0 0 auto;
+	}
 
 	&--selected {
 		outline: 3px solid var(--color-primary-element, #0b6bcb);

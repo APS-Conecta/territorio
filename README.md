@@ -145,7 +145,7 @@ AGPL-3.0-or-later — see [`LICENSE`](LICENSE).
 
 This is not a free choice. The app compiles `@nextcloud/vue` (AGPL-3.0-or-later) into the
 bundles under `js/`, along with Nextcloud packages under GPL-3.0-or-later, so the copyleft
-is inherited from what it links. [ADR-0009](../../aps-conecta-web/docs/adr/0009-agpl-across-the-org.md)
+is inherited from what it links. [ADR-0010](../../aps-conecta-web/docs/adr/0010-agpl-across-the-org.md)
 records the organisation-wide decision that followed from it.
 
 Because the AGPL's section 13 covers network use, staff who use this app over the intranet

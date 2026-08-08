@@ -22,7 +22,7 @@ Open issues carry what is left.
 
     make test             # PHP unit tests in a bare container — no Nextcloud needed
     make test-js          # the frontend's pure logic (filters, counts) — vitest
-    make lint             # php -l over lib/, tests/ and tools/
+    make lint             # php -l over lib/, tests/ and tools/, plus the Category ramp's contrast and separation
     make lint-js          # eslint over src/ and tests/js — one rule: nothing undefined
     make test-browser     # drive the running app with Playwright (needs instance-up + build)
     npm install           # once
@@ -138,3 +138,17 @@ internet access — see [ADR-0004](docs/adr/0004-openstreetmap-is-tiles-and-offl
 The Content-Security-Policy host is derived from whatever URL is configured, so the two can never
 drift apart. A URL that is not a usable tile template is stored as typed but never served: the map
 falls back to OpenStreetMap and the settings page says so.
+
+## Licence
+
+AGPL-3.0-or-later — see [`LICENSE`](LICENSE).
+
+This is not a free choice. The app compiles `@nextcloud/vue` (AGPL-3.0-or-later) into the
+bundles under `js/`, along with Nextcloud packages under GPL-3.0-or-later, so the copyleft
+is inherited from what it links. [ADR-0009](../../aps-conecta-web/docs/adr/0009-agpl-across-the-org.md)
+records the organisation-wide decision that followed from it.
+
+Because the AGPL's section 13 covers network use, staff who use this app over the intranet
+are owed its source on request.
+
+Third-party components and their notices: [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).

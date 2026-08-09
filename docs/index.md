@@ -12,10 +12,17 @@ the same fact, the one named here as its authority wins and the other should lin
 | [`adr/`](adr/) | Decisions, and the reasoning that was live when each was taken |
 | [`CLAUDE.md`](../CLAUDE.md) | Which agent skill runs what, and what is not enforced by anything |
 
-The organisation's contributing doctrine and security policy are not here: they are served to every
+The organisation's contributing doctrine and security policy are not here: they are **to be** served to every
 repository from [`APS-Conecta/.github`](https://github.com/APS-Conecta/.github), and a local copy
 would be a second owner of the same facts. Org-wide decisions — the licence, the trunk, the release
 model — live in [`APS-Conecta/gestion`](https://github.com/APS-Conecta/gestion/tree/main/docs/adr).
+
+> **Not live yet.** GitHub serves organisation defaults only from the default branch of
+> `APS-Conecta/.github`, and both files are still on an unmerged branch there
+> ([PR #1](https://github.com/APS-Conecta/.github/pull/1)). Until it merges this repository has
+> no contributing or security document from any source. The docs gate reads the local clone, so
+> it already counts them as present — that is deliberate, to keep the check offline, and it is
+> why these close on **merge**, not on commit.
 
 ## Explanation — why it looks the way it does
 

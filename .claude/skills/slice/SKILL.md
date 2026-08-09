@@ -138,7 +138,9 @@ Re-run the suites and the browser gate after fixing.
 
 ```bash
 git push -u origin feat/<n>-<slug>
-gh pr create --fill                     # fills the checklist from .github/PULL_REQUEST_TEMPLATE.md
+gh pr create                            # opens an editor pre-filled with PULL_REQUEST_TEMPLATE.md
+#                                         NOT --fill: that takes title and body from the commits
+#                                         and bypasses the template entirely
 gh pr checks --watch                    # the docs workflow — red for now, see CLAUDE.md
 gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"

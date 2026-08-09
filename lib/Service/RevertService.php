@@ -74,8 +74,15 @@ class RevertService {
 		try {
 			$this->revisions->duringImport(
 				(int)$revert->getId(),
-				function () use ($batchId, $lineage, &$counts): void {
-					$this->undo($batchId, $lineage, $counts);
+				// This revert belongs in its own lineage. It could not be read into
+				// it above — it did not exist yet — but from here on it is writing
+				// Revisions, and a batch that touched one record twice would
+				// otherwise undo the newer entry and then find its OWN write sitting
+				// on the record, decide a colleague had been there, and skip the
+				// older one. The record stayed on the map, counted as "omitido",
+				// which reads as deliberately protected rather than missed.
+				function () use ($batchId, $lineage, $revert, &$counts): void {
+					$this->undo($batchId, [...$lineage, (int)$revert->getId()], $counts);
 				},
 			);
 		} finally {
@@ -162,7 +169,15 @@ class RevertService {
 			// A record the batch created leaves the map, but is not destroyed —
 			// ADR-0005 has no hard delete, and this is why undo can be undone.
 			Action::Created, Action::Restored => $this->setRetired($feature, true),
-			Action::Retired => $this->setRetired($feature, false),
+			// Merged is retired-with-a-pointer, so its undo is a restore — and
+			// FeatureService::restore() is what reopens the pair, which is the
+			// other half of undoing a merge (issue #16).
+			//
+			// Unreachable today: a merge is resolved by a person, outside
+			// duringImport(), so no Revision carries both this action and an import
+			// id. It is here because `match` has no default and the omission was a
+			// 500 mid-revert — the one moment the app must not fall over.
+			Action::Retired, Action::Merged => $this->setRetired($feature, false),
 			Action::Updated => $this->restoreValues($feature, $entry['changes'] ?? []),
 		};
 	}
@@ -172,15 +187,24 @@ class RevertService {
 	 *
 	 * FeatureService refuses to retire what is already retired precisely so
 	 * history does not fill with entries describing nothing, and history is
-	 * append-only (ADR-0005) so such an entry could never be tidied away. Going
-	 * through the mapper directly would have skipped that reasoning.
+	 * append-only (ADR-0005) so such an entry could never be tidied away. The
+	 * guard above is what lets this call the service rather than duck it.
+	 *
+	 * Through FeatureService and NOT the mapper. The mapper writes the column;
+	 * the service also reassigns everything the record covered (ADR-0008). Going
+	 * straight to the mapper meant reverting an import that created a Sector or a
+	 * Unidad Vecinal retired the boundary and left every Place still holding its
+	 * id — pointing at something no read will resolve, so the sidebar says "sin
+	 * asignar" about a record the database says is assigned. Registry-wide,
+	 * silent, and the revert counted those records as successfully updated.
 	 */
 	private function setRetired(\OCA\Territorio\Db\Feature $feature, bool $retired): bool {
 		if ((bool)$feature->getRetired() === $retired) {
 			return false;
 		}
 
-		$retired ? $this->features->retire($feature) : $this->features->restore($feature);
+		$id = (int)$feature->getId();
+		$retired ? $this->featureService->retire($id) : $this->featureService->restore($id);
 
 		return true;
 	}

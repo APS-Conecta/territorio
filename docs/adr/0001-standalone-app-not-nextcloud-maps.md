@@ -1,5 +1,9 @@
 # Territorio is a standalone app, not built on Nextcloud Maps
 
+- **Status:** accepted (2026-08-06). The decision stands; one premise below does not — the
+  "REST surface other apps read" was never built, and
+  [ADR-0014](0014-the-cross-app-surface-is-injection-not-rest.md) records what replaced it.
+
 The instance shipped with the official `maps` app (1.7.1) enabled, so a reader will reasonably
 ask why we wrote our own map app instead of extending it. Maps models *personal* geography —
 each user's own favorites, GPX tracks, geolocated photos and devices — while Territorio is an

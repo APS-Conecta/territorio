@@ -179,12 +179,19 @@ class RevisionLog {
 	/**
 	 * Everything one batch did, newest first.
 	 *
-	 * Newest first, which is the right order for undoing — but be clear about
-	 * what it does NOT buy: a revert writes a Revision as it goes, so once the
-	 * newest entry for a record is undone, any earlier entry for that same record
-	 * fails the "touched since" check and is reported as left alone. A batch that
-	 * touched one record twice is therefore only partly undone. No import does
-	 * that today, because duplicate rows are collapsed before anything is written.
+	 * Newest first, which is the right order for undoing. A revert writes a
+	 * Revision as it goes, so once the newest entry for a record is undone, the
+	 * next entry for that same record finds the revert's own write sitting on it
+	 * — which is why RevertService counts its own batch as part of the lineage it
+	 * is allowed to walk past. Without that, the older entry looked like a
+	 * colleague's work and was reported as left alone.
+	 *
+	 * An earlier version of this comment said no import touches one record twice,
+	 * because duplicate rows are collapsed before anything is written. That was
+	 * true of duplicate rows and missed the other way it happens: importing a
+	 * boundary reassigns every Place it covers (ADR-0008), so one file holding a
+	 * Place and a Sector over it gives that Place a Created and an Updated entry
+	 * in the same batch. Issue #30.
 	 *
 	 * Read by `import_id`, never by a range of Revision numbers — writes are
 	 * serialised behind one cursor, so a range would sweep up whatever a

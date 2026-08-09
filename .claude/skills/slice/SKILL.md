@@ -89,7 +89,11 @@ make test-integration
 suite runs against the instance's real schema, and without it you are testing
 last week's.
 
-## 5. The browser gate — blocks the merge
+## 5. The browser gate
+
+Nothing enforces it. A private repo on this plan cannot have a protected branch or
+a ruleset, and there is one account, so no check anywhere can refuse a merge. Treat
+it as the step you do not skip, and say in the closing comment whether you ran it.
 
 ```bash
 make build
@@ -133,9 +137,20 @@ Re-run the suites and the browser gate after fixing.
 - **No other docs.** The issue and the CHANGELOG are the record.
 
 ```bash
-git checkout main && git merge --ff-only feat/<n>-<slug> && git push origin main
+git push -u origin feat/<n>-<slug>
+gh pr create                            # opens an editor pre-filled with PULL_REQUEST_TEMPLATE.md
+#                                         NOT --fill: that takes title and body from the commits
+#                                         and bypasses the template entirely
+gh pr checks --watch                    # the docs workflow — red for now, see CLAUDE.md
+gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"
 ```
+
+Through a pull request, never `git push origin main`. The org works GitHub Flow and
+one approval is the convention — but GitHub will not let anybody approve their own
+pull request, and no ruleset can require it here, so the approval is you reading
+your own diff on the PR page before merging. It is a checkpoint, not a gate. Say so
+plainly rather than describing a review that no second person performs.
 
 The closing comment separates three things, plainly:
 

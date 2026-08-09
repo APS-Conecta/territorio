@@ -49,8 +49,14 @@ test-browser:
 # Syntax-check every PHP file. Cheap standing in for a static analyser we do not have yet.
 # Must FAIL on a parse error: piping into `grep -v … || true` throws the exit status
 # away and makes this target permanently green, which is worse than having no target.
+#
+# The ramp check rides here rather than in a fifth suite: it guards the Category
+# palette's contrast and separation (docs/design/map-legibility.md), which is a
+# cheap standing check that must fail loudly — exactly what this target is for.
+# It runs on the host, not in $(DOCKER): that image is PHP, and this is Python.
 lint: test-image
 	$(DOCKER) sh -c 'find lib tests tools -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
+	python3 tools/ramp-check.py
 
 build:
 	npm run build

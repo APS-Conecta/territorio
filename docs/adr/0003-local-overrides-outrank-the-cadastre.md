@@ -1,5 +1,7 @@
 # A local override outranks the cadastre on re-import
 
+- **Status:** accepted (2026-08-06)
+
 Cadastral Datasets — the national Unidades Vecinales file, FONASA establishment lists — are
 re-imported whenever their publisher issues a new release, so the obvious rule is that the
 official source wins. We chose the opposite: when a clinic has edited a cadastral record, that

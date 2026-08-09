@@ -26,7 +26,7 @@ export function emptyFilter() {
 /**
  * Text as it is compared: lower-cased and stripped of accents.
  *
- * Nobody types "Los Castaños" with the tilde when they are looking for something
+ * Nobody types "Peñaflor" with the tilde when they are looking for something
  * in a hurry, and a search that only matches the accented form is a search that
  * quietly finds nothing. NFD splits a letter from its diacritic so the diacritic
  * can be dropped on its own; \p{Diacritic} then covers every accent Spanish uses

@@ -65,6 +65,72 @@ final class GeometryTest extends TestCase {
 		self::assertEqualsWithDelta(-33.48, $box->maxLat(), 1e-9);
 	}
 
+	/**
+	 * The rings as they would be STORED, read back out of the stored text rather
+	 * than off the object. What matters is what the column ends up holding: that
+	 * is what containment reads and what an export re-emits.
+	 *
+	 * @return array<int, array<int, array{float, float}>>
+	 */
+	private static function ringsOf(string $json): array {
+		return json_decode(Geometry::fromJson($json)->toJson(), true)['coordinates'];
+	}
+
+	/**
+	 * A GeoJSON ring must repeat its first position last (RFC 7946 §3.1.6), and
+	 * real files do not always do it. KML rings arrive through GeoJsonReader the
+	 * same way, so the app has two doors for it.
+	 *
+	 * Closed here, on the way in, rather than tolerated later. Left open, three
+	 * separate things went wrong and none of them said so: PointInPolygon needs
+	 * four positions to have an inside, so an unclosed TRIANGLE contained nothing
+	 * for ever and every Place inside it was assigned to nobody — while Leaflet
+	 * drew the filled shape and it looked correct. An unclosed QUAD has four
+	 * positions, so it worked, which made closure silently required at three
+	 * vertices and silently optional at four. And the app re-exported what it
+	 * stored, so an invalid ring went back out as invalid GeoJSON.
+	 */
+	public function testAnUnclosedRingIsClosedOnTheWayIn(): void {
+		$triangle = '{"type":"Polygon","coordinates":[[[-70.59,-33.53],[-70.57,-33.53],[-70.57,-33.51]]]}';
+
+		$rings = self::ringsOf($triangle);
+
+		self::assertCount(4, $rings[0], 'a ring needs its first position repeated last to close');
+		self::assertSame($rings[0][0], $rings[0][3], 'the closing position must equal the first');
+	}
+
+	public function testAlreadyClosedRingsAreLeftAlone(): void {
+		$square = '{"type":"Polygon","coordinates":[[[-70.59,-33.53],[-70.57,-33.53],'
+			. '[-70.57,-33.51],[-70.59,-33.51],[-70.59,-33.53]]]}';
+
+		$rings = self::ringsOf($square);
+
+		self::assertCount(5, $rings[0], 'nothing should have been appended to a closed ring');
+	}
+
+	/** A hole is a ring like any other, and bounds the polygon just as much. */
+	public function testHolesAreClosedToo(): void {
+		$withHole = '{"type":"Polygon","coordinates":['
+			. '[[-70.60,-33.54],[-70.56,-33.54],[-70.56,-33.50],[-70.60,-33.50],[-70.60,-33.54]],'
+			. '[[-70.59,-33.53],[-70.58,-33.53],[-70.58,-33.52]]]}';
+
+		$rings = self::ringsOf($withHole);
+
+		self::assertCount(4, $rings[1]);
+		self::assertSame($rings[1][0], $rings[1][3]);
+	}
+
+	/**
+	 * Two positions cannot bound an area however they are closed, and letting one
+	 * through only moves the silence downstream — it would store, draw as a line,
+	 * and contain nothing.
+	 */
+	public function testARingThatCannotBoundAnAreaIsRejected(): void {
+		$this->expectException(InvalidGeometryException::class);
+
+		Geometry::fromJson('{"type":"Polygon","coordinates":[[[-70.59,-33.53],[-70.57,-33.51]]]}');
+	}
+
 	public function testKindFollowsTheShapeOnTheMap(): void {
 		self::assertSame(Kind::Place, Geometry::fromJson(self::JDV_35)->kind());
 		self::assertSame(

@@ -1,5 +1,7 @@
 # Anyone may edit; history and retirement are the safety net, not permissions
 
+- **Status:** accepted (2026-08-06)
+
 The obvious way to protect a shared Registry is to restrict who can write to it, so it is worth
 recording that we deliberately did the opposite. Territorial knowledge lives with the people who
 walk the territory — the TENS who knows the taller moved, the matrona who knows the address is

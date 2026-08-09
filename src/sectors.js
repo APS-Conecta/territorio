@@ -81,9 +81,16 @@ function stretchesOf(geometry) {
 		: geometry.coordinates
 
 	return parts
-		// Two points is the least that can be an edge. A one-point "line" comes
-		// out of a bad import and would take polygonize down with it.
-		.filter((coordinates) => Array.isArray(coordinates) && coordinates.length >= 2)
+		// Two DISTINCT points is the least that can be an edge. Counting positions
+		// was not enough: a KML <LineString> with a repeated coordinate imports as
+		// [[x,y],[x,y]], which has two of them and no length. polygonize refused
+		// the whole collection over it — "Each LinearRing of a Polygon must have 4
+		// or more Positions" — and the editor reported that as "las calles elegidas
+		// no cierran alrededor de ese punto", which was untrue. Picking by name
+		// picks every fragment of a street, so one bad row poisoned the whole pick.
+		.filter((coordinates) => Array.isArray(coordinates)
+			&& coordinates.length >= 2
+			&& coordinates.some(([lon, lat]) => lon !== coordinates[0][0] || lat !== coordinates[0][1]))
 		.map((coordinates) => ({
 			type: 'Feature',
 			properties: {},

@@ -1,5 +1,7 @@
 # A Sector is a Feature, not a table of its own
 
+- **Status:** accepted (2026-08-06)
+
 `CONTEXT.md` already says it — "a school, a plaza, a cycle path, a Sector" are all Features — and
 storing it that way is what makes the rest of the app apply to it for free. A Sector drawn today
 gets history, retirement and restore, the polled change cursor, the Datos list and the revert,

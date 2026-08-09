@@ -1,7 +1,6 @@
 {
     "name": "territorio",
     "description": "Mapa territorial de un CESFAM",
-    "version": "0.1.0",
     "license": "AGPL-3.0-or-later",
     "private": true,
     "scripts": {
@@ -13,6 +12,7 @@
     },
     "dependencies": {
         "@geoman-io/leaflet-geoman-free": "^2.20.0",
+        "@mapbox/maki": "^8.2.0",
         "@nextcloud/axios": "^2.5.1",
         "@nextcloud/initial-state": "^3.0.0",
         "@nextcloud/password-confirmation": "^6.1.0",

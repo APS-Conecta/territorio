@@ -11,7 +11,8 @@ use OCP\Migration\IOutput;
 use OCP\Migration\IRepairStep;
 
 /**
- * Puts the rows an install cannot function without into place.
+ * Puts the rows an install cannot function without into place, and carries a
+ * change to the seeded taxonomy to installs that already have one.
  *
  * A repair step, NOT a migration's `postSchemaChange`, and the distinction is
  * not academic: `MigrationService::executeStep()` skips both `preSchemaChange`
@@ -32,10 +33,16 @@ class EnsureSeedData implements IRepairStep {
 	 * the clinic asked for. A starting point, not a fixed list — a Category is
 	 * editable data, and adding a row makes it appear in the app.
 	 *
-	 * @var array<string, array{label: string, color: string, subcategories: array<string, string>}>
+	 * `was` is the colour the seed gave that Category BEFORE the designed ramp, and
+	 * is what `ensureRamp()` recognises on an install that already exists. It sits
+	 * on the row rather than in a list of its own so the two cannot disagree. A
+	 * Category added later has no `was` and is never repainted, which is correct:
+	 * it never had an old colour.
+	 *
+	 * @var array<string, array{label: string, color: string, was?: string, subcategories: array<string, string>}>
 	 */
 	private const TAXONOMY = [
-		'salud' => ['label' => 'Salud', 'color' => '#dc2626', 'subcategories' => [
+		'salud' => ['label' => 'Salud', 'color' => '#99564e', 'was' => '#dc2626', 'subcategories' => [
 			'cesfam' => 'CESFAM',
 			'sapu' => 'SAPU',
 			'ccr' => 'CCR',
@@ -45,50 +52,50 @@ class EnsureSeedData implements IRepairStep {
 			'establecimiento' => 'Establecimiento de salud',
 			'otro' => 'Otro',
 		]],
-		'educacion' => ['label' => 'Educación', 'color' => '#2563eb', 'subcategories' => [
+		'educacion' => ['label' => 'Educación', 'color' => '#6d7db6', 'was' => '#2563eb', 'subcategories' => [
 			'colegio' => 'Colegio',
 			'jardin_infantil' => 'Jardín infantil',
 			'otro' => 'Otro',
 		]],
-		'deporte_recreacion' => ['label' => 'Deporte y recreación', 'color' => '#16a34a', 'subcategories' => [
+		'deporte_recreacion' => ['label' => 'Deporte y recreación', 'color' => '#549065', 'was' => '#16a34a', 'subcategories' => [
 			'plaza' => 'Plaza o parque',
 			'multicancha' => 'Multicancha',
 			'otro' => 'Otro',
 		]],
-		'seguridad' => ['label' => 'Seguridad', 'color' => '#4338ca', 'subcategories' => [
+		'seguridad' => ['label' => 'Seguridad', 'color' => '#5a68a0', 'was' => '#4338ca', 'subcategories' => [
 			'carabineros' => 'Carabineros',
 			'bomberos' => 'Bomberos',
 			'otro' => 'Otro',
 		]],
-		'medioambiente' => ['label' => 'Medioambiente', 'color' => '#059669', 'subcategories' => [
+		'medioambiente' => ['label' => 'Medioambiente', 'color' => '#407b51', 'was' => '#059669', 'subcategories' => [
 			'punto_limpio' => 'Punto limpio',
 			'otro' => 'Otro',
 		]],
-		'organizacion_social' => ['label' => 'Organización social', 'color' => '#ea580c', 'subcategories' => [
+		'organizacion_social' => ['label' => 'Organización social', 'color' => '#b06b62', 'was' => '#ea580c', 'subcategories' => [
 			'junta_de_vecinos' => 'Junta de vecinos',
 			'club_adulto_mayor' => 'Club de adulto mayor',
 			'taller' => 'Taller',
 			'centro_comunitario' => 'Centro comunitario',
 			'otro' => 'Otro',
 		]],
-		'servicio_publico' => ['label' => 'Servicio público', 'color' => '#0891b2', 'subcategories' => [
+		'servicio_publico' => ['label' => 'Servicio público', 'color' => '#0b798a', 'was' => '#0891b2', 'subcategories' => [
 			'municipalidad' => 'Municipalidad',
 			'otro' => 'Otro',
 		]],
-		'movilidad_transporte' => ['label' => 'Movilidad y transporte', 'color' => '#0d9488', 'subcategories' => [
+		'movilidad_transporte' => ['label' => 'Movilidad y transporte', 'color' => '#2f8e9f', 'was' => '#0d9488', 'subcategories' => [
 			'ciclovia' => 'Ciclovía',
 			'paradero' => 'Paradero',
 			'otro' => 'Otro',
 		]],
-		'religion' => ['label' => 'Religión', 'color' => '#7c3aed', 'subcategories' => [
+		'religion' => ['label' => 'Religión', 'color' => '#916393', 'was' => '#7c3aed', 'subcategories' => [
 			'iglesia' => 'Iglesia',
 			'otro' => 'Otro',
 		]],
-		'comercio_economia' => ['label' => 'Comercio y economía', 'color' => '#ca8a04', 'subcategories' => [
+		'comercio_economia' => ['label' => 'Comercio y economía', 'color' => '#8a7431', 'was' => '#ca8a04', 'subcategories' => [
 			'feria' => 'Feria',
 			'otro' => 'Otro',
 		]],
-		'sin_clasificar' => ['label' => 'Sin clasificar', 'color' => '#6b7280', 'subcategories' => [
+		'sin_clasificar' => ['label' => 'Sin clasificar', 'color' => '#71777c', 'was' => '#6b7280', 'subcategories' => [
 			'otro' => 'Otro',
 		]],
 	];
@@ -121,6 +128,7 @@ class EnsureSeedData implements IRepairStep {
 
 	public const DIVISIONS_SLUG = 'division_territorial';
 
+
 	public function __construct(
 		private IDBConnection $db,
 	) {
@@ -134,6 +142,7 @@ class EnsureSeedData implements IRepairStep {
 		$this->ensureCursor($output);
 		$this->ensureTaxonomy($output);
 		$this->ensureDivisions($output);
+		$this->ensureRamp($output);
 	}
 
 	/** Without this row the first write has nothing to increment. */
@@ -176,6 +185,55 @@ class EnsureSeedData implements IRepairStep {
 		}
 
 		$output->info(sprintf('Territorio: seeded %d categories', count(self::TAXONOMY)));
+	}
+
+	/**
+	 * Move each Category onto the designed ramp, once.
+	 *
+	 * `ensureTaxonomy()` above returns the moment the table has any rows, so on
+	 * every install that already exists a change to self::TAXONOMY reaches nobody.
+	 * This is what carries it there — the same problem `ensureDivisions()` solves
+	 * for a missing Subcategory, and the same shape of answer.
+	 *
+	 * Guarded row by row on the OLD colour, not on the slug alone. A Category is
+	 * editable data (CONTEXT.md), so a clinic may have chosen its own colour, and
+	 * that choice is not drift to be corrected — it is the clinic saying what it
+	 * wants. A row already on the new colour matches nothing either, which is what
+	 * makes this safe to run on every upgrade forever.
+	 *
+	 * The old colour lives on its Category's own row as `was`, rather than in a
+	 * second list keyed by the same slugs. A second list can disagree with the
+	 * first — a renamed slug there reads an undefined key here and paints the
+	 * Category NULL — so it needed a test to police it. Keeping both values on one
+	 * row makes that disagreement unrepresentable, which is cheaper than testing
+	 * for it.
+	 *
+	 * See docs/adr/0013-hue-groups-categories-the-glyph-identifies-them.md.
+	 */
+	private function ensureRamp(IOutput $output): void {
+		if (!$this->db->tableExists('territorio_category')) {
+			return;
+		}
+
+		$repainted = 0;
+		foreach (self::TAXONOMY as $slug => $category) {
+			// A Category added after the ramp has no old colour to recognise, and
+			// nothing to repaint.
+			if (!isset($category['was'])) {
+				continue;
+			}
+
+			$update = $this->db->getQueryBuilder();
+			$update->update('territorio_category')
+				->set('color', $update->createNamedParameter($category['color']))
+				->where($update->expr()->eq('slug', $update->createNamedParameter($slug)))
+				->andWhere($update->expr()->eq('color', $update->createNamedParameter($category['was'])));
+			$repainted += $update->executeStatement();
+		}
+
+		if ($repainted > 0) {
+			$output->info(sprintf('Territorio: repainted %d categories onto the designed ramp', $repainted));
+		}
 	}
 
 	/**

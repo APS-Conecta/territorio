@@ -1,5 +1,7 @@
 # Exporting contact details requires password confirmation and is recorded
 
+- **Status:** accepted (2026-08-06)
+
 ADR-0005 gives every user the same rights, so this exception needs stating. The Registry holds
 the names, mobile numbers and email addresses of identifiable people — presidents and secretaries
 of juntas de vecinos — which is personal data under Chilean law and the one place where a

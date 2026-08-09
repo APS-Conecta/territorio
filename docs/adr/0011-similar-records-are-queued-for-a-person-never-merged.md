@@ -1,5 +1,7 @@
 # Similar records are queued for a person, never merged automatically
 
+- **Status:** accepted (2026-08-07)
+
 Import matches on the exact external id and on nothing else. Two records that merely look like the
 same place — identical coordinates under different names, one institution spelled differently by
 two sources — become a candidate pair in a review queue, and both stay visible and usable until

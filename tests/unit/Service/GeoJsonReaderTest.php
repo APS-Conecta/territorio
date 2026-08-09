@@ -24,7 +24,7 @@ final class GeoJsonReaderTest extends TestCase {
 	   "properties":{"name":"Junta de Vecinos de Prueba","category":"organizacion_social",
 	     "subcategory":"junta_de_vecinos","address":"Calle de Prueba 123","phone":"900000000",
 	     "email":"jdv@example.org","contact_person":"Persona de Prueba","contact_role":"Secretario",
-	     "ubicacion":"Exacta","source":"cesfam_los_castanos","source_url":"https://example.org/catastro"}}
+	     "ubicacion":"Exacta","source":"cesfam_de_prueba","source_url":"https://example.org/catastro"}}
 	]}
 	JSON;
 
@@ -64,7 +64,7 @@ final class GeoJsonReaderTest extends TestCase {
 	public function testSourceAndItsLinkBecomeTheSourceReference(): void {
 		$row = $this->read(self::JDV)[0];
 
-		self::assertStringContainsString('cesfam_los_castanos', $row['sourceRef']);
+		self::assertStringContainsString('cesfam_de_prueba', $row['sourceRef']);
 		self::assertStringContainsString('https://example.org/catastro', $row['sourceRef']);
 	}
 
@@ -91,12 +91,12 @@ final class GeoJsonReaderTest extends TestCase {
 	}
 
 	public function testADerivedIdIsPrefixedWithItsSource(): void {
-		self::assertStringStartsWith('cesfam_los_castanos:', $this->read(self::JDV)[0]['externalId']);
+		self::assertStringStartsWith('cesfam_de_prueba:', $this->read(self::JDV)[0]['externalId']);
 	}
 
 	/** Without a source in the file, the Dataset it is being imported into names it. */
 	public function testADerivedIdFallsBackToTheDatasetName(): void {
-		$json = str_replace(',"source":"cesfam_los_castanos"', '', self::JDV);
+		$json = str_replace(',"source":"cesfam_de_prueba"', '', self::JDV);
 
 		self::assertStringStartsWith('laflorida:', $this->read($json)[0]['externalId']);
 	}

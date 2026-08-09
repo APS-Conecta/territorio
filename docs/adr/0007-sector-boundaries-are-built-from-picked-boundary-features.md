@@ -1,5 +1,7 @@
 # Sector boundaries are built by picking real boundary features, then adjusted by hand
 
+- **Status:** accepted (2026-08-06)
+
 A CESFAM describes its sectores the way it always has — "from Vicuña Mackenna to the rail line,
 down to Departamental" — so Territorio lets a person build the boundary that way instead of
 tracing it freehand. This is the largest single piece of work in the app and was chosen knowing

@@ -1,5 +1,7 @@
 # Hue groups Categories; the glyph identifies them
 
+- **Status:** accepted (2026-08-07)
+
 A Feature is drawn as one coloured dot, and hue is the only channel carrying what it is. Eleven
 Categories, over a raster basemap that has colours of its own, for an audience that includes the
 ~8% of men with a colour vision deficiency. This decides that hue stops trying to do that job.

@@ -1,22 +1,85 @@
 # Territorio
 
+## What this is
+
 The territory a CESFAM serves, on a map: the official Unidades Vecinales, the sectores the clinic
 draws for itself, and the places in the comuna — colegios, plazas, farmacias, organizaciones
 sociales. A Nextcloud 34 app.
+
+What it is not: a personal map. Nextcloud's own `maps` app models each user's favourites, tracks
+and geolocated photos; this is one shared institutional registry that everyone edits, with
+provenance and history behind every record
+([ADR-0001](docs/adr/0001-standalone-app-not-nextcloud-maps.md)). It is also not multi-tenant —
+one install serves one comuna and the territory of one CESFAM inside it, and which comuna that is
+is configuration, not code.
 
 Contains no patient information.
 
 - **Vocabulary** — [`CONTEXT.md`](CONTEXT.md). Use these words; they are chosen, not incidental.
 - **Decisions** — [`docs/adr/`](docs/adr/). Read the ones touching what you are about to change.
 
-## Current state
+## Status — 2026-08-08
 
-Issues #1–#7, #10 and #12: the app shell and the map; Places created, edited, retired and
-restored, with history and a polled change cursor behind them; the Capas panel driving map, Datos
-and Análisis from one filtered set; GeoJSON import as a Dataset, revertible batch by batch; and
-Sectores drawn by hand, named, coloured and reshaped.
+Version 0.27.0. `appinfo/info.xml` is where the version lives; nothing else declares one.
 
-Open issues carry what is left.
+Working: the app shell and the map; Places created, edited, retired and restored, with history and
+a polled change cursor behind them; the Capas panel and text search driving map, Datos and Análisis
+from one filtered set; GeoJSON and KML import as a Dataset, revertible batch by batch; the Comuna
+setting and the Unidad Vecinal cadastre import; Sectores drawn by hand or polygonized from picked
+boundary features, with their Limit kept in words; assignment to Sector and Unidad Vecinal derived
+from geometry and stored; the duplicate review queue; exports to GeoJSON, CSV and KML with their
+log; and a Maki pictogram per Category. That is issues #1–#20.
+
+Not working yet, and all of it visible on screen rather than in the model: legibility and
+accessibility defects (#21–#25, #29, #35, #37), an editor for the taxonomy itself (#36), the
+ODbL notice OpenStreetMap-derived exports owe (#28), and dead code with two silent re-import
+defects (#34). Open issues carry the current list; this paragraph is a snapshot, they are the
+record.
+
+## Quickstart
+
+Everything runs from this directory. Steps 1 and 4–6 need Docker; steps 2 and 3 need Node.
+
+1. `make test` — the PHP core in a bare container. Proves the toolchain works: `--testdox` prints
+   one line per behaviour and exits 0.
+2. `npm install` — once, on the host.
+3. `make build` — webpack writes `js/territorio-{main,admin}.js`.
+4. `make instance-up` — a throwaway Nextcloud 34 + PostgreSQL 18 instance with this directory
+   bind-mounted as the app. It prints `Instance ready at http://localhost:8083 (admin / dev)`.
+5. Open <http://localhost:8083>, log in as `admin` / `dev`, and pick **Territorio** in the header.
+6. `make instance-clean` when you are done — it removes the containers and their volumes.
+
+## Install
+
+Nextcloud **34 only** (`appinfo/info.xml` pins `min-version` and `max-version`), PHP 8.1 or later.
+
+In the gestion stack, `./apps` is bind-mounted at `/var/www/html/custom_apps`, so installing is
+cloning this repo to `gestion/apps/territorio` and enabling it. Both commands run from the gestion
+checkout:
+
+    git clone https://github.com/APS-Conecta/territorio.git apps/territorio
+    docker compose exec --user www-data nextcloud php occ app:enable territorio
+
+`js/` is committed — Nextcloud apps ship built assets — so no build step is needed to install.
+Enabling runs the `EnsureSeedData` repair step, which writes the eleven Categories, the División
+territorial category, their Subcategories, the revision cursor and the colour ramp. It is
+idempotent and runs again after every migration.
+
+## Configuration
+
+Four settings, all app config under the `territorio` app id, all reachable at
+**Administración → Territorio**. Read them with
+`occ config:app:get territorio <key>`.
+
+| Key | What it does | Default |
+|---|---|---|
+| `tile_url` | The Leaflet tile template the basemap draws. The Content-Security-Policy host is derived from it, so the two cannot drift. A string without `{z}`, `{x}` and `{y}` is stored verbatim but never served. | empty → `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
+| `tile_attribution` | Plain-text credit shown over the map. Ignored while `tile_url` is rejected or unset, because we are then serving OpenStreetMap's tiles and owe OpenStreetMap the credit. | empty → `© OpenStreetMap contributors` |
+| `comuna_cut` | The CUT code of the comuna this install serves. Empty means "not chosen yet" and the setup screen says so. | empty |
+| `comuna_name` | The comuna's name, for display. Written together with `comuna_cut`. | empty |
+
+The dev instance caches app config in APCu, which is per-process: see **Two traps worth knowing**
+below before you trust `occ config:app:set`.
 
 ## Working on it
 
@@ -85,14 +148,17 @@ Keyed by slug, never by id: ids differ per install, slugs are what the seed and 
 
 Everything reads through the same set the app's own screens read, so retired records and the
 Boundary-feature Datasets are absent — a comuna's eleven thousand streets are not places anyone
-means to count. **No OCS route and no external API is registered**, and a test asserts that stays
-true.
+means to count. **No OCS route and no external API is registered**, and
+[`tests/unit/RoutesTest.php`](tests/unit/RoutesTest.php) fails if one is added
+([ADR-0014](docs/adr/0014-the-cross-app-surface-is-injection-not-rest.md)).
 
-"How many sectores" already works: they are Features under `division_territorial` (ADR-0010), so
-`counts()['categories']['division_territorial']['subcategories']['sector']` answers it. "How many
-unidades vecinales" needs the cadastre import (issue #9). What is genuinely absent is counting
-records **by** the Sector or Unidad Vecinal they fall in: ADR-0008 derives that from geometry and
-stores it, and nothing stores one until issue #11.
+"How many sectores" and "how many unidades vecinales" are both ordinary Category counts: they are
+Features under `division_territorial` (ADR-0010), so
+`counts()['categories']['division_territorial']['subcategories']['sector']` answers the first and
+`…['unidad_vecinal']` the second. Counting records **by** the Sector or Unidad Vecinal they fall in
+is `counts()['bySector']` and `counts()['byUnidadVecinal']`, read from the assignment ADR-0008
+derives from geometry and stores. Both are keyed by the boundary's own id, not by its name: a
+clinic names its Sectores however it likes and two of them may share a name.
 
 ## Boundary features
 
@@ -145,7 +211,8 @@ AGPL-3.0-or-later — see [`LICENSE`](LICENSE).
 
 This is not a free choice. The app compiles `@nextcloud/vue` (AGPL-3.0-or-later) into the
 bundles under `js/`, along with Nextcloud packages under GPL-3.0-or-later, so the copyleft
-is inherited from what it links. [ADR-0010](../../aps-conecta-web/docs/adr/0010-agpl-across-the-org.md)
+is inherited from what it links.
+[ADR-0010 in gestion](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0010-agpl-across-the-org.md)
 records the organisation-wide decision that followed from it.
 
 Because the AGPL's section 13 covers network use, staff who use this app over the intranet

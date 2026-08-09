@@ -1,5 +1,7 @@
 # A Place's Sector and Unidad Vecinal are derived, not typed
 
+- **Status:** accepted (2026-08-06)
+
 Both fields existed as free text in the source data and a reader will expect them to stay
 editable, so it matters that they are now read-only. In the curated La Florida dataset, 393 of
 556 places have an empty `sector` — 71% blank after a full curation effort — which is the

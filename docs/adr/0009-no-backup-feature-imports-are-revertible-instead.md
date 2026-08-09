@@ -1,5 +1,7 @@
 # There is no backup feature; imports are revertible instead
 
+- **Status:** accepted (2026-08-06)
+
 Territorio holds a clinic's territorial knowledge and offers no "back up the Registry" button, so
 it is worth recording that this is deliberate rather than missing. The decisions in ADR-0005
 already remove most of what a backup would be for: nothing is ever hard-deleted, so an accidental

@@ -58,16 +58,16 @@ const FEATURES = [
 
 describe('searching', () => {
 	/**
-	 * The criterion this whole slice is named for. Nobody types "Los Castaños"
-	 * with the tilde when they are looking for something in a hurry, and a search
+	 * The criterion this whole slice is named for. Nobody types "Peñaflor" with
+	 * the tilde when they are looking for something in a hurry, and a search
 	 * that only matches the accented form is a search that quietly finds nothing.
 	 */
 	it('ignores accents and case', () => {
-		const castanos = feature(9, 11, 'Escuela Los Castaños')
+		const penaflor = feature(9, 11, 'Escuela Peñaflor de Prueba')
 
-		expect(matches(castanos, 'castanos', SUBCATEGORIES)).toBe(true)
-		expect(matches(castanos, 'CASTAÑOS', SUBCATEGORIES)).toBe(true)
-		expect(matches(castanos, 'liceo', SUBCATEGORIES)).toBe(false)
+		expect(matches(penaflor, 'penaflor', SUBCATEGORIES)).toBe(true)
+		expect(matches(penaflor, 'PEÑAFLOR', SUBCATEGORIES)).toBe(true)
+		expect(matches(penaflor, 'liceo', SUBCATEGORIES)).toBe(false)
 	})
 
 	/** What a person actually reaches for: where it is, who to ask, what it is. */

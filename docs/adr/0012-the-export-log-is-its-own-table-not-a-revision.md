@@ -1,5 +1,7 @@
 # The export log is its own table, not a Revision
 
+- **Status:** accepted (2026-08-07)
+
 ADR-0006 says every contact-bearing export "appends a history entry naming the user, the moment
 and what was exported", and the obvious reading is that it becomes a row in `territorio_revision`
 beside every other thing that has happened. It must not, for two reasons that both matter.

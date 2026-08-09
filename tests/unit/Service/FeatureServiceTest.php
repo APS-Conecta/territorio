@@ -264,13 +264,13 @@ final class FeatureServiceTest extends TestCase {
 
 	public function testWhitespaceIsTrimmedAndBlankOptionalFieldsBecomeNull(): void {
 		$feature = $this->service->create($this->valid([
-			'name' => "  Escuela Los Castaños \n",
+			'name' => "  Escuela Peñaflor de Prueba \n",
 			'address' => '  Calle de Prueba 123  ',
 			'phone' => '   ',
 			'email' => '',
 		]));
 
-		self::assertSame('Escuela Los Castaños', $feature->getName());
+		self::assertSame('Escuela Peñaflor de Prueba', $feature->getName());
 		self::assertSame('Calle de Prueba 123', $feature->getAddress());
 		self::assertNull($feature->getPhone());
 		self::assertNull($feature->getEmail());

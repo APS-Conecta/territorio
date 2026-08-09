@@ -41,6 +41,35 @@ The browser gate creates a Salud record, asserts its pin carries the `hospital` 
 the seed's own `salud` colour, and retires it again. Removing the glyph makes it report `None`;
 mapping Salud to the wrong icon makes it report `'shop'`.
 
+### Documentation — 2026-08-08
+
+The repository's first documentation audit. No behaviour changed; several documents that described
+behaviour were wrong.
+
+- **A real clinic was named in code.** `src/filters.js`, three test fixtures and their assertions
+  carried the establishment this app was first built for. Which clinic an install serves is instance
+  configuration, so the fixtures now use a synthetic name and a `cesfam_de_prueba` source slug.
+  ADR-0004 keeps the slug it recorded, with a dated correction saying why.
+- **Every ADR has a `Status:` field**, dated from the commit that introduced it. ADR-0001 justified
+  the app partly on "a REST surface other apps read" while `tests/unit/RoutesTest.php` fails if one
+  is added; the new **ADR-0014** records that the surface is `RegistryService`, consumed by
+  injection, and ADR-0001's Status links forward to it.
+- **THIRD-PARTY-NOTICES.md was derived from the manifests only**, so DOMPurify (dual-licensed
+  MPL-2.0 or Apache-2.0), `focus-trap`, `tabbable` and `escape-html` shipped in every page load
+  unattributed. It is now reconciled against `js/*.LICENSE.txt`, which is what the bundle says about
+  itself, and it names both sources.
+- **`package.json` no longer declares a version.** It said `0.1.0` while `appinfo/info.xml` said
+  `0.27.0`; info.xml is the one Nextcloud reads and the one every slice bumps, so the second
+  declaration is gone rather than duplicated.
+- **Nothing blocks a merge here**, and `CLAUDE.md` and the `slice` skill said otherwise. A private
+  repo on this plan cannot have a protected branch and nobody can approve their own pull request, so
+  the browser gate is a step you do not skip and the approval is a self-review checkpoint. The skill
+  also documented `git push origin main`; it now lands through a pull request.
+- `.github/` and `.githooks/` did not exist: CODEOWNERS, the issue forms, the PR template, the
+  pre-commit hook and the `docs` workflow are now in place from the org's canon. The vendored
+  checker cannot run yet — see `CLAUDE.md`.
+- New `docs/index.md` names the owner of each fact.
+
 ## [0.25.0] — unreleased
 
 Geometry that draws correctly and means nothing.

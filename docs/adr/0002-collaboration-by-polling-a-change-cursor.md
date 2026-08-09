@@ -1,5 +1,7 @@
 # Collaboration is a polled change cursor, not push
 
+- **Status:** accepted (2026-08-06)
+
 Territorio's map is collaborative — one shared Dataset, edits by one person must reach everyone
 else without a reload — so a reader will assume WebSockets and wonder why the client polls. The
 instance has no `notify_push` / High Performance Backend, and it runs `nextcloud:34-apache`,

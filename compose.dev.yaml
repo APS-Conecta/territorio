@@ -5,7 +5,7 @@
 # stack. Throw it away whenever it gets in the way (`make instance-clean`).
 #
 # Same images as gestion/compose.yaml, to share layers and test against the real versions.
-# Loopback only, on 8083 (analizador-rem-dev uses 8080). The passwords are toys on purpose.
+# Loopback only, on 8083, clear of the other dev stacks. The passwords are toys on purpose.
 name: territorio-dev
 
 services:

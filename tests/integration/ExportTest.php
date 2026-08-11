@@ -7,7 +7,6 @@ namespace OCA\Territorio\Tests\Integration;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\ExportRecordMapper;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\Origin;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
@@ -127,7 +126,7 @@ final class ExportTest extends IntegrationTestCase {
 		Server::get(ImportService::class)->importGeoJson($original, $dataset);
 		$imported = Server::get(FeatureMapper::class)->findByDataset(
 			(int)Server::get(DatasetMapper::class)
-				->findOrCreate($dataset, $dataset, Origin::Cadastral)
+				->findOrCreate($dataset, $dataset)
 				->getId(),
 		);
 		self::assertCount(1, $imported);

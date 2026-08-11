@@ -31,7 +31,8 @@ class CsvWriter {
 		'Ubicación' => 'locationQuality',
 	];
 
-	/** The columns that describe a person rather than a place (ADR-0006). */
+	/** The columns that describe a person rather than a place (ADR-0006).
+	 *  `ContactFieldsTest` holds this to the GeoJSON writer's set. */
 	private const CONTACT = [
 		'Teléfono' => 'phone',
 		'Correo' => 'email',

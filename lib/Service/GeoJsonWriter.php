@@ -20,7 +20,8 @@ namespace OCA\Territorio\Service;
  */
 class GeoJsonWriter {
 	/**
-	 * What `ContactFields::KEYS` are called in a GeoJSON file.
+	 * The fields that describe a person rather than a place (ADR-0006), as a
+	 * GeoJSON file names them. `ContactFieldsTest` holds this to the CSV's set.
 	 *
 	 * @var array<string, string> row key → GeoJSON property name
 	 */

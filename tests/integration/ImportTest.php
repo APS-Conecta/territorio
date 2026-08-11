@@ -37,6 +37,17 @@ final class ImportTest extends IntegrationTestCase {
 	]}
 	JSON;
 
+	/** Every field an import carries, so a variant can change exactly one. */
+	private const FULL = <<<'JSON'
+	{"type":"FeatureCollection","features":[
+	  {"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},
+	   "properties":{"uid":"t:full","name":"Plaza Completa","category":"deporte_recreacion",
+	     "subcategory":"plaza","ubicacion":"exacta","address":"Calle Uno 1","phone":"961111111",
+	     "email":"uno@ejemplo.cl","contact_person":"Marcela Ríos","contact_role":"Presidenta",
+	     "opening_hours":"Lunes a viernes","notes":"Sin novedad","source":"prueba"}}
+	]}
+	JSON;
+
 	protected function setUp(): void {
 		$this->import = Server::get(ImportService::class);
 		$this->features = Server::get(FeatureMapper::class);
@@ -112,6 +123,79 @@ final class ImportTest extends IntegrationTestCase {
 		self::assertSame(0, $second->getUpdated());
 		self::assertSame(1, $second->getUnchanged());
 		self::assertSame($cursor, $this->revisions->current(), 'no Revision may be spent on a no-op import');
+	}
+
+	/**
+	 * Every field an import carries is one a re-import writes when it changes.
+	 *
+	 * `differs()` decides whether a re-import writes at all, and it used to list
+	 * the fields it compared by hand, beside `input()` which lists them again. A
+	 * field added to one and forgotten in the other made a re-import report the
+	 * record **unchanged** and never write it — silent, and the whole point of
+	 * running an import again. One case per field, so the loss shows up as the
+	 * field that stopped being noticed rather than as "an import test broke".
+	 *
+	 * @dataProvider changedFields
+	 */
+	public function testAChangeToAnyImportedFieldIsWritten(string $from, string $to): void {
+		$this->import(self::FULL);
+
+		$changed = $this->import(str_replace($from, $to, self::FULL));
+
+		self::assertSame(1, $changed->getUpdated(), "changing {$from} left the record unchanged");
+		self::assertSame(0, $changed->getUnchanged());
+	}
+
+	/**
+	 * @return array<string, array{string, string}> the substring to change, and to what
+	 */
+	public static function changedFields(): array {
+		return [
+			'name' => ['"name":"Plaza Completa"', '"name":"Plaza Renombrada"'],
+			'subcategory' => ['"subcategory":"plaza"', '"subcategory":"multicancha"'],
+			'geometry' => ['[-70.58,-33.52]', '[-70.59,-33.53]'],
+			'locationQuality' => ['"ubicacion":"exacta"', '"ubicacion":"aproximada"'],
+			'address' => ['"address":"Calle Uno 1"', '"address":"Calle Dos 2"'],
+			'phone' => ['"phone":"961111111"', '"phone":"962222222"'],
+			'email' => ['"email":"uno@ejemplo.cl"', '"email":"dos@ejemplo.cl"'],
+			'contactPerson' => ['"contact_person":"Marcela Ríos"', '"contact_person":"Ana Soto"'],
+			'contactRole' => ['"contact_role":"Presidenta"', '"contact_role":"Secretaria"'],
+			'openingHours' => ['"opening_hours":"Lunes a viernes"', '"opening_hours":"Solo martes"'],
+			'notes' => ['"notes":"Sin novedad"', '"notes":"Con novedad"'],
+			'sourceRef' => ['"source":"prueba"', '"source":"otra-fuente"'],
+		];
+	}
+
+	/**
+	 * The one path that reaches the field-by-field comparison at all.
+	 *
+	 * `differs()` returns early when the authority's own blob has changed, and
+	 * that blob is the whole row — so on an ordinary re-import it answers before
+	 * any field is looked at. A revert is what separates the two: it writes the
+	 * old values back **without** marking the record overridden (ADR-0009's
+	 * recovery path, and the reason ADR-0003's guard does not fire), so the
+	 * record now disagrees with an official blob that is still current. Only then
+	 * does what `differs()` compares field by field decide anything.
+	 *
+	 * This is the case the hand-maintained list could get wrong, and the reason
+	 * deriving it from `input()` is worth doing.
+	 */
+	public function testAReImportAfterARevertWritesTheRecordBackAgain(): void {
+		$changed = str_replace('"notes":"Sin novedad"', '"notes":"Con novedad"', self::FULL);
+
+		$this->import(self::FULL);
+		$second = $this->import($changed);
+		self::assertSame(1, $second->getUpdated(), 'the setup never changed anything');
+
+		Server::get(\OCA\Territorio\Service\RevertService::class)
+			->revert((int)$second->getId(), 'tester');
+
+		$third = $this->import($changed);
+
+		self::assertSame(1, $third->getUpdated(), 'a reverted record was not written back');
+		self::assertSame('Con novedad', $this->features->findByDataset(
+			(int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId(),
+		)['t:full']->getNotes());
 	}
 
 	public function testAChangedFileUpdatesTheRecord(): void {

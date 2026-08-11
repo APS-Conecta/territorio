@@ -7,6 +7,27 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 Keeping what somebody typed before they saved.
 
+### Changed
+
+- **A re-import no longer keeps two hand-maintained lists of the same twelve fields.** `differs()`
+  listed them beside `input()`, which lists them already. The two had to agree by hand, and where
+  they disagree the loss is silent — not on an ordinary re-import, where the authority's own blob
+  answers first and it is the whole row, but on the one path that reaches the fields at all: a
+  record a **revert** put back, which writes old values without marking an override (ADR-0009), so
+  the record disagrees with an official blob that is still current. `differs()` now derives from
+  `input()`, with the two fields normalised that are stored in a shape they do not arrive in.
+- **Both taxonomy joins come from `TaxonomyService::tree()`.** `ImportService` and `ExportService`
+  each rebuilt the Category↔Subcategory join from the two mappers; four constructor dependencies and
+  four imports went with them.
+- **`DatasetMapper::findOrCreate` no longer takes an `Origin`.** Both callers passed
+  `Origin::Cadastral` and the column is written once and never read. The enum stays — CONTEXT.md
+  needs the word — and the parameter comes back when a Curated Dataset can be created.
+- **`ContactFields::KEYS` is gone.** It was read by no production code: a canonical third copy of a
+  list the two writers already hold, which is worse than two, because it looked like the authority
+  while the writers were the authority. They must keep their own maps — GeoJSON says
+  `contact_person`, a CSV column says `Persona de contacto` — so what has to hold is that the two
+  agree, and a test now makes that true rather than claimed.
+
 ### Fixed
 
 - **The gate left a live Sector behind on every run.** The check added for #48 draws and saves a

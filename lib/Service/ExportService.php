@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use DateTime;
-use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\ExportRecord;
 use OCA\Territorio\Db\ExportRecordMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\IUserSession;
 
@@ -46,8 +44,7 @@ class ExportService {
 
 	public function __construct(
 		private FeatureMapper $features,
-		private CategoryMapper $categories,
-		private SubcategoryMapper $subcategories,
+		private TaxonomyService $taxonomy,
 		private ExportRecordMapper $log,
 		private GeoJsonWriter $geoJson,
 		private CsvWriter $csv,
@@ -156,7 +153,7 @@ class ExportService {
 	 */
 	private function rows(array $ids): array {
 		$wanted = array_flip(array_map('intval', $ids));
-		$taxonomy = $this->taxonomy();
+		$labels = $this->labelledSubcategories();
 
 		$rows = [];
 		foreach ($this->features->findAll() as $feature) {
@@ -164,18 +161,18 @@ class ExportService {
 				continue;
 			}
 
-			$rows[] = $this->row($feature, $taxonomy);
+			$rows[] = $this->row($feature, $labels);
 		}
 
 		return $rows;
 	}
 
 	/**
-	 * @param array<int, array{slug: string, label: string}> $taxonomy
+	 * @param array<int, array{slug: string, label: string}> $labels
 	 * @return array<string, mixed>
 	 */
-	private function row(Feature $feature, array $taxonomy): array {
-		$classification = $taxonomy[$feature->getSubcategoryId()] ?? null;
+	private function row(Feature $feature, array $labels): array {
+		$classification = $labels[$feature->getSubcategoryId()] ?? null;
 
 		return [
 			'externalId' => $feature->getExternalId(),
@@ -247,25 +244,17 @@ class ExportService {
 	 *
 	 * @return array<int, array{slug: string, label: string}>
 	 */
-	private function taxonomy(): array {
-		$categories = [];
-		foreach ($this->categories->findAll() as $category) {
-			$categories[(int)$category->getId()] = $category;
-		}
-
+	private function labelledSubcategories(): array {
 		$index = [];
-		foreach ($this->subcategories->findAll() as $subcategory) {
-			$category = $categories[$subcategory->getCategoryId()] ?? null;
-			if ($category === null) {
-				continue;
+		foreach ($this->taxonomy->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				$index[$subcategory['id']] = [
+					'slug' => $category['slug'] . '/' . $subcategory['slug'],
+					// The same "Category · Subcategory" the list and the search show,
+					// so a CSV column reads as the screen does.
+					'label' => $category['label'] . ' · ' . $subcategory['label'],
+				];
 			}
-
-			$index[(int)$subcategory->getId()] = [
-				'slug' => $category->getSlug() . '/' . $subcategory->getSlug(),
-				// The same "Category · Subcategory" the list and the search show,
-				// so a CSV column reads as the screen does.
-				'label' => $category->getLabel() . ' · ' . $subcategory->getLabel(),
-			];
 		}
 
 		return $index;

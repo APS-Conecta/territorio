@@ -901,11 +901,13 @@ def retire_the_runs_record(page, name):
     """Take one of the run's own records off the map again (ADR-0005: retire,
     not delete).
 
-    Used for two things. The Sector, once, at the end: after the polygonize check this Sector is four
-    kilometres across and covers most of what the dev instance holds, so leaving
-    it behind reassigns half the Registry to it — which is what a Sector is FOR,
-    and exactly why a run must not leave one lying about. It broke two
-    integration tests that way before this existed.
+    Called for every Sector a run draws, at the end. After the polygonize check
+    the run's main Sector is four kilometres across and covers most of what the
+    dev instance holds, so leaving it behind reassigns half the Registry to it —
+    which is what a Sector is FOR, and exactly why a run must not leave one lying
+    about. It broke two integration tests that way before this existed, and broke
+    the same two again when the hand-drawn Sector of #48 was left behind for five
+    runs (issue #58). A Place left behind is harmless; a boundary is not.
     """
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(700)
@@ -1602,6 +1604,7 @@ def main():
         # Last, and after every check that needs this run's Sector: it is left
         # four kilometres across by the polygonize check above.
         retire_the_runs_record(page, f"Sector Navegador {RUN}")
+        retire_the_runs_record(page, f"Sector a mano {RUN}")
 
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)

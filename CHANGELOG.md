@@ -9,6 +9,12 @@ Keeping what somebody typed before they saved.
 
 ### Fixed
 
+- **The gate left a live Sector behind on every run.** The check added for #48 draws and saves a
+  hand-drawn Sector and never retired it, so five had accumulated, one per run. A Place left behind
+  is harmless; a **boundary** is not — every Place inside it is reassigned to it (ADR-0008), so
+  `ExportTest` began failing on a `sectorId` that had drifted to a Sector a gate run had left on the
+  map. `retire_the_runs_record` already existed for exactly this, and its docstring already said it
+  had broken two integration tests that way once before.
 - **The browser gate drew into a full map, and mostly missed.** It hid the cadastre once at
   start-up — but a View is per-session and nothing persists it, so every one of the file's ten
   reloads brought the Unidades Vecinales straight back. Only the first draw was ever protected.

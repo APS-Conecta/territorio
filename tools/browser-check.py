@@ -151,13 +151,27 @@ def toggle_division(page, label):
     page.wait_for_timeout(400)
 
 
-def draw_a_sector(page, name, failures, colour="#16a34a"):
-    """The #10 criterion: draw a polygon, name it, colour it, save it."""
+def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True, offset=0):
+    """The #10 criterion: draw a polygon, name it, colour it, save it.
+
+    `save_it=False` leaves the draft open. That is the only way to reach a Sector
+    before its first save, and every other check here opens an already-saved one —
+    which is exactly why #48 survived eight slices.
+
+    Returns whether a Sector was actually drawn. A caller that goes on regardless
+    operates on whatever the sidebar happens to hold, which is the mistake #53
+    was: say so in the return value rather than only in `failures`.
+
+    `offset` moves the whole shape sideways. NUDGE keeps one run clear of the
+    last one, but it is fixed within a run — so a second draw lands inside the
+    first one's polygon and selects it instead of drawing. Same hazard NUDGE
+    exists for, one scope smaller.
+    """
     # The icon is a div inside the button's anchor, not the anchor itself.
     page.locator(".leaflet-pm-icon-polygon").click()
 
     canvas = page.locator('[data-testid="map-canvas"]')
-    left, top = 180 + NUDGE, 160 + (NUDGE % 60)
+    left, top = 180 + NUDGE + offset, 160 + (NUDGE % 60)
     for x, y in [(left, top), (left + 110, top), (left + 110, top + 90), (left, top + 90)]:
         canvas.click(position={"x": x, "y": y})
     # Geoman's own Finalizar, rather than clicking the first vertex again: the
@@ -175,7 +189,7 @@ def draw_a_sector(page, name, failures, colour="#16a34a"):
         page.wait_for_selector('input[type="color"]', timeout=5_000)
     except PlaywrightTimeout:
         failures.append("drawing the polygon did not open a Sector draft")
-        return
+        return False
 
     # The colour input does NOT prove a Sector was drawn. A Unidad Vecinal is a
     # territorial division and carries one too, so when the draw did not take, a
@@ -190,13 +204,63 @@ def draw_a_sector(page, name, failures, colour="#16a34a"):
         )
         page.keyboard.press("Escape")
         page.wait_for_timeout(400)
-        return
+        return False
 
     page.get_by_label("Nombre").fill(name)
     # The colour input is native, so set it directly — a colour picker cannot be
     # driven by clicking.
     page.locator('input[type="color"]').fill(colour)
-    save(page, failures, "the Sector")
+    if save_it:
+        save(page, failures, "the Sector")
+    return True
+
+
+def a_tramo_typed_before_the_first_save_is_kept(page, failures):
+    """#48: a tramo typed on a Sector that has never been saved was discarded.
+
+    ADR-0007 keeps hand-drawing first-class, and a hand-drawn Sector's whole Limit
+    may be typed stretches. `startSector` built the draft with no `limit` key at
+    all, `addLimitNote` guarded on it being defined, and the picker cleared its
+    input either way — so the text vanished and nothing said why.
+    """
+    name = f"Sector a mano {RUN}"
+    tramo = "por detrás del colegio"
+
+    if not draw_a_sector(page, name, failures, save_it=False, offset=320):
+        return
+
+    picker = page.locator(".territorio-picker")
+    if picker.count() == 0:
+        failures.append("a Sector drawn by hand has no Limit picker before its first save")
+        return
+
+    page.get_by_label("Agregar un tramo a mano").fill(tramo)
+    page.get_by_role("button", name="Agregar tramo").click()
+    page.wait_for_timeout(400)
+
+    rows = picker.locator(".territorio-picker__parts li")
+    if rows.count() == 0 or tramo not in rows.first.inner_text():
+        failures.append(f"a tramo typed before the first save was dropped: {tramo!r}")
+
+    save(page, failures, "the hand-drawn Sector")
+
+    # Reopened, because the point is that it outlives the draft it was typed on.
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is not in the list after saving")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1500)
+    kept = page.locator(".territorio-picker__parts li")
+    if kept.count() == 0 or tramo not in kept.first.inner_text():
+        failures.append(f"a tramo typed before the first save did not survive it: {tramo!r}")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
 
 def clicking_places_the_coordinate(page, failures):
@@ -1483,6 +1547,10 @@ def main():
         the_editor_says_so_when_the_lines_do_not_close(page, failures)
         a_sector_can_be_built_from_picked_lines(page, failures)
         the_limit_is_kept_and_survives_adjustment(page, failures)
+        # After the checks that need this run's Sector: this one draws its own
+        # and leaves the list filtered while it works.
+        a_tramo_typed_before_the_first_save_is_kept(page, failures)
+
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 

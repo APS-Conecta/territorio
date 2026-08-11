@@ -3,6 +3,28 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.28.0] — unreleased
+
+Keeping what somebody typed before they saved.
+
+### Fixed
+
+- **A tramo typed on a Sector that had never been saved was discarded**, with nothing said. ADR-0007
+  keeps hand-drawing first-class and a hand-drawn Sector's whole Limit may be typed stretches — but
+  `startSector` built the draft with no `limit` key at all, `addLimitNote` keys on it being defined,
+  and the picker cleared its input either way. So the text vanished. It worked after a save and
+  reopen, because that path sets an empty Limit, which is why the browser gate never saw it: every
+  check there opens an already-saved Sector.
+
+### Notes
+
+The gate now reaches a Sector **before** its first save, which it never did before. Two smaller
+things had to be true first, both of the same shape as issue #53 — a check that operates on
+whatever the sidebar happens to hold. `draw_a_sector` now returns whether it actually drew, so a
+caller cannot carry on regardless; and it takes an offset, because its position is fixed within a
+run and a second draw landed inside the first one's polygon and selected it. NUDGE existed for
+exactly that hazard, one scope too wide.
+
 ## [0.27.0] — unreleased
 
 A pin that says what kind of place it is.

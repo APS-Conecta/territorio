@@ -5,16 +5,13 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use DateTime;
-use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\Dataset;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\ImportBatchMapper;
-use OCA\Territorio\Db\Origin;
 use OCA\Territorio\Db\RevisionLog;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Exception\InvalidImportException;
 
@@ -58,8 +55,7 @@ class ImportService {
 		private DatasetMapper $datasets,
 		private FeatureMapper $features,
 		private FeatureService $featureService,
-		private CategoryMapper $categories,
-		private SubcategoryMapper $subcategories,
+		private TaxonomyService $taxonomy,
 		private RevisionLog $revisions,
 		private ImportBatchMapper $batches,
 		private ComunaConfig $comuna,
@@ -154,7 +150,6 @@ class ImportService {
 		$dataset = $this->datasets->findOrCreate(
 			$datasetSlug,
 			$label ?? $datasetSlug,
-			Origin::Cadastral,
 			$boundary,
 		);
 
@@ -409,6 +404,16 @@ class ImportService {
 	 * Revisions at all — otherwise every re-import would flood the change cursor
 	 * with hundreds of "updates" that changed nothing, and history with them.
 	 *
+	 * The official blob answers first, and it is the whole row — so on an
+	 * ordinary re-import nothing below it is reached. What the fields decide is
+	 * the record a **revert** put back: that writes old values without marking an
+	 * override (ADR-0009), so the record disagrees with an official blob that is
+	 * still current. Getting the list wrong loses exactly that case, silently.
+	 *
+	 * So it is derived from `input()` rather than listed a second time by hand.
+	 * `ImportInputTest` guards the other half — a field `comparable()` lacks
+	 * would be compared against nothing.
+	 *
 	 * @param array<string, mixed> $row
 	 */
 	private function differs(Feature $current, array $row, Provenance $provenance): bool {
@@ -416,20 +421,22 @@ class ImportService {
 			return true;
 		}
 
-		$geometry = $row['geometry'] === null ? null : Geometry::fromArray($row['geometry'])->toJson();
+		// Two of them are stored in a shape they do not arrive in. Normalised
+		// here and not in `input()`, which feeds the write path and must keep
+		// handing FeatureService the raw row.
+		$incoming = $this->input($row);
+		$incoming['geometry'] = $row['geometry'] === null
+			? null
+			: Geometry::fromArray($row['geometry'])->toJson();
+		$incoming['locationQuality'] = $this->expectedQuality($row);
 
-		return $current->getName() !== $row['name']
-			|| $current->getSubcategoryId() !== $row['subcategoryId']
-			|| $current->getLocationQuality() !== $this->expectedQuality($row)
-			|| $current->getGeometry() !== $geometry
-			|| $current->getAddress() !== $row['address']
-			|| $current->getPhone() !== $row['phone']
-			|| $current->getEmail() !== $row['email']
-			|| $current->getContactPerson() !== $row['contactPerson']
-			|| $current->getContactRole() !== $row['contactRole']
-			|| $current->getOpeningHours() !== $row['openingHours']
-			|| $current->getNotes() !== $row['notes']
-			|| $current->getSourceRef() !== $row['sourceRef'];
+		// Sorted because the two are built in different orders and `!==` on
+		// arrays is order-sensitive; strict so a stored '' never reads as null.
+		$stored = array_intersect_key($current->comparable(), $incoming);
+		ksort($stored);
+		ksort($incoming);
+
+		return $stored !== $incoming;
 	}
 
 	/**
@@ -572,16 +579,10 @@ class ImportService {
 
 	/** @return array<string, int> "categorySlug/subcategorySlug" → Subcategory id */
 	private function subcategoryIndex(): array {
-		$categorySlugs = [];
-		foreach ($this->categories->findAll() as $category) {
-			$categorySlugs[(int)$category->getId()] = $category->getSlug();
-		}
-
 		$index = [];
-		foreach ($this->subcategories->findAll() as $subcategory) {
-			$categorySlug = $categorySlugs[$subcategory->getCategoryId()] ?? null;
-			if ($categorySlug !== null) {
-				$index[$categorySlug . '/' . $subcategory->getSlug()] = (int)$subcategory->getId();
+		foreach ($this->taxonomy->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				$index[$category['slug'] . '/' . $subcategory['slug']] = $subcategory['id'];
 			}
 		}
 

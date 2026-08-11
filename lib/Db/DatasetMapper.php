@@ -82,7 +82,7 @@ class DatasetMapper extends QBMapper {
 	 * is deliberately no way out yet: nobody has needed one, and it would be a
 	 * command of its own rather than a side effect of importing.
 	 */
-	public function findOrCreate(string $slug, string $label, Origin $origin, ?bool $boundary = null): Dataset {
+	public function findOrCreate(string $slug, string $label, ?bool $boundary = null): Dataset {
 		try {
 			$dataset = $this->findBySlug($slug);
 			if ($boundary === true && !$dataset->getBoundary()) {
@@ -95,7 +95,9 @@ class DatasetMapper extends QBMapper {
 			$dataset = new Dataset();
 			$dataset->setSlug($slug);
 			$dataset->setLabel($label);
-			$dataset->setOrigin($origin->value);
+			// ponytail: only an import creates a Dataset, and every one is
+			// Cadastral. Takes a parameter again when a Curated one can be created.
+			$dataset->setOrigin(Origin::Cadastral->value);
 			$dataset->setBoundary($boundary === true);
 			$dataset->setCreatedAt(new DateTime());
 

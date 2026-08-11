@@ -7,20 +7,18 @@ namespace OCA\Territorio\Service;
 /**
  * Which fields describe a person rather than a place (ADR-0006).
  *
- * One list, because the promise made by the unconfirmed export — that it carries
- * nothing about anybody — is only as good as the agreement between everything
- * that writes a file. The list lived in two writers and a paragraph of Spanish
- * prose, so adding a field meant remembering three places and the guarantee
- * broke if you remembered two.
+ * There is no list here. Each writer holds its own, because they spell the same
+ * field differently and must — GeoJSON says `contact_person`, a CSV column says
+ * `Persona de contacto` — and one list of row keys cannot carry both. A canonical
+ * third copy was tried and read by nothing, which is worse than two: it looked
+ * like the authority while the writers were the authority.
  *
- * `address` is deliberately not here. Where a junta meets is a fact about the
- * territory and it is on the sign outside; a name, a telephone number and an
- * email address are the presidenta's.
+ * What has to hold is that the two agree, and `ContactFieldsTest` is what makes
+ * that true rather than claimed. The promise an unconfirmed export makes — that
+ * it carries nothing about anybody (ADR-0006) — is only as good as that
+ * agreement.
  */
 final class ContactFields {
-	/** @var list<string> the row keys, as the readers and writers name them */
-	public const KEYS = ['phone', 'email', 'contactPerson', 'contactRole'];
-
 	/**
 	 * Marks a file that was written WITHOUT them.
 	 *

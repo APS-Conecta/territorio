@@ -151,7 +151,45 @@ def toggle_division(page, label):
     page.wait_for_timeout(400)
 
 
-def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True, offset=0):
+def division_toggle(page, label):
+    """The checkbox in Capas for one territorial division."""
+    return (page.locator(".territorio-capas__divisions .checkbox-radio-switch")
+            .filter(has_text=label)
+            .locator("input[type=checkbox]"))
+
+
+def hide_divisions(page):
+    """Take the drawn boundaries off the map, and say which ones were on.
+
+    Geoman snaps new vertices to what is already drawn, and a click that misses
+    selects whatever is under it — so with a comuna's Unidades Vecinales and a
+    run's Sectores on screen, drawing is a coin toss. Hiding them is what a
+    person drawing a boundary does anyway, through the app's own Capas toggles.
+
+    This has to happen per draw, not once at start-up. A View is per-session and
+    nothing persists it, so every one of this file's ten reloads brings the
+    cadastre straight back — which is why hiding once protected only the first
+    draw and every later one was drawing into a full map (issue #56).
+    """
+    hidden = []
+    for label in ("Sector", "Unidad Vecinal"):
+        box = division_toggle(page, label)
+        if box.count() > 0 and box.first.is_checked():
+            toggle_division(page, label)
+            hidden.append(label)
+
+    return hidden
+
+
+def show_divisions(page, labels):
+    """Put back exactly what hide_divisions took away."""
+    for label in labels:
+        box = division_toggle(page, label)
+        if box.count() > 0 and not box.first.is_checked():
+            toggle_division(page, label)
+
+
+def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True):
     """The #10 criterion: draw a polygon, name it, colour it, save it.
 
     `save_it=False` leaves the draft open. That is the only way to reach a Sector
@@ -161,17 +199,24 @@ def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True, offset=0
     Returns whether a Sector was actually drawn. A caller that goes on regardless
     operates on whatever the sidebar happens to hold, which is the mistake #53
     was: say so in the return value rather than only in `failures`.
-
-    `offset` moves the whole shape sideways. NUDGE keeps one run clear of the
-    last one, but it is fixed within a run — so a second draw lands inside the
-    first one's polygon and selects it instead of drawing. Same hazard NUDGE
-    exists for, one scope smaller.
     """
+    # Drawn on empty ground: see hide_divisions() for why, and why once at
+    # start-up was not enough. Restored in the `finally` below, because every
+    # check after this one reads a list that Capas filters.
+    hidden = hide_divisions(page)
+    try:
+        return _draw(page, name, failures, colour, save_it)
+    finally:
+        show_divisions(page, hidden)
+
+
+def _draw(page, name, failures, colour, save_it):
+    """The draw itself, with the boundaries already off the map."""
     # The icon is a div inside the button's anchor, not the anchor itself.
     page.locator(".leaflet-pm-icon-polygon").click()
 
     canvas = page.locator('[data-testid="map-canvas"]')
-    left, top = 180 + NUDGE + offset, 160 + (NUDGE % 60)
+    left, top = 180 + NUDGE, 160 + (NUDGE % 60)
     for x, y in [(left, top), (left + 110, top), (left + 110, top + 90), (left, top + 90)]:
         canvas.click(position={"x": x, "y": y})
     # Geoman's own Finalizar, rather than clicking the first vertex again: the
@@ -182,9 +227,9 @@ def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True, offset=0
     # Waiting for it here turns "the polygon never became a draft" into a sentence
     # instead of a timeout thirty seconds later on an unrelated locator.
     #
-    # ponytail: the draw is clicks on a canvas that may be covered in boundaries,
-    # and geoman snaps to them, so it does occasionally not take. Give it a retry
-    # if that starts costing time.
+    # Measured 2026-08-11, before the boundaries were taken off the map: the
+    # draw missed three runs in five, and then every run once the map filled up.
+    # It is the clicks that are fragile, not the app.
     try:
         page.wait_for_selector('input[type="color"]', timeout=5_000)
     except PlaywrightTimeout:
@@ -226,7 +271,7 @@ def a_tramo_typed_before_the_first_save_is_kept(page, failures):
     name = f"Sector a mano {RUN}"
     tramo = "por detrás del colegio"
 
-    if not draw_a_sector(page, name, failures, save_it=False, offset=320):
+    if not draw_a_sector(page, name, failures, save_it=False):
         return
 
     picker = page.locator(".territorio-picker")

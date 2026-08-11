@@ -9,6 +9,14 @@ Keeping what somebody typed before they saved.
 
 ### Fixed
 
+- **The browser gate drew into a full map, and mostly missed.** It hid the cadastre once at
+  start-up — but a View is per-session and nothing persists it, so every one of the file's ten
+  reloads brought the Unidades Vecinales straight back. Only the first draw was ever protected.
+  Measured: three misses in five runs, and then every run once the map had filled up, at which point
+  no branch could get a green gate at all. The boundaries now come off the map for the duration of
+  each draw and go back afterwards, through the app's own Capas toggles — ten draws in ten, each
+  after a reload. `draw_a_sector`'s `offset` went with it: it worked around a second draw landing
+  inside the first one's polygon, which cannot happen once that polygon is hidden.
 - **A tramo typed on a Sector that had never been saved was discarded**, with nothing said. ADR-0007
   keeps hand-drawing first-class and a hand-drawn Sector's whole Limit may be typed stretches — but
   `startSector` built the draft with no `limit` key at all, `addLimitNote` keys on it being defined,

@@ -169,12 +169,27 @@ def draw_a_sector(page, name, failures, colour="#16a34a"):
     # instead of a timeout thirty seconds later on an unrelated locator.
     #
     # ponytail: the draw is clicks on a canvas that may be covered in boundaries,
-    # and geoman snaps to them, so it does occasionally not take. It fails
-    # honestly rather than silently; give it a retry if that starts costing time.
+    # and geoman snaps to them, so it does occasionally not take. Give it a retry
+    # if that starts costing time.
     try:
         page.wait_for_selector('input[type="color"]', timeout=5_000)
     except PlaywrightTimeout:
         failures.append("drawing the polygon did not open a Sector draft")
+        return
+
+    # The colour input does NOT prove a Sector was drawn. A Unidad Vecinal is a
+    # territorial division and carries one too, so when the draw did not take, a
+    # canvas click selected a cadastre boundary and this typed a name and colour
+    # straight into it — three were renamed that way before anyone noticed
+    # (issue #53). A history section is the tell: it renders only for a record
+    # that already exists, and a Sector drawn a moment ago has none.
+    if page.locator(".territorio-history").count() > 0:
+        failures.append(
+            "the draw did not take: the sidebar holds an existing record, not a new Sector — "
+            f"refusing to rename {page.get_by_label('Nombre').input_value().strip()!r}",
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
         return
 
     page.get_by_label("Nombre").fill(name)

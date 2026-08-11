@@ -30,6 +30,15 @@ A pin that says what kind of place it is.
   `asset/inline`, a data URI, which cannot be recoloured and cannot be inlined into the Leaflet
   `divIcon` — and both are needed.
 
+### Fixed
+
+- **The browser gate no longer edits the cadastre when a draw misses.** `draw_a_sector` waited for a
+  colour input to confirm it had a Sector draft — but a Unidad Vecinal is a territorial division and
+  carries one too, so a canvas click that selected a boundary instead satisfied the guard, and the
+  gate typed a name and a colour into the cadastre and saved. Three Unidades Vecinales were renamed
+  that way. A history section is the tell: it renders only for a record that already exists, and a
+  Sector drawn a moment ago has none (issue #53).
+
 ### Notes
 
 This is the half of ADR-0013 that does the identifying. Hue only groups the eleven Categories into

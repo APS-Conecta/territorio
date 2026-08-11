@@ -701,6 +701,9 @@ export default {
 				// Only a Sector draft carries these, and carrying them is what opens
 				// the picker (issue #13). #15 is what makes them outlive the draft.
 				picked: [],
+				// Empty rather than absent: addLimitNote keys on it being defined,
+				// so a tramo typed before the first save was dropped (issue #48).
+				limit: [],
 			}
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []

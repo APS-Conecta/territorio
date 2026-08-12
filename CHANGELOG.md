@@ -17,8 +17,9 @@ Saying who changed the límite.
   promise written into `Feature.php` itself: *"quién cambió el límite is exactly the kind of question
   history exists to answer"*.
 
-  An alias now sits beside `comparable()`, where the divergence is created — not a rename, because
-  `RevertService` and `ImportService` both key off the client names.
+  An alias on the entity now carries it — not a rename, because `RevertService` and `ImportService`
+  both key off the client names. A reflection test asserts every `comparable()` key resolves to a
+  declared property through that alias, so the next reserved word cannot open the same hole quietly.
 
 ### Notes
 

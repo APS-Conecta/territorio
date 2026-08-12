@@ -49,8 +49,23 @@ class DuplicateService {
 	 * @return int how many pairs were new
 	 */
 	public function scan(): int {
+		// Read once, so the scan does not offer the database pairs it already holds.
+		// The outcome was always right — the unique index refused them — but a
+		// refused insert in PostgreSQL still writes a row version for autovacuum to
+		// collect, and still burns a sequence value. Measured before this: 704 of them in
+		// a single re-scan of the dev instance.
+		//
+		// The index remains the authority: two scans at once still cannot both
+		// record the same pair (ADR-0011), because this only skips what was already
+		// there when the scan began. It is a filter, not a lock.
+		$known = $this->duplicates->knownPairs();
+
 		$found = 0;
 		foreach (DuplicateFinder::pairs($this->candidates()) as $pair) {
+			if (isset($known[$pair->firstId][$pair->secondId])) {
+				continue;
+			}
+
 			$row = new Duplicate();
 			$row->setFirstId($pair->firstId);
 			$row->setSecondId($pair->secondId);

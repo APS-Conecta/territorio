@@ -92,6 +92,58 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		self::assertSame('coordenada', $pair->getReason());
 	}
 
+	/**
+	 * The id sequence, which moves on every insert the database is ASKED for —
+	 * whether or not the row survives. `nextval` is not transactional, so a
+	 * refused insert burns a value just as a successful one does, which makes this
+	 * the one thing that can tell "the scan proposed nothing" from "the scan
+	 * proposed everything and the index refused it".
+	 */
+	private function sequenceValue(): int {
+		$db = Server::get(IDBConnection::class);
+		$result = $db->executeQuery(
+			"select pg_sequence_last_value(pg_get_serial_sequence('*PREFIX*territorio_duplicate', 'id'))",
+		);
+		$value = (int)$result->fetchOne();
+		$result->closeCursor();
+
+		return $value;
+	}
+
+	/**
+	 * A second scan must not offer the database a pair it already holds.
+	 *
+	 * `testScanningTwiceDoesNotOfferTheSamePairTwice` above pins the OUTCOME, and
+	 * the outcome was always right — the unique index saw to that. What it cannot
+	 * see is the cost: every known pair was re-proposed on every scan and refused,
+	 * and a refused insert in PostgreSQL still writes a row version for autovacuum
+	 * to collect. Measured on the dev instance before this: 1,778,856 insert
+	 * attempts behind 8,852 live pairs.
+	 *
+	 * The index still decides — two scans at once are still safe (ADR-0011). It is
+	 * simply no longer asked two hundred times per row for an answer already held.
+	 */
+	public function testASecondScanDoesNotProposePairsTheTableAlreadyHolds(): void {
+		$this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+
+		$before = $this->sequenceValue();
+		// Non-zero, or this passes by comparing nothing: if the sequence could not be
+		// found both reads cast to 0 and the check goes green for ever.
+		self::assertGreaterThan(0, $before, 'the id sequence was not found, so nothing was measured');
+
+		$this->service->scan();
+
+		// Read once. `sprintf` evaluates its arguments whether or not the assertion
+		// fails, so calling it again in there ran a third query on every green run
+		// and reported a delta measured after the assertion's own read.
+		$after = $this->sequenceValue();
+		self::assertSame($before, $after, sprintf(
+			'the second scan asked for %d inserts the table already held; each refusal '
+			. 'is a dead tuple, and the sequence moves whether the row survives or not',
+			$after - $before,
+		));
+	}
+
 	public function testScanningTwiceDoesNotOfferTheSamePairTwice(): void {
 		[$first, $second] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
 

@@ -3,6 +3,32 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.40.0] — unreleased
+
+A scan that does not ask twice.
+
+### Changed
+
+- **The duplicate scan stopped proposing pairs the table already holds.** `scan()` offered every
+  candidate to the database on every run and let the unique index refuse the ones already recorded.
+  The outcome was right — that is what the index is for, and ADR-0011 leans on it — but a refused
+  insert in PostgreSQL still writes a row version for autovacuum to collect, and still burns a
+  sequence value. `oc_territorio_duplicate` on the dev instance has taken **1,778,856 inserts**
+  against **8,852 live rows** — a total that counts the successes and every other writer too, but
+  the gap is the shape of it — and a single re-scan asked for **704** the table already held.
+
+  The known pairs are read once per scan and skipped. The index remains the authority: this only
+  filters what was already there when the scan began, so two scans at once still cannot both record
+  the same pair.
+
+### Notes
+
+Pinned by a test that could not have been written against the outcome, because the outcome was
+always correct — `testScanningTwiceDoesNotOfferTheSamePairTwice` has passed all along. `nextval` is
+not transactional in PostgreSQL, so a refused insert moves the sequence exactly as a successful one
+does, which makes the sequence the one thing that can tell "proposed nothing" from "proposed
+everything and was refused". It failed at 704 before the change.
+
 ## [0.37.0] — unreleased
 
 Asking the taxonomy once.

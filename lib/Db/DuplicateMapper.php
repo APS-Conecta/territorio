@@ -74,6 +74,33 @@ class DuplicateMapper extends QBMapper {
 	}
 
 	/**
+	 * Every pair the table already holds, as first id => second id => true.
+	 *
+	 * Two columns rather than entities: this exists so a scan can skip what is
+	 * already recorded, and hydrating a `Duplicate` per row to answer that would
+	 * cost more than the inserts it saves.
+	 *
+	 * Every status, not only pending: a pair somebody dismissed is exactly the one
+	 * that must not be offered again (issue #16), and one already merged is not a
+	 * candidate either.
+	 *
+	 * @return array<int, array<int, true>>
+	 */
+	public function knownPairs(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('first_id', 'second_id')->from($this->getTableName());
+
+		$known = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$known[(int)$row['first_id']][(int)$row['second_id']] = true;
+		}
+		$result->closeCursor();
+
+		return $known;
+	}
+
+	/**
 	 * Record a pair, unless it is already known.
 	 *
 	 * The unique index does the deciding rather than a read-then-write: two

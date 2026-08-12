@@ -3,6 +3,22 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.41.0] — unreleased
+
+The fields a Sector draft carries, in one place.
+
+### Changed
+
+- **`limit`, `picked` and `pickedGeometry` are built by one function.** Two places made a Sector
+  draft — starting a new one and reopening a saved one — and each held its own list of the three
+  fields only a Sector carries. They have drifted apart twice: `limit` absent meant `addLimitNote`
+  had nothing to key on, so a tramo typed before the first save was dropped (#48); `pickedGeometry`
+  absent meant `save()` carried undefined over a fresh object (#49). Both were one caller holding a
+  field the other did not, and the next field would have been the third.
+
+  `sectorFields()` lives beside the rest of the Limit shaping, so it is a thing that can be tested
+  rather than a shape that has to be remembered twice.
+
 ## [0.40.0] — unreleased
 
 A scan that does not ask twice.

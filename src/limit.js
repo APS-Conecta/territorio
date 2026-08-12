@@ -110,3 +110,29 @@ export function groups(parts) {
 export function without(parts, name) {
 	return (parts ?? []).filter((part) => part.name !== name)
 }
+
+/**
+ * The three fields only a Sector draft carries, built in one place because they
+ * have to arrive together.
+ *
+ * They have drifted apart twice. `limit` absent meant `addLimitNote` had nothing
+ * to key on, so a tramo typed before the first save was dropped (#48).
+ * `pickedGeometry` absent meant `save()` carried undefined over a fresh object
+ * (#49). Both were one caller holding a field the other did not, and the next
+ * field would have been the third.
+ *
+ * `picked` is derived from the Limit rather than kept beside it: the Limit IS the
+ * record of which lines were chosen (#15), and the ticks in the picker are a view
+ * of it. `pickedGeometry` starts empty by necessity — the server holds the names a
+ * Limit runs along and never the shapes, which come back as the map brings each
+ * line into view.
+ */
+export function sectorFields(limit = []) {
+	return {
+		limit,
+		picked: limit
+			.filter((part) => part.featureId !== undefined)
+			.map((part) => part.featureId),
+		pickedGeometry: {},
+	}
+}

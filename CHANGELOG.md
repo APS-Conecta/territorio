@@ -27,6 +27,10 @@ A pin you can click while looking at what was retired.
   that left behind. The user saw «No se pudo guardar. Revise la conexión» and an empty sidebar for a
   record the server had already accepted. The guard now closes the draft only when the record has
   actually left the screen, and `save()` reads what it needs before the merge rather than after.
+- **A record retired by somebody else showed no restore banner.** `selectedIsRetired` asked whether
+  the retired list was on show as well as whether the record was in it. The list is never cleared
+  once loaded, so a record a colleague retired could be opened from the duplicate queue with the
+  toggle off, and it came up with no banner and a live «Guardar». Membership is the whole question.
 
 ### Notes
 

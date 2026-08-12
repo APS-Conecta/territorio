@@ -351,9 +351,18 @@ export default {
 			return countsFor(this.liveFiltered, this.taxonomy)
 		},
 
+		/**
+		 * Whether the open record is one of the retired ones — which is what puts
+		 * the restore banner up, and what tells the detail pane not to offer to
+		 * retire it again.
+		 *
+		 * Not gated on the toggle. `retiredFeatures` is never cleared once loaded,
+		 * so a record retired by a colleague can be opened from the duplicate queue
+		 * with the toggle off — and gating on it meant that record showed no banner
+		 * and a live «Guardar». Membership is the whole question.
+		 */
 		selectedIsRetired() {
-			return this.showRetired
-				&& this.retiredFeatures.some((feature) => feature.id === this.selectedId)
+			return this.retiredFeatures.some((feature) => feature.id === this.selectedId)
 		},
 
 		/**

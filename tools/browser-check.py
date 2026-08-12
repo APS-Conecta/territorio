@@ -461,7 +461,15 @@ def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
     # The retired list is fetched on toggle. Waiting for the button to change its
     # own label is what says the toggle landed; clicking before it does would be
     # testing the state this check exists to leave behind.
-    settles(page, lambda: page.get_by_role("button", name="Ver activos", exact=True).count() > 0)
+    #
+    # And the answer is not discardable. If the toggle never lands, this check
+    # passes without exercising #67 at all, and the cleanup below then raises on a
+    # button that is not there — leaving this run's Sector live on the map, which
+    # reassigns every Place inside it (issue #58).
+    if not settles(page, lambda: page.get_by_role("button", name="Ver activos", exact=True).count() > 0):
+        failures.append("«Ver retirados» did not switch the list, so the dead-click check did not run")
+        retire_the_runs_record(page, name)
+        return
 
     shape.first.click(force=True)
     if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):

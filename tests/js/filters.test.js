@@ -3,6 +3,7 @@ import {
 	categoryState,
 	countsFor,
 	emptyFilter,
+	featureById,
 	filterFeatures,
 	isFiltered,
 	isSubcategoryVisible,
@@ -367,6 +368,44 @@ describe('what the Datos list shows', () => {
 		})
 
 		expect(list.map((f) => f.name)).toEqual(['Colegio retirado'])
+	})
+})
+
+/**
+ * Selecting is resolving an id against the data, and the sets on screen are not
+ * one list (issue #67). The map draws the live Registry whatever the retired
+ * toggle says; the Datos list draws `listFor()`, which with the toggle on holds
+ * only retired records. Resolving a map click against the list's answer found
+ * nothing, so the pin highlighted and the sidebar never opened.
+ */
+describe('featureById', () => {
+	const retired = [feature(7, 21, 'Colegio retirado')]
+
+	it('finds a live record while the retired list is the one on show', () => {
+		expect(featureById(FEATURES, retired, 1)?.id).toBe(1)
+	})
+
+	it('finds a retired record', () => {
+		expect(featureById(FEATURES, retired, 7)?.name).toBe('Colegio retirado')
+	})
+
+	/**
+	 * The pairing itself, which is the bug: `listFor()` is asked what the list
+	 * shows and answers with the retired records alone, while the map is still
+	 * drawing the live ones. Resolving against its answer is what killed the click.
+	 */
+	it('finds what listFor deliberately leaves out', () => {
+		const shown = listFor({
+			features: FEATURES, retiredFeatures: retired, showRetired: true,
+			filter: emptyFilter(), subcategories: SUBCATEGORIES,
+		})
+
+		expect(shown.map((f) => f.id)).not.toContain(1)
+		expect(featureById(FEATURES, retired, 1)?.id).toBe(1)
+	})
+
+	it('is undefined for an id neither list holds', () => {
+		expect(featureById(FEATURES, retired, 999)).toBeUndefined()
 	})
 })
 

@@ -179,6 +179,7 @@ import { faceAround } from './sectors.js'
 import {
 	countsFor,
 	emptyFilter,
+	featureById,
 	filterFeatures,
 	isFiltered,
 	listFor,
@@ -350,9 +351,18 @@ export default {
 			return countsFor(this.liveFiltered, this.taxonomy)
 		},
 
+		/**
+		 * Whether the open record is one of the retired ones — which is what puts
+		 * the restore banner up, and what tells the detail pane not to offer to
+		 * retire it again.
+		 *
+		 * Not gated on the toggle. `retiredFeatures` is never cleared once loaded,
+		 * so a record retired by a colleague can be opened from the duplicate queue
+		 * with the toggle off — and gating on it meant that record showed no banner
+		 * and a live «Guardar». Membership is the whole question.
+		 */
 		selectedIsRetired() {
-			return this.showRetired
-				&& this.retiredFeatures.some((feature) => feature.id === this.selectedId)
+			return this.retiredFeatures.some((feature) => feature.id === this.selectedId)
 		},
 
 		/**
@@ -521,8 +531,13 @@ export default {
 				into.splice(existing, 1, incoming)
 			}
 
-			// The sidebar may now be showing a record that just changed sides.
-			if (this.selectedId === incoming.id && incoming.retired !== this.showRetired) {
+			// The sidebar may now be showing a record that has left the screen: it
+			// was retired, and retired records are not being shown. Not "differs
+			// from the toggle" — that also caught a LIVE record open while the
+			// retired list was on show, which is an ordinary thing to be looking at
+			// since #67, and closing it on the record's own save is what made the
+			// save look like it had failed.
+			if (this.selectedId === incoming.id && incoming.retired && !this.showRetired) {
 				this.closeDraft()
 			}
 		},
@@ -541,7 +556,7 @@ export default {
 		select(id) {
 			this.stopSeeding()
 			this.selectedId = id
-			const feature = this.listed.find((candidate) => candidate.id === id)
+			const feature = featureById(this.features, this.retiredFeatures, id)
 			this.draft = feature === undefined ? null : this.draftFrom(feature)
 			this.error = ''
 			this.history = []
@@ -1071,6 +1086,11 @@ export default {
 						this.payload(),
 					)
 
+				// Read before the merge, never after: mergeFeature() can close the
+				// draft, and this line used to run on the null it left behind — so a
+				// save the server had already accepted ended in the catch, telling
+				// the user to check their connection.
+				const picked = this.draft.picked
 				this.mergeFeature(data)
 				// The cursor is deliberately NOT advanced here. Jumping it to our
 				// own Revision skips every change that landed between our last poll
@@ -1085,7 +1105,6 @@ export default {
 				//
 				// ponytail: they live in the draft and die with it, so closing the
 				// sidebar still loses them. #15 is what gives a Limit somewhere to be.
-				const picked = this.draft.picked
 				this.draft = this.draftFrom(data)
 				if (picked !== undefined) {
 					this.draft.picked = picked

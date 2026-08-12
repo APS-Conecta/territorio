@@ -3,6 +3,42 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.31.0] — unreleased
+
+A pin you can click while looking at what was retired.
+
+### Fixed
+
+- **Clicking the map did nothing while «Ver retirados» was on.** The map draws the live Registry
+  whatever that toggle says, and `listFor()` answers with the retired list *alone* once it is on —
+  deliberately, so a search still reaches a record somebody is trying to restore. With the toggle on
+  the two sets are disjoint, and `select()` was resolving the clicked id against the list's answer.
+  It found nothing: the shape took the selected styling, the sidebar never opened, no history was
+  fetched. The click looked accepted and was dead.
+
+  Selecting is not a list operation. It resolves against the two sets the app holds, not against one
+  view of them — the Capas filter narrows what is *listed*, never what exists.
+- **«Abrir ficha» in the duplicate queue was dead the same way**, and more often: the queue is
+  unfiltered on purpose, so its ids came from the whole live Registry while `select()` answered from
+  the filtered list. Any Capas toggle or any search was enough. The same fix covers it.
+- **Saving a record opened that way reported a failure over a save that had worked.** `applyIncoming`
+  closed the draft whenever a record's retired flag differed from the toggle — which is every live
+  record once one is reachable with «Ver retirados» on — and `save()` then read `picked` off the null
+  that left behind. The user saw «No se pudo guardar. Revise la conexión» and an empty sidebar for a
+  record the server had already accepted. The guard now closes the draft only when the record has
+  actually left the screen, and `save()` reads what it needs before the merge rather than after.
+- **A record retired by somebody else showed no restore banner.** `selectedIsRetired` asked whether
+  the retired list was on show as well as whether the record was in it. The list is never cleared
+  once loaded, so a record a colleague retired could be opened from the duplicate queue with the
+  toggle off, and it came up with no banner and a live «Guardar». Membership is the whole question.
+
+### Notes
+
+Only a browser could see it. Both sets are correct on their own and neither suite pairs them, which
+is the same shape as `Guardar` doing nothing for eight slices. The browser gate now clicks the
+Sector it drew itself with the toggle on and requires a sidebar; reintroducing the old lookup and
+rebuilding reddens it.
+
 ## [0.30.0] — unreleased
 
 Saying who changed the límite.

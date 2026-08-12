@@ -163,6 +163,22 @@ export function listFor({ features, retiredFeatures, showRetired, filter, subcat
 }
 
 /**
+ * The record behind an id, from the two sets the app holds rather than from any
+ * one view of them.
+ *
+ * Selecting is not a list operation. The map draws the live Registry whatever the
+ * retired toggle says, and `listFor()` above answers with the retired list alone
+ * once that toggle is on — so resolving a map click against the list's answer
+ * looked up a live id in a set that by design holds none, found nothing, and left
+ * the pin selected with no sidebar (issue #67). The Capas filter narrows the same
+ * way: it decides what is listed, never what exists.
+ */
+export function featureById(features, retiredFeatures, id) {
+	return features.find((feature) => feature.id === id)
+		?? retiredFeatures.find((feature) => feature.id === id)
+}
+
+/**
  * The one filtered set: what Capas leaves visible, narrowed again by what was
  * typed.
  *

@@ -426,6 +426,81 @@ def the_limit_can_be_picked(page, failures):
     page.wait_for_timeout(400)
 
 
+def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
+    """#67: the map draws the live Registry whatever the retired toggle says.
+
+    `select()` resolved the clicked id against the Datos list, and once that
+    toggle is on the list holds only retired records — deliberately, so a search
+    reaches them. The two sets are then disjoint, so every click on the map found
+    nothing: the shape took the selected styling and the sidebar never opened.
+
+    Only a browser sees it. Both sets are right on their own, and neither the unit
+    suite nor the integration suite pairs them — which is the same shape as
+    `Guardar` doing nothing for eight slices.
+
+    Draws its own Sector rather than clicking whatever shape lies nearest: the
+    second half of this SAVES the record it opens, and a check may only write to a
+    record it made. The colour is how it is found again, so a Sector left behind
+    by an earlier run cannot be picked up instead.
+    """
+    name = f"Sector Retirados {RUN}"
+    colour = "#8b1a8b"
+    if not draw_a_sector(page, name, failures, colour=colour):
+        return
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+
+    shape = page.locator(f'.leaflet-overlay-pane path[stroke="{colour}"]')
+    if not settles(page, lambda: shape.count() > 0, timeout=6_000):
+        failures.append(f"{name!r} saved but was not drawn, so the retired-toggle check could not run")
+        retire_the_runs_record(page, name)
+        return
+
+    page.get_by_role("button", name="Ver retirados", exact=True).click()
+    # The retired list is fetched on toggle. Waiting for the button to change its
+    # own label is what says the toggle landed; clicking before it does would be
+    # testing the state this check exists to leave behind.
+    #
+    # And the answer is not discardable. If the toggle never lands, this check
+    # passes without exercising #67 at all, and the cleanup below then raises on a
+    # button that is not there — leaving this run's Sector live on the map, which
+    # reassigns every Place inside it (issue #58).
+    if not settles(page, lambda: page.get_by_role("button", name="Ver activos", exact=True).count() > 0):
+        failures.append("«Ver retirados» did not switch the list, so the dead-click check did not run")
+        retire_the_runs_record(page, name)
+        return
+
+    shape.first.click(force=True)
+    if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
+        failures.append(
+            "clicking the map with «Ver retirados» on opened nothing — the click is dead (#67)",
+        )
+        page.screenshot(path=str(SHOTS / "retired-toggle-dead-click.png"), full_page=False)
+    else:
+        # And the record it opens has to be savable. `applyIncoming` closed the
+        # draft for any record whose retired flag differed from the toggle — which
+        # was every live one, once this fix made a live one reachable. `save()`
+        # then read `picked` off a null draft, so a save that had ALREADY succeeded
+        # reported "revise la conexión" and took the sidebar with it.
+        page.get_by_role("button", name="Guardar").click()
+        page.wait_for_timeout(1500)
+
+        refusal = page.locator(".notecard--error")
+        if refusal.count() > 0:
+            failures.append(
+                f"saving with «Ver retirados» on reported {refusal.first.inner_text().strip()!r} (#67)",
+            )
+        if page.locator(".territorio-detail").count() == 0:
+            failures.append("saving with «Ver retirados» on closed the sidebar (#67)")
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.get_by_role("button", name="Ver activos", exact=True).click()
+    page.wait_for_timeout(600)
+    retire_the_runs_record(page, name)
+
+
 def settles(page, predicate, timeout=15_000):
     """Wait for something to become true, rather than sleeping and hoping.
 
@@ -1581,6 +1656,7 @@ def main():
         # draggable, which is what this needs.
         a_dragged_vertex_stays_with_its_own_record(page, failures)
         a_pin_says_what_kind_of_place_it_is(page, failures)
+        a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures)
 
         clicking_places_the_coordinate(page, failures)
         the_assignment_is_shown_and_not_editable(page, failures)

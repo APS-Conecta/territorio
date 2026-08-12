@@ -17,6 +17,17 @@ import { describe, expect, it } from 'vitest'
  *    In v9 it is `type`, so the prop fell through as an inert HTML attribute,
  *    the button stayed a `type="button"`, and Guardar never submitted its form —
  *    for eight slices, since the very first one.
+ * 3. `bindTooltip(feature.name)` handed Leaflet a string, and its
+ *    `DivOverlay._updateContent` assigns string content with `innerHTML` — so a
+ *    stored name was parsed as markup. Nextcloud's CSP stops script and every
+ *    exfiltration channel, but nothing covers navigation, and an injected
+ *    `<meta http-equiv="refresh">` was confirmed navigating a real browser.
+ *
+ *    Checked here rather than in the browser gate on purpose: a tooltip only
+ *    exists while Leaflet is hovering a shape it has chosen to render, which
+ *    made five gate runs measure the render lifecycle instead of the bug. The
+ *    rule is a text node rather than an escape because a node cannot be parsed
+ *    at all, where an escape is a thing you can get subtly wrong.
  */
 // fileURLToPath, not .pathname: the repo lives under a directory with a space
 // in its name, and .pathname hands back the %20 still escaped.
@@ -87,6 +98,21 @@ describe('props @nextcloud/vue 9 no longer has', () => {
 		Object.entries(GONE).forEach(([dead, live]) => {
 			expect(source, `${file}: "${dead}" is a v8 prop — v9 calls it "${live}"`)
 				.not.toMatch(new RegExp(`(^|[\\s:])${dead}\\s*=`, 'm'))
+		})
+	})
+})
+
+describe('map tooltips', () => {
+	it.each(componentFiles)('%s hands Leaflet a node, never a string to parse', (file) => {
+		// Every entry point to the same DivOverlay._updateContent: the bug is one
+		// bindPopup away, and a guard that knows only bindTooltip is silent about it.
+		const sinks = /(?:bindTooltip|bindPopup|setTooltipContent|setPopupContent)\(([^)]*)/g
+		const args = [...readFileSync(file, 'utf8').matchAll(sinks)]
+			.map((match) => match[1].trim())
+
+		args.forEach((argument) => {
+			expect(argument, `bindTooltip(${argument}) in ${file}`)
+				.toMatch(/^document\.createTextNode\(/)
 		})
 	})
 })

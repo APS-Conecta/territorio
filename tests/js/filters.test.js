@@ -390,12 +390,18 @@ describe('featureById', () => {
 	})
 
 	/**
-	 * Never `listFor()`'s answer: it is one view, and it is narrower than what is
-	 * drawn. A record hidden by Capas is still on the map when its Category is
-	 * shown there, and clicking it has to open it.
+	 * The pairing itself, which is the bug: `listFor()` is asked what the list
+	 * shows and answers with the retired records alone, while the map is still
+	 * drawing the live ones. Resolving against its answer is what killed the click.
 	 */
-	it('ignores the Capas filter, which narrows the list and not the sources', () => {
-		expect(featureById(FEATURES, retired, 4)?.id).toBe(4)
+	it('finds what listFor deliberately leaves out', () => {
+		const shown = listFor({
+			features: FEATURES, retiredFeatures: retired, showRetired: true,
+			filter: emptyFilter(), subcategories: SUBCATEGORIES,
+		})
+
+		expect(shown.map((f) => f.id)).not.toContain(1)
+		expect(featureById(FEATURES, retired, 1)?.id).toBe(1)
 	})
 
 	it('is undefined for an id neither list holds', () => {

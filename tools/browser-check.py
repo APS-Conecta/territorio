@@ -393,6 +393,10 @@ def the_limit_can_be_picked(page, failures):
     if chosen.count() != 1:
         failures.append(f"picking a name chose {chosen.count()} things, expected 1")
 
+    # Order matters here in a way it did not before: this list holds hand-typed
+    # tramos as well as picked ones, so these counts only mean "one picked street"
+    # while nothing has typed a note on this Sector yet. main() puts both of those
+    # after this check.
     # …and removing it takes it out again.
     chosen.first.get_by_role("button", name="Quitar").click()
     page.wait_for_timeout(500)
@@ -901,6 +905,10 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         failures.append("picking lines did not offer to generate the polygon")
         return
 
+    if generate.is_disabled():
+        failures.append("Generar is greyed out on lines picked a moment ago")
+        return
+
     generate.click()
     page.wait_for_timeout(400)
     if picker.get_by_text("Haga clic dentro del sector").count() == 0:
@@ -920,6 +928,21 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     # whether the shape became THIS square, and the only way to ask it is to
     # look at what was stored.
     save(page, failures, "the generated sector")
+
+    # #49's first half, asserted while the draft is still open: `save()` rebuilds
+    # the draft from what the server returned, and the server knows the Limit's
+    # NAMES and not the shapes behind them. Carrying only the ids across left the
+    # picker unable to generate a second time, on lines picked a moment earlier.
+    # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
+    # RAISES when nothing matches, and there is no try/except around a check — so an
+    # unguarded ask aborts the run and skips the retire at the end of main(), leaving
+    # this run's four-kilometre Sector live on the map (issue #58).
+    kept = picker.get_by_role("button", name="Generar el polígono")
+    if kept.count() == 0:
+        failures.append("saving a Sector closed the Limit picker (#49)")
+    elif kept.is_disabled():
+        failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
+
     page.keyboard.press("Escape")
     page.wait_for_timeout(600)
 
@@ -936,6 +959,68 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         return
 
     a_generated_polygon_is_editable(page, wanted, failures)
+    a_reopened_limit_can_generate_again(page, failures)
+
+
+def a_reopened_limit_can_generate_again(page, failures):
+    """#49: a reopened Sector knows the names its Limit runs along, not the shapes.
+
+    `draftFrom()` derives `picked` from the stored Limit — which is what #15 put
+    the names there for — and has nothing to fill `pickedGeometry` with. Asked to
+    generate anyway, `faceAround` got an empty list, returned null, and the app
+    said «Las calles elegidas no cierran alrededor de ese punto». About streets
+    that do close, so the person went and re-picked streets that were already
+    right.
+
+    The shapes come back on their own now: every picked line that comes into view
+    refills its own, which is safe because `canPolygonize` demands all of them. So
+    the assertion is the ticket's first criterion literally — generating from a
+    stored Limit works, without re-picking anything — and the button un-greying is
+    what says the cache refilled.
+
+    Runs after the polygonize check, which is what leaves this run's Sector with a
+    stored Limit and its lines on screen.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+    # The button, not the parts list: that list counts hand-typed tramos too, so it
+    # says "this Sector has a Limit" where what is needed is "this Sector has picked
+    # LINES". The button renders on `pickedIds`, which is exactly that.
+    generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.count() == 0:
+        skip("the reopened Sector has no picked lines, so the reopen check did not run")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    # Greyed out until the shapes are back, so waiting for it is the assertion.
+    if not settles(page, lambda: not generate.is_disabled(), timeout=10_000):
+        failures.append(
+            "a reopened Sector never became generatable, though its Limit's lines are on screen (#49)",
+        )
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    generate.click()
+    page.wait_for_timeout(400)
+    canvas = page.locator('[data-testid="map-canvas"]')
+    size = canvas.bounding_box()
+    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
+    page.wait_for_timeout(1200)
+
+    # The whole point of the ticket: no message may blame the streets when the
+    # cache was what was empty.
+    if page.get_by_text("no cierran", exact=False).count() != 0:
+        failures.append("generating from a reopened Limit still says the lines do not close (#49)")
+
+    # Discarded, not saved: the shape it just made is the same square the
+    # polygonize check already asserted, and this run has written enough.
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
 
 def a_generated_polygon_is_editable(page, square, failures):
@@ -1055,7 +1140,15 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
 
     offered.first.locator("button").click()
     page.wait_for_timeout(600)
-    picker.get_by_role("button", name="Generar el polígono").click()
+    generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.count() == 0:
+        failures.append("picking lines did not offer to generate the polygon")
+        return
+    if generate.is_disabled():
+        failures.append("Generar is greyed out on lines picked a moment ago")
+        return
+
+    generate.click()
     page.wait_for_timeout(400)
 
     canvas = page.locator('[data-testid="map-canvas"]')

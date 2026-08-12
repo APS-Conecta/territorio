@@ -133,6 +133,7 @@
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
 					:seeding="seeding"
+					:can-generate="canGenerate"
 					:limit="groups(draft.limit)"
 					:limit-said="readable(draft.limit)"
 					@add-note="addLimitNote"
@@ -174,7 +175,7 @@ import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { suggestions, toggleGroup, togglePick } from './boundaries.js'
 import { groups, partsFrom, readable, withNote, without } from './limit.js'
-import { faceAround } from './sectors.js'
+import { canPolygonize, faceAround } from './sectors.js'
 import {
 	countsFor,
 	emptyFilter,
@@ -382,6 +383,17 @@ export default {
 		 */
 		editingLimit() {
 			return this.draft !== null && this.draft.picked !== undefined
+		},
+
+		/**
+		 * Whether «Generar» can do anything, which is not the same as whether
+		 * anything is picked. A reopened Sector has picks and no shapes behind
+		 * them (issue #49), and offering a button that can only fail is worse than
+		 * not offering it: ADR-0007 keeps hand-drawing first-class either way.
+		 */
+		canGenerate() {
+			return this.draft?.picked !== undefined
+				&& canPolygonize(this.draft.picked, this.draft.pickedGeometry)
 		},
 
 		boundarySuggestions() {
@@ -714,6 +726,9 @@ export default {
 				// Empty rather than absent: addLimitNote keys on it being defined,
 				// so a tramo typed before the first save was dropped (issue #48).
 				limit: [],
+				// Same reason: save() carries this across the rebuild, and carrying
+				// an absent one writes undefined over the fresh object.
+				pickedGeometry: {},
 			}
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []
@@ -780,10 +795,15 @@ export default {
 
 			this.draft.limit = without(this.draft.limit, name)
 			this.draft.picked = this.draft.picked.filter((id) => !dropped.includes(id))
+			// And forget their shapes. keepPickedGeometry() holds exactly what is
+			// picked — clicking a line on the map goes through it either way — and
+			// this path dropped the ids without it, so a shape outlived its pick.
+			this.keepPickedGeometry(dropped)
 		},
 
 		/**
-		 * Keep the shape of a line the moment it is picked, on the draft.
+		 * Keep the shapes of the picked lines on the draft — as they are picked,
+		 * and again as they come back into view.
 		 *
 		 * `boundaryFeatures` is what is ON SCREEN: it is replaced wholesale every
 		 * time the map settles, and capped at three thousand rows against a
@@ -811,7 +831,11 @@ export default {
 					return
 				}
 				const geometry = onScreen.get(id)?.geometry
-				if (geometry !== undefined) {
+				// `!= null`, matching canPolygonize: a Boundary row whose geometry is
+				// empty or corrupt arrives decoded to null, and once this runs on
+				// every settle rather than once per pick, writing that would overwrite
+				// a shape already held with nothing.
+				if (geometry != null) {
 					kept[id] = geometry
 				}
 			})
@@ -858,6 +882,16 @@ export default {
 					params: this.view,
 				})
 				this.boundaryFeatures = data
+				// A reopened Sector knows WHICH lines its Limit runs along and not
+				// what they look like — `draftFrom` has only the stored Limit to go
+				// on. Every line that comes into view fills its own shape back in,
+				// so panning over the limit makes «Generar» possible again without
+				// re-picking anything (issue #49). Safe precisely because
+				// canPolygonize demands all of them: a half-filled cache is not
+				// ready, never a smaller Sector.
+				if (this.editingLimit) {
+					this.keepPickedGeometry(this.draft.picked)
+				}
 			} catch (exception) {
 				console.warn('territorio: could not load the boundary features', exception)
 			}
@@ -898,11 +932,20 @@ export default {
 				return
 			}
 
+			// Asked before polygonizing, because the two failures need different
+			// words: lines that do not close is something the person can fix by
+			// picking more, and shapes this draft never held is not.
+			if (!canPolygonize(this.draft.picked, this.draft.pickedGeometry)) {
+				this.error = 'Todavía no se conoce el trazado de todas las calles del límite. '
+					+ 'Acerque el mapa a esas calles para cargarlas, o dibuje el sector a mano.'
+				return
+			}
+
 			// From what was picked, not from what is on screen — see
 			// keepPickedGeometry(). The two disagree the moment the map moves.
-			const picked = this.draft.picked
-				.map((id) => this.draft.pickedGeometry?.[id])
-				.filter((geometry) => geometry !== undefined)
+			// No filter: the guard above has already refused anything short of every
+			// picked line, so a hole here would be one this cannot see.
+			const picked = this.draft.picked.map((id) => this.draft.pickedGeometry[id])
 			const face = faceAround(picked, [lon, lat])
 
 			if (face === null) {
@@ -1086,6 +1129,7 @@ export default {
 				// save the server had already accepted ended in the catch, telling
 				// the user to check their connection.
 				const picked = this.draft.picked
+				const pickedGeometry = this.draft.pickedGeometry
 				this.mergeFeature(data)
 				// The cursor is deliberately NOT advanced here. Jumping it to our
 				// own Revision skips every change that landed between our last poll
@@ -1103,6 +1147,11 @@ export default {
 				this.draft = this.draftFrom(data)
 				if (picked !== undefined) {
 					this.draft.picked = picked
+					// The shapes too, not only the ids. Carrying half of it left the
+					// draft able to say WHICH lines were picked and unable to say what
+					// they look like, so Generar failed on a Sector whose lines had
+					// just been chosen — and blamed the lines (issue #49).
+					this.draft.pickedGeometry = pickedGeometry
 				}
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.

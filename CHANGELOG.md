@@ -3,6 +3,54 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.33.0] — unreleased
+
+Generar says which failure it is.
+
+### Fixed
+
+- **«Generar» on a reopened Sector failed, and blamed the streets.** `faceAround()` polygonizes the
+  cached *geometries* of the picked lines, not their ids. `draftFrom()` rebuilds `picked` from the
+  stored Limit — which is exactly what #15 put the names there for — and has nothing to fill
+  `pickedGeometry` with, so a reopened Sector reached `faceAround` with an empty list, got null back,
+  and was told «Las calles elegidas no cierran alrededor de ese punto». About streets that do close,
+  so the person went and re-picked streets that were already right.
+
+  The shapes come back on their own now. Every picked line that comes into view refills its own, so
+  reopening a Sector and panning over its límite makes «Generar» work again **without re-picking
+  anything**. That is safe only because the guard demands *all* of the picked lines: a partial set
+  still closes, into a larger face than the one meant, with nothing on screen to say so — which is
+  the silent failure `keepPickedGeometry` was written against. A half-filled cache reads as not
+  ready, never as a smaller Sector.
+
+  Until it is full the button is greyed out with the reason beside it, rather than offered and
+  failing. ADR-0007 keeps hand-drawing first-class throughout, and the hint says so.
+- **A save dropped the shapes of the lines just picked.** `save()` carried `picked` across the
+  rebuild and not `pickedGeometry`, so pressing Guardar and then «Generar» failed the same way, on
+  lines chosen a moment earlier. Both halves now cross the save.
+- **A geometry that is not line work counted as a shape.** A Boundary row may carry one — an empty or corrupt
+  geometry decodes to null — and `keepPickedGeometry` stored what it found, so a Limit whose lines
+  were all like that passed a check for `undefined` and then produced no face: the same message,
+  reached by another road. Worse once the cache refills on every map settle, where a null would have
+  *overwritten* a shape already held. And nullness was only half of it: a boundary Dataset is
+  filtered by Dataset and not by geometry, so a Point, a Polygon, or the one-repeated-coordinate
+  LineString a KML import produces is pickable too, and each counted as ready. The guard asks
+  `stretchesOf` now — held and usable are different questions, and only the second one matters.
+- **Unpicking a street from the Limit left its shape in the cache.** `removeLimitPart` dropped the
+  ids without going through `keepPickedGeometry`, so a shape outlived the pick it belonged to.
+  Clicking the line on the map was never affected — that path always went through it.
+
+### Notes
+
+The first version of this refused outright, on the reasoning that the shapes could not be recovered.
+An audit showed that was wrong: `loadBoundaries()` already receives the shape of every picked line
+that comes into view, so one line rehydrates the cache as the person pans. The refusal became the
+fallback rather than the answer.
+
+The browser gate covers both halves — the button must survive a save, and a reopened Sector must
+generate again with no re-picking and never say «no cierran» — and both were proven by reintroducing
+each bug and watching the matching check fail.
+
 ## [0.32.0] — unreleased
 
 One list of the streets a Limit runs along, not two.

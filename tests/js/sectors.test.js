@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { faceAround } from '../../src/sectors.js'
+import { canPolygonize, faceAround } from '../../src/sectors.js'
 
 /**
  * Turning picked lines into a Sector polygon (issue #14).
@@ -181,5 +181,73 @@ describe('faceAround', () => {
 		], [2, 2])
 
 		expect(polygon.type).toBe('Polygon')
+	})
+})
+
+/**
+ * Whether generating is possible at all, which is a different question from
+ * whether it succeeds (issue #49).
+ *
+ * `draftFrom()` rebuilds `picked` from the stored Limit — that is the point of
+ * #15, the Limit is the record of which streets were chosen — but it has no
+ * shapes to go with them, and `save()` used to drop the ones it did have. Asked
+ * to generate anyway, `faceAround` got an empty list, returned null, and the app
+ * said the streets do not close. About streets that do.
+ */
+describe('whether the picked lines can be polygonized at all', () => {
+	const shapes = { 7: SQUARE[0], 8: SQUARE[1] }
+
+	it('can, when every picked line has its shape', () => {
+		expect(canPolygonize([7, 8], shapes)).toBe(true)
+	})
+
+	it('cannot, when nothing has been picked', () => {
+		expect(canPolygonize([], shapes)).toBe(false)
+	})
+
+	/**
+	 * A reopened Sector: `picked` comes from the Limit, `pickedGeometry` is empty.
+	 * This is the whole of #49.
+	 */
+	it('cannot, from a Limit reopened with no shapes behind it', () => {
+		expect(canPolygonize([7, 8], {})).toBe(false)
+		expect(canPolygonize([7, 8], undefined)).toBe(false)
+	})
+
+	/**
+	 * And not on a PARTIAL set, which is the reason this is not simply "some".
+	 * A subset of the picked lines still closes — into a larger face than the one
+	 * meant, with nothing on screen to say so. Silent and wrong beats loud and
+	 * wrong every time, so this refuses instead.
+	 */
+	it('cannot, when only some of the picked lines have a shape', () => {
+		expect(canPolygonize([7, 8, 9], shapes)).toBe(false)
+	})
+
+	/**
+	 * A Boundary row may carry a null geometry, and `keepPickedGeometry` stores
+	 * what it finds. A cache of nulls passed a check for `undefined`, so this read
+	 * as ready and then produced no face at all — the very message the guard
+	 * exists to stop, reached by another road.
+	 */
+	it('cannot, when a picked line has no shape of its own', () => {
+		expect(canPolygonize([7], { 7: null })).toBe(false)
+		expect(canPolygonize([7, 8], { ...shapes, 8: null })).toBe(false)
+	})
+
+	/**
+	 * Held is not usable. A boundary Dataset is filtered by Dataset and not by
+	 * geometry, so a Point, a Polygon or a LineString of one repeated coordinate —
+	 * which is how a KML import lands, and which `stretchesOf` already drops — is
+	 * pickable. Counting it as ready produced no face and the message this guard
+	 * exists to delete.
+	 */
+	it('cannot, when a picked line is not line work it can use', () => {
+		expect(canPolygonize([7], { 7: { type: 'Point', coordinates: [2, 2] } })).toBe(false)
+		expect(canPolygonize([7], { 7: { coordinates: [[0, 0], [1, 1]] } })).toBe(false)
+		expect(canPolygonize([7], {
+			7: { type: 'LineString', coordinates: [[2, 2], [2, 2]] },
+		})).toBe(false)
+		expect(canPolygonize([7, 8], { ...shapes, 8: { type: 'Point', coordinates: [2, 2] } })).toBe(false)
 	})
 })

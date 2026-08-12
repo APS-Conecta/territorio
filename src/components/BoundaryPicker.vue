@@ -95,11 +95,25 @@
 			class="territorio-picker__generate"
 			variant="secondary"
 			:pressed="seeding"
+			:disabled="!canGenerate"
 			@click="$emit('generate')">
 			{{ seeding ? 'Haga clic dentro del sector…' : 'Generar el polígono' }}
 		</NcButton>
 
-		<p v-if="pickedIds.length > 0" class="territorio-picker__hint">
+		<!--
+			Why it is greyed out and what to do about it, said where the button is.
+			A button that can only fail is worse than one that says why not — and
+			this one un-greys itself as the map loads the lines.
+		-->
+		<p v-if="pickedIds.length > 0 && !canGenerate" class="territorio-picker__hint">
+			Acerque el mapa a las calles del límite para poder generar: de un sector
+			reabierto se guardan sus nombres, y el trazado se carga al verlas. Si
+			alguna ya no está en el mapa, dibuje el sector a mano.
+		</p>
+
+		<!-- One hint or the other, never both: the greyed-out button already has
+		     its own, and stacking two under a control nobody can press is noise. -->
+		<p v-if="canGenerate" class="territorio-picker__hint">
 			Se puede ajustar arrastrando los vértices, y siempre se puede dibujar a
 			mano en vez de generar.
 		</p>
@@ -122,6 +136,8 @@ export default {
 		query: { type: String, default: '' },
 		/** Waiting for the click that says which block is the Sector (issue #14). */
 		seeding: { type: Boolean, default: false },
+		/** Whether generating could work at all — see sectors.js canPolygonize. */
+		canGenerate: { type: Boolean, default: false },
 		/** The Limit as rows to show — one per name (issue #15). */
 		limit: { type: Array, default: () => [] },
 		/** The same thing as one sentence, built by the caller. */

@@ -26,6 +26,35 @@ import { polygonize } from '@turf/polygonize'
 const LINES = ['LineString', 'MultiLineString']
 
 /**
+ * Whether the picked lines can be polygonized at all: every one of them has its
+ * shape held on the draft.
+ *
+ * A separate question from whether generating succeeds, and asked first, because
+ * the two failures need different words. `draftFrom()` rebuilds `picked` from the
+ * stored Limit — that is what #15 put the names there for — but it has no shapes
+ * to go with them, so a reopened Sector reached `faceAround` with an empty list,
+ * got null back, and was told its streets do not close. About streets that do
+ * (issue #49).
+ *
+ * Every, not some. A subset of the picked lines still closes — into a LARGER face
+ * than the one meant, with nothing on screen to say so, which is the silent
+ * failure `keepPickedGeometry` was written against. That is also what makes it
+ * safe to rehydrate the cache a few lines at a time as the map loads them: a
+ * half-filled cache reads as not ready, never as a smaller Sector.
+ *
+ * Asked through `stretchesOf` rather than by testing for a value, because held and
+ * usable are different questions and only the second one matters here. A Boundary
+ * Dataset can hold a Point (a KML import puts one there), a null geometry, or a
+ * LineString of one repeated coordinate — and every one of those is pickable, would
+ * have counted as ready, and would have produced no face and the message this
+ * whole guard exists to delete.
+ */
+export function canPolygonize(picked, pickedGeometry) {
+	return picked.length > 0
+		&& picked.every((id) => stretchesOf(pickedGeometry?.[id]).length > 0)
+}
+
+/**
  * The smallest enclosed face the seed falls in, or null if there is none.
  *
  * @param {Array} lines geometries of the picked Boundary features

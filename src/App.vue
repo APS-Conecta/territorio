@@ -133,6 +133,7 @@
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
 					:seeding="seeding"
+					:can-generate="canGenerate"
 					:limit="groups(draft.limit)"
 					:limit-said="readable(draft.limit)"
 					@add-note="addLimitNote"
@@ -174,7 +175,7 @@ import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { suggestions, toggleGroup, togglePick } from './boundaries.js'
 import { groups, partsFrom, readable, withNote, without } from './limit.js'
-import { faceAround } from './sectors.js'
+import { canPolygonize, faceAround } from './sectors.js'
 import {
 	countsFor,
 	emptyFilter,
@@ -382,6 +383,17 @@ export default {
 		 */
 		editingLimit() {
 			return this.draft !== null && this.draft.picked !== undefined
+		},
+
+		/**
+		 * Whether «Generar» can do anything, which is not the same as whether
+		 * anything is picked. A reopened Sector has picks and no shapes behind
+		 * them (issue #49), and offering a button that can only fail is worse than
+		 * not offering it: ADR-0007 keeps hand-drawing first-class either way.
+		 */
+		canGenerate() {
+			return this.draft?.picked !== undefined
+				&& canPolygonize(this.draft.picked, this.draft.pickedGeometry)
 		},
 
 		boundarySuggestions() {
@@ -780,6 +792,10 @@ export default {
 
 			this.draft.limit = without(this.draft.limit, name)
 			this.draft.picked = this.draft.picked.filter((id) => !dropped.includes(id))
+			// And forget their shapes, or the invariant keepPickedGeometry() states —
+			// that the cache holds exactly what is picked — is false the moment this
+			// is the only way to unpick, which it became when «Elegido» went (#33).
+			this.keepPickedGeometry(dropped)
 		},
 
 		/**
@@ -895,6 +911,16 @@ export default {
 			// A draft can be closed or replaced between pressing the button and
 			// clicking the map, and a Place draft has nothing picked at all.
 			if (this.draft?.picked === undefined) {
+				return
+			}
+
+			// Asked before polygonizing, because the two failures need different
+			// words: lines that do not close is something the person can fix by
+			// picking more, and shapes this draft never held is not.
+			if (!canPolygonize(this.draft.picked, this.draft.pickedGeometry)) {
+				this.error = 'Para generar hay que marcar las calles en el mapa en esta sesión: '
+					+ 'de un sector reabierto se guardan los nombres del límite, no sus trazados. '
+					+ 'También puede dibujarlo a mano.'
 				return
 			}
 
@@ -1086,6 +1112,7 @@ export default {
 				// save the server had already accepted ended in the catch, telling
 				// the user to check their connection.
 				const picked = this.draft.picked
+				const pickedGeometry = this.draft.pickedGeometry
 				this.mergeFeature(data)
 				// The cursor is deliberately NOT advanced here. Jumping it to our
 				// own Revision skips every change that landed between our last poll
@@ -1103,6 +1130,11 @@ export default {
 				this.draft = this.draftFrom(data)
 				if (picked !== undefined) {
 					this.draft.picked = picked
+					// The shapes too, not only the ids. Carrying half of it left the
+					// draft able to say WHICH lines were picked and unable to say what
+					// they look like, so Generar failed on a Sector whose lines had
+					// just been chosen — and blamed the lines (issue #49).
+					this.draft.pickedGeometry = pickedGeometry
 				}
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.

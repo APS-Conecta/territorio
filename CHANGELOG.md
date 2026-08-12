@@ -3,6 +3,38 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.33.0] — unreleased
+
+Generar says which failure it is.
+
+### Fixed
+
+- **«Generar» on a reopened Sector failed, and blamed the streets.** `faceAround()` polygonizes the
+  cached *geometries* of the picked lines, not their ids. `draftFrom()` rebuilds `picked` from the
+  stored Limit — which is exactly what #15 put the names there for — and has nothing to fill
+  `pickedGeometry` with, so a reopened Sector reached `faceAround` with an empty list, got null back,
+  and was told «Las calles elegidas no cierran alrededor de ese punto». About streets that do close,
+  so the person went and re-picked streets that were already right.
+
+  Two things were wrong and they are fixed separately. The operation genuinely cannot succeed from a
+  stored Limit, and re-deriving the shapes from what is on screen is the silent-larger-face failure
+  `keepPickedGeometry` exists to prevent — so «Generar» is now **plainly unavailable** on a reopened
+  Sector, greyed out with the reason beside it, rather than offered and failing. ADR-0007 keeps
+  hand-drawing first-class throughout, and the hint says so.
+- **A save dropped the shapes of the lines just picked.** `save()` carried `picked` across the
+  rebuild and not `pickedGeometry`, so pressing Guardar and then «Generar» failed the same way, on
+  lines chosen a moment earlier. Both halves now cross the save.
+- **Unpicking a street left its shape in the cache.** `removeLimitPart` dropped the ids and not the
+  geometries, which contradicts the invariant `keepPickedGeometry()` states about itself. Inert until
+  «Elegido» went (#33) and this became the only way to unpick.
+
+### Notes
+
+`canPolygonize()` is *every* picked line, never *some*: a subset still closes, into a larger face
+than the one meant, with nothing on screen to say so. The browser gate covers both halves — it
+asserts the button survives a save, and that a reopened Sector refuses plainly — and both were proven
+by reintroducing each bug and watching the matching check fail.
+
 ## [0.32.0] — unreleased
 
 One list of the streets a Limit runs along, not two.

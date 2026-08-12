@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { faceAround } from '../../src/sectors.js'
+import { canPolygonize, faceAround } from '../../src/sectors.js'
 
 /**
  * Turning picked lines into a Sector polygon (issue #14).
@@ -181,5 +181,46 @@ describe('faceAround', () => {
 		], [2, 2])
 
 		expect(polygon.type).toBe('Polygon')
+	})
+})
+
+/**
+ * Whether generating is possible at all, which is a different question from
+ * whether it succeeds (issue #49).
+ *
+ * `draftFrom()` rebuilds `picked` from the stored Limit — that is the point of
+ * #15, the Limit is the record of which streets were chosen — but it has no
+ * shapes to go with them, and `save()` used to drop the ones it did have. Asked
+ * to generate anyway, `faceAround` got an empty list, returned null, and the app
+ * said the streets do not close. About streets that do.
+ */
+describe('whether the picked lines can be polygonized at all', () => {
+	const shapes = { 7: SQUARE[0], 8: SQUARE[1] }
+
+	it('can, when every picked line has its shape', () => {
+		expect(canPolygonize([7, 8], shapes)).toBe(true)
+	})
+
+	it('cannot, when nothing has been picked', () => {
+		expect(canPolygonize([], shapes)).toBe(false)
+	})
+
+	/**
+	 * A reopened Sector: `picked` comes from the Limit, `pickedGeometry` is empty.
+	 * This is the whole of #49.
+	 */
+	it('cannot, from a Limit reopened with no shapes behind it', () => {
+		expect(canPolygonize([7, 8], {})).toBe(false)
+		expect(canPolygonize([7, 8], undefined)).toBe(false)
+	})
+
+	/**
+	 * And not on a PARTIAL set, which is the reason this is not simply "some".
+	 * A subset of the picked lines still closes — into a larger face than the one
+	 * meant, with nothing on screen to say so. Silent and wrong beats loud and
+	 * wrong every time, so this refuses instead.
+	 */
+	it('cannot, when only some of the picked lines have a shape', () => {
+		expect(canPolygonize([7, 8, 9], shapes)).toBe(false)
 	})
 })

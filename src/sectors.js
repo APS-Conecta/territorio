@@ -26,12 +26,33 @@ import { polygonize } from '@turf/polygonize'
 const LINES = ['LineString', 'MultiLineString']
 
 /**
+ * Whether the picked lines can be polygonized at all: every one of them has its
+ * shape held on the draft.
+ *
+ * A separate question from whether generating succeeds, and asked first, because
+ * the two failures need different words. `draftFrom()` rebuilds `picked` from the
+ * stored Limit — that is what #15 put the names there for — but it has no shapes
+ * to go with them, so a reopened Sector reached `faceAround` with an empty list,
+ * got null back, and was told its streets do not close. About streets that do
+ * (issue #49).
+ *
+ * Every, not some. A subset of the picked lines still closes — into a LARGER face
+ * than the one meant, with nothing on screen to say so, which is the silent
+ * failure `keepPickedGeometry` was written against.
+ */
+export function canPolygonize(picked, pickedGeometry) {
+	return picked.length > 0
+		&& picked.every((id) => pickedGeometry?.[id] !== undefined)
+}
+
+/**
  * The smallest enclosed face the seed falls in, or null if there is none.
  *
  * @param {Array} lines geometries of the picked Boundary features
  * @param {Array} seed [lon, lat] the person clicked inside the Sector
  * @return {?object} a GeoJSON Polygon, or null
  */
+
 export function faceAround(lines, seed) {
 	const segments = lines.flatMap(stretchesOf)
 	if (segments.length === 0) {

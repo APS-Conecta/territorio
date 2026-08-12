@@ -393,6 +393,10 @@ def the_limit_can_be_picked(page, failures):
     if chosen.count() != 1:
         failures.append(f"picking a name chose {chosen.count()} things, expected 1")
 
+    # Order matters here in a way it did not before: this list holds hand-typed
+    # tramos as well as picked ones, so these counts only mean "one picked street"
+    # while nothing has typed a note on this Sector yet. main() puts both of those
+    # after this check.
     # …and removing it takes it out again.
     chosen.first.get_by_role("button", name="Quitar").click()
     page.wait_for_timeout(500)
@@ -920,6 +924,14 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     # whether the shape became THIS square, and the only way to ask it is to
     # look at what was stored.
     save(page, failures, "the generated sector")
+
+    # #49's first half, asserted while the draft is still open: `save()` rebuilds
+    # the draft from what the server returned, and the server knows the Limit's
+    # NAMES and not the shapes behind them. Carrying only the ids across left the
+    # picker unable to generate a second time, on lines picked a moment earlier.
+    if picker.get_by_role("button", name="Generar el polígono").is_disabled():
+        failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
+
     page.keyboard.press("Escape")
     page.wait_for_timeout(600)
 
@@ -936,6 +948,53 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         return
 
     a_generated_polygon_is_editable(page, wanted, failures)
+    generating_from_a_reopened_limit_is_refused_honestly(page, failures)
+
+
+def generating_from_a_reopened_limit_is_refused_honestly(page, failures):
+    """#49: a reopened Sector knows the names its Limit runs along, not the shapes.
+
+    `draftFrom()` derives `picked` from the stored Limit — which is what #15 put
+    the names there for — and has nothing to fill `pickedGeometry` with. Asked to
+    generate anyway, `faceAround` got an empty list, returned null, and the app
+    said «Las calles elegidas no cierran alrededor de ese punto». About streets
+    that do close, so the person went and re-picked streets that were already
+    right.
+
+    Run after the polygonize check, which is what leaves this run's Sector with a
+    stored Limit to reopen. Asserts the refusal is plain rather than a failure:
+    the button is there and disabled, with the reason beside it (ADR-0007 keeps
+    hand-drawing available either way).
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    picker = page.locator('[data-testid="boundary-picker"]')
+    parts = picker.locator(".territorio-picker__parts li")
+    if parts.count() == 0:
+        skip("the reopened Sector has no stored Limit, so the reopen check did not run")
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.count() == 0:
+        failures.append("a reopened Sector with a Limit does not offer Generar at all")
+    elif not generate.is_disabled():
+        failures.append(
+            "a reopened Sector offers Generar, which can only fail and blame the streets (#49)",
+        )
+
+    if picker.get_by_text("no se guardan sus trazados").count() == 0 \
+            and picker.get_by_text("no sus trazados").count() == 0:
+        failures.append("nothing says why Generar is unavailable on a reopened Sector (#49)")
+
+    if page.get_by_text("no cierran", exact=False).count() != 0:
+        failures.append("a reopened Sector still blames the streets (#49)")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
 
 def a_generated_polygon_is_editable(page, square, failures):

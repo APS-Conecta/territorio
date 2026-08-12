@@ -81,24 +81,7 @@
 			Agregar tramo
 		</NcButton>
 
-		<h5 v-if="picked.length > 0">Elegido</h5>
-		<ul v-if="picked.length > 0" class="territorio-picker__picked">
-			<li v-for="group in picked" :key="group.name ?? group.ids[0]">
-				<span>
-					{{ group.name ?? 'Fuera de la vista' }}
-					<span v-if="group.ids.length > 1" class="territorio-picker__count">
-						{{ group.ids.length }}
-					</span>
-				</span>
-				<NcButton variant="tertiary"
-					:aria-label="`Quitar ${group.name ?? 'este tramo'} del límite`"
-					@click="$emit('toggle-group', group.ids)">
-					Quitar
-				</NcButton>
-			</li>
-		</ul>
-
-		<p v-else class="territorio-picker__hint">
+		<p v-if="pickedIds.length === 0" class="territorio-picker__hint">
 			Todavía no ha elegido nada. Un Sector dibujado a mano es igual de válido.
 		</p>
 
@@ -108,7 +91,7 @@
 			along a canal, the edge of a park, or a line two teams agreed on years
 			ago, and none of that is in any dataset.
 		-->
-		<NcButton v-if="picked.length > 0"
+		<NcButton v-if="pickedIds.length > 0"
 			class="territorio-picker__generate"
 			variant="secondary"
 			:pressed="seeding"
@@ -116,7 +99,7 @@
 			{{ seeding ? 'Haga clic dentro del sector…' : 'Generar el polígono' }}
 		</NcButton>
 
-		<p v-if="picked.length > 0" class="territorio-picker__hint">
+		<p v-if="pickedIds.length > 0" class="territorio-picker__hint">
 			Se puede ajustar arrastrando los vértices, y siempre se puede dibujar a
 			mano en vez de generar.
 		</p>
@@ -135,8 +118,6 @@ export default {
 	props: {
 		/** What typing offers, already grouped by name (see boundaries.js). */
 		suggestions: { type: Array, default: () => [] },
-		/** What has been chosen so far, grouped the same way. */
-		picked: { type: Array, default: () => [] },
 		pickedIds: { type: Array, default: () => [] },
 		query: { type: String, default: '' },
 		/** Waiting for the click that says which block is the Sector (issue #14). */
@@ -181,8 +162,7 @@ export default {
 }
 
 .territorio-picker__suggestions,
-.territorio-picker__parts,
-.territorio-picker__picked {
+.territorio-picker__parts {
 	list-style: none;
 	padding: 0;
 	margin: 8px 0 0;
@@ -190,8 +170,7 @@ export default {
 	overflow-y: auto;
 }
 
-.territorio-picker__parts li,
-.territorio-picker__picked li {
+.territorio-picker__parts li {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;

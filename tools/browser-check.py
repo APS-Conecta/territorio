@@ -386,17 +386,17 @@ def the_limit_can_be_picked(page, failures):
         page.locator(SEARCH).fill("")
         return
 
-    # Picking by name puts it in the chosen list…
+    # Picking by name puts it in the Limit…
     offered.first.locator("button").click()
     page.wait_for_timeout(500)
-    chosen = picker.locator(".territorio-picker__picked li")
+    chosen = picker.locator(".territorio-picker__parts li")
     if chosen.count() != 1:
         failures.append(f"picking a name chose {chosen.count()} things, expected 1")
 
     # …and removing it takes it out again.
     chosen.first.get_by_role("button", name="Quitar").click()
     page.wait_for_timeout(500)
-    if picker.locator(".territorio-picker__picked li").count() != 0:
+    if picker.locator(".territorio-picker__parts li").count() != 0:
         failures.append("removing a picked line did not remove it")
 
     # Clicking a line on the map is the other half of the same criterion, and the
@@ -412,13 +412,13 @@ def the_limit_can_be_picked(page, failures):
         lines.first.click(force=True)
         page.wait_for_timeout(500)
 
-        after = picker.locator(".territorio-picker__picked li")
+        after = picker.locator(".territorio-picker__parts li")
         if after.count() != 1:
             failures.append(f"clicking a line picked {after.count()} things, expected 1")
 
         lines.first.click(force=True)
         page.wait_for_timeout(500)
-        if picker.locator(".territorio-picker__picked li").count() != 0:
+        if picker.locator(".territorio-picker__parts li").count() != 0:
             failures.append("clicking the same line again did not unpick it")
 
     page.keyboard.press("Escape")

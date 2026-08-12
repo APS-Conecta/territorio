@@ -3,6 +3,27 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.32.0] — unreleased
+
+One list of the streets a Limit runs along, not two.
+
+### Changed
+
+- **The Limit picker showed the same streets twice.** «Tramos del límite» is built from the Limit;
+  «Elegido», thirty lines below it, was built from the picks. They always held the same streets —
+  `recordLimit()` runs on every pick, so a picked id is already a Limit row by the time either list
+  draws.
+
+  «Elegido» was the strictly worse copy. It resolved names from the boundary rows *currently on
+  screen*, and those are replaced wholesale every time the map settles and capped at three thousand
+  against a comuna's eleven thousand — so a street a person had chosen degraded to «Fuera de la
+  vista» as soon as they panned. The Limit row keeps the name permanently, which is exactly why #15
+  put it there. Its «Quitar» was a second path to one outcome, and `removeLimitPart` unpicks the ids
+  as well, so the remaining one loses nothing.
+
+  Gone with it: `pickedGroups()`, its test block, and the `picked` prop — about sixty lines for no
+  information a person could have read.
+
 ## [0.31.0] — unreleased
 
 A pin you can click while looking at what was retired.

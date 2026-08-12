@@ -33,6 +33,16 @@ class AssignmentService {
 	 */
 	private ?array $known = null;
 
+	/**
+	 * Which Subcategory ids are divisions, and which division each is — see
+	 * `divisions()`. Not cleared by `forget()`, unlike `$known` beside it: writing
+	 * a boundary changes where the boundaries ARE, never which Subcategories
+	 * make one.
+	 *
+	 * @var ?array<int, string>
+	 */
+	private ?array $divisions = null;
+
 	public function __construct(
 		private FeatureMapper $features,
 		private TaxonomyService $taxonomy,
@@ -61,7 +71,7 @@ class AssignmentService {
 
 	/** Whether this record is one of the boundaries others are assigned by. */
 	public function isBoundary(Feature $feature): bool {
-		return in_array($feature->getSubcategoryId(), $this->divisionSubcategoryIds(), true);
+		return isset($this->divisions()[$feature->getSubcategoryId()]);
 	}
 
 	/**
@@ -145,14 +155,7 @@ class AssignmentService {
 	 */
 	private function boundaries(string $slug): array {
 		if ($this->known === null) {
-			$wanted = [];
-			foreach ($this->taxonomy->tree() as $category) {
-				foreach ($category['subcategories'] as $subcategory) {
-					if (isset(self::DIVISIONS[$subcategory['slug']])) {
-						$wanted[$subcategory['id']] = $subcategory['slug'];
-					}
-				}
-			}
+			$wanted = $this->divisions();
 
 			$this->known = array_fill_keys(array_keys(self::DIVISIONS), []);
 			foreach ($this->features->findAll() as $feature) {
@@ -174,18 +177,45 @@ class AssignmentService {
 		}
 	}
 
-	/** @return int[] */
-	private function divisionSubcategoryIds(): array {
-		$ids = [];
+	/**
+	 * Which Subcategory ids are divisions, and which division each one is.
+	 *
+	 * Read once, because two paths ask and both asked the whole Category tree — two
+	 * full table scans for an answer that cannot change while the service lives.
+	 * `isBoundary()` asks on every create, update, retire and restore;
+	 * `boundaries()` asks again each time `forget()` empties it, which is every
+	 * boundary write whose shape moved. The CHANGELOG has the measurement.
+	 *
+	 * As a map rather than a list of ids: `boundaries()` needs to know WHICH
+	 * division a Subcategory is, `isBoundary()` only that it is one, and one
+	 * `isset` answers the second without walking the first.
+	 *
+	 * Memoising `TaxonomyService::tree()` itself was tried and is wrong: the ramp
+	 * repair writes a Category and reads the tree back in the same request, so a
+	 * memo there served it the colours from before its own write and two of
+	 * `RampRepaint`'s assertions failed. This is narrower and safe because the
+	 * division Subcategories are structural — #40 specifies that neither they nor
+	 * their Category can be removed, and that a rename never changes a slug — but
+	 * what actually guarantees it today is that nothing in this app writes the
+	 * taxonomy outside the install-time repair.
+	 *
+	 * @return array<int, string> subcategory id => division slug
+	 */
+	private function divisions(): array {
+		if ($this->divisions !== null) {
+			return $this->divisions;
+		}
+
+		$divisions = [];
 		foreach ($this->taxonomy->tree() as $category) {
 			foreach ($category['subcategories'] as $subcategory) {
 				if (isset(self::DIVISIONS[$subcategory['slug']])) {
-					$ids[] = $subcategory['id'];
+					$divisions[$subcategory['id']] = $subcategory['slug'];
 				}
 			}
 		}
 
-		return $ids;
+		return $this->divisions = $divisions;
 	}
 
 	/**

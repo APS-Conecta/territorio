@@ -3,6 +3,38 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.37.0] — unreleased
+
+Asking the taxonomy once.
+
+### Changed
+
+- **Assignment no longer re-reads the Category tree.** Two paths asked it, and both asked for the
+  whole thing — two full table scans for an answer that cannot change while the service lives.
+  `isBoundary()` asks on every create, update, retire and restore; `boundaries()` asks again each
+  time a boundary write empties its cache, so a request that moved *N* boundaries read the taxonomy
+  *N+1* times.
+
+  Measured on the dev instance: **55,576 sequential scans of `oc_territorio_category` against 431
+  writes of it**. One run of the integration suite added 543 of them for 933 record writes; the same
+  run adds **193** now.
+
+  One map, `subcategory id => division slug`, answers both: `boundaries()` needs to know *which*
+  division a Subcategory is, `isBoundary()` only that it is one — and an `isset` answers the second
+  without walking the first. The loop that built it existed twice.
+
+### Notes
+
+**Memoising `TaxonomyService::tree()` itself was tried first, and is wrong.** It is the obvious place
+and it broke `RampRepaint`: the colour repair writes a Category and reads the tree back in the same
+request, so the memo served it the colours from before its own write. Two of that suite's assertions
+failed on the clinic's own recoloured Category — not a hypothetical about #36 making the tree
+editable, but a job that does it today.
+
+What is cached instead is narrower: which Subcategories are divisions. #40 specifies that neither
+those nor their Category can be removed and that a rename never changes a slug — but that is
+specified, not shipped, and what guarantees this today is simpler: nothing in the app writes the
+taxonomy outside the install-time repair.
 ## [0.33.0] — unreleased
 
 Generar says which failure it is.

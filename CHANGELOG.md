@@ -3,6 +3,29 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.31.0] — unreleased
+
+A pin you can click while looking at what was retired.
+
+### Fixed
+
+- **Clicking the map did nothing while «Ver retirados» was on.** The map draws the live Registry
+  whatever that toggle says, and `listFor()` answers with the retired list *alone* once it is on —
+  deliberately, so a search still reaches a record somebody is trying to restore. With the toggle on
+  the two sets are disjoint, and `select()` was resolving the clicked id against the list's answer.
+  It found nothing: the shape took the selected styling, the sidebar never opened, no history was
+  fetched. The click looked accepted and was dead.
+
+  Selecting is not a list operation. It resolves against the two sets the app holds, not against one
+  view of them — the Capas filter narrows what is *listed*, never what exists.
+
+### Notes
+
+Only a browser could see it. Both sets are correct on their own and neither suite pairs them, which
+is the same shape as `Guardar` doing nothing for eight slices. The browser gate now clicks the
+Sector it drew itself with the toggle on and requires a sidebar; reintroducing the old lookup and
+rebuilding reddens it.
+
 ## [0.30.0] — unreleased
 
 Saying who changed the límite.

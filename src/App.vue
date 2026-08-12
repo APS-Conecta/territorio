@@ -179,6 +179,7 @@ import { faceAround } from './sectors.js'
 import {
 	countsFor,
 	emptyFilter,
+	featureById,
 	filterFeatures,
 	isFiltered,
 	listFor,
@@ -541,7 +542,7 @@ export default {
 		select(id) {
 			this.stopSeeding()
 			this.selectedId = id
-			const feature = this.listed.find((candidate) => candidate.id === id)
+			const feature = featureById(this.features, this.retiredFeatures, id)
 			this.draft = feature === undefined ? null : this.draftFrom(feature)
 			this.error = ''
 			this.history = []

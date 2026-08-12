@@ -3,6 +3,7 @@ import {
 	categoryState,
 	countsFor,
 	emptyFilter,
+	featureById,
 	filterFeatures,
 	isFiltered,
 	isSubcategoryVisible,
@@ -367,6 +368,38 @@ describe('what the Datos list shows', () => {
 		})
 
 		expect(list.map((f) => f.name)).toEqual(['Colegio retirado'])
+	})
+})
+
+/**
+ * Selecting is resolving an id against the data, and the sets on screen are not
+ * one list (issue #67). The map draws the live Registry whatever the retired
+ * toggle says; the Datos list draws `listFor()`, which with the toggle on holds
+ * only retired records. Resolving a map click against the list's answer found
+ * nothing, so the pin highlighted and the sidebar never opened.
+ */
+describe('featureById', () => {
+	const retired = [feature(7, 21, 'Colegio retirado')]
+
+	it('finds a live record while the retired list is the one on show', () => {
+		expect(featureById(FEATURES, retired, 1)?.id).toBe(1)
+	})
+
+	it('finds a retired record', () => {
+		expect(featureById(FEATURES, retired, 7)?.name).toBe('Colegio retirado')
+	})
+
+	/**
+	 * Never `listFor()`'s answer: it is one view, and it is narrower than what is
+	 * drawn. A record hidden by Capas is still on the map when its Category is
+	 * shown there, and clicking it has to open it.
+	 */
+	it('ignores the Capas filter, which narrows the list and not the sources', () => {
+		expect(featureById(FEATURES, retired, 4)?.id).toBe(4)
+	})
+
+	it('is undefined for an id neither list holds', () => {
+		expect(featureById(FEATURES, retired, 999)).toBeUndefined()
 	})
 })
 

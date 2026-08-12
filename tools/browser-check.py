@@ -426,6 +426,45 @@ def the_limit_can_be_picked(page, failures):
     page.wait_for_timeout(400)
 
 
+def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
+    """#67: the map draws the live Registry whatever the retired toggle says.
+
+    `select()` resolved the clicked id against the Datos list, and once that
+    toggle is on the list holds only retired records — deliberately, so a search
+    reaches them. The two sets are then disjoint, so every click on the map found
+    nothing: the shape took the selected styling and the sidebar never opened.
+
+    Only a browser sees it. Both sets are right on their own, and neither the unit
+    suite nor the integration suite pairs them — which is the same shape as
+    `Guardar` doing nothing for eight slices.
+
+    Asserted as "something opened", not as which record: any live record opening
+    proves the lookup reached the live set, and pinning the identity would make
+    the check fail whenever another Sector happens to lie under the click.
+    """
+    shape = page.locator('.leaflet-overlay-pane path[stroke="#16a34a"]')
+    if shape.count() == 0:
+        failures.append("this run's Sector is not drawn, so the retired-toggle check could not run")
+        return
+
+    page.get_by_role("button", name="Ver retirados", exact=True).click()
+    # The retired list is fetched on toggle; clicking before it lands would test
+    # the wrong state, and the count in the header is what says it arrived.
+    page.wait_for_timeout(1200)
+
+    shape.last.click(force=True)
+    if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
+        failures.append(
+            "clicking the map with «Ver retirados» on opened nothing — the click is dead (#67)",
+        )
+        page.screenshot(path=str(SHOTS / "retired-toggle-dead-click.png"), full_page=False)
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.get_by_role("button", name="Ver activos", exact=True).click()
+    page.wait_for_timeout(600)
+
+
 def settles(page, predicate, timeout=15_000):
     """Wait for something to become true, rather than sleeping and hoping.
 
@@ -1581,6 +1620,7 @@ def main():
         # draggable, which is what this needs.
         a_dragged_vertex_stays_with_its_own_record(page, failures)
         a_pin_says_what_kind_of_place_it_is(page, failures)
+        a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures)
 
         clicking_places_the_coordinate(page, failures)
         the_assignment_is_shown_and_not_editable(page, failures)

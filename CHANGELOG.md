@@ -9,12 +9,19 @@ Asking the taxonomy once.
 
 ### Changed
 
-- **Deciding whether a record is a boundary no longer re-reads the Category tree.** `isBoundary()` is
-  asked on every create, update, retire and restore, and derived its answer from the whole tree —
-  two full table scans to answer a question whose answer cannot change while a request runs.
+- **Assignment no longer re-reads the Category tree.** Two paths asked it, and both asked for the
+  whole thing — two full table scans for an answer that cannot change while the service lives.
+  `isBoundary()` asks on every create, update, retire and restore; `boundaries()` asks again each
+  time a boundary write empties its cache, so a request that moved *N* boundaries read the taxonomy
+  *N+1* times.
+
   Measured on the dev instance: **55,576 sequential scans of `oc_territorio_category` against 431
-  writes of it**, and one run of the integration suite added 543 of them for 933 record writes. The
-  same run adds 238 now.
+  writes of it**. One run of the integration suite added 543 of them for 933 record writes; the same
+  run adds **193** now.
+
+  One map, `subcategory id => division slug`, answers both: `boundaries()` needs to know *which*
+  division a Subcategory is, `isBoundary()` only that it is one — and an `isset` answers the second
+  without walking the first. The loop that built it existed twice.
 
 ### Notes
 
@@ -24,8 +31,10 @@ request, so the memo served it the colours from before its own write. Two of tha
 failed on the clinic's own recoloured Category — not a hypothetical about #36 making the tree
 editable, but a job that does it today.
 
-What is cached instead is narrower and safe by construction: the division Subcategory ids. Those are
-structural, and #36 already settled that they cannot be removed.
+What is cached instead is narrower: which Subcategories are divisions. #40 specifies that neither
+those nor their Category can be removed and that a rename never changes a slug — but that is
+specified, not shipped, and what guarantees this today is simpler: nothing in the app writes the
+taxonomy outside the install-time repair.
 ## [0.33.0] — unreleased
 
 Generar says which failure it is.

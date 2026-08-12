@@ -7,6 +7,7 @@ namespace OCA\Territorio\Tests\Unit\Service;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Service\AssignmentService;
+use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\TestCase;
 
@@ -14,16 +15,17 @@ use PHPUnit\Framework\TestCase;
  * That deciding whether a record is a boundary does not re-read the taxonomy.
  *
  * `isBoundary()` is asked on every create, update, retire and restore, and it
- * derives its answer from the Category tree — two full table scans per ask.
- * Measured on the dev instance before this: 55,576 sequential scans of
- * `oc_territorio_category` against 431 writes of that table, and one run of the
- * integration suite added 543 of them for 933 record writes.
+ * derived its answer from the Category tree — two full table scans per ask, for
+ * an answer that cannot change while the service lives. The CHANGELOG has the
+ * measurement.
  *
  * The seam is `TaxonomyService`, because "how many times was the tree read" is
  * the whole property and there is nowhere else to observe it. Memoising the tree
  * ITSELF was tried and is wrong — `RampRepaint` writes a Category and reads the
  * tree back in the same request — which is why this narrower thing is cached
  * instead.
+ *
+ * Two paths ask, and the first version of this change covered only one of them.
  */
 final class AssignmentBoundaryTest extends TestCase {
 	private const TREE = [[
@@ -45,14 +47,47 @@ final class AssignmentBoundaryTest extends TestCase {
 		return $feature;
 	}
 
+	/** A Place with a coordinate, so assign() gets as far as reading the boundaries. */
+	private function placeAt(float $lat, float $lon): Feature {
+		$feature = $this->feature(13);
+		// Both, or anchorOf() returns null and assign() never asks: the Kind is what
+		// says this record can be inside something, the geometry is where.
+		$feature->setKind(Kind::Place->value);
+		$feature->setGeometry(json_encode(['type' => 'Point', 'coordinates' => [$lon, $lat]]));
+
+		return $feature;
+	}
+
 	public function testTheTreeIsReadOnceHoweverManyRecordsAreAsked(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
 		$taxonomy->expects(self::once())->method('tree')->willReturn(self::TREE);
 
 		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
 
-		for ($i = 0; $i < 50; $i++) {
-			$assignment->isBoundary($this->feature(13));
+		$assignment->isBoundary($this->feature(13));
+		$assignment->isBoundary($this->feature(11));
+		$assignment->isBoundary($this->feature(13));
+	}
+
+	/**
+	 * And once across the OTHER path, which is the one the first version of this
+	 * change left behind: `boundaries()` re-read the tree every time `forget()`
+	 * emptied it, and `forget()` fires on every boundary write whose shape moved.
+	 * A request that moved N boundaries read the taxonomy N+1 times.
+	 */
+	public function testTheTreeIsReadOnceAcrossRepeatedBoundaryWrites(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->expects(self::once())->method('tree')->willReturn(self::TREE);
+
+		$features = $this->createMock(FeatureMapper::class);
+		$features->method('findAll')->willReturn([]);
+
+		$assignment = new AssignmentService($features, $taxonomy);
+
+		// assign() reaches boundaries(); forget() is what a boundary write does.
+		for ($i = 0; $i < 5; $i++) {
+			$assignment->assign($this->placeAt(-33.5, -70.6));
+			$assignment->forget();
 		}
 	}
 
@@ -63,12 +98,11 @@ final class AssignmentBoundaryTest extends TestCase {
 
 		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
 
+		// The first ask is what fills the memo; every one after it reads the memo,
+		// so both have to be here for this to be about the memo at all.
 		self::assertTrue($assignment->isBoundary($this->feature(11)), 'a Sector is a boundary');
-		self::assertTrue($assignment->isBoundary($this->feature(12)), 'a Unidad Vecinal is a boundary');
 		self::assertFalse($assignment->isBoundary($this->feature(13)), 'anything else is not');
-		// Repeated, because the first ask is what fills the cache and the second is
-		// the one that could read a different answer out of it.
-		self::assertTrue($assignment->isBoundary($this->feature(11)));
+		self::assertTrue($assignment->isBoundary($this->feature(12)), 'a Unidad Vecinal is a boundary');
 		self::assertFalse($assignment->isBoundary($this->feature(13)));
 	}
 }

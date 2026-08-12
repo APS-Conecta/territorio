@@ -34,14 +34,14 @@ class AssignmentService {
 	private ?array $known = null;
 
 	/**
-	 * The division Subcategory ids, read once per request — see
-	 * `divisionSubcategoryIds()`. Not cleared when a boundary is written, unlike
-	 * `$known` beside it: writing a boundary does not change which Subcategories
-	 * ARE boundaries.
+	 * Which Subcategory ids are divisions, and which division each is — see
+	 * `divisions()`. Not cleared by `forget()`, unlike `$known` beside it: writing
+	 * a boundary changes where the boundaries ARE, never which Subcategories
+	 * make one.
 	 *
-	 * @var ?int[]
+	 * @var ?array<int, string>
 	 */
-	private ?array $divisionIds = null;
+	private ?array $divisions = null;
 
 	public function __construct(
 		private FeatureMapper $features,
@@ -71,7 +71,7 @@ class AssignmentService {
 
 	/** Whether this record is one of the boundaries others are assigned by. */
 	public function isBoundary(Feature $feature): bool {
-		return in_array($feature->getSubcategoryId(), $this->divisionSubcategoryIds(), true);
+		return isset($this->divisions()[$feature->getSubcategoryId()]);
 	}
 
 	/**
@@ -155,14 +155,7 @@ class AssignmentService {
 	 */
 	private function boundaries(string $slug): array {
 		if ($this->known === null) {
-			$wanted = [];
-			foreach ($this->taxonomy->tree() as $category) {
-				foreach ($category['subcategories'] as $subcategory) {
-					if (isset(self::DIVISIONS[$subcategory['slug']])) {
-						$wanted[$subcategory['id']] = $subcategory['slug'];
-					}
-				}
-			}
+			$wanted = $this->divisions();
 
 			$this->known = array_fill_keys(array_keys(self::DIVISIONS), []);
 			foreach ($this->features->findAll() as $feature) {
@@ -185,39 +178,44 @@ class AssignmentService {
 	}
 
 	/**
-	 * The Subcategory ids that mean "this record is a boundary", read once.
+	 * Which Subcategory ids are divisions, and which division each one is.
 	 *
-	 * `isBoundary()` asks on every create, update, retire and restore, and each ask
-	 * read the whole Category tree — two full table scans to answer a question whose
-	 * answer cannot change while a request runs. Measured on the dev instance: 55,576
-	 * sequential scans of `oc_territorio_category` against 431 writes of it; one run
-	 * of the integration suite added 543 of them for 933 record writes.
+	 * Read once, because two paths ask and both asked the whole Category tree — two
+	 * full table scans for an answer that cannot change while the service lives.
+	 * `isBoundary()` asks on every create, update, retire and restore;
+	 * `boundaries()` asks again each time `forget()` empties it, which is every
+	 * boundary write whose shape moved. The CHANGELOG has the measurement.
 	 *
-	 * Here rather than on `TaxonomyService::tree()` itself, which is where this was
-	 * first put. That broke `RampRepaint`: the colour repair writes a Category and
-	 * reads the tree back in the same request, and a memoised tree served it the
-	 * colours from before its own write. Not a hypothetical about #36 — a job that
-	 * does it today. What is memoised here is narrower and safe by construction: the
-	 * division Subcategories are structural, and #36 settled that they cannot be
-	 * removed or renamed away.
+	 * As a map rather than a list of ids: `boundaries()` needs to know WHICH
+	 * division a Subcategory is, `isBoundary()` only that it is one, and one
+	 * `isset` answers the second without walking the first.
 	 *
-	 * @return int[]
+	 * Memoising `TaxonomyService::tree()` itself was tried and is wrong: the ramp
+	 * repair writes a Category and reads the tree back in the same request, so a
+	 * memo there served it the colours from before its own write and two of
+	 * `RampRepaint`'s assertions failed. This is narrower and safe because the
+	 * division Subcategories are structural — #40 specifies that neither they nor
+	 * their Category can be removed, and that a rename never changes a slug — but
+	 * what actually guarantees it today is that nothing in this app writes the
+	 * taxonomy outside the install-time repair.
+	 *
+	 * @return array<int, string> subcategory id => division slug
 	 */
-	private function divisionSubcategoryIds(): array {
-		if ($this->divisionIds !== null) {
-			return $this->divisionIds;
+	private function divisions(): array {
+		if ($this->divisions !== null) {
+			return $this->divisions;
 		}
 
-		$ids = [];
+		$divisions = [];
 		foreach ($this->taxonomy->tree() as $category) {
 			foreach ($category['subcategories'] as $subcategory) {
 				if (isset(self::DIVISIONS[$subcategory['slug']])) {
-					$ids[] = $subcategory['id'];
+					$divisions[$subcategory['id']] = $subcategory['slug'];
 				}
 			}
 		}
 
-		return $this->divisionIds = $ids;
+		return $this->divisions = $divisions;
 	}
 
 	/**

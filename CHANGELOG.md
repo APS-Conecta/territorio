@@ -3,6 +3,29 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.37.0] — unreleased
+
+Asking the taxonomy once.
+
+### Changed
+
+- **Deciding whether a record is a boundary no longer re-reads the Category tree.** `isBoundary()` is
+  asked on every create, update, retire and restore, and derived its answer from the whole tree —
+  two full table scans to answer a question whose answer cannot change while a request runs.
+  Measured on the dev instance: **55,576 sequential scans of `oc_territorio_category` against 431
+  writes of it**, and one run of the integration suite added 543 of them for 933 record writes. The
+  same run adds 238 now.
+
+### Notes
+
+**Memoising `TaxonomyService::tree()` itself was tried first, and is wrong.** It is the obvious place
+and it broke `RampRepaint`: the colour repair writes a Category and reads the tree back in the same
+request, so the memo served it the colours from before its own write. Two of that suite's assertions
+failed on the clinic's own recoloured Category — not a hypothetical about #36 making the tree
+editable, but a job that does it today.
+
+What is cached instead is narrower and safe by construction: the division Subcategory ids. Those are
+structural, and #36 already settled that they cannot be removed.
 ## [0.33.0] — unreleased
 
 Generar says which failure it is.

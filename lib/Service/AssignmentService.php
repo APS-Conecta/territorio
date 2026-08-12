@@ -33,6 +33,16 @@ class AssignmentService {
 	 */
 	private ?array $known = null;
 
+	/**
+	 * The division Subcategory ids, read once per request — see
+	 * `divisionSubcategoryIds()`. Not cleared when a boundary is written, unlike
+	 * `$known` beside it: writing a boundary does not change which Subcategories
+	 * ARE boundaries.
+	 *
+	 * @var ?int[]
+	 */
+	private ?array $divisionIds = null;
+
 	public function __construct(
 		private FeatureMapper $features,
 		private TaxonomyService $taxonomy,
@@ -174,8 +184,30 @@ class AssignmentService {
 		}
 	}
 
-	/** @return int[] */
+	/**
+	 * The Subcategory ids that mean "this record is a boundary", read once.
+	 *
+	 * `isBoundary()` asks on every create, update, retire and restore, and each ask
+	 * read the whole Category tree — two full table scans to answer a question whose
+	 * answer cannot change while a request runs. Measured on the dev instance: 55,576
+	 * sequential scans of `oc_territorio_category` against 431 writes of it; one run
+	 * of the integration suite added 543 of them for 933 record writes.
+	 *
+	 * Here rather than on `TaxonomyService::tree()` itself, which is where this was
+	 * first put. That broke `RampRepaint`: the colour repair writes a Category and
+	 * reads the tree back in the same request, and a memoised tree served it the
+	 * colours from before its own write. Not a hypothetical about #36 — a job that
+	 * does it today. What is memoised here is narrower and safe by construction: the
+	 * division Subcategories are structural, and #36 settled that they cannot be
+	 * removed or renamed away.
+	 *
+	 * @return int[]
+	 */
 	private function divisionSubcategoryIds(): array {
+		if ($this->divisionIds !== null) {
+			return $this->divisionIds;
+		}
+
 		$ids = [];
 		foreach ($this->taxonomy->tree() as $category) {
 			foreach ($category['subcategories'] as $subcategory) {
@@ -185,7 +217,7 @@ class AssignmentService {
 			}
 		}
 
-		return $ids;
+		return $this->divisionIds = $ids;
 	}
 
 	/**

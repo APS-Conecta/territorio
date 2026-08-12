@@ -3,6 +3,36 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.29.0] — unreleased
+
+Names are text, not markup.
+
+### Fixed
+
+- **A stored name could redirect everyone who opened the map.** Leaflet assigns string tooltip
+  content with `innerHTML`, so `bindTooltip(feature.name)` parsed a name as markup. Nextcloud's CSP
+  stops script and every exfiltration channel — `script-src` is nonce-based, `connect-src`, `img-src`
+  and `font-src` are all `'self'` — but **nothing covers navigation**, and an injected
+  `<meta http-equiv="refresh">` was confirmed navigating a real browser. That made it a stored
+  redirect to a page of the attacker's choosing, arriving from a trusted internal app.
+
+  The realistic source is not a colleague — ADR-0005 already lets any user edit any field, so they
+  gain nothing — but **an imported cadastre**: the second call site renders names straight out of a
+  file the clinic did not write. Both now pass a text node, which cannot be parsed at all, rather
+  than an escape, which is a thing you can get subtly wrong.
+
+### Notes
+
+Guarded in `tests/js/imports.test.js`, beside the two other mistakes that compiled and shipped. The
+browser gate was tried first and abandoned after five runs: a tooltip only exists while Leaflet is
+hovering a shape it has chosen to render, and it opens them on a timer, so the runs were measuring
+the render lifecycle rather than the bug.
+
+Proven both ways against the running instance, with a Unidad Vecinal renamed to carry the payload:
+fixed, the tooltip holds the literal string with zero child elements and the page does not move;
+reverted and rebuilt, the probe dies with *"Execution context was destroyed, most likely because of
+a navigation"*.
+
 ## [0.28.0] — unreleased
 
 Keeping what somebody typed before they saved.

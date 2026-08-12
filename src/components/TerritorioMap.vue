@@ -361,7 +361,11 @@ export default {
 					colourOf(feature, this.subcategories),
 					feature.id === this.selectedId,
 				))
-				layer.bindTooltip(feature.name)
+				// A node, not a string. Leaflet's DivOverlay assigns string content with
+				// innerHTML, so a stored name was parsed as markup — and while CSP stops
+				// script and every exfiltration channel here, nothing covers navigation
+				// (issue #62). A text node cannot be parsed at all.
+				layer.bindTooltip(document.createTextNode(feature.name))
 				layer.on('click', (event) => {
 					// While a draft is waiting for its coordinate, the click belongs to
 					// the map: let it through untouched. Once a comuna's Unidades
@@ -484,7 +488,9 @@ export default {
 					weight: picked ? 5 : 3,
 					opacity: picked ? 1 : 0.55,
 				})
-				layer.bindTooltip(boundary.name)
+				// A node, not a string — see drawShapes. This is the path that matters
+				// most: these names come out of an imported cadastre, not from anyone here.
+				layer.bindTooltip(document.createTextNode(boundary.name))
 				layer.on('click', (event) => {
 					// While a draft is waiting for a coordinate the click is the map's,
 					// exactly as it is for a Sector's fill — a street lying across the

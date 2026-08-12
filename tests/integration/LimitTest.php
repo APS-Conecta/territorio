@@ -130,12 +130,20 @@ final class LimitTest extends IntegrationTestCase {
 			'limit' => [['name' => 'solo el canal']],
 		]);
 
-		$changed = [];
-		foreach ($this->features->history($id) as $entry) {
-			$changed = [...$changed, ...array_keys($entry['changes'] ?? [])];
-		}
+		// The UPDATE entry, not the union of every entry. Flattened, this passed on
+		// the Created row — which `insert()` builds from `comparable()` directly and
+		// which therefore always carries `limit` — while the update recorded nothing.
+		// A test that cannot fail is worse than the bug it was meant to hold.
+		$history = $this->features->history($id);
+		$update = $history[0] ?? null;
 
-		self::assertContains('limit', $changed);
+		self::assertNotNull($update, 'the update left no history entry at all');
+		self::assertSame('updated', $update['action']);
+		self::assertArrayHasKey(
+			'limit',
+			$update['changes'] ?? [],
+			'changing what a Sector runs along was not recorded',
+		);
 	}
 
 	/** A part with no readable name is not a part; it would render as a gap. */

@@ -3,6 +3,35 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.30.0] — unreleased
+
+Saying who changed the límite.
+
+### Fixed
+
+- **A Sector's Limit never reached its history.** `comparable()` is keyed as the client knows a
+  Feature and emits `limit`; `getUpdatedFields()` is keyed by property, and the property is
+  `boundaryLimit` — the column is `boundary_limit` because `limit` is reserved. Of sixteen keys it is
+  the only one that diverges, and `diff()` gated one on the other, so `isset($writing['limit'])`
+  could never be true. Every Limit edit recorded «Editado» with nothing under it, against a
+  promise written into `Feature.php` itself: *"quién cambió el límite is exactly the kind of question
+  history exists to answer"*.
+
+  An alias on the entity now carries it — not a rename, because `RevertService` and `ImportService`
+  both key off the client names. A reflection test asserts every `comparable()` key resolves to a
+  declared property through that alias, so the next reserved word cannot open the same hole quietly.
+
+### Notes
+
+**The test was the worse half.** `testChangingTheLimitIsInHistory` flattened `array_keys` across
+every history entry, and `insert()` builds the Created entry from `comparable()` directly, bypassing
+the updated-fields gate — so it always carried `limit` and the assertion passed on creation while
+every update dropped it. It now asserts on the update entry alone, and fails when the alias is
+removed. A test that cannot fail is worse than the bug it was meant to hold.
+
+Confirmed in the running app: after changing a Limit the sidebar now reads
+`Límite: (vacío) → prueba de historial`.
+
 ## [0.29.0] — unreleased
 
 Names are text, not markup.

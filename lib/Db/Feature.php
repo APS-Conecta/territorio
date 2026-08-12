@@ -73,6 +73,22 @@ use OCP\AppFramework\Db\Entity;
  * @method void setBoundaryLimit(?string $boundaryLimit)
  */
 class Feature extends Entity {
+	/**
+	 * The comparable keys whose name is not their property name.
+	 *
+	 * `comparable()` is keyed as the client knows a Feature; `getUpdatedFields()`
+	 * is keyed by property. Every key coincides except this one — the column is
+	 * `boundary_limit` because `limit` is reserved — so anything gating one on the
+	 * other silently skips it. That is what kept a Sector's Limit out of its own
+	 * history: `isset($writing['limit'])` could never be true.
+	 *
+	 * On the entity because this is where the divergence is created, and the next
+	 * column needing a different client name adds a line.
+	 *
+	 * @var array<string, string> comparable key => entity property
+	 */
+	public const PROPERTY_OF = ['limit' => 'boundaryLimit'];
+
 	protected $subcategoryId = 0;
 	protected $kind = '';
 	protected $name = '';

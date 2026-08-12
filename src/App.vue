@@ -130,7 +130,6 @@
 
 			<BoundaryPicker v-if="editingLimit"
 					:suggestions="boundarySuggestions"
-					:picked="pickedBoundaries"
 					:picked-ids="draft.picked"
 					:query="boundaryQuery"
 					:seeding="seeding"
@@ -173,7 +172,7 @@ import FeatureList from './components/FeatureList.vue'
 import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
-import { pickedGroups, suggestions, toggleGroup, togglePick } from './boundaries.js'
+import { suggestions, toggleGroup, togglePick } from './boundaries.js'
 import { groups, partsFrom, readable, withNote, without } from './limit.js'
 import { faceAround } from './sectors.js'
 import {
@@ -387,10 +386,6 @@ export default {
 
 		boundarySuggestions() {
 			return suggestions(this.boundaryFeatures, this.boundaryQuery)
-		},
-
-		pickedBoundaries() {
-			return pickedGroups(this.boundaryFeatures, this.draft?.picked ?? [])
 		},
 
 		/** The shape the map should draw editable — a Sector being drawn or adjusted. */

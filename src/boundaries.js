@@ -88,27 +88,3 @@ export function toggleGroup(picked, ids) {
 		? picked.filter((id) => !ids.includes(id))
 		: [...picked, ...ids.filter((id) => !picked.includes(id))]
 }
-
-/**
- * The picked lines, grouped for display, in the order they were picked.
- *
- * Grouped like the suggestions are: a Limit reads "Vicuña Mackenna, the rail
- * line, Departamental", not as ninety numbered fragments.
- */
-export function pickedGroups(boundaries, picked) {
-	const byId = new Map(boundaries.map((boundary) => [boundary.id, boundary]))
-	const groups = new Map()
-
-	picked.forEach((id) => {
-		const boundary = byId.get(id)
-		// A line that has scrolled out of the loaded view is still picked; it just
-		// cannot be named yet. Dropping it would silently unpick it.
-		const name = boundary?.name ?? null
-		const key = name ?? `#${id}`
-		const group = groups.get(key) ?? { name, ids: [] }
-		group.ids.push(id)
-		groups.set(key, group)
-	})
-
-	return [...groups.values()]
-}

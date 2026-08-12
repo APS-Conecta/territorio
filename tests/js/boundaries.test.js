@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickedGroups, suggestions, toggleGroup, togglePick } from '../../src/boundaries.js'
+import { suggestions, toggleGroup, togglePick } from '../../src/boundaries.js'
 
 /**
  * ADR-0007: the app never resolves a street NAME. It offers what exists and a
@@ -84,28 +84,5 @@ describe('picking', () => {
 
 	it('leaves everything else alone', () => {
 		expect(toggleGroup([6], [1, 2, 3])).toEqual([6, 1, 2, 3])
-	})
-})
-
-describe('what has been picked so far', () => {
-	it('reads as streets, not as fragments', () => {
-		const groups = pickedGroups(BOUNDARIES, [1, 2, 3, 6])
-
-		expect(groups).toEqual([
-			{ name: 'Avenida Vicuña Mackenna', ids: [1, 2, 3] },
-			{ name: 'Canal San Carlos', ids: [6] },
-		])
-	})
-
-	/**
-	 * A line picked and then panned away from is still picked. Dropping it here
-	 * because its name is no longer loaded would silently unpick it.
-	 */
-	it('keeps a pick whose line is no longer on screen', () => {
-		expect(pickedGroups(BOUNDARIES, [99])).toEqual([{ name: null, ids: [99] }])
-	})
-
-	it('is empty when nothing is picked', () => {
-		expect(pickedGroups(BOUNDARIES, [])).toEqual([])
 	})
 })

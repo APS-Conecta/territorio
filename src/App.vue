@@ -174,7 +174,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { suggestions, toggleGroup, togglePick } from './boundaries.js'
-import { groups, partsFrom, readable, withNote, without } from './limit.js'
+import { groups, partsFrom, readable, sectorFields, withNote, without } from './limit.js'
 import { canPolygonize, faceAround } from './sectors.js'
 import {
 	countsFor,
@@ -722,13 +722,9 @@ export default {
 				colour: DEFAULT_SECTOR_COLOUR,
 				// Only a Sector draft carries these, and carrying them is what opens
 				// the picker (issue #13). #15 is what makes them outlive the draft.
-				picked: [],
-				// Empty rather than absent: addLimitNote keys on it being defined,
-				// so a tramo typed before the first save was dropped (issue #48).
-				limit: [],
-				// Same reason: save() carries this across the rebuild, and carrying
-				// an absent one writes undefined over the fresh object.
-				pickedGeometry: {},
+				// One shape, from one place — see sectorFields() for the two ways
+				// these have drifted apart before.
+				...sectorFields(),
 			}
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []
@@ -1028,13 +1024,7 @@ export default {
 				// each line into view — so a Limit reopened and saved untouched keeps
 				// its names either way.
 				...(this.isSector(feature.subcategoryId)
-					? {
-						limit: feature.limit ?? [],
-						picked: (feature.limit ?? [])
-							.filter((part) => part.featureId !== undefined)
-							.map((part) => part.featureId),
-						pickedGeometry: {},
-					}
+					? sectorFields(feature.limit ?? [])
 					: {}),
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),

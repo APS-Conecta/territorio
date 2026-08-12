@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groups, partsFrom, readable, withNote, without } from '../../src/limit.js'
+import { groups, partsFrom, readable, sectorFields, withNote, without } from '../../src/limit.js'
 
 /**
  * A Sector's Limit — what somebody says out loud when asked where the sector
@@ -165,5 +165,47 @@ describe('without', () => {
 		const parts = [{ featureId: 7, name: 'Uno' }, { name: 'dos' }]
 
 		expect(without(parts, 'no existe')).toEqual(parts)
+	})
+})
+
+/**
+ * The three fields only a Sector draft carries, and the reason they are built in
+ * one place: they have drifted apart twice already.
+ *
+ * `limit` absent meant a tramo typed before the first save was dropped (#48).
+ * `pickedGeometry` absent meant `save()` carried undefined over a fresh object
+ * (#49). Both were one caller having a field the other did not.
+ */
+describe('the fields a Sector draft carries', () => {
+	it('gives a new Sector all three, empty', () => {
+		expect(sectorFields()).toEqual({ limit: [], picked: [], pickedGeometry: {} })
+	})
+
+	/**
+	 * `picked` is derived from the Limit, never stored beside it: the Limit is the
+	 * record of which lines were chosen (#15), and the ticks are a view of it.
+	 */
+	it('derives the ticks from the stored Limit', () => {
+		const limit = [
+			{ name: 'Avenida Vicuña Mackenna', featureId: 7, parts: 3, picked: true },
+			{ name: 'por detrás del colegio', parts: 1, picked: false },
+			{ name: 'Canal San Carlos', featureId: 9, parts: 1, picked: true },
+		]
+
+		expect(sectorFields(limit)).toEqual({
+			limit,
+			picked: [7, 9],
+			pickedGeometry: {},
+		})
+	})
+
+	/**
+	 * Empty by necessity, not by omission: the server holds the names a Limit runs
+	 * along and never the shapes, which arrive as the map brings each line back
+	 * into view.
+	 */
+	it('starts with no shapes even for a Limit full of picks', () => {
+		expect(sectorFields([{ name: 'Uno', featureId: 1, parts: 1, picked: true }]).pickedGeometry)
+			.toEqual({})
 	})
 })

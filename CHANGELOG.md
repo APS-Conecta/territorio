@@ -28,9 +28,11 @@ Generar says which failure it is.
 - **A save dropped the shapes of the lines just picked.** `save()` carried `picked` across the
   rebuild and not `pickedGeometry`, so pressing Guardar and then «Generar» failed the same way, on
   lines chosen a moment earlier. Both halves now cross the save.
-- **A cache of null shapes read as ready.** A Boundary row may carry a null geometry, and
-  `keepPickedGeometry` stores what it finds, so a Limit whose lines are all like that passed a check
-  for `undefined` and then produced no face — the same message, reached by another road.
+- **A null geometry counted as a shape.** A Boundary row may carry one — an empty or corrupt
+  geometry decodes to null — and `keepPickedGeometry` stored what it found, so a Limit whose lines
+  were all like that passed a check for `undefined` and then produced no face: the same message,
+  reached by another road. Worse once the cache refills on every map settle, where a null would
+  have *overwritten* a shape already held. Both ends read `!= null` now.
 - **Unpicking a street left its shape in the cache.** `removeLimitPart` dropped the ids and not the
   geometries, which contradicts the invariant `keepPickedGeometry()` states about itself. Inert until
   «Elegido» went (#33) and this became the only way to unpick.

@@ -107,7 +107,8 @@
 		-->
 		<p v-if="pickedIds.length > 0 && !canGenerate" class="territorio-picker__hint">
 			Acerque el mapa a las calles del límite para poder generar: de un sector
-			reabierto se guardan sus nombres, y el trazado se carga al verlas.
+			reabierto se guardan sus nombres, y el trazado se carga al verlas. Si
+			alguna ya no está en el mapa, dibuje el sector a mano.
 		</p>
 
 		<!-- One hint or the other, never both: the greyed-out button already has

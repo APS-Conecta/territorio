@@ -905,6 +905,10 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         failures.append("picking lines did not offer to generate the polygon")
         return
 
+    if generate.is_disabled():
+        failures.append("Generar is greyed out on lines picked a moment ago")
+        return
+
     generate.click()
     page.wait_for_timeout(400)
     if picker.get_by_text("Haga clic dentro del sector").count() == 0:
@@ -974,15 +978,12 @@ def a_reopened_limit_can_generate_again(page, failures):
         return
 
     picker = page.locator('[data-testid="boundary-picker"]')
-    if picker.locator(".territorio-picker__parts li").count() == 0:
-        skip("the reopened Sector has no stored Limit, so the reopen check did not run")
-        page.keyboard.press("Escape")
-        page.locator(SEARCH).fill("")
-        return
-
+    # The button, not the parts list: that list counts hand-typed tramos too, so it
+    # says "this Sector has a Limit" where what is needed is "this Sector has picked
+    # LINES". The button renders on `pickedIds`, which is exactly that.
     generate = picker.get_by_role("button", name="Generar el polígono")
     if generate.count() == 0:
-        failures.append("a reopened Sector with a Limit does not offer Generar at all")
+        skip("the reopened Sector has no picked lines, so the reopen check did not run")
         page.keyboard.press("Escape")
         page.locator(SEARCH).fill("")
         return
@@ -1132,7 +1133,12 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
 
     offered.first.locator("button").click()
     page.wait_for_timeout(600)
-    picker.get_by_role("button", name="Generar el polígono").click()
+    generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.is_disabled():
+        failures.append("Generar is greyed out on lines picked a moment ago")
+        return
+
+    generate.click()
     page.wait_for_timeout(400)
 
     canvas = page.locator('[data-testid="map-canvas"]')

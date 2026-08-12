@@ -802,7 +802,8 @@ export default {
 		},
 
 		/**
-		 * Keep the shape of a line the moment it is picked, on the draft.
+		 * Keep the shapes of the picked lines on the draft — as they are picked,
+		 * and again as they come back into view.
 		 *
 		 * `boundaryFeatures` is what is ON SCREEN: it is replaced wholesale every
 		 * time the map settles, and capped at three thousand rows against a
@@ -830,7 +831,11 @@ export default {
 					return
 				}
 				const geometry = onScreen.get(id)?.geometry
-				if (geometry !== undefined) {
+				// `!= null`, matching canPolygonize: a Boundary row whose geometry is
+				// empty or corrupt arrives decoded to null, and once this runs on
+				// every settle rather than once per pick, writing that would overwrite
+				// a shape already held with nothing.
+				if (geometry != null) {
 					kept[id] = geometry
 				}
 			})
@@ -938,9 +943,9 @@ export default {
 
 			// From what was picked, not from what is on screen — see
 			// keepPickedGeometry(). The two disagree the moment the map moves.
-			const picked = this.draft.picked
-				.map((id) => this.draft.pickedGeometry?.[id])
-				.filter((geometry) => geometry !== undefined)
+			// No filter: the guard above has already refused anything short of every
+			// picked line, so a hole here would be one this cannot see.
+			const picked = this.draft.picked.map((id) => this.draft.pickedGeometry[id])
 			const face = faceAround(picked, [lon, lat])
 
 			if (face === null) {

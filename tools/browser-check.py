@@ -933,7 +933,14 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     # the draft from what the server returned, and the server knows the Limit's
     # NAMES and not the shapes behind them. Carrying only the ids across left the
     # picker unable to generate a second time, on lines picked a moment earlier.
-    if picker.get_by_role("button", name="Generar el polígono").is_disabled():
+    # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
+    # RAISES when nothing matches, and there is no try/except around a check — so an
+    # unguarded ask aborts the run and skips the retire at the end of main(), leaving
+    # this run's four-kilometre Sector live on the map (issue #58).
+    kept = picker.get_by_role("button", name="Generar el polígono")
+    if kept.count() == 0:
+        failures.append("saving a Sector closed the Limit picker (#49)")
+    elif kept.is_disabled():
         failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
 
     page.keyboard.press("Escape")
@@ -1134,6 +1141,9 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
     offered.first.locator("button").click()
     page.wait_for_timeout(600)
     generate = picker.get_by_role("button", name="Generar el polígono")
+    if generate.count() == 0:
+        failures.append("picking lines did not offer to generate the polygon")
+        return
     if generate.is_disabled():
         failures.append("Generar is greyed out on lines picked a moment ago")
         return

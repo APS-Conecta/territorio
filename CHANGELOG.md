@@ -28,14 +28,17 @@ Generar says which failure it is.
 - **A save dropped the shapes of the lines just picked.** `save()` carried `picked` across the
   rebuild and not `pickedGeometry`, so pressing Guardar and then «Generar» failed the same way, on
   lines chosen a moment earlier. Both halves now cross the save.
-- **A null geometry counted as a shape.** A Boundary row may carry one — an empty or corrupt
+- **A geometry that is not line work counted as a shape.** A Boundary row may carry one — an empty or corrupt
   geometry decodes to null — and `keepPickedGeometry` stored what it found, so a Limit whose lines
   were all like that passed a check for `undefined` and then produced no face: the same message,
-  reached by another road. Worse once the cache refills on every map settle, where a null would
-  have *overwritten* a shape already held. Both ends read `!= null` now.
-- **Unpicking a street left its shape in the cache.** `removeLimitPart` dropped the ids and not the
-  geometries, which contradicts the invariant `keepPickedGeometry()` states about itself. Inert until
-  «Elegido» went (#33) and this became the only way to unpick.
+  reached by another road. Worse once the cache refills on every map settle, where a null would have
+  *overwritten* a shape already held. And nullness was only half of it: a boundary Dataset is
+  filtered by Dataset and not by geometry, so a Point, a Polygon, or the one-repeated-coordinate
+  LineString a KML import produces is pickable too, and each counted as ready. The guard asks
+  `stretchesOf` now — held and usable are different questions, and only the second one matters.
+- **Unpicking a street from the Limit left its shape in the cache.** `removeLimitPart` dropped the
+  ids without going through `keepPickedGeometry`, so a shape outlived the pick it belonged to.
+  Clicking the line on the map was never affected — that path always went through it.
 
 ### Notes
 

@@ -234,4 +234,20 @@ describe('whether the picked lines can be polygonized at all', () => {
 		expect(canPolygonize([7], { 7: null })).toBe(false)
 		expect(canPolygonize([7, 8], { ...shapes, 8: null })).toBe(false)
 	})
+
+	/**
+	 * Held is not usable. A boundary Dataset is filtered by Dataset and not by
+	 * geometry, so a Point, a Polygon or a LineString of one repeated coordinate —
+	 * which is how a KML import lands, and which `stretchesOf` already drops — is
+	 * pickable. Counting it as ready produced no face and the message this guard
+	 * exists to delete.
+	 */
+	it('cannot, when a picked line is not line work it can use', () => {
+		expect(canPolygonize([7], { 7: { type: 'Point', coordinates: [2, 2] } })).toBe(false)
+		expect(canPolygonize([7], { 7: { coordinates: [[0, 0], [1, 1]] } })).toBe(false)
+		expect(canPolygonize([7], {
+			7: { type: 'LineString', coordinates: [[2, 2], [2, 2]] },
+		})).toBe(false)
+		expect(canPolygonize([7, 8], { ...shapes, 8: { type: 'Point', coordinates: [2, 2] } })).toBe(false)
+	})
 })

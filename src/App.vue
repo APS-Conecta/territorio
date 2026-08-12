@@ -795,9 +795,9 @@ export default {
 
 			this.draft.limit = without(this.draft.limit, name)
 			this.draft.picked = this.draft.picked.filter((id) => !dropped.includes(id))
-			// And forget their shapes, or the invariant keepPickedGeometry() states —
-			// that the cache holds exactly what is picked — is false the moment this
-			// is the only way to unpick, which it became when «Elegido» went (#33).
+			// And forget their shapes. keepPickedGeometry() holds exactly what is
+			// picked — clicking a line on the map goes through it either way — and
+			// this path dropped the ids without it, so a shape outlived its pick.
 			this.keepPickedGeometry(dropped)
 		},
 

@@ -42,13 +42,16 @@ const LINES = ['LineString', 'MultiLineString']
  * safe to rehydrate the cache a few lines at a time as the map loads them: a
  * half-filled cache reads as not ready, never as a smaller Sector.
  *
- * `!= null`, not `!== undefined`: a Boundary row can carry a null geometry, and a
- * cache of nothing but nulls would have read as ready and produced no face at all
- * — which is the very message this exists to stop.
+ * Asked through `stretchesOf` rather than by testing for a value, because held and
+ * usable are different questions and only the second one matters here. A Boundary
+ * Dataset can hold a Point (a KML import puts one there), a null geometry, or a
+ * LineString of one repeated coordinate — and every one of those is pickable, would
+ * have counted as ready, and would have produced no face and the message this
+ * whole guard exists to delete.
  */
 export function canPolygonize(picked, pickedGeometry) {
 	return picked.length > 0
-		&& picked.every((id) => pickedGeometry?.[id] != null)
+		&& picked.every((id) => stretchesOf(pickedGeometry?.[id]).length > 0)
 }
 
 /**

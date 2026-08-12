@@ -223,4 +223,15 @@ describe('whether the picked lines can be polygonized at all', () => {
 	it('cannot, when only some of the picked lines have a shape', () => {
 		expect(canPolygonize([7, 8, 9], shapes)).toBe(false)
 	})
+
+	/**
+	 * A Boundary row may carry a null geometry, and `keepPickedGeometry` stores
+	 * what it finds. A cache of nulls passed a check for `undefined`, so this read
+	 * as ready and then produced no face at all — the very message the guard
+	 * exists to stop, reached by another road.
+	 */
+	it('cannot, when a picked line has no shape of its own', () => {
+		expect(canPolygonize([7], { 7: null })).toBe(false)
+		expect(canPolygonize([7, 8], { ...shapes, 8: null })).toBe(false)
+	})
 })

@@ -726,6 +726,9 @@ export default {
 				// Empty rather than absent: addLimitNote keys on it being defined,
 				// so a tramo typed before the first save was dropped (issue #48).
 				limit: [],
+				// Same reason: save() carries this across the rebuild, and carrying
+				// an absent one writes undefined over the fresh object.
+				pickedGeometry: {},
 			}
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []
@@ -874,6 +877,16 @@ export default {
 					params: this.view,
 				})
 				this.boundaryFeatures = data
+				// A reopened Sector knows WHICH lines its Limit runs along and not
+				// what they look like — `draftFrom` has only the stored Limit to go
+				// on. Every line that comes into view fills its own shape back in,
+				// so panning over the limit makes «Generar» possible again without
+				// re-picking anything (issue #49). Safe precisely because
+				// canPolygonize demands all of them: a half-filled cache is not
+				// ready, never a smaller Sector.
+				if (this.editingLimit) {
+					this.keepPickedGeometry(this.draft.picked)
+				}
 			} catch (exception) {
 				console.warn('territorio: could not load the boundary features', exception)
 			}
@@ -918,9 +931,8 @@ export default {
 			// words: lines that do not close is something the person can fix by
 			// picking more, and shapes this draft never held is not.
 			if (!canPolygonize(this.draft.picked, this.draft.pickedGeometry)) {
-				this.error = 'Para generar hay que marcar las calles en el mapa en esta sesión: '
-					+ 'de un sector reabierto se guardan los nombres del límite, no sus trazados. '
-					+ 'También puede dibujarlo a mano.'
+				this.error = 'Todavía no se conoce el trazado de todas las calles del límite. '
+					+ 'Acerque el mapa a esas calles para cargarlas, o dibuje el sector a mano.'
 				return
 			}
 

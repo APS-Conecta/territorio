@@ -948,10 +948,10 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         return
 
     a_generated_polygon_is_editable(page, wanted, failures)
-    generating_from_a_reopened_limit_is_refused_honestly(page, failures)
+    a_reopened_limit_can_generate_again(page, failures)
 
 
-def generating_from_a_reopened_limit_is_refused_honestly(page, failures):
+def a_reopened_limit_can_generate_again(page, failures):
     """#49: a reopened Sector knows the names its Limit runs along, not the shapes.
 
     `draftFrom()` derives `picked` from the stored Limit — which is what #15 put
@@ -961,17 +961,20 @@ def generating_from_a_reopened_limit_is_refused_honestly(page, failures):
     that do close, so the person went and re-picked streets that were already
     right.
 
-    Run after the polygonize check, which is what leaves this run's Sector with a
-    stored Limit to reopen. Asserts the refusal is plain rather than a failure:
-    the button is there and disabled, with the reason beside it (ADR-0007 keeps
-    hand-drawing available either way).
+    The shapes come back on their own now: every picked line that comes into view
+    refills its own, which is safe because `canPolygonize` demands all of them. So
+    the assertion is the ticket's first criterion literally — generating from a
+    stored Limit works, without re-picking anything — and the button un-greying is
+    what says the cache refilled.
+
+    Runs after the polygonize check, which is what leaves this run's Sector with a
+    stored Limit and its lines on screen.
     """
     if not open_the_runs_sector(page, failures):
         return
 
     picker = page.locator('[data-testid="boundary-picker"]')
-    parts = picker.locator(".territorio-picker__parts li")
-    if parts.count() == 0:
+    if picker.locator(".territorio-picker__parts li").count() == 0:
         skip("the reopened Sector has no stored Limit, so the reopen check did not run")
         page.keyboard.press("Escape")
         page.locator(SEARCH).fill("")
@@ -980,18 +983,33 @@ def generating_from_a_reopened_limit_is_refused_honestly(page, failures):
     generate = picker.get_by_role("button", name="Generar el polígono")
     if generate.count() == 0:
         failures.append("a reopened Sector with a Limit does not offer Generar at all")
-    elif not generate.is_disabled():
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
+
+    # Greyed out until the shapes are back, so waiting for it is the assertion.
+    if not settles(page, lambda: not generate.is_disabled(), timeout=10_000):
         failures.append(
-            "a reopened Sector offers Generar, which can only fail and blame the streets (#49)",
+            "a reopened Sector never became generatable, though its Limit's lines are on screen (#49)",
         )
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        return
 
-    if picker.get_by_text("no se guardan sus trazados").count() == 0 \
-            and picker.get_by_text("no sus trazados").count() == 0:
-        failures.append("nothing says why Generar is unavailable on a reopened Sector (#49)")
+    generate.click()
+    page.wait_for_timeout(400)
+    canvas = page.locator('[data-testid="map-canvas"]')
+    size = canvas.bounding_box()
+    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
+    page.wait_for_timeout(1200)
 
+    # The whole point of the ticket: no message may blame the streets when the
+    # cache was what was empty.
     if page.get_by_text("no cierran", exact=False).count() != 0:
-        failures.append("a reopened Sector still blames the streets (#49)")
+        failures.append("generating from a reopened Limit still says the lines do not close (#49)")
 
+    # Discarded, not saved: the shape it just made is the same square the
+    # polygonize check already asserted, and this run has written enough.
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)

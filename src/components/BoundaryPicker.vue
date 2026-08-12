@@ -101,13 +101,13 @@
 		</NcButton>
 
 		<!--
-			Why it is greyed out, said where the button is. A reopened Sector knows
-			the names its Limit runs along and not the shapes behind them, and a
-			button that can only fail is worse than a button that says why not.
+			Why it is greyed out and what to do about it, said where the button is.
+			A button that can only fail is worse than one that says why not — and
+			this one un-greys itself as the map loads the lines.
 		-->
 		<p v-if="pickedIds.length > 0 && !canGenerate" class="territorio-picker__hint">
-			Para generar hay que marcar las calles en el mapa en esta sesión: de un
-			sector reabierto se guardan los nombres del límite, no sus trazados.
+			Acerque el mapa a las calles del límite para poder generar: de un sector
+			reabierto se guardan sus nombres, y el trazado se carga al verlas.
 		</p>
 
 		<!-- One hint or the other, never both: the greyed-out button already has

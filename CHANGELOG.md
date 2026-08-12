@@ -16,24 +16,35 @@ Generar says which failure it is.
   and was told «Las calles elegidas no cierran alrededor de ese punto». About streets that do close,
   so the person went and re-picked streets that were already right.
 
-  Two things were wrong and they are fixed separately. The operation genuinely cannot succeed from a
-  stored Limit, and re-deriving the shapes from what is on screen is the silent-larger-face failure
-  `keepPickedGeometry` exists to prevent — so «Generar» is now **plainly unavailable** on a reopened
-  Sector, greyed out with the reason beside it, rather than offered and failing. ADR-0007 keeps
-  hand-drawing first-class throughout, and the hint says so.
+  The shapes come back on their own now. Every picked line that comes into view refills its own, so
+  reopening a Sector and panning over its límite makes «Generar» work again **without re-picking
+  anything**. That is safe only because the guard demands *all* of the picked lines: a partial set
+  still closes, into a larger face than the one meant, with nothing on screen to say so — which is
+  the silent failure `keepPickedGeometry` was written against. A half-filled cache reads as not
+  ready, never as a smaller Sector.
+
+  Until it is full the button is greyed out with the reason beside it, rather than offered and
+  failing. ADR-0007 keeps hand-drawing first-class throughout, and the hint says so.
 - **A save dropped the shapes of the lines just picked.** `save()` carried `picked` across the
   rebuild and not `pickedGeometry`, so pressing Guardar and then «Generar» failed the same way, on
   lines chosen a moment earlier. Both halves now cross the save.
+- **A cache of null shapes read as ready.** A Boundary row may carry a null geometry, and
+  `keepPickedGeometry` stores what it finds, so a Limit whose lines are all like that passed a check
+  for `undefined` and then produced no face — the same message, reached by another road.
 - **Unpicking a street left its shape in the cache.** `removeLimitPart` dropped the ids and not the
   geometries, which contradicts the invariant `keepPickedGeometry()` states about itself. Inert until
   «Elegido» went (#33) and this became the only way to unpick.
 
 ### Notes
 
-`canPolygonize()` is *every* picked line, never *some*: a subset still closes, into a larger face
-than the one meant, with nothing on screen to say so. The browser gate covers both halves — it
-asserts the button survives a save, and that a reopened Sector refuses plainly — and both were proven
-by reintroducing each bug and watching the matching check fail.
+The first version of this refused outright, on the reasoning that the shapes could not be recovered.
+An audit showed that was wrong: `loadBoundaries()` already receives the shape of every picked line
+that comes into view, so one line rehydrates the cache as the person pans. The refusal became the
+fallback rather than the answer.
+
+The browser gate covers both halves — the button must survive a save, and a reopened Sector must
+generate again with no re-picking and never say «no cierran» — and both were proven by reintroducing
+each bug and watching the matching check fail.
 
 ## [0.32.0] — unreleased
 

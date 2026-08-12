@@ -38,11 +38,17 @@ const LINES = ['LineString', 'MultiLineString']
  *
  * Every, not some. A subset of the picked lines still closes — into a LARGER face
  * than the one meant, with nothing on screen to say so, which is the silent
- * failure `keepPickedGeometry` was written against.
+ * failure `keepPickedGeometry` was written against. That is also what makes it
+ * safe to rehydrate the cache a few lines at a time as the map loads them: a
+ * half-filled cache reads as not ready, never as a smaller Sector.
+ *
+ * `!= null`, not `!== undefined`: a Boundary row can carry a null geometry, and a
+ * cache of nothing but nulls would have read as ready and produced no face at all
+ * — which is the very message this exists to stop.
  */
 export function canPolygonize(picked, pickedGeometry) {
 	return picked.length > 0
-		&& picked.every((id) => pickedGeometry?.[id] !== undefined)
+		&& picked.every((id) => pickedGeometry?.[id] != null)
 }
 
 /**
@@ -52,7 +58,6 @@ export function canPolygonize(picked, pickedGeometry) {
  * @param {Array} seed [lon, lat] the person clicked inside the Sector
  * @return {?object} a GeoJSON Polygon, or null
  */
-
 export function faceAround(lines, seed) {
 	const segments = lines.flatMap(stretchesOf)
 	if (segments.length === 0) {

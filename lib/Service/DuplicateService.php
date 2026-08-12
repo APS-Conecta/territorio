@@ -52,9 +52,8 @@ class DuplicateService {
 		// Read once, so the scan does not offer the database pairs it already holds.
 		// The outcome was always right — the unique index refused them — but a
 		// refused insert in PostgreSQL still writes a row version for autovacuum to
-		// collect, and still burns a sequence value. Measured on the dev instance
-		// before this: 1,778,856 insert attempts behind 8,852 live pairs, 704 of
-		// them in a single re-scan.
+		// collect, and still burns a sequence value. Measured before this: 704 of them in
+		// a single re-scan of the dev instance.
 		//
 		// The index remains the authority: two scans at once still cannot both
 		// record the same pair (ADR-0011), because this only skips what was already

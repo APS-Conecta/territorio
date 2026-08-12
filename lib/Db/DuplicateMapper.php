@@ -77,9 +77,8 @@ class DuplicateMapper extends QBMapper {
 	 * Every pair the table already holds, as first id => second id => true.
 	 *
 	 * Two columns rather than entities: this exists so a scan can skip what is
-	 * already recorded, and hydrating eight thousand `Duplicate` objects to answer
-	 * that would cost more than the inserts it saves. Nested rather than a joined
-	 * key for the same reason — no string is built per row.
+	 * already recorded, and hydrating a `Duplicate` per row to answer that would
+	 * cost more than the inserts it saves.
 	 *
 	 * Every status, not only pending: a pair somebody dismissed is exactly the one
 	 * that must not be offered again (issue #16), and one already merged is not a

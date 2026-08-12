@@ -13,8 +13,9 @@ A scan that does not ask twice.
   candidate to the database on every run and let the unique index refuse the ones already recorded.
   The outcome was right — that is what the index is for, and ADR-0011 leans on it — but a refused
   insert in PostgreSQL still writes a row version for autovacuum to collect, and still burns a
-  sequence value. Measured on the dev instance: **1,778,856 insert attempts behind 8,852 live
-  pairs**, 704 of them in a single re-scan.
+  sequence value. `oc_territorio_duplicate` on the dev instance has taken **1,778,856 inserts**
+  against **8,852 live rows** — a total that counts the successes and every other writer too, but
+  the gap is the shape of it — and a single re-scan asked for **704** the table already held.
 
   The known pairs are read once per scan and skipped. The index remains the authority: this only
   filters what was already there when the scan began, so two scans at once still cannot both record

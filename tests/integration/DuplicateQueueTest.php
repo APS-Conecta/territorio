@@ -127,12 +127,20 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		$this->twinsAt('Balneario Municipal', 'Piscina Municipal');
 
 		$before = $this->sequenceValue();
+		// Non-zero, or this passes by comparing nothing: if the sequence could not be
+		// found both reads cast to 0 and the check goes green for ever.
+		self::assertGreaterThan(0, $before, 'the id sequence was not found, so nothing was measured');
+
 		$this->service->scan();
 
-		self::assertSame($before, $this->sequenceValue(), sprintf(
+		// Read once. `sprintf` evaluates its arguments whether or not the assertion
+		// fails, so calling it again in there ran a third query on every green run
+		// and reported a delta measured after the assertion's own read.
+		$after = $this->sequenceValue();
+		self::assertSame($before, $after, sprintf(
 			'the second scan asked for %d inserts the table already held; each refusal '
 			. 'is a dead tuple, and the sequence moves whether the row survives or not',
-			$this->sequenceValue() - $before,
+			$after - $before,
 		));
 	}
 

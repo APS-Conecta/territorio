@@ -335,7 +335,7 @@ class FeatureMapper extends QBMapper {
 		$changes = [];
 
 		foreach ($after->comparable() as $field => $value) {
-			if (!isset($writing[$field])) {
+			if (!isset($writing[Feature::PROPERTY_OF[$field] ?? $field])) {
 				continue;
 			}
 			if (($was[$field] ?? null) !== $value) {

@@ -13,7 +13,7 @@ Saying who changed the límite.
   Feature and emits `limit`; `getUpdatedFields()` is keyed by property, and the property is
   `boundaryLimit` — the column is `boundary_limit` because `limit` is reserved. Of sixteen keys it is
   the only one that diverges, and `diff()` gated one on the other, so `isset($writing['limit'])`
-  could never be true. Every Limit edit recorded «Actualizado» with nothing under it, against a
+  could never be true. Every Limit edit recorded «Editado» with nothing under it, against a
   promise written into `Feature.php` itself: *"quién cambió el límite is exactly the kind of question
   history exists to answer"*.
 

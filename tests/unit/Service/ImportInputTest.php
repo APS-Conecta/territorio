@@ -64,6 +64,24 @@ final class ImportInputTest extends TestCase {
 	}
 
 	/**
+	 * `geometry` is the one field `input()` carries that is stored encoded and supplied decoded,
+	 * and it is bridged by hand in two places that would break in opposite directions if a second
+	 * one arrived. `limit` is the field most likely to be that second one: it is already in
+	 * `comparable()`, and it is the only other key needing translation
+	 * (`Feature::PROPERTY_OF` maps it to `boundaryLimit`).
+	 */
+	public function testInputCarriesNoSecondFieldThatWouldNeedHandBridging(): void {
+		self::assertSame(['geometry'], array_values(array_intersect(
+			array_keys(self::input()),
+			['geometry', 'limit'],
+		)), 'ImportService::input() gained a field that is stored in one form and supplied in '
+			. 'another. differs() would compare the two forms and report every re-import as '
+			. 'changed — a Revision per record, per run; and RevertService::restoreValues() '
+			. 'would drop it while still returning true, so the revert would count the record '
+			. 'as updated without restoring that field.');
+	}
+
+	/**
 	 * The row this test hands `input()` has to stay a superset of what `input()`
 	 * asks for, or the check above passes by comparing nothing.
 	 */

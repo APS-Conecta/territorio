@@ -231,6 +231,11 @@ class RevertService {
 			$values[$field] = $change['from'];
 		}
 
+		// Shorter than comparable() by four keys, and deliberately so on both counts:
+		// sectorId/unidadVecinalId are DERIVED from geometry at the write door (ADR-0008), so
+		// restoring geometry restores them, and writing them here would fight that; colour and
+		// limit are never carried by ImportService::input(), so no import can have changed them
+		// and a revert has nothing of its own to put back.
 		$this->featureService->revertTo((int)$feature->getId(), [
 			'name' => $values['name'],
 			'subcategoryId' => $values['subcategoryId'],

@@ -11,8 +11,6 @@ use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\Action;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\FeatureService;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\Server;
 
 /**

@@ -1,0 +1,81 @@
+# The gates this repository already has, run by a machine instead of by hand.
+#
+# Every check below existed as a Makefile target and had never run on a pull request:
+# `.github/workflows/` held docs.yml alone, so a green PR meant "the markdown links
+# resolve" and nothing more — past 219 PHP tests, 138 JS tests, two linters and a
+# committed bundle that IS the deployment. epidemiologia/.github/workflows/ci.yml
+# already made this argument for the sibling app; this is the same argument here.
+#
+# What is deliberately NOT here: `make test-integration` and `make test-browser`.
+# Both need `make instance-up` — a whole Nextcloud 34 + PostgreSQL 18 stack — which is
+# an order of magnitude heavier than the rest, for checks whose value is precisely that
+# they run against a REAL instance. They stay manual, and README.md says so.
+name: CI
+
+# `main` and pull requests, NOT every push. Deliberate, not a narrowing: a commit on a
+# feature branch is checked by that branch's pull request, and running both would double
+# every run for no extra coverage.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP tests and lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No setup-php: both targets run inside Dockerfile.test, which the Makefile builds.
+      # That image carries intl, without which the accent tests pass by not running.
+      # `make lint` also runs tools/ramp-check.py on the host — the runner's own python3.
+      - name: Unit tests
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+  js:
+    name: Frontend tests, lint and bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      # One rule that matters: a name used but never imported. `listFor` was called in
+      # App.vue with no import and took the whole Datos column down, past a green build
+      # and three green suites — none of which loads a component.
+      - name: Lint
+        run: make lint-js
+
+      - name: Frontend unit tests
+        run: make test-js
+
+      # js/ is committed — that IS the deployment (.gitignore says so), so src/ moving
+      # without a rebuild means the running app is not the code in this repo.
+      #
+      # `git status --porcelain` and NOT `git diff --exit-code`: a rebuild after a real
+      # change can write a NEW file and delete the old one. `git diff` reports the
+      # deletion and is blind to the addition, so it can pass on precisely the drift that
+      # matters.
+      - name: Rebuild and require no drift
+        run: |
+          make build
+          drift="$(git status --porcelain -- js/)"
+          if [ -n "$drift" ]; then
+            printf '%s\n' "$drift"
+            echo "::error::js/ is behind src/. Run 'make build' and commit the result."
+            exit 1
+          fi

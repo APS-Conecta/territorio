@@ -6,12 +6,9 @@ namespace OCA\Territorio\Tests\Integration;
 
 use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\LocationQuality;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\Server;
 
 /**

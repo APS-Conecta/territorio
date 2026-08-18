@@ -34,10 +34,18 @@ class AssignmentService {
 	private ?array $known = null;
 
 	/**
+	 * The live Registry, read once per request. `affectedBy()` and `boundaries()`
+	 * both walked it separately. Cleared by `forget()` for the reason `$known` is.
+	 *
+	 * @var ?Feature[]
+	 */
+	private ?array $registry = null;
+
+	/**
 	 * Which Subcategory ids are divisions, and which division each is — see
-	 * `divisions()`. Not cleared by `forget()`, unlike `$known` beside it: writing
-	 * a boundary changes where the boundaries ARE, never which Subcategories
-	 * make one.
+	 * `divisions()`. Not cleared by `forget()`, unlike `$known` and `$registry`
+	 * beside it: writing a boundary changes where the boundaries ARE, never which
+	 * Subcategories make one.
 	 *
 	 * @var ?array<int, string>
 	 */
@@ -52,6 +60,11 @@ class AssignmentService {
 	/** A boundary has changed, so what was read before is no longer true. */
 	public function forget(): void {
 		$this->known = null;
+		$this->registry = null;
+	}
+
+	private function registry(): array {
+		return $this->registry ??= $this->features->findAll();
 	}
 
 	/**
@@ -94,7 +107,7 @@ class AssignmentService {
 		]));
 
 		$affected = [];
-		foreach ($this->features->findAll() as $candidate) {
+		foreach ($this->registry() as $candidate) {
 			if ((int)$candidate->getId() === (int)$boundary->getId()) {
 				continue;
 			}
@@ -158,7 +171,7 @@ class AssignmentService {
 			$wanted = $this->divisions();
 
 			$this->known = array_fill_keys(array_keys(self::DIVISIONS), []);
-			foreach ($this->features->findAll() as $feature) {
+			foreach ($this->registry() as $feature) {
 				$kind = $wanted[$feature->getSubcategoryId()] ?? null;
 				if ($kind !== null && $feature->getGeometry() !== null) {
 					$this->known[$kind][] = $feature;
@@ -228,15 +241,14 @@ class AssignmentService {
 	 * @return ?array{float, float} [longitude, latitude]
 	 */
 	private static function anchorOf(Feature $feature): ?array {
-		if ($feature->getGeometry() === null || $feature->getKind() !== Kind::Place->value) {
+		// A Place's bounding box IS its coordinate — min and max are the same point —
+		// so this needs no parsing; `containing()` and `DuplicateService` already read
+		// it this way. Keyed off the box, not the geometry: `setBoundingBox()` is what
+		// nulls those columns, and the two are written and cleared together.
+		if ($feature->getKind() !== Kind::Place->value || $feature->getMinLon() === null) {
 			return null;
 		}
 
-		$geometry = json_decode((string)$feature->getGeometry(), true);
-		$coordinates = $geometry['coordinates'] ?? null;
-
-		return is_array($coordinates) && count($coordinates) >= 2
-			? [(float)$coordinates[0], (float)$coordinates[1]]
-			: null;
+		return [(float)$feature->getMinLon(), (float)$feature->getMinLat()];
 	}
 }

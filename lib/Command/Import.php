@@ -71,7 +71,12 @@ class Import extends Command {
 				(string)file_get_contents($path),
 				$path,
 				$dataset,
-				$input->getOption('label') === null ? null : (string)$input->getOption('label'),
+				// `?:` and not `??`: --label="" is a label the operator did not give, and
+				// ImportService's `$label ?? $datasetSlug` only catches null. Passing '' put
+				// it into Dataset::setLabel(''), where Entity::setter early-returns on the ''
+				// initialiser and the NOT NULL `label` column is omitted from the INSERT.
+				// Same normalisation ImportController.php:74 has always done.
+				trim((string)$input->getOption('label')) ?: null,
 				(string)$input->getOption('actor'),
 				// Null, not false, when the flag is absent: "not saying" must leave
 				// an existing Dataset alone. Passing false would mean a refresh that

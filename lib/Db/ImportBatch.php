@@ -43,8 +43,10 @@ class ImportBatch extends Entity {
 	protected $datasetId = 0;
 	protected $actor = null;
 	protected $startedAt = null;
-	protected $revisionFrom = 0;
-	protected $revisionTo = 0;
+	// Not 0: on a fresh instance the cursor IS 0, and Entity::setter returns early
+	// when the new value === the current one. See tests/unit/Db/ImportBatchTest.php.
+	protected $revisionFrom = null;
+	protected $revisionTo = null;
 	protected $created = 0;
 	protected $updated = 0;
 	protected $skipped = 0;

@@ -34,10 +34,22 @@ class AssignmentService {
 	private ?array $known = null;
 
 	/**
+	 * The live Registry, read once per request. Both full scans below share it:
+	 * `affectedBy()` walks every record, and `boundaries()` walks the same rows
+	 * again to pick the boundaries out of them. Cleared by `forget()` for the
+	 * same reason `$known` is — it is the live set, so writing a boundary makes
+	 * it stale.
+	 *
+	 * @var ?Feature[]
+	 */
+	private ?array $registry = null;
+
+	/**
 	 * Which Subcategory ids are divisions, and which division each is — see
-	 * `divisions()`. Not cleared by `forget()`, unlike `$known` beside it: writing
-	 * a boundary changes where the boundaries ARE, never which Subcategories
-	 * make one.
+	 * `divisions()`. Not cleared by `forget()`, unlike `$known` and `$registry`
+	 * beside it: writing
+	 * a boundary changes where the boundaries ARE, never which Subcategories make
+	 * one.
 	 *
 	 * @var ?array<int, string>
 	 */
@@ -52,6 +64,12 @@ class AssignmentService {
 	/** A boundary has changed, so what was read before is no longer true. */
 	public function forget(): void {
 		$this->known = null;
+		$this->registry = null;
+	}
+
+	/** @return Feature[] */
+	private function registry(): array {
+		return $this->registry ??= $this->features->findAll();
 	}
 
 	/**
@@ -94,7 +112,7 @@ class AssignmentService {
 		]));
 
 		$affected = [];
-		foreach ($this->features->findAll() as $candidate) {
+		foreach ($this->registry() as $candidate) {
 			if ((int)$candidate->getId() === (int)$boundary->getId()) {
 				continue;
 			}
@@ -158,7 +176,7 @@ class AssignmentService {
 			$wanted = $this->divisions();
 
 			$this->known = array_fill_keys(array_keys(self::DIVISIONS), []);
-			foreach ($this->features->findAll() as $feature) {
+			foreach ($this->registry() as $feature) {
 				$kind = $wanted[$feature->getSubcategoryId()] ?? null;
 				if ($kind !== null && $feature->getGeometry() !== null) {
 					$this->known[$kind][] = $feature;
@@ -228,15 +246,20 @@ class AssignmentService {
 	 * @return ?array{float, float} [longitude, latitude]
 	 */
 	private static function anchorOf(Feature $feature): ?array {
-		if ($feature->getGeometry() === null || $feature->getKind() !== Kind::Place->value) {
+		// A Place's bounding box IS its coordinate — min and max are the same
+		// point — so this needs no geometry parsing. `containing()` above and
+		// `DuplicateService::candidates()` already read the record this way; this
+		// was the one site that re-parsed the JSON, and it is the one that runs
+		// once per row of the whole Registry on every boundary write.
+		//
+		// Keyed off the box and not the geometry because `setBoundingBox()` is
+		// what nulls those columns: the two are written together by
+		// `FeatureService::applyGeometry()` and cleared together, so a record with
+		// a geometry and no box does not exist.
+		if ($feature->getKind() !== Kind::Place->value || $feature->getMinLon() === null) {
 			return null;
 		}
 
-		$geometry = json_decode((string)$feature->getGeometry(), true);
-		$coordinates = $geometry['coordinates'] ?? null;
-
-		return is_array($coordinates) && count($coordinates) >= 2
-			? [(float)$coordinates[0], (float)$coordinates[1]]
-			: null;
+		return [(float)$feature->getMinLon(), (float)$feature->getMinLat()];
 	}
 }

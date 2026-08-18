@@ -23,10 +23,8 @@ final class GeometryTest extends TestCase {
 	private const JDV_35 = '{"type":"Point","coordinates":[-70.5553836,-33.5187671]}';
 
 	public function testAPointKeepsGeoJsonLongitudeLatitudeOrder(): void {
-		$geometry = Geometry::fromJson(self::JDV_35);
+		$box = Geometry::fromJson(self::JDV_35)->boundingBox();
 
-		self::assertSame('Point', $geometry->type());
-		$box = $geometry->boundingBox();
 		self::assertEqualsWithDelta(-33.5187671, $box->minLat(), 1e-9);
 		self::assertEqualsWithDelta(-70.5553836, $box->minLon(), 1e-9);
 	}

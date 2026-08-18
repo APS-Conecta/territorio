@@ -83,12 +83,22 @@ class KmlWriter {
 			return null;
 		}
 
-		// The outer ring only. KML expresses a hole as an innerBoundaryIs and a
-		// Sector drawn in this app has none, so carrying them would be code for a
-		// case the Registry cannot produce.
+		// The holes as well: `KmlReader` keeps them and `PointInPolygon` counts them
+		// out, so the outer ring alone exports a boundary that claims its lagoon.
+		$holes = '';
+		foreach (array_slice($rings, 1) as $hole) {
+			if (is_array($hole)) {
+				$holes .= '<innerBoundaryIs><LinearRing><coordinates>'
+					. self::positions($hole)
+					. '</coordinates></LinearRing></innerBoundaryIs>';
+			}
+		}
+
 		return '<Polygon><outerBoundaryIs><LinearRing><coordinates>'
 			. self::positions($outer)
-			. '</coordinates></LinearRing></outerBoundaryIs></Polygon>';
+			. '</coordinates></LinearRing></outerBoundaryIs>'
+			. $holes
+			. '</Polygon>';
 	}
 
 	/**

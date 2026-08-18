@@ -185,6 +185,33 @@ final class TabularWriterTest extends TestCase {
 	}
 
 	/**
+	 * A Polygon's holes survive the export, because they survive the import.
+	 *
+	 * `KmlReader` keeps `innerBoundaryIs` deliberately — `KmlReaderTest::testAPolygonKeepsItsHoles`
+	 * pins it — and `PointInPolygon` counts those rings out when it decides what a boundary
+	 * contains. The writer kept only `$rings[0]`, so a Unidad Vecinal imported with a lagoon cut out
+	 * of it exported as a solid shape, silently, in the format most likely to be forwarded to a
+	 * municipality.
+	 *
+	 * The second assertion is not redundant with the count: `$rings[1]` must be the HOLE, so it also
+	 * pins that `innerBoundaryIs` comes after `outerBoundaryIs`. Emitting them the other way round
+	 * is schema-invalid KML with the same LinearRing count, and only this catches it.
+	 */
+	public function testKmlKeepsAPolygonsHoles(): void {
+		$outer = [[-70.62, -33.55], [-70.60, -33.55], [-70.60, -33.54], [-70.62, -33.54], [-70.62, -33.55]];
+		$hole = [[-70.615, -33.548], [-70.605, -33.548], [-70.605, -33.543], [-70.615, -33.548]];
+		$row = ['nombre' => 'Parque con laguna', 'geometry' => ['type' => 'Polygon', 'coordinates' => [$outer, $hole]]];
+
+		$kml = (new KmlWriter())->write([$row]);
+
+		$doc = simplexml_load_string($kml);
+		self::assertNotFalse($doc, 'the export must be parseable XML');
+		$rings = $doc->Document->Placemark->Polygon->xpath('.//*[local-name()="LinearRing"]');
+		self::assertCount(2, $rings, 'the hole was dropped, so the export claims what is inside it');
+		self::assertStringContainsString('-70.615,-33.548', (string)$rings[1]->coordinates);
+	}
+
+	/**
 	 * The criterion: it states what it cannot carry, IN the file.
 	 *
 	 * In the file rather than only in the dialog, because the file is what gets

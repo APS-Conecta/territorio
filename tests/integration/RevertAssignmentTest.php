@@ -81,7 +81,7 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 		]}
 		JSON;
 
-		return $this->import->importGeoJson($json, self::DATASET, 'Prueba', 'tester');
+		return $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
 	}
 
 	private function ring(): string {
@@ -155,7 +155,7 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 		]}
 		JSON;
 
-		$this->import->importGeoJson($small, self::DATASET, 'Prueba', 'tester');
+		$this->import->importFile($small, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
 		$datasetId = (int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId();
 		$sectorId = (int)$this->features->findByDataset($datasetId)['ra:sector']->getId();
 		self::assertNotSame($sectorId, $this->reload($placeId)->getSectorId(), 'it is nowhere near yet');
@@ -199,7 +199,7 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 		]}
 		JSON;
 
-		$batch = $this->import->importGeoJson($json, self::DATASET, 'Prueba', 'tester');
+		$batch = $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
 		self::assertSame(2, $batch->getCreated());
 
 		$datasetId = (int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId();

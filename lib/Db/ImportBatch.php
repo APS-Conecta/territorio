@@ -9,10 +9,19 @@ use OCP\AppFramework\Db\Entity;
 /**
  * Everything one run of an import created or changed — see `CONTEXT.md`.
  *
- * The Revision range is the point. ADR-0009 says there is no backup feature and
- * that reverting an import is the answer instead, and a batch can only be
- * reverted if it recorded, at the time, exactly which Revisions were its own.
- * Nothing can work that out afterwards.
+ * What makes a revert possible is the batch ID, not the Revision range. Each
+ * Revision carries `import_id`, and `RevertService` reads
+ * `RevisionLog::forImport($batchId)` — never a range. Writes are serialised
+ * behind one cursor, so a range would sweep up whatever a colleague saved while
+ * the import was running (RevisionLog says so at its own `forImport`, and so
+ * does the migration that created these columns).
+ *
+ * `revisionFrom`/`revisionTo` are INFORMATIONAL: the only production reader is
+ * the "Lote #N — revisiones X…Y" line `occ territorio:import` prints, plus the
+ * two keys `toClient()` hands the browser. Corrected 2026-08-18 — this docblock
+ * previously said the range was "the point" and that a batch "can only be
+ * reverted if it recorded exactly which Revisions were its own", which is not
+ * how revert works and contradicted the schema comment three files away.
  *
  * @method int getDatasetId()
  * @method void setDatasetId(int $datasetId)

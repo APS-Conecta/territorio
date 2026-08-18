@@ -92,7 +92,7 @@ final class ImportTest extends IntegrationTestCase {
 	}
 
 	private function import(string $json): \OCA\Territorio\Db\ImportBatch {
-		return $this->import->importGeoJson($json, self::DATASET, 'Prueba', 'tester');
+		return $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
 	}
 
 	public function testItCreatesRecordsAndRecordsTheBatch(): void {

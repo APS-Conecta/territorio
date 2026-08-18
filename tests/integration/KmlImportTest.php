@@ -9,6 +9,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IDBConnection;
 use OCP\Server;
@@ -173,12 +174,26 @@ final class KmlImportTest extends IntegrationTestCase {
 		self::assertCount(3, $this->stored());
 	}
 
-	/** It is a batch like any other, so ADR-0009's undo works on it. */
+	/**
+	 * It is a batch like any other, so ADR-0009's undo works on it.
+	 *
+	 * This asserted `revisionTo > revisionFrom` and never called revert — green whether or not
+	 * undo worked at all, while being the only test claiming to cover ADR-0009 for KML. The count
+	 * is asserted before the loop deliberately: a foreach over an empty collection passes every
+	 * assertion inside it, which is the same defect in a newer place.
+	 */
 	public function testItIsRevertibleLikeAnyOtherImport(): void {
 		$batch = $this->import();
+		self::assertSame(3, $batch->getCreated());
 
-		self::assertNotNull($batch->getId());
-		self::assertGreaterThan($batch->getRevisionFrom(), $batch->getRevisionTo());
+		$revert = Server::get(RevertService::class)->revert((int)$batch->getId(), null);
+
+		self::assertSame(3, $revert->getUpdated());
+		$stored = $this->stored();
+		self::assertCount(3, $stored);
+		foreach ($stored as $feature) {
+			self::assertTrue((bool)$feature->getRetired(), 'a reverted KML batch leaves the map');
+		}
 	}
 
 	/** @return array<string, \OCA\Territorio\Db\Feature> */

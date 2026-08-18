@@ -64,11 +64,44 @@ class ImportService {
 	}
 
 	/**
-	 * Import a file, reading it according to what it is.
+	 * Import a file, reading it according to what it is. The one way in.
 	 *
 	 * The name is used only to choose the reader — everything downstream is the
 	 * same batch, the same matching and the same revert, whichever format it
 	 * arrived in (issue #8).
+	 *
+	 * FORMAT SELECTION is by filename suffix and is deliberately not a refusal:
+	 * `.kml` in any case is KML, and EVERYTHING ELSE — including an unrecognised
+	 * suffix and an empty filename — is read as GeoJSON. A caller that cannot
+	 * name its input still gets a parse error from the reader rather than a
+	 * rejection here, which is why `occ` can pipe a file with any name.
+	 *
+	 * ORDER, because a failure part-way leaves different debris at each step:
+	 *   1. the comuna claim is refused first, before a single row is written
+	 *      (a file cut for another comuna is a mistake, not a partial import);
+	 *   2. rows the file repeats verbatim collapse, and the count is reported;
+	 *   3. the Dataset is found or created — the first write of the run;
+	 *   4. the ImportBatch is written BEFORE the first row, per ADR-0009: each
+	 *      row commits its own transaction, so a file that fails at row 400
+	 *      leaves 399 behind, and the batch is what makes those revertible;
+	 *   5. rows apply;
+	 *   6. counts are recorded in a `finally`, so a run that threw still says
+	 *      what it did;
+	 *   7. the duplicate scan runs last, after the batch has closed.
+	 *
+	 * SIZE is NOT capped here. `ImportController::MAX_BYTES` caps the browser
+	 * upload at 8 MiB; `occ territorio:import` has no cap at all, deliberately —
+	 * a comuna's cadastre arrives on the command line.
+	 *
+	 * @param string      $contents   the file itself
+	 * @param string      $filename   used ONLY to pick the reader; see above
+	 * @param string      $datasetSlug
+	 * @param string|null $label      null means "no label", and the Dataset takes
+	 *                                the slug. Callers reading operator input
+	 *                                normalise "" to null before this point.
+	 * @param string|null $actor      null where nobody was behind it
+	 * @param bool|null   $boundary   null means "not saying", which leaves an
+	 *                                existing Dataset's flag alone
 	 *
 	 * @throws InvalidImportException
 	 */
@@ -80,49 +113,20 @@ class ImportService {
 		?string $actor = null,
 		?bool $boundary = null,
 	): ImportBatch {
-		return self::isKml($filename)
-			? $this->importKml($contents, $datasetSlug, $label, $actor, $boundary)
-			: $this->importGeoJson($contents, $datasetSlug, $label, $actor, $boundary);
+		return $this->importRows(
+			self::isKml($filename)
+				? $this->kml->read($contents, $datasetSlug)
+				: $this->reader->read($contents, $datasetSlug),
+			$datasetSlug,
+			$label,
+			$actor,
+			$boundary,
+		);
 	}
 
 	/** Whether this filename says KML, whatever case it was typed in. */
 	private static function isKml(string $filename): bool {
 		return str_ends_with(strtolower(trim($filename)), '.kml');
-	}
-
-	/**
-	 * @throws InvalidImportException
-	 */
-	public function importKml(
-		string $xml,
-		string $datasetSlug,
-		?string $label = null,
-		?string $actor = null,
-		?bool $boundary = null,
-	): ImportBatch {
-		return $this->importRows(
-			$this->kml->read($xml, $datasetSlug),
-			$datasetSlug,
-			$label,
-			$actor,
-			$boundary,
-		);
-	}
-
-	public function importGeoJson(
-		string $json,
-		string $datasetSlug,
-		?string $label = null,
-		?string $actor = null,
-		?bool $boundary = null,
-	): ImportBatch {
-		return $this->importRows(
-			$this->reader->read($json, $datasetSlug),
-			$datasetSlug,
-			$label,
-			$actor,
-			$boundary,
-		);
 	}
 
 	/**

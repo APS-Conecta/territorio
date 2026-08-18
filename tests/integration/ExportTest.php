@@ -123,7 +123,7 @@ final class ExportTest extends IntegrationTestCase {
 			]}
 			JSON;
 
-		Server::get(ImportService::class)->importGeoJson($original, $dataset);
+		Server::get(ImportService::class)->importFile($original, 'datos.geojson', $dataset);
 		$imported = Server::get(FeatureMapper::class)->findByDataset(
 			(int)Server::get(DatasetMapper::class)
 				->findOrCreate($dataset, $dataset)
@@ -141,7 +141,7 @@ final class ExportTest extends IntegrationTestCase {
 		$before = Server::get(FeatureMapper::class)->find($id)->comparable();
 
 		// Back in through the same door it came out of.
-		$batch = Server::get(ImportService::class)->importGeoJson($file['body'], $dataset);
+		$batch = Server::get(ImportService::class)->importFile($file['body'], 'datos.geojson', $dataset);
 
 		// Not one new row: the external id came back, so the import matched
 		// (Dataset, external id) and updated in place (ADR-0003).
@@ -177,7 +177,7 @@ final class ExportTest extends IntegrationTestCase {
 		$file = $this->exports->export([$id], 'geojson', false);
 
 		$this->expectException(InvalidImportException::class);
-		Server::get(ImportService::class)->importGeoJson($file['body'], $dataset);
+		Server::get(ImportService::class)->importFile($file['body'], 'datos.geojson', $dataset);
 	}
 
 	/**

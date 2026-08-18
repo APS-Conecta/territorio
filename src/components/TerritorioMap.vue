@@ -172,12 +172,15 @@ export default {
 	},
 
 	watch: {
-		mappable: {
-			handler() {
-				this.drawMarkers()
-				this.drawShapes()
-			},
-			deep: true,
+		// Not deep, for the reason `boundaries()` below gives: `mappable` filters a
+		// prop that is itself a filter, so both hand back a new array on every
+		// recompute and a shallow watcher already sees every change. `mergeFeature`
+		// replaces records wholesale and nothing in src/ edits one in place, so the
+		// deep traverse only walked every position of every polygon — on every poll
+		// merge, every Capas toggle, and every keystroke in the search box.
+		mappable() {
+			this.drawMarkers()
+			this.drawShapes()
 		},
 		selectedId() {
 			this.drawMarkers()

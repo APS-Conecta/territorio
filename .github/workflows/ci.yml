@@ -32,15 +32,11 @@ jobs:
       - uses: actions/checkout@v4
 
       # No setup-php: both targets run inside Dockerfile.test, which the Makefile builds.
-      # That image is the one thing standing between these tests and being wrong about
-      # production in one more way — it carries intl, which DuplicateFinder's accent
-      # folding needs and without which the accent tests pass by not running.
+      # That image carries intl, without which the accent tests pass by not running.
+      # `make lint` also runs tools/ramp-check.py on the host — the runner's own python3.
       - name: Unit tests
         run: make test
 
-      # php -l over lib/, tests/ and tools/, plus tools/ramp-check.py. The ramp check runs
-      # on the host rather than in the test image (that image is PHP, this is Python), so
-      # the runner's own python3 is what executes it.
       - name: Lint
         run: make lint
 

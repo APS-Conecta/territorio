@@ -34,11 +34,8 @@ class AssignmentService {
 	private ?array $known = null;
 
 	/**
-	 * The live Registry, read once per request. Both full scans below share it:
-	 * `affectedBy()` walks every record, and `boundaries()` walks the same rows
-	 * again to pick the boundaries out of them. Cleared by `forget()` for the
-	 * same reason `$known` is — it is the live set, so writing a boundary makes
-	 * it stale.
+	 * The live Registry, read once per request. `affectedBy()` and `boundaries()`
+	 * both walked it separately. Cleared by `forget()` for the reason `$known` is.
 	 *
 	 * @var ?Feature[]
 	 */
@@ -47,9 +44,8 @@ class AssignmentService {
 	/**
 	 * Which Subcategory ids are divisions, and which division each is — see
 	 * `divisions()`. Not cleared by `forget()`, unlike `$known` and `$registry`
-	 * beside it: writing
-	 * a boundary changes where the boundaries ARE, never which Subcategories make
-	 * one.
+	 * beside it: writing a boundary changes where the boundaries ARE, never which
+	 * Subcategories make one.
 	 *
 	 * @var ?array<int, string>
 	 */
@@ -67,7 +63,6 @@ class AssignmentService {
 		$this->registry = null;
 	}
 
-	/** @return Feature[] */
 	private function registry(): array {
 		return $this->registry ??= $this->features->findAll();
 	}
@@ -246,16 +241,10 @@ class AssignmentService {
 	 * @return ?array{float, float} [longitude, latitude]
 	 */
 	private static function anchorOf(Feature $feature): ?array {
-		// A Place's bounding box IS its coordinate — min and max are the same
-		// point — so this needs no geometry parsing. `containing()` above and
-		// `DuplicateService::candidates()` already read the record this way; this
-		// was the one site that re-parsed the JSON, and it is the one that runs
-		// once per row of the whole Registry on every boundary write.
-		//
-		// Keyed off the box and not the geometry because `setBoundingBox()` is
-		// what nulls those columns: the two are written together by
-		// `FeatureService::applyGeometry()` and cleared together, so a record with
-		// a geometry and no box does not exist.
+		// A Place's bounding box IS its coordinate — min and max are the same point —
+		// so this needs no parsing; `containing()` and `DuplicateService` already read
+		// it this way. Keyed off the box, not the geometry: `setBoundingBox()` is what
+		// nulls those columns, and the two are written and cleared together.
 		if ($feature->getKind() !== Kind::Place->value || $feature->getMinLon() === null) {
 			return null;
 		}

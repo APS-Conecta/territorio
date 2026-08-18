@@ -48,11 +48,9 @@ final class Geometry {
 	}
 
 	/**
-	 * These two messages stay English while every message `fromArray()` throws is
-	 * Spanish. That is the language rule, not an oversight: `fromArray()`'s message
-	 * is spliced into the refusal a clinician reads, and this one is never read at
-	 * all — the sole caller, {@see AssignmentService::boxOf()}, catches without
-	 * binding the exception.
+	 * These two stay English while `fromArray()`'s are Spanish: its message reaches a
+	 * clinician, and this one reaches nobody — {@see AssignmentService::boxOf()}, the
+	 * sole caller, catches without binding the exception.
 	 */
 	public static function fromJson(string $json): self {
 		try {

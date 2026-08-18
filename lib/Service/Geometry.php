@@ -47,6 +47,13 @@ final class Geometry {
 	) {
 	}
 
+	/**
+	 * These two messages stay English while every message `fromArray()` throws is
+	 * Spanish. That is the language rule, not an oversight: `fromArray()`'s message
+	 * is spliced into the refusal a clinician reads, and this one is never read at
+	 * all — the sole caller, {@see AssignmentService::boxOf()}, catches without
+	 * binding the exception.
+	 */
 	public static function fromJson(string $json): self {
 		try {
 			$decoded = json_decode($json, true, 32, JSON_THROW_ON_ERROR);
@@ -67,7 +74,7 @@ final class Geometry {
 
 		if (!is_string($type) || !isset(self::KINDS[$type])) {
 			throw new InvalidGeometryException(sprintf(
-				'unsupported geometry type %s; expected one of %s',
+				'tipo de geometría %s no admitido; se esperaba uno de %s',
 				var_export($type, true),
 				implode(', ', array_keys(self::KINDS)),
 			));
@@ -75,7 +82,7 @@ final class Geometry {
 
 		$coordinates = $geometry['coordinates'] ?? null;
 		if (!is_array($coordinates) || $coordinates === []) {
-			throw new InvalidGeometryException($type . ' has no coordinates');
+			throw new InvalidGeometryException($type . ' no tiene coordenadas');
 		}
 
 		if ($type === 'Polygon') {
@@ -109,7 +116,7 @@ final class Geometry {
 	private static function closedRings(array $rings): array {
 		foreach ($rings as $index => $ring) {
 			if (!is_array($ring) || $ring === []) {
-				throw new InvalidGeometryException('a Polygon ring must be a list of positions');
+				throw new InvalidGeometryException('un anillo de Polygon debe ser una lista de posiciones');
 			}
 
 			$positions = array_values($ring);
@@ -125,7 +132,7 @@ final class Geometry {
 			// same silence in a smaller shape.
 			if (count($positions) < 3) {
 				throw new InvalidGeometryException(sprintf(
-					'a Polygon ring needs at least three positions to bound an area; ring %d has %d',
+					'un anillo de Polygon necesita al menos tres posiciones para encerrar un área; el anillo %d tiene %d',
 					$index,
 					count($positions),
 				));
@@ -184,13 +191,13 @@ final class Geometry {
 		}
 
 		if ($node === []) {
-			throw new InvalidGeometryException('a geometry cannot contain an empty ring or line');
+			throw new InvalidGeometryException('una geometría no puede contener un anillo o una línea vacía');
 		}
 
 		$positions = [];
 		foreach ($node as $child) {
 			if (!is_array($child)) {
-				throw new InvalidGeometryException('coordinates are nested less deeply than the type requires');
+				throw new InvalidGeometryException('las coordenadas están menos anidadas de lo que exige el tipo');
 			}
 			foreach (self::flatten($child, $levels - 1) as $position) {
 				$positions[] = $position;
@@ -203,7 +210,7 @@ final class Geometry {
 	/** @return array{float, float} [longitude, latitude] */
 	private static function position(array $position): array {
 		if (!array_is_list($position) || count($position) < 2) {
-			throw new InvalidGeometryException('a position needs a longitude and a latitude');
+			throw new InvalidGeometryException('una posición necesita longitud y latitud');
 		}
 
 		[$longitude, $latitude] = $position;
@@ -213,7 +220,7 @@ final class Geometry {
 		// would hide that.
 		foreach ([$longitude, $latitude] as $ordinate) {
 			if (!is_int($ordinate) && !is_float($ordinate)) {
-				throw new InvalidGeometryException('coordinates must be numbers');
+				throw new InvalidGeometryException('las coordenadas deben ser números');
 			}
 		}
 
@@ -226,12 +233,12 @@ final class Geometry {
 		// there is one (issue #9), which is what would actually catch a swap.
 		if ($latitude < -90 || $latitude > 90) {
 			throw new InvalidGeometryException(sprintf(
-				'latitude %s is outside the world; GeoJSON orders positions [longitude, latitude]',
+				'la latitud %s está fuera del mundo; GeoJSON ordena las posiciones [longitud, latitud]',
 				var_export($latitude, true),
 			));
 		}
 		if ($longitude < -180 || $longitude > 180) {
-			throw new InvalidGeometryException(sprintf('longitude %s is outside the world', var_export($longitude, true)));
+			throw new InvalidGeometryException(sprintf('la longitud %s está fuera del mundo', var_export($longitude, true)));
 		}
 
 		return [(float)$longitude, (float)$latitude];

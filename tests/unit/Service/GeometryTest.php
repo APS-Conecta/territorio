@@ -224,6 +224,21 @@ final class GeometryTest extends TestCase {
 		Geometry::fromJson('{"type":"Point","coordinates":[-200.0,-33.5]}');
 	}
 
+	/**
+	 * The only message assertion in this suite, and it is here because this
+	 * message is not a diagnostic — `ImportService::prepare()` splices it into the
+	 * refusal a clinician reads when a file will not import, so it is UI text and
+	 * the language rule applies to it.
+	 *
+	 * Pinned on one representative site rather than all ten: the defect this
+	 * guards is a whole file drifting back to English, which one site catches as
+	 * well as ten and costs nothing to keep.
+	 */
+	public function testTheMessageAClinicianReadsIsSpanish(): void {
+		$this->expectExceptionMessage('las coordenadas deben ser números');
+		Geometry::fromJson('{"type":"Point","coordinates":["-70.5","-33.5"]}');
+	}
+
 	public function testTheAntimeridianAndPolesAreInsideTheWorld(): void {
 		$box = Geometry::fromJson('{"type":"LineString","coordinates":[[-180,-90],[180,90]]}')
 			->boundingBox();

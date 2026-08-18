@@ -113,49 +113,20 @@ class ImportService {
 		?string $actor = null,
 		?bool $boundary = null,
 	): ImportBatch {
-		return self::isKml($filename)
-			? $this->importKml($contents, $datasetSlug, $label, $actor, $boundary)
-			: $this->importGeoJson($contents, $datasetSlug, $label, $actor, $boundary);
+		return $this->importRows(
+			self::isKml($filename)
+				? $this->kml->read($contents, $datasetSlug)
+				: $this->reader->read($contents, $datasetSlug),
+			$datasetSlug,
+			$label,
+			$actor,
+			$boundary,
+		);
 	}
 
 	/** Whether this filename says KML, whatever case it was typed in. */
 	private static function isKml(string $filename): bool {
 		return str_ends_with(strtolower(trim($filename)), '.kml');
-	}
-
-	/**
-	 * @throws InvalidImportException
-	 */
-	public function importKml(
-		string $xml,
-		string $datasetSlug,
-		?string $label = null,
-		?string $actor = null,
-		?bool $boundary = null,
-	): ImportBatch {
-		return $this->importRows(
-			$this->kml->read($xml, $datasetSlug),
-			$datasetSlug,
-			$label,
-			$actor,
-			$boundary,
-		);
-	}
-
-	public function importGeoJson(
-		string $json,
-		string $datasetSlug,
-		?string $label = null,
-		?string $actor = null,
-		?bool $boundary = null,
-	): ImportBatch {
-		return $this->importRows(
-			$this->reader->read($json, $datasetSlug),
-			$datasetSlug,
-			$label,
-			$actor,
-			$boundary,
-		);
 	}
 
 	/**

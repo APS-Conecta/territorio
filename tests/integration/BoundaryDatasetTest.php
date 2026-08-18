@@ -158,8 +158,8 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		$this->importBoundaries();
 
 		// Exactly what ImportController::upload() passes: no opinion on boundary.
-		Server::get(ImportService::class)->importGeoJson(
-			self::boundaryFile(false),
+		Server::get(ImportService::class)->importFile(
+			self::boundaryFile(false), 'datos.geojson',
 			self::SLUG,
 			'Límites de prueba',
 			'alguien',
@@ -251,8 +251,8 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	}
 
 	private function importBoundaries(bool $moved = false): \OCA\Territorio\Db\ImportBatch {
-		$batch = Server::get(ImportService::class)->importGeoJson(
-			self::boundaryFile($moved),
+		$batch = Server::get(ImportService::class)->importFile(
+			self::boundaryFile($moved), 'datos.geojson',
 			self::SLUG,
 			'Límites de prueba',
 			'prueba',

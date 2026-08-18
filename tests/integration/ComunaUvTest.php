@@ -106,8 +106,8 @@ final class ComunaUvTest extends IntegrationTestCase {
 	 */
 	public function testAFileForAnotherComunaIsRefusedWithSomethingUsable(): void {
 		try {
-			Server::get(ImportService::class)->importGeoJson(
-				$this->file(self::ELSEWHERE),
+			Server::get(ImportService::class)->importFile(
+				$this->file(self::ELSEWHERE), 'datos.geojson',
 				self::SLUG,
 				'Ajena',
 				'prueba',
@@ -139,7 +139,7 @@ final class ComunaUvTest extends IntegrationTestCase {
 			]],
 		], JSON_THROW_ON_ERROR);
 
-		$batch = Server::get(ImportService::class)->importGeoJson($plain, self::SLUG, 'Llana', 'prueba');
+		$batch = Server::get(ImportService::class)->importFile($plain, 'datos.geojson', self::SLUG, 'Llana', 'prueba');
 		$this->track();
 
 		self::assertSame(1, $batch->getCreated());
@@ -163,8 +163,8 @@ final class ComunaUvTest extends IntegrationTestCase {
 	}
 
 	private function import(): \OCA\Territorio\Db\ImportBatch {
-		$batch = Server::get(ImportService::class)->importGeoJson(
-			$this->file(self::OURS),
+		$batch = Server::get(ImportService::class)->importFile(
+			$this->file(self::OURS), 'datos.geojson',
 			self::SLUG,
 			'Unidades Vecinales de prueba',
 			'prueba',

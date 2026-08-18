@@ -200,9 +200,9 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 	/**
 	 * The criterion says IMPORT flags them, and both formats reach the same code.
 	 *
-	 * Through KML rather than GeoJSON on purpose: importKml() and importGeoJson()
-	 * both funnel into importRows(), and a test of the format that is already
-	 * covered everywhere else would not notice if one of them stopped.
+	 * Through KML rather than GeoJSON on purpose: both readers funnel into the
+	 * same importRows(), and a test of the format that is already covered
+	 * everywhere else would not notice if one of them stopped.
 	 */
 	public function testImportingAKmlFlagsThePairsInIt(): void {
 		$twins = <<<'XML'
@@ -218,7 +218,7 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 			</Document></kml>
 			XML;
 
-		Server::get(ImportService::class)->importKml($twins, 'gemelos-kml-' . uniqid());
+		Server::get(ImportService::class)->importFile($twins, 'datos.kml', 'gemelos-kml-' . uniqid());
 
 		$made = [];
 		foreach ($this->features->listAll() as $feature) {

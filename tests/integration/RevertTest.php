@@ -80,7 +80,7 @@ final class RevertTest extends IntegrationTestCase {
 	}
 
 	private function importTwo(string $json = self::TWO): ImportBatch {
-		return $this->import->importGeoJson($json, self::DATASET, 'Prueba', 'tester');
+		return $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
 	}
 
 	/** @return array<string, \OCA\Territorio\Db\Feature> */

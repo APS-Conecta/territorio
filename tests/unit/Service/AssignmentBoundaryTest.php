@@ -7,6 +7,7 @@ namespace OCA\Territorio\Tests\Unit\Service;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Service\AssignmentService;
+use OCA\Territorio\Service\BoundingBox;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\TestCase;
@@ -50,10 +51,26 @@ final class AssignmentBoundaryTest extends TestCase {
 	/** A Place with a coordinate, so assign() gets as far as reading the boundaries. */
 	private function placeAt(float $lat, float $lon): Feature {
 		$feature = $this->feature(13);
-		// Both, or anchorOf() returns null and assign() never asks: the Kind is what
-		// says this record can be inside something, the geometry is where.
+		// All three, or anchorOf() returns null and assign() never asks: the Kind is
+		// what says this record can be inside something, and the stored box is where.
+		// The geometry is set too because that is what a real record carries — the two
+		// are written together by FeatureService::applyGeometry(), and a fixture that
+		// has one without the other is a record production cannot produce.
 		$feature->setKind(Kind::Place->value);
 		$feature->setGeometry(json_encode(['type' => 'Point', 'coordinates' => [$lon, $lat]]));
+		$feature->setBoundingBox(BoundingBox::around([[$lon, $lat]]));
+
+		return $feature;
+	}
+
+	/** A Sector big enough to hold the Place above, with the box a real one carries. */
+	private function sectorAround(float $lat, float $lon): Feature {
+		$ring = [[$lon - 1, $lat - 1], [$lon + 1, $lat - 1], [$lon + 1, $lat + 1], [$lon - 1, $lat + 1], [$lon - 1, $lat - 1]];
+		$feature = $this->feature(11);
+		$feature->setId(1);
+		$feature->setKind(Kind::Zone->value);
+		$feature->setGeometry(json_encode(['type' => 'Polygon', 'coordinates' => [$ring]]));
+		$feature->setBoundingBox(BoundingBox::around($ring));
 
 		return $feature;
 	}
@@ -89,6 +106,55 @@ final class AssignmentBoundaryTest extends TestCase {
 			$assignment->assign($this->placeAt(-33.5, -70.6));
 			$assignment->forget();
 		}
+	}
+
+	/**
+	 * A boundary write reads the Registry once, not twice.
+	 *
+	 * `FeatureService::reassignAround()` calls `forget()`, then `affectedBy()` —
+	 * which scans every record — and then `assign()` on each one, which reaches
+	 * `boundaries()` and scanned every record a second time. Two identical full
+	 * reads per boundary write, and four statements, since `withoutBoundaries()`
+	 * fires its own query in front of each.
+	 *
+	 * Both halves have to actually run for this to assert anything: the mapper
+	 * returns a Place that IS inside the boundary, so `affectedBy()` yields it and
+	 * `assign()` is reached. With the memo removed this is red at two calls.
+	 */
+	public function testTheRegistryIsReadOncePerBoundaryWrite(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('tree')->willReturn(self::TREE);
+
+		$place = $this->placeAt(-33.5, -70.6);
+		$place->setId(2);
+
+		$features = $this->createMock(FeatureMapper::class);
+		$features->expects(self::once())->method('findAll')->willReturn([$place]);
+
+		$assignment = new AssignmentService($features, $taxonomy);
+
+		$affected = $assignment->affectedBy($this->sectorAround(-33.5, -70.6), null);
+
+		self::assertCount(1, $affected, 'the Place is inside the Sector, so the second half runs');
+		foreach ($affected as $candidate) {
+			$assignment->assign($candidate);
+		}
+	}
+
+	/** And the memo is dropped when a boundary is written, or it would serve stale rows. */
+	public function testForgetDropsTheRegistryToo(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('tree')->willReturn(self::TREE);
+
+		$features = $this->createMock(FeatureMapper::class);
+		$features->expects(self::exactly(2))->method('findAll')->willReturn([]);
+
+		$assignment = new AssignmentService($features, $taxonomy);
+		$boundary = $this->sectorAround(-33.5, -70.6);
+
+		$assignment->affectedBy($boundary, null);
+		$assignment->forget();
+		$assignment->affectedBy($boundary, null);
 	}
 
 	/** And the answer stays the answer — a cache that changes it is worse than none. */

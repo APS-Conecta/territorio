@@ -18,8 +18,17 @@ The GeoJSON export already gives anyone who wants an off-system copy a lossless 
 
 ## Consequences
 
-- Every import must record its batch and revision range at the time it runs; this cannot be
-  reconstructed afterwards.
+- Every import must record its batch at the time it runs; this cannot be reconstructed afterwards.
+  Each Revision carries that batch's `import_id`, and that — not a range — is what a revert reads.
+
+  **Correction (2026-08-18):** this bullet said "batch and revision range", and the sentence above
+  says an import "is recorded as a batch spanning a range of revisions". The range is real and is
+  recorded, but nothing reverts by it: `RevertService` calls `RevisionLog::forImport($batchId)`,
+  and `RevisionLog` explains why a range would be wrong — writes are serialised behind one cursor,
+  so a range would sweep up whatever a colleague saved while the import was running. The migration
+  that created the columns had it right ("informational only"); the decision text and the entity's
+  docblock did not. Left as written above rather than edited, because rewriting a dated record is
+  the worse defect — this note is the correction.
 - A revert is itself a change and appears in history. Reverting a revert is therefore possible.
 - If someone asks for a "restore from backup" button, the answer is a revertible import or a
   retired record, not a new mechanism.

@@ -155,10 +155,6 @@ final class Geometry {
 		return is_string($type) && isset(self::KINDS[$type]);
 	}
 
-	public function type(): string {
-		return $this->type;
-	}
-
 	public function kind(): Kind {
 		return self::KINDS[$this->type];
 	}

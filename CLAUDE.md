@@ -12,12 +12,17 @@ browser gate is a step you do not skip rather than a gate that stops you. It exi
 because `Guardar` did nothing for eight slices while every other check passed.
 `.claude/skills/slice/SKILL.md` § 7 has the landing sequence.
 
-The one mechanical check is the `docs` workflow, and **it cannot pass today**:
-`.github/repo-docs.py` is vendored without the `profiles/` it reads, so
-`python3 .github/repo-docs.py check . --offline` exits on `KeyError: 'levels'`. Run
-the gate from a checkout of [`APS-Conecta/repo-docs`](https://github.com/APS-Conecta/repo-docs)
-until that is fixed there; both files are canon and are overwritten by `--fix`, so
-the fix does not belong in this repo.
+The one mechanical check is the `docs` workflow, and **it passes**:
+`python3 .github/repo-docs.py check . --offline` exits 0 with 0 errors (measured
+2026-09-13). Both `profiles/aps-conecta.json` and `profiles/_base.json` — which holds
+the `levels` key — are vendored at `.github/profiles/`.
+
+This paragraph previously said the gate *"cannot pass today"* because the checker was
+vendored without its `profiles/`, exiting on `KeyError: 'levels'`. That was true when
+written and was fixed in `repo-docs` without this note being updated, so the repository
+spent an unknown stretch telling every agent its only mechanical check was broken — which
+is a reliable way to get a working gate skipped. Both profile files are canon and are
+overwritten by `--fix`, so they are still not edited here.
 
 ## Agent skills
 

@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * That deciding whether a record is a boundary does not re-read the taxonomy.
  *
- * `isBoundary()` is asked on every create, update, retire and restore, and it
+ * `divisionOf()` is asked on every create, update, retire and restore, and it
  * derived its answer from the Category tree — two full table scans per ask, for
  * an answer that cannot change while the service lives. The CHANGELOG has the
  * measurement.
@@ -81,9 +81,9 @@ final class AssignmentBoundaryTest extends TestCase {
 
 		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
 
-		$assignment->isBoundary($this->feature(13));
-		$assignment->isBoundary($this->feature(11));
-		$assignment->isBoundary($this->feature(13));
+		$assignment->divisionOf($this->feature(13));
+		$assignment->divisionOf($this->feature(11));
+		$assignment->divisionOf($this->feature(13));
 	}
 
 	/**
@@ -166,9 +166,9 @@ final class AssignmentBoundaryTest extends TestCase {
 
 		// The first ask is what fills the memo; every one after it reads the memo,
 		// so both have to be here for this to be about the memo at all.
-		self::assertTrue($assignment->isBoundary($this->feature(11)), 'a Sector is a boundary');
-		self::assertFalse($assignment->isBoundary($this->feature(13)), 'anything else is not');
-		self::assertTrue($assignment->isBoundary($this->feature(12)), 'a Unidad Vecinal is a boundary');
-		self::assertFalse($assignment->isBoundary($this->feature(13)));
+		self::assertSame('sector', $assignment->divisionOf($this->feature(11)), 'a Sector is a division boundary');
+		self::assertNull($assignment->divisionOf($this->feature(13)), 'anything else is not');
+		self::assertSame('unidad_vecinal', $assignment->divisionOf($this->feature(12)), 'a Unidad Vecinal is a division boundary');
+		self::assertNull($assignment->divisionOf($this->feature(13)));
 	}
 }

@@ -248,6 +248,7 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que desciende',
+			// A Subcategory that is not a division.
 			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
 		]);
@@ -301,5 +302,4 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		return $id;
 	}
-
 }

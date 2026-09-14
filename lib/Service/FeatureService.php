@@ -267,12 +267,12 @@ class FeatureService {
 	 * changes nobody's assignment, and spending a Revision per Place to discover
 	 * that would make every edit to a boundary expensive.
 	 *
-	 * Or when the record became a boundary, or stopped being one. Reclassifying a
-	 * Zone into `sector` redraws the map without touching a shape, and so does
-	 * reclassifying a Sector back out — the geometry is identical either way, so
-	 * `$before` cannot see it and the sweep used to be skipped in both directions
-	 * (#84). `$wasDivision` is the division the record was a boundary of before
-	 * this write, or null.
+	 * Or when the record became a boundary, or stopped being one, or changed from
+	 * one division to another. Reclassifying a Zone into `sector` redraws the map
+	 * without touching a shape, and so does reclassifying a Sector back out — the
+	 * geometry is identical either way, so `$before` cannot see it and the sweep
+	 * used to be skipped in both directions (#84). `$wasDivision` is the division
+	 * the record was a boundary of before this write, or null.
 	 */
 	private function reassignAround(Feature $boundary, ?string $before, ?string $wasDivision): void {
 		$isDivision = $this->assignments->divisionOf($boundary);

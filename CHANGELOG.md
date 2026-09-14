@@ -41,7 +41,7 @@ An update that omitted the geometry destroyed it.
   comes through — broken by an ordinary edit that never touches a shape, and reachable from the UI
   since long before #63; that change only added a second route to it.
 
-  The seam now also receives what the record **was**: `$wasBoundary`, read at the same moment and
+  The seam now also receives what the record **was**: `$wasDivision`, read at the same moment and
   for the same reason as the old geometry, because after the write there is no way to ask. Becoming
   a boundary or ceasing to be one sweeps; everything else behaves exactly as before, and a rename
   still reassigns nobody.

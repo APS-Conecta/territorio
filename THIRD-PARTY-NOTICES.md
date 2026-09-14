@@ -18,6 +18,13 @@ Authored, from two sources, because neither alone is complete:
 To bring this file up to date after a dependency change: `make build`, then read those two banner
 files and reconcile both tables against them.
 
+**Those two sources are still not enough, measured 2026-09-14.** Webpack writes a `.LICENSE.txt`
+entry only for code carrying a `/*!` banner, and most packages carry none. The bundles' own source
+maps name what is actually compiled in — `jq -r '.sources[]' js/*.map` — and even that misses a
+dependency inlined into a published `dist` by its own parent, which has to be found by grepping the
+bundle for a string literal the package is known by. Against that measurement the tables below are
+**incomplete**: 51 packages ship, 18 are named here. Tracked in territorio#87.
+
 Only the manifests were read until 2026-08-08, which is exactly how three components shipped
 unattributed — the words "Apache" and "MPL" did not appear in this file while a dual-licensed
 component was in every page load. The organisation's docs gate
@@ -55,6 +62,9 @@ same attribution.
 | MIT | `focus-trap` 8.2.2 | `@nextcloud/vue` |
 | MIT | `tabbable` 6.5.0 | `focus-trap` |
 | MIT | `escape-html` 1.0.3 | `@nextcloud/vue`, `@nextcloud/password-confirmation` |
+| BSD-3-Clause | `splaytree-ts` 1.0.2 | inlined inside `@geoman-io/leaflet-geoman-free`'s `dist` |
+| MIT | `polyclip-ts` | inlined inside `@geoman-io/leaflet-geoman-free`'s `dist` |
+| MIT | `bignumber.js` | inlined inside `@geoman-io/leaflet-geoman-free`'s `dist` |
 
 `@vue/runtime-dom` and `@vue/shared` also carry their own banners in the bundle; they are Vue's own
 packages, published under the same MIT licence as `vue` above.
@@ -105,20 +115,61 @@ inherited from what it links, not chosen — see
 Full licence texts for every component above are in `node_modules/<name>/LICENSE` in a
 development checkout.
 
-## One component a licence scanner will flag, wrongly
+## `splaytree-ts` — BSD 3-Clause, and a licence string that does not exist
 
-`splaytree-ts` 1.0.2 declares `"license": "BDS-3-Clause"` in its own `package.json` — a typo
-for **BSD-3-Clause**. Its `LICENSE` file is a correct, unmodified BSD 3-Clause text
-(© 2022 Luiz Felipe Machado Barboza), so the dependency tree is clean and nothing here is
-owed a different notice. Recorded because the string is not a licence any SPDX list knows,
-and a scanner will report it as unrecognised on every run until someone allowlists it.
+It ships. Its `package.json` declares `"license": "BDS-3-Clause"` — a typo for **BSD-3-Clause**,
+and not a string any SPDX list knows, so a scanner will report it as unrecognised on every run
+until someone allowlists it. That is what issue #27 asked to have written down.
 
-It reaches the closure transitively, through
-`@geoman-io/leaflet-geoman-free` → `polyclip-ts` → `splaytree-ts`. Issue #27 named
-`@turf/polygonize` as the parent; that is wrong — `@turf/polygonize`'s dependencies are the
-other `@turf/*` packages, `@types/geojson` and `tslib`, and none of them reach it.
+Its real licence is a correct, unmodified BSD 3-Clause, whose second clause requires this notice
+be reproduced wherever the code is redistributed in binary form — which the bundles under `js/`
+do. It is therefore reproduced in full below, as Leaflet's is above.
 
-**Not established:** whether its code is compiled into `js/`. The `SplayTree*` symbols do not
-appear in either bundle, but the bundles are minified, so their absence is not evidence. It is
-listed here rather than in a table above for that reason — the tables above state what ships,
-and this entry does not know.
+It arrives through `@geoman-io/leaflet-geoman-free`, which publishes a `dist` with its own
+dependencies already inlined — so `splaytree-ts`, `polyclip-ts` and `bignumber.js` are in our
+bundle without ever appearing in our `node_modules` resolution for them. Issue #27 named
+`@turf/polygonize` as the parent; that is wrong, and `@turf/polygonize`'s own dependency list does
+not reach it.
+
+**A correction, recorded because the method is the lesson.** This section first said whether the
+code reached `js/` was *"not established"*, on the evidence that the `SplayTree*` symbols appear
+in neither bundle. Minification erases symbol names — that evidence could not have shown presence
+even if present, which is the same mistake as grepping a file for a value that lives in a process.
+What settles it survives minification: the string literals `Concurrent modification during
+iteration` and `Bad state: Too many element` each appear once in `js/territorio-main.js`, and
+`js/territorio-main.js.map` names
+`node_modules/.pnpm/splaytree-ts@1.0.2/node_modules/splaytree-ts/dist/esm/index.js` outright.
+
+### BSD 3-Clause — `splaytree-ts`
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2022, Luiz Felipe Machado Barboza
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```

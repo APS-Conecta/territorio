@@ -82,9 +82,14 @@ class AssignmentService {
 		}
 	}
 
+	/** The division this record is a boundary of — 'sector', 'unidad_vecinal' — or null. */
+	public function divisionOf(Feature $feature): ?string {
+		return $this->divisions()[$feature->getSubcategoryId()] ?? null;
+	}
+
 	/** Whether this record is one of the boundaries others are assigned by. */
 	public function isBoundary(Feature $feature): bool {
-		return isset($this->divisions()[$feature->getSubcategoryId()]);
+		return $this->divisionOf($feature) !== null;
 	}
 
 	/**

@@ -255,6 +255,28 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer a boundary');
 	}
 
+	/**
+	 * The third direction #84 missed: Sector to Unidad Vecinal with the shape
+	 * unchanged. Both are boundaries, so "was it a boundary?" answers the same
+	 * before and after and the sweep stayed skipped — the Place kept a sectorId
+	 * that no Sector holds any more and never gained the Unidad Vecinal it is in.
+	 */
+	public function testReclassifyingBetweenDivisionsMovesWhatItHoldsAcross(): void {
+		$sector = $this->sector('Sector que cambia de división', self::REMOTE);
+		$place = $this->place('Escuela dentro', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+		self::assertNotSame($sector, $this->stored($place)->getUnidadVecinalId());
+
+		Server::get(FeatureService::class)->update($sector, [
+			'name' => 'Sector que cambia de división',
+			'subcategoryId' => $this->subcategoryIdBySlug('unidad_vecinal'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer its Sector');
+		self::assertSame($sector, $this->stored($place)->getUnidadVecinalId(), 'now its Unidad Vecinal');
+	}
+
 	/** @return array<string, mixed> */
 	private static function at(float $lon, float $lat): array {
 		return ['type' => 'Point', 'coordinates' => [$lon, $lat]];

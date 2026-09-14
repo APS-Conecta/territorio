@@ -81,7 +81,35 @@ MARKERS = ".leaflet-marker-icon"
 SEARCH = ".territorio-list__search input"
 
 
+def dismiss_first_run_wizard():
+    """Nextcloud's welcome modal intercepts every click, so nothing below works.
+
+    This gate could not pass on a FRESH instance at all: the wizard opens a modal
+    whose overlay swallows pointer events, so Playwright retried the very first
+    click 55 times and the run died in a wall of pointer-event noise naming the
+    wizard rather than the app. It was only ever green on an instance somebody had
+    already clicked through by hand, which is the worst shape a gate can have.
+
+    Here rather than in `make instance-up`, so the gate establishes its own
+    precondition: `make test-browser` has no prerequisite and is the one command a
+    developer runs against an instance that is already up.
+
+    Disabling the app is not enough on its own — the per-user flag is what the
+    modal reads — and neither call is fatal: a Nextcloud without the app, or a
+    container that is not running, both fail later and more honestly than here.
+    """
+    container = ["docker", "compose", "-f", "compose.dev.yaml", "exec", "-T",
+                 "-u", "www-data", "nextcloud", "php", "occ"]
+    for args in (["app:disable", "firstrunwizard"],
+                 ["user:setting", USER, "firstrunwizard", "show", "0"]):
+        try:
+            subprocess.run([*container, *args], capture_output=True, timeout=120)
+        except (subprocess.SubprocessError, OSError):
+            return
+
+
 def log_in(page):
+    dismiss_first_run_wizard()
     page.goto(f"{BASE}/apps/territorio/", wait_until="domcontentloaded")
     if "/login" not in page.url:
         return

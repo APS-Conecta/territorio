@@ -315,6 +315,95 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	/**
+	 * The case from the report, in the words it was reported in, and the rule the
+	 * service states for every optional field applied to the one that measures
+	 * four columns at once. `applyGeometry` read the key with `?? null`, so an
+	 * ABSENT geometry and an explicitly empty one were the same thing, and both
+	 * wiped the shape, the bounding box, the Kind and the Location quality.
+	 *
+	 * A Unidad Vecinal's boundary comes from a Cadastral Dataset — the clinic
+	 * reads it and never draws it — so a lost polygon cannot be redrawn by hand:
+	 * the only way back is a re-import or the revision history. Found on
+	 * 2026-08-12 by updating one with only a name; the save reported success.
+	 *
+	 * All four bounding-box columns are asserted because they move together or
+	 * not at all, and for a Zone the box is what the viewport query reads.
+	 */
+	public function testAUnidadVecinalUpdatedWithOnlyANameKeepsItsPolygon(): void {
+		$zone = json_encode(self::polygon());
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('UV 12');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry($zone);
+		$existing->setMinLat(-33.5);
+		$existing->setMinLon(-70.6);
+		$existing->setMaxLat(-33.4);
+		$existing->setMaxLon(-70.5);
+		$existing->setKind(Kind::Zone->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, ['name' => 'UV 12 Norte', 'subcategoryId' => 7]);
+
+		self::assertSame('UV 12 Norte', $updated->getName());
+		self::assertSame($zone, $updated->getGeometry());
+		self::assertEqualsWithDelta(-33.5, $updated->getMinLat(), 1e-9);
+		self::assertEqualsWithDelta(-70.6, $updated->getMinLon(), 1e-9);
+		self::assertEqualsWithDelta(-33.4, $updated->getMaxLat(), 1e-9);
+		self::assertEqualsWithDelta(-70.5, $updated->getMaxLon(), 1e-9);
+		self::assertSame(Kind::Zone->value, $updated->getKind());
+		self::assertSame(LocationQuality::Exact->value, $updated->getLocationQuality());
+	}
+
+	/**
+	 * The other half of the same rule, and the branch that has no caller to
+	 * remind it. A create states the WHOLE record, so an omitted geometry means
+	 * the record has none — and a new Feature carries `kind = ''`, which is not a
+	 * Kind. Without the distinction reaching `applyGeometry`, this record would
+	 * be inserted with no Kind and no Location quality, and the map, the Capas
+	 * filter and `terr_feat_kind_idx` all read that column.
+	 */
+	public function testCreatingWithNoGeometryKeyAtAllStillGivesThePlaceItsKind(): void {
+		$feature = $this->service->create(['name' => 'Sede sin coordenada', 'subcategoryId' => 7]);
+
+		self::assertNull($feature->getGeometry());
+		self::assertNull($feature->getMinLat());
+		self::assertSame(Kind::Place->value, $feature->getKind());
+		self::assertSame(LocationQuality::Absent->value, $feature->getLocationQuality());
+	}
+
+	/**
+	 * Clearing stays possible, it just has to be asked for — and asked for in
+	 * either of the two shapes a client sends. `null` is one; an empty array is
+	 * what a form-encoded or JSON client sends for an empty shape, and it takes a
+	 * different branch (`$raw === []`, not `!is_array($raw)`).
+	 */
+	public function testSendingAnEmptyGeometryArrayClearsAllFourColumns(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setMinLat(-33.5187671);
+		$existing->setMinLon(-70.5553836);
+		$existing->setMaxLat(-33.5187671);
+		$existing->setMaxLon(-70.5553836);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, $this->valid(['geometry' => []]));
+
+		self::assertNull($updated->getGeometry());
+		self::assertNull($updated->getMinLat());
+		self::assertNull($updated->getMinLon());
+		self::assertNull($updated->getMaxLat());
+		self::assertNull($updated->getMaxLon());
+		self::assertSame(Kind::Place->value, $updated->getKind());
+		self::assertSame(LocationQuality::Absent->value, $updated->getLocationQuality());
+	}
+
+	/**
 	 * A request that does not mention a field must leave it alone. History is
 	 * what would make such a loss recoverable, and it does not exist until issue
 	 * #4 — so until then an omission silently blanking an address would be

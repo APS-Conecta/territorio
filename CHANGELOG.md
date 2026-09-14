@@ -5,7 +5,39 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [0.41.0] — unreleased
 
-The fields a Sector draft carries, in one place.
+An update that omitted the geometry destroyed it.
+
+### Fixed
+
+- **An update that omitted the geometry destroyed it** (#63). `applyGeometry` read the key with
+  `?? null`, so an **absent** geometry and an explicitly **empty** one were the same thing — and
+  both wiped four columns at once: the shape, the bounding box, the Kind and the Location quality.
+  Every other optional field already drew that distinction with `array_key_exists`, and the comment
+  three lines above states the rule plainly. Geometry was the field it was not true of.
+
+  Found on 2026-08-12 by doing it: a Unidad Vecinal updated with only a name and a subcategory lost
+  its polygon, its bounding box and its Kind. **The save reported success**, the record simply
+  vanished from the map, and only the revision history made it recoverable. A Unidad Vecinal's
+  boundary comes from a Cadastral Dataset — the clinic reads it and never draws it — so there is no
+  redrawing it by hand.
+
+  Absent now returns early and changes nothing. Sending `geometry` explicitly empty still clears all
+  four, so clearing stays possible; it just has to be asked for.
+
+  **The distinction is a parameter, not a caller's habit.** `apply()` serves both doors, and a new
+  Feature carries `kind = ''` — which is not a Kind — so a create with no geometry key at all must
+  still take the empty branch to get its Place and its Absent location quality. `apply()` and
+  `applyGeometry()` now take `$whole`, so the rule lives in the function that applies it rather
+  than in a line the next caller has to remember; the class docblock plans a second door, and that
+  door would have inserted records with no Kind.
+
+- **`tools/browser-check.py` could not pass on a fresh instance** — unrelated to the above, found
+  while running the gate for it. Nextcloud's first-run wizard opens a modal whose overlay
+  intercepts every click, so Playwright retried the first one 55 times and the run died in a wall
+  of pointer-event noise naming the wizard rather than the app. The gate had only ever been green
+  on an instance somebody had already clicked through by hand. It now clears the wizard itself,
+  beside `log_in` — in the gate rather than in `make instance-up`, because `test-browser` has no
+  prerequisite and is the one command run against an instance that is already up.
 
 ### Changed
 

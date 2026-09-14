@@ -92,7 +92,7 @@ final class SectorTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->update($id, [
 			'name' => 'Sector Poniente',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => $moved,
 		]);
 
@@ -113,22 +113,12 @@ final class SectorTest extends IntegrationTestCase {
 	private function sector(string $name, string $colour): int {
 		$id = (int)Server::get(FeatureService::class)->create([
 			'name' => $name,
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'colour' => $colour,
 			'geometry' => self::BOUNDARY,
 		])->getId();
 		$this->created[] = $id;
 
 		return $id;
-	}
-
-	private function sectorSubcategoryId(): int {
-		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
-			if ($subcategory->getSlug() === 'sector') {
-				return (int)$subcategory->getId();
-			}
-		}
-
-		self::fail('the seed should have created the "sector" subcategory');
 	}
 }

@@ -46,6 +46,10 @@ An update that omitted the geometry destroyed it.
   a boundary or ceasing to be one sweeps; everything else behaves exactly as before, and a rename
   still reassigns nobody.
 
+  Also the third direction: Sector to Unidad Vecinal with the shape unchanged — both are boundaries,
+  so a bool could not see it; the sweep now compares the division slug and runs from `write()`, the
+  one door.
+
 - **An update that omitted the geometry destroyed it** (#63). `applyGeometry` read the key with
   `?? null`, so an **absent** geometry and an explicitly **empty** one were the same thing — and
   both wiped four columns at once: the shape, the bounding box, the Kind and the Location quality.

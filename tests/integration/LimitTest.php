@@ -40,23 +40,13 @@ final class LimitTest extends IntegrationTestCase {
 	private function sector(string $name, array $limit, array $rings = self::WEST): int {
 		$id = (int)$this->features->create([
 			'name' => $name,
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
 			'limit' => $limit,
 		])->getId();
 		$this->created[] = $id;
 
 		return $id;
-	}
-
-	private function sectorSubcategoryId(): int {
-		foreach (Server::get(\OCA\Territorio\Db\SubcategoryMapper::class)->findAll() as $subcategory) {
-			if ($subcategory->getSlug() === 'sector') {
-				return (int)$subcategory->getId();
-			}
-		}
-
-		self::fail('the seed should have created the Sector subcategory');
 	}
 
 	private function stored(int $id): array {
@@ -81,7 +71,7 @@ final class LimitTest extends IntegrationTestCase {
 
 		$this->features->update($id, [
 			'name' => 'Sector que se ajusta',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::MOVED],
 		]);
 
@@ -104,14 +94,14 @@ final class LimitTest extends IntegrationTestCase {
 
 		$this->features->update($id, [
 			'name' => 'Sector que cambia',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'limit' => [['name' => 'solo el canal']],
 		]);
 		self::assertSame([['name' => 'solo el canal']], $this->stored($id)['limit']);
 
 		$this->features->update($id, [
 			'name' => 'Sector que cambia',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'limit' => [],
 		]);
 		self::assertNull($this->stored($id)['limit']);
@@ -126,7 +116,7 @@ final class LimitTest extends IntegrationTestCase {
 
 		$this->features->update($id, [
 			'name' => 'Sector con historial',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'limit' => [['name' => 'solo el canal']],
 		]);
 

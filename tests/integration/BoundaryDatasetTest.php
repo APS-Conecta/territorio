@@ -6,7 +6,6 @@ namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\Kind;
@@ -273,12 +272,7 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 
 	/** A hand-drawn Sector, as issue #10 saves one. */
 	private function sector(): int {
-		$subcategoryId = 0;
-		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
-			if ($subcategory->getSlug() === 'sector') {
-				$subcategoryId = (int)$subcategory->getId();
-			}
-		}
+		$subcategoryId = $this->subcategoryIdBySlug('sector');
 
 		$id = (int)Server::get(FeatureService::class)->create([
 			'name' => 'Sector de prueba',

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\RegistryService;
 use OCP\Server;
@@ -111,7 +110,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		// Drag the whole boundary east.
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que se mueve',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::EAST],
 		]);
 
@@ -147,7 +146,7 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector con nombre mejor',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::WEST],
 		]);
 
@@ -224,14 +223,18 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * Sectores would let somebody else's boundary answer for ours.
 	 */
 	public function testReclassifyingIntoABoundarySubcategoryAssignsWhatItCovers(): void {
-		$zone = $this->zone('Zona que asciende', self::REMOTE);
+		// A Polygon in a Subcategory that is not a division: a shape, not a boundary.
+		$zone = $this->place('Zona que asciende', [
+			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
 		$place = $this->place('Escuela dentro de la zona', ['geometry' => self::at(-71.00, -29.50)]);
 		self::assertNotSame($zone, $this->stored($place)->getSectorId(), 'not a boundary yet');
 
 		// The shape is re-sent unchanged, which is what the browser does on an edit.
 		Server::get(FeatureService::class)->update($zone, [
 			'name' => 'Zona que asciende',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
 		]);
 
@@ -245,7 +248,7 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que desciende',
-			'subcategoryId' => $this->ordinarySubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
 		]);
 
@@ -290,7 +293,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	private function sector(string $name, array $rings): int {
 		$id = (int)Server::get(FeatureService::class)->create([
 			'name' => $name,
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'colour' => '#16a34a',
 			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
 		])->getId();
@@ -299,36 +302,4 @@ final class AssignmentTest extends IntegrationTestCase {
 		return $id;
 	}
 
-	/** The same thing as `sector()`, in a Subcategory that is not a boundary. */
-	private function zone(string $name, array $rings): int {
-		$id = (int)Server::get(FeatureService::class)->create([
-			'name' => $name,
-			'subcategoryId' => $this->ordinarySubcategoryId(),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
-	}
-
-	/** Any Subcategory that is not one of the divisions records are assigned by. */
-	private function ordinarySubcategoryId(): int {
-		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
-			if (!in_array($subcategory->getSlug(), ['sector', 'unidad_vecinal'], true)) {
-				return (int)$subcategory->getId();
-			}
-		}
-
-		self::fail('the seed should have created a Subcategory that is not a division');
-	}
-
-	private function sectorSubcategoryId(): int {
-		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
-			if ($subcategory->getSlug() === 'sector') {
-				return (int)$subcategory->getId();
-			}
-		}
-
-		self::fail('the seed should have created the "sector" subcategory');
-	}
 }

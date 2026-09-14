@@ -256,8 +256,11 @@ class FeatureService {
 		// needs the shape it used to have as well as the one it has now, or a
 		// record the Sector no longer covers is never let go of.
 		$before = $feature->getGeometry();
+		// Read for the same reason and at the same moment: an edit may change the
+		// Subcategory, and after the write there is no way to ask what it was.
+		$wasBoundary = $this->assignments->isBoundary($feature);
 		$written = $this->write($feature, $input, $provenance, markOverride: $provenance === null);
-		$this->reassignAround($written, $before);
+		$this->reassignAround($written, $before, $wasBoundary);
 
 		return $written;
 	}
@@ -273,14 +276,27 @@ class FeatureService {
 	 * Only when the shape actually moved. Renaming a Sector or recolouring it
 	 * changes nobody's assignment, and spending a Revision per Place to discover
 	 * that would make every edit to a boundary expensive.
+	 *
+	 * Or when the record became a boundary, or stopped being one. Reclassifying a
+	 * Zone into `sector` redraws the map without touching a shape, and so does
+	 * reclassifying a Sector back out — the geometry is identical either way, so
+	 * `$before` cannot see it and the sweep used to be skipped in both directions
+	 * (#84). `$wasBoundary` is what the record was before this write; null means
+	 * the caller did not change the Subcategory and it is read off the entity.
 	 */
-	private function reassignAround(Feature $boundary, ?string $before): void {
-		if (!$this->assignments->isBoundary($boundary)) {
+	private function reassignAround(Feature $boundary, ?string $before, ?bool $wasBoundary = null): void {
+		$isBoundary = $this->assignments->isBoundary($boundary);
+		$wasBoundary ??= $isBoundary;
+
+		// Nothing to sweep for a record that is not a boundary and never was. One
+		// that has just stopped being a boundary still owes every record it held.
+		if (!$isBoundary && !$wasBoundary) {
 			return;
 		}
 		// Retiring and restoring pass the same geometry on purpose: what changed is
 		// whether it counts at all, not its shape.
-		if ($boundary->getGeometry() === $before && !$boundary->getRetired() && $before !== null) {
+		if ($isBoundary === $wasBoundary
+			&& $boundary->getGeometry() === $before && !$boundary->getRetired() && $before !== null) {
 			return;
 		}
 
@@ -324,8 +340,9 @@ class FeatureService {
 		// Read before the entity is mutated, exactly as update() does: letting go
 		// of what a boundary no longer covers needs the shape it used to have.
 		$before = $feature->getGeometry();
+		$wasBoundary = $this->assignments->isBoundary($feature);
 		$written = $this->write($feature, $input, null, markOverride: false);
-		$this->reassignAround($written, $before);
+		$this->reassignAround($written, $before, $wasBoundary);
 
 		return $written;
 	}

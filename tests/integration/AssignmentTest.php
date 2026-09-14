@@ -30,6 +30,11 @@ final class AssignmentTest extends IntegrationTestCase {
 		[-70.55, -33.54], [-70.51, -33.54], [-70.51, -33.50], [-70.55, -33.50], [-70.55, -33.54],
 	]];
 
+	/** Far from the seed's own boundaries, so only this test's shape can answer. */
+	private const REMOTE = [[
+		[-71.02, -29.52], [-70.98, -29.52], [-70.98, -29.48], [-71.02, -29.48], [-71.02, -29.52],
+	]];
+
 	public function testCreatingAPlaceInsideASectorAssignsIt(): void {
 		$sector = $this->sector('Sector Poniente', self::WEST);
 		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
@@ -205,6 +210,51 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame(2, Server::get(RegistryService::class)->counts()['bySector'][$sector] ?? 0);
 	}
 
+	/**
+	 * Reclassification is a redraw of the map without a redraw of the shape.
+	 *
+	 * Both directions go through `update()` with the geometry untouched, which is
+	 * exactly the shape the sweep used to skip: it asked whether the geometry had
+	 * moved, and a Subcategory change moves nothing. ADR-0008 says what falls
+	 * inside a boundary is derived at the one door every write comes through, so
+	 * becoming a boundary and ceasing to be one both have to derive.
+	 *
+	 * Far from La Florida on purpose: this runs against an instance the browser
+	 * gate and other suites have written to, and a coordinate near the seed's own
+	 * Sectores would let somebody else's boundary answer for ours.
+	 */
+	public function testReclassifyingIntoABoundarySubcategoryAssignsWhatItCovers(): void {
+		$zone = $this->zone('Zona que asciende', self::REMOTE);
+		$place = $this->place('Escuela dentro de la zona', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertNotSame($zone, $this->stored($place)->getSectorId(), 'not a boundary yet');
+
+		// The shape is re-sent unchanged, which is what the browser does on an edit.
+		Server::get(FeatureService::class)->update($zone, [
+			'name' => 'Zona que asciende',
+			'subcategoryId' => $this->sectorSubcategoryId(),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		self::assertSame($zone, $this->stored($place)->getSectorId(), 'it is a Sector now');
+	}
+
+	public function testReclassifyingOutOfABoundarySubcategoryLetsGoOfWhatItHeld(): void {
+		$sector = $this->sector('Sector que desciende', self::REMOTE);
+		$place = $this->place('Escuela dentro del sector', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+
+		Server::get(FeatureService::class)->update($sector, [
+			'name' => 'Sector que desciende',
+			'subcategoryId' => $this->ordinarySubcategoryId(),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		// Not null: see the redraw test above — another boundary may legitimately
+		// hold this point. What is promised is that it let go of THIS one, which
+		// is no longer a boundary at all.
+		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer a boundary');
+	}
+
 	/** @return array<string, mixed> */
 	private static function at(float $lon, float $lat): array {
 		return ['type' => 'Point', 'coordinates' => [$lon, $lat]];
@@ -225,6 +275,29 @@ final class AssignmentTest extends IntegrationTestCase {
 		$this->created[] = $id;
 
 		return $id;
+	}
+
+	/** The same thing as `sector()`, in a Subcategory that is not a boundary. */
+	private function zone(string $name, array $rings): int {
+		$id = (int)Server::get(FeatureService::class)->create([
+			'name' => $name,
+			'subcategoryId' => $this->ordinarySubcategoryId(),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
+		])->getId();
+		$this->created[] = $id;
+
+		return $id;
+	}
+
+	/** Any Subcategory that is not one of the divisions records are assigned by. */
+	private function ordinarySubcategoryId(): int {
+		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
+			if (!in_array($subcategory->getSlug(), ['sector', 'unidad_vecinal'], true)) {
+				return (int)$subcategory->getId();
+			}
+		}
+
+		self::fail('the seed should have created a Subcategory that is not a division');
 	}
 
 	private function sectorSubcategoryId(): int {

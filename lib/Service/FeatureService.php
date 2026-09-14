@@ -222,7 +222,7 @@ class FeatureService {
 	 * @param ?Provenance $provenance set only by an import; never read from a request
 	 */
 	public function create(array $input, ?Provenance $provenance = null): Feature {
-		$feature = $this->apply(new Feature(), $input);
+		$feature = $this->apply(new Feature(), $input, whole: true);
 		$this->applyProvenance($feature, $provenance);
 
 		$created = $this->features->insert($feature);
@@ -338,7 +338,7 @@ class FeatureService {
 		bool $markOverride,
 	): Feature {
 		$wasImported = $feature->getDatasetId() !== null;
-		$this->apply($feature, $input);
+		$this->apply($feature, $input, whole: false);
 		$this->applyProvenance($feature, $provenance);
 
 		// A person editing an imported record is what ADR-0003 calls a local
@@ -365,7 +365,7 @@ class FeatureService {
 	}
 
 	/** @param array<string, mixed> $input */
-	private function apply(Feature $feature, array $input): Feature {
+	private function apply(Feature $feature, array $input, bool $whole): Feature {
 		$name = trim((string)($input['name'] ?? ''));
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
@@ -406,7 +406,7 @@ class FeatureService {
 			$feature->setBoundaryLimit(self::limit($input['limit']));
 		}
 
-		$this->applyGeometry($feature, $input);
+		$this->applyGeometry($feature, $input, $whole);
 
 		// Derived here, at the one door every write comes through, so no caller can
 		// save a record whose stored Sector disagrees with where it now is
@@ -519,7 +519,31 @@ class FeatureService {
 	 *
 	 * @param array<string, mixed> $input
 	 */
-	private function applyGeometry(Feature $feature, array $input): void {
+	private function applyGeometry(Feature $feature, array $input, bool $whole): void {
+		// Absent is not empty, and this is the one field that measures four columns
+		// at once: the shape, the bounding box, the Kind and the Location quality.
+		// Reading the key with `?? null` made an omitted geometry indistinguishable
+		// from an explicitly empty one, so an update that never mentioned it wiped
+		// all four and reported success (issue #63). Every optional field above
+		// already draws this distinction with `array_key_exists`; the comment there
+		// states the rule, and this is the field it was not true of.
+		//
+		// `$whole` is what tells the two doors apart, and it is a parameter rather
+		// than something the caller normalises first: a create states the WHOLE
+		// record, so an omitted geometry there means it HAS none — a new Feature
+		// carries `kind = ''`, which is not a Kind, so the empty branch is what
+		// gives it Place and Absent. An update states what CHANGED, so an omitted
+		// geometry leaves all four alone. Threading it here keeps that rule in the
+		// function that applies it: the class docblock plans a second door
+		// ("exposing an OCS API later is a new controller"), and a rule enforced at
+		// one call site is a rule the next door forgets.
+		//
+		// Sending `geometry` explicitly empty still clears all four — clearing a
+		// shape stays possible, it just has to be asked for.
+		if (!$whole && !array_key_exists('geometry', $input)) {
+			return;
+		}
+
 		$raw = $input['geometry'] ?? null;
 
 		if (!is_array($raw) || $raw === []) {

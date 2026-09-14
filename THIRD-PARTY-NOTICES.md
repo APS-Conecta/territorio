@@ -104,3 +104,21 @@ inherited from what it links, not chosen — see
 
 Full licence texts for every component above are in `node_modules/<name>/LICENSE` in a
 development checkout.
+
+## One component a licence scanner will flag, wrongly
+
+`splaytree-ts` 1.0.2 declares `"license": "BDS-3-Clause"` in its own `package.json` — a typo
+for **BSD-3-Clause**. Its `LICENSE` file is a correct, unmodified BSD 3-Clause text
+(© 2022 Luiz Felipe Machado Barboza), so the dependency tree is clean and nothing here is
+owed a different notice. Recorded because the string is not a licence any SPDX list knows,
+and a scanner will report it as unrecognised on every run until someone allowlists it.
+
+It reaches the closure transitively, through
+`@geoman-io/leaflet-geoman-free` → `polyclip-ts` → `splaytree-ts`. Issue #27 named
+`@turf/polygonize` as the parent; that is wrong — `@turf/polygonize`'s dependencies are the
+other `@turf/*` packages, `@types/geojson` and `tslib`, and none of them reach it.
+
+**Not established:** whether its code is compiled into `js/`. The `SplayTree*` symbols do not
+appear in either bundle, but the bundles are minified, so their absence is not evidence. It is
+listed here rather than in a table above for that reason — the tables above state what ships,
+and this entry does not know.

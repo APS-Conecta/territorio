@@ -7,6 +7,16 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 An update that omitted the geometry destroyed it.
 
+### Documentation
+
+- **`splaytree-ts` declares a licence that does not exist** (#27). Its `package.json` says
+  `"BDS-3-Clause"`; its `LICENSE` file is a correct BSD 3-Clause. Recorded in
+  `THIRD-PARTY-NOTICES.md` so the next scanner run has an answer instead of a finding. The
+  issue named `@turf/polygonize` as the parent — measured, it arrives through
+  `@geoman-io/leaflet-geoman-free` → `polyclip-ts`. Whether its code reaches `js/` is stated
+  as unestablished rather than guessed: the symbols are absent from the bundles, and the
+  bundles are minified.
+
 ### Fixed
 
 - **An update that omitted the geometry destroyed it** (#63). `applyGeometry` read the key with

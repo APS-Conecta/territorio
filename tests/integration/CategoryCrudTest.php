@@ -574,6 +574,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 */
 	public function testWhenTheSparesRunOutTheCategoryIsStillCreatedAndTakesTheNeutral(): void {
 		$owed = $this->freeSpares();
+		self::assertNotEmpty($owed, 'no spare is free on this instance, so this test would exhaust nothing');
 
 		$given = [];
 		foreach ($owed as $index => $spare) {

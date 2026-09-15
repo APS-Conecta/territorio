@@ -1864,12 +1864,13 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 
     Creates its own Salud record rather than trusting the instance to hold one:
     a check that cannot set up its own data has nothing to say. The expected fill
-    is read out of the seed for the same reason the Capás check reads it —
-    a copy here could agree with itself while the app disagreed with both.
+    is read out of the taxonomy the app serves for the same reason the Capas
+    check reads it — a copy here could agree with itself while the app disagreed
+    with both.
     """
-    salud = _seeded_categories().get("salud")
+    salud = _served_categories(page).get("salud")
     if salud is None:
-        failures.append("the seed has no 'salud' Category, so the glyph check could not run")
+        failures.append("the app serves no 'salud' Category, so the glyph check could not run")
         return
 
     name = f"CESFAM del Navegador {RUN}"
@@ -1931,8 +1932,11 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
             f"a Salud pin carries the {painted['glyph']!r} glyph, expected 'hospital' — the "
             f"pictogram is what identifies a Category on the map",
         )
-    if painted["fill"] != salud.lower():
-        failures.append(f"a Salud pin is filled {painted['fill']}, but the seed says {salud}")
+    if painted["fill"] != salud:
+        failures.append(
+            f"a Salud pin is filled {painted['fill']}, but the taxonomy the app serves says "
+            f"{salud}",
+        )
     if painted["glyphFill"] != "rgb(255, 255, 255)":
         failures.append(
             f"the glyph is drawn {painted['glyphFill']}, not white — the ramp clears 3:1 "
@@ -2174,10 +2178,10 @@ def a_cluster_says_what_is_under_it(page, failures):
     compared with the bands. A ring agreeing with both is a ring agreeing with
     its children.
     """
-    seeded = _seeded_categories()
-    salud, educacion = seeded.get("salud"), seeded.get("educacion")
+    served = _served_categories(page)
+    salud, educacion = served.get("salud"), served.get("educacion")
     if salud is None or educacion is None:
-        failures.append("the seed has no 'salud'/'educacion' Category, so the cluster check "
+        failures.append("the app serves no 'salud'/'educacion' Category, so the cluster check "
                         "could not run")
         return
 
@@ -2261,7 +2265,7 @@ def a_cluster_says_what_is_under_it(page, failures):
         )
 
     bands = _ring_segments(painted["gradient"])
-    expected = [(salud.lower(), 0.0, 66.67), (educacion.lower(), 66.67, 100.0)]
+    expected = [(salud, 0.0, 66.67), (educacion, 66.67, 100.0)]
 
     if bands is None:
         failures.append(
@@ -3142,11 +3146,13 @@ def _the_chart_draws_a_division_neutral(page, neutral, failures):
 
 
 def _ramp_check():
-    """tools/ramp-check.py as a module, for its seed reader and its arithmetic.
+    """tools/ramp-check.py as a module, for its arithmetic.
 
     Imported rather than re-implemented. The hyphen in the filename keeps it off
-    the normal import path, and a second copy of the regex — or of the contrast
-    formula — here is exactly the drift this whole check exists to catch.
+    the normal import path, and a second copy of the contrast formula here is
+    exactly the drift this whole check exists to catch. Its seed reader is no
+    longer called from here: what a Category is coloured is read from what the
+    app serves (#42), and only what the SEEDED ramp is worth is still ramp-check's.
     """
     import importlib.util
 
@@ -3158,9 +3164,48 @@ def _ramp_check():
     return module
 
 
-def _seeded_categories():
-    """The colours the seed ships, straight out of the PHP."""
-    return _ramp_check().seeded_categories()
+# The Category holding the territorial divisions, as src/taxonomy.js names it.
+DIVISIONS_SLUG = "division_territorial"
+
+
+def _served_categories(page):
+    """slug -> hex for the Categories the app is serving this browser.
+
+    Read out of the initial state the page was rendered with — the element
+    `@nextcloud/initial-state` reads, base64 JSON — because that IS the taxonomy
+    Vue received. `PageController` provides it and nothing serves it over HTTP,
+    and a route invented for a check would be a path the app never takes.
+
+    Not out of the seed any more (#42). The seed was the right source only while
+    the seed was the only source of Categories: a clinic may already recolour one
+    (tests/integration/RampRepaintTest.php is the guard that a repaint stops at a
+    colour it chose) and will soon be able to add one, and either turns every
+    check below permanently red on a fact that has stopped being true. What the
+    SEEDED ramp is worth — contrast against white and the dark theme, separation
+    from its neighbours — is measured by tools/ramp-check.py, which is the only
+    thing here that can and which this does not touch.
+
+    The territorial divisions Category is dropped. Its `#334155` is inert (#29):
+    a division draws a boundary on the map and a ring in the list, never a filled
+    swatch, so its colour reaches no surface and would be reported missing on
+    every run. `treeOf()` in src/taxonomy.js leaves it out of the tree for the
+    same reason.
+
+    Lower-cased once, here, because `getComputedStyle` always answers in lower
+    case and a clinic typing `#B3261E` into the colour input is the same colour.
+    """
+    tree = page.evaluate(
+        """() => {
+            const element = document.getElementById('initial-state-territorio-taxonomy')
+            return element === null ? null : JSON.parse(atob(element.value))
+        }""",
+    )
+
+    return {
+        category["slug"]: category["color"].lower()
+        for category in tree or []
+        if category["slug"] != DIVISIONS_SLUG
+    }
 
 
 def _hex_of(painted):
@@ -3205,28 +3250,50 @@ def _as_hex(painted):
 
 
 def every_category_reaches_the_browser_with_its_colour(page, failures):
-    """The colours in the seed are the colours on the screen.
+    """The colours the app serves are the colours on the screen.
 
-    Compares against the seeded values, not against an invariant. The first
+    Compares against the served values, not against an invariant. The first
     version of this check asserted only "non-blank and all different", and a
     review pointed out that the old palette satisfies both — eleven distinct,
     non-blank colours — so the check could not fail for the exact reason its own
     docstring gave for existing. It was theatre.
 
-    The failure it now actually catches: `ensureTaxonomy()` returns early on an
-    install that already has rows, so a seed change reaches an existing install
-    only through `ensureRamp()`. Narrow that guard and the screen keeps serving
-    the old palette while every other suite stays green — which is the shape of
-    bug this gate was built for (`Guardar` did nothing for eight slices).
+    The failure it catches: a Category the app serves that never becomes a
+    swatch, or becomes one in somebody else's colour. Both halves are asserted —
+    a served colour nobody painted, and a painted colour nobody serves — because
+    a Category silently dropped on the way into Vue and a swatch drawing the
+    wrong row are the same defect seen from either end, and only one of the two
+    comparisons sees each.
+
+    It no longer compares against the seed (#42). It could, while the seed was
+    the only source of Categories; a clinic that recolours one — or adds one —
+    is not drift, so a check reading the seed would go red on a correct install
+    and stay red. What the seeded ramp is worth is measured by
+    tools/ramp-check.py, and that a seed change reaches an existing install is
+    proved by tests/integration/RampRepaintTest.php. Neither is this check's job
+    any more, and saying so is the point of the slice.
 
     Asserts on what the Registry served, per SKILL.md § 5: these colours come out
     of the database, through initial state, into Vue. Nothing else here reads
     that path end to end.
     """
-    seeded = _seeded_categories()
+    served = _served_categories(page)
+
+    # Named separately from "no swatches", rather than left to the comparison
+    # below, because the comparison would blame the wrong half: eleven correct
+    # swatches against an empty expected set reads as "the browser painted
+    # eleven colours nobody serves". `loadState` leaves the element in the DOM
+    # in the version this app ships — checked, not assumed — and this is what
+    # says so out loud on the day a version stops doing that.
+    if not served:
+        failures.append(
+            "the page carries no served taxonomy at #initial-state-territorio-taxonomy, so "
+            "nothing could be compared with what the Capas panel painted",
+        )
+        return
+
     swatches = page.locator(".territorio-capas__swatch")
     count = swatches.count()
-
     if count == 0:
         failures.append("the Capas panel drew no Category swatches at all")
         return
@@ -3235,19 +3302,19 @@ def every_category_reaches_the_browser_with_its_colour(page, failures):
         _as_hex(swatches.nth(i).evaluate("e => getComputedStyle(e).backgroundColor"))
         for i in range(count)
     }
-    expected = {colour.lower() for colour in seeded.values()}
+    expected = set(served.values())
 
     stale = expected - painted
     if stale:
         failures.append(
-            f"the seed ships {sorted(stale)} but the browser never painted them — the taxonomy "
-            f"the Registry served is not the one EnsureSeedData holds",
+            f"the app serves {sorted(stale)} but the browser never painted them — a Category in "
+            f"the taxonomy the Registry served reached no swatch",
         )
 
     unexpected = painted - expected
     if unexpected:
         failures.append(
-            f"the browser painted {sorted(unexpected)}, which no Category in the seed carries",
+            f"the browser painted {sorted(unexpected)}, which no Category the app serves carries",
         )
 
     # Whether the Sector default is far enough from a Category is NOT checked

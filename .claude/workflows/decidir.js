@@ -91,7 +91,11 @@ const FALLO = {
     archivos: { type: 'array', items: { type: 'string' }, description: 'Files the ruled solution touches.' },
     pruebas: { type: 'array', items: { type: 'string' }, description: 'The failing-first tests the slice must write, one line each, naming the test file.' },
   },
-  required: ['fallo', 'razon', 'peldano', 'solucion', 'descartado', 'archivos', 'pruebas'],
+  // Only what a ruling cannot be without. The first version required all seven, and a
+  // decididor holding 85k tokens of argument answered with an empty object and burned its
+  // retries against the validator — a schema that is hard to satisfy fails as "no ruling",
+  // which is indistinguishable from "the protocol did not run".
+  required: ['fallo', 'razon', 'solucion'],
 }
 
 phase('Decidir')

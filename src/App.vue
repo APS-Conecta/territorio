@@ -15,6 +15,7 @@
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
 						@rename="rename"
+						@choose-glyph="chooseGlyph"
 						@add-category="addCategory"
 						@add-subcategory="addSubcategory"
 						@remove="removeFromTaxonomy"
@@ -750,14 +751,44 @@ export default {
 		},
 
 		/**
-		 * Add a Category (#45).
+		 * Choose the pictogram a Category is drawn with (#46).
 		 *
-		 * Only a label goes up. The server derives the slug and ASSIGNS the
+		 * The same `PUT /categories/{slug}` a rename uses, carrying `glyph` and no
+		 * `label`: both edit the Category, and the server acts on the key that is
+		 * actually in the body. An empty `glyph` clears the choice.
+		 *
+		 * The whole tree comes back and is swapped in exactly as a rename's is,
+		 * which is what puts the new mark on the map pin, in the Datos list and in
+		 * the Capas legend at once — all three read it out of this one property
+		 * through `indexSubcategories()`, so none of them holds a copy that can
+		 * disagree. Nothing else is refetched and the Revision cursor is not
+		 * advanced, for the reason `rename()` gives.
+		 */
+		async chooseGlyph({ categorySlug, glyph }) {
+			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
+
+			try {
+				const { data } = await axios.put(generateUrl(url), { glyph })
+				this.taxonomy = data
+				this.clearTaxonomyMessage()
+			} catch (exception) {
+				this.taxonomyError = exception.response?.data?.message
+					?? 'No se pudo cambiar el pictograma. Revise la conexión e inténtelo de nuevo.'
+			}
+		},
+
+		/**
+		 * Add a Category (#45), with the pictogram picked for it (#46).
+		 *
+		 * The label and the mark go up. The server derives the slug and ASSIGNS the
 		 * colour from the vetted spare list (ADR-0017), which is why there is no
 		 * colour input here or anywhere else: the constraints — 3:1 against white
 		 * and against the dark theme, and separation from every other Category
 		 * under three dichromacies — cannot be satisfied by eye, and an input that
-		 * accepts a failing value is worse than no input.
+		 * accepts a failing value is worse than no input. The pictogram is the
+		 * opposite half of that same ADR: no software guesses which mark means
+		 * «comité de vivienda», so it is the one thing a person answers. Empty
+		 * when nothing was picked, and then the Category draws the neutral.
 		 *
 		 * The answer is the whole tree, swapped in exactly as a rename's is, which
 		 * is what puts the new Category in the Capas panel, in the Subcategoría
@@ -777,10 +808,10 @@ export default {
 		 * Category does anyway — and a refusal-coloured note card over a Category
 		 * that was created correctly would send somebody looking for the failure.
 		 */
-		async addCategory({ label }) {
+		async addCategory({ label, glyph }) {
 			try {
 				const { data } = await axios.post(
-					generateUrl('/apps/territorio/categories'), { label },
+					generateUrl('/apps/territorio/categories'), { label, glyph },
 				)
 				const added = data.find((category) => !this.taxonomy
 					.some((existing) => existing.id === category.id))

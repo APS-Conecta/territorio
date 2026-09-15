@@ -78,7 +78,7 @@
 			@click="$emit('select', feature.id)">
 			<template #icon>
 				<span class="territorio-list__swatch" v-bind="markFor(feature)">
-					<NcIconSvgWrapper :svg="glyphFor(categorySlugOf(feature))" :size="12" />
+					<NcIconSvgWrapper :svg="glyphOf(feature)" :size="12" />
 				</span>
 			</template>
 			<template #subname>
@@ -123,11 +123,17 @@ export default {
 	},
 
 	methods: {
-		glyphFor,
+		/**
+		 * The pictogram a record is drawn with: the mark its Category was given
+		 * (#46), or the one its slug ships with, or the neutral.
+		 *
+		 * One lookup rather than a method per field: the list draws a row per
+		 * record and both halves come out of the same index entry.
+		 */
+		glyphOf(feature) {
+			const category = this.subcategories.get(feature.subcategoryId)
 
-		/** Which Category a record belongs to, for its pictogram. */
-		categorySlugOf(feature) {
-			return this.subcategories.get(feature.subcategoryId)?.categorySlug ?? null
+			return glyphFor(category?.categorySlug ?? null, category?.categoryGlyph ?? null)
 		},
 
 		/**

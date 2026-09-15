@@ -26,6 +26,9 @@ const TAXONOMY = [
 		slug: 'salud',
 		label: 'Salud',
 		color: '#dc2626',
+		// A seeded Category nobody has re-pointed: the mark comes from the
+		// slug-keyed map in glyphs.js, not from the row (#46).
+		glyph: null,
 		subcategories: [{ id: 11, slug: 'cesfam', label: 'CESFAM' }],
 	},
 	{
@@ -45,12 +48,22 @@ const TAXONOMY = [
 		color: '#6b7280',
 		subcategories: [{ id: 31, slug: 'otro', label: 'Otro' }],
 	},
+	// A Category the clinic added, with the mark somebody picked for it (#46).
+	// Last, so the positional reads above it keep meaning what they say.
+	{
+		id: 4,
+		slug: 'comite_de_vivienda',
+		label: 'Comité de vivienda',
+		color: '#c27b72',
+		glyph: 'town',
+		subcategories: [{ id: 41, slug: 'otro', label: 'Otro' }],
+	},
 ]
 
 describe('territorial divisions', () => {
 	it('are kept out of the Category tree', () => {
 		expect(treeOf(TAXONOMY).map((category) => category.slug))
-			.toEqual(['salud', 'sin_clasificar'])
+			.toEqual(['salud', 'sin_clasificar', 'comite_de_vivienda'])
 	})
 
 	/**
@@ -198,5 +211,37 @@ describe('the default Subcategory', () => {
 	 */
 	it('is still Sin clasificar now that a division Category exists', () => {
 		expect(defaultSubcategoryId(TAXONOMY)).toBe(31)
+	})
+})
+
+/**
+ * Issue #46: the mark a clinic chose has to travel with the colour.
+ *
+ * The map, the Datos list and the Capas legend all draw a record's pictogram
+ * from this one index — the map and the list have nothing but a Subcategory id
+ * to go on — so a stored choice that is not carried here reaches no surface at
+ * all, however correctly it was written.
+ */
+describe('the pictogram a Category carries', () => {
+	const subcategories = indexSubcategories(TAXONOMY)
+
+	it('travels beside the colour, for the Category the record is filed under', () => {
+		expect(subcategories.get(41).categoryGlyph).toBe('town')
+	})
+
+	it('is null for a Category nobody has chosen for, which is every seeded one', () => {
+		expect(subcategories.get(11).categoryGlyph).toBe(null)
+	})
+
+	/**
+	 * A tree served before this column existed — a browser holding initial state
+	 * from the page it loaded before the upgrade — has no `glyph` key at all.
+	 * `undefined` would reach `glyphFor()` as a chosen mark rather than as none.
+	 */
+	it('is null and not undefined when the served tree predates the column', () => {
+		const old = [{ id: 9, slug: 'salud', label: 'Salud', color: '#dc2626',
+			subcategories: [{ id: 91, slug: 'otro', label: 'Otro' }] }]
+
+		expect(indexSubcategories(old).get(91).categoryGlyph).toBe(null)
 	})
 })

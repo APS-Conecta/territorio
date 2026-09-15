@@ -211,7 +211,12 @@ export function colourOf(feature, subcategories) {
 const fullLabel = (category, subcategory) => `${category.label} · ${subcategory.label}`
 
 /**
- * Subcategory id → { label, colour, categorySlug, slug }.
+ * Subcategory id → { label, colour, categoryGlyph, categorySlug, slug }.
+ *
+ * The Category's pictogram travels with its colour because the map and the
+ * Datos list have nothing but a Subcategory id to go on: a mark stored against
+ * a Category and not carried here reaches no surface at all, however correctly
+ * it was written (#46).
  *
  * @param {Array} taxonomy the Category tree from initial state
  * @return {Map} indexed by Subcategory id
@@ -223,6 +228,10 @@ export function indexSubcategories(taxonomy) {
 			index.set(subcategory.id, {
 				label: fullLabel(category, subcategory),
 				colour: category.color,
+				// `?? null`, because a browser holding initial state from before
+				// the column existed has no `glyph` key — and `undefined` would
+				// reach glyphFor() as a chosen mark rather than as none.
+				categoryGlyph: category.glyph ?? null,
 				categorySlug: category.slug,
 				slug: subcategory.slug,
 			})

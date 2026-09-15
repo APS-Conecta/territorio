@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
 	GROUND_LABEL_MIN_ZOOM,
+	PIN_DOT_SIZE,
+	PIN_GLYPH_SIZE,
 	labelOptions,
 	shapeStyle,
 	showsGroundLabels,
@@ -136,5 +140,60 @@ describe('the mark the Datos list draws', () => {
 
 	it('is still a filled dot for everything else', () => {
 		expect(swatchFor('cesfam', '#99564e')).toEqual({ mark: 'dot', background: '#99564e' })
+	})
+})
+
+/**
+ * The size the map pin draws a mark at, and the one thing that must read it.
+ *
+ * ADR-0017 says a pictogram is «previewed at the size the map pin actually
+ * draws», amended by #37 from 12px to 19px — and the amendment is the argument
+ * for this test existing: the number moved once already, and it moved because
+ * a choice judged at desk size failed on a basemap. A picker previewing at its
+ * own copy of 19 would keep working while the pin grew again, and the failure
+ * would be a clinic choosing a mark that dissolves at the size it is used.
+ *
+ * Asserted against the component SOURCES, the way `pins.test.js` reads the
+ * stored Exactitud out of `LocationQuality.php`: nothing in this suite loads a
+ * Vue component, so what a component RENDERS is the browser gate's job
+ * (`a_category_can_be_given_a_pictogram`). What can be settled here is that
+ * neither of them carries a second copy of the number.
+ */
+describe('the size a pin draws its mark at', () => {
+	// fileURLToPath, not .pathname: the repo lives under a directory with a
+	// space in its name, and .pathname hands back the %20 still escaped.
+	const ROOT = fileURLToPath(new URL('../../', import.meta.url))
+	const source = (file) => readFileSync(`${ROOT}src/components/${file}`, 'utf8')
+
+	it('is the measured pair #37 arrived at', () => {
+		// 19px of mark inside a 26px dot. Pinned so that changing either is a
+		// deliberate edit to a test, not a tweak nobody reads — the pair is one
+		// decision (docs/design/map-legibility.md §1.2).
+		expect(PIN_DOT_SIZE).toBe(26)
+		expect(PIN_GLYPH_SIZE).toBe(19)
+	})
+
+	it('is the only place the map keeps those numbers', () => {
+		const map = source('TerritorioMap.vue')
+		const pin = map.slice(map.indexOf('.territorio-pin__dot {'))
+
+		expect(map).toMatch(/PIN_DOT_SIZE/)
+		expect(map).toMatch(/PIN_GLYPH_SIZE/)
+		// The dot's own geometry, in the rule that draws it. A literal here is
+		// the drift: the divIcon already declared `iconSize` in JS, so 26 was
+		// written twice in this one component before #46.
+		expect(pin.slice(0, pin.indexOf('}'))).not.toMatch(/\b26px\b/)
+		expect(pin).not.toMatch(/\b19px\b/)
+	})
+
+	it('is what the pictogram picker previews at', () => {
+		// The criterion in as many words: «previewed at the size the map pin
+		// actually draws, not only at list size» (#46). The Capas legend's own
+		// swatch stays at 11px and the Datos list at 12px — they have a label
+		// beside them; the preview is a decision about the pin.
+		const capas = source('CapasPanel.vue')
+
+		expect(capas).toMatch(/PIN_GLYPH_SIZE/)
+		expect(capas).toMatch(/:size="PIN_GLYPH_SIZE"/)
 	})
 })

@@ -99,9 +99,22 @@
 							:indeterminate="stateOf(category) === 'some'"
 							@update:model-value="$emit('toggle-category', category)" />
 					</span>
-					<span class="territorio-capas__swatch" :style="{ background: category.color }">
-						<NcIconSvgWrapper :svg="glyphFor(category.slug)" :size="11" />
-					</span>
+					<!--
+						The swatch IS the control (#46). A clinic reaches for the mark it
+						wants to change, and the row already carries three other buttons —
+						a fourth would make the Category's own name the smallest thing in
+						it. `@click.stop.prevent` for the reason the checkbox beside it
+						stops a click: this sits inside a <summary>, where any click folds
+						the branch.
+					-->
+					<button class="territorio-capas__swatch"
+						type="button"
+						:style="{ background: category.color }"
+						:title="`Elegir pictograma de «${category.label}»`"
+						:aria-label="`Elegir pictograma de «${category.label}»`"
+						@click.stop.prevent="startPicking(category)">
+						<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
+					</button>
 					<!--
 						Renaming happens in place, in the row itself: there is no separate
 						"layer" object (CONTEXT.md), this panel IS the Category tree, and
@@ -264,19 +277,86 @@
 				anywhere else.
 			-->
 			<div class="territorio-capas__new">
-				<input v-if="editing === NEW_CATEGORY"
-					ref="editor"
-					v-model="draftLabel"
-					class="territorio-capas__input"
-					:maxlength="LABEL_LENGTH"
-					placeholder="Nueva categoría"
-					aria-label="Nombre de la nueva categoría"
-					@keydown.stop.enter.prevent="commitCategory"
-					@keydown.esc="cancel"
-					@blur="cancel">
+				<template v-if="editing === NEW_CATEGORY">
+					<!--
+						Chosen while the Category is being named, not after it exists:
+						«a pictogram can be chosen when adding a Category» (#46). It shows
+						what has been picked so far, on the neutral — the colour is
+						ASSIGNED by the server and is not known until the row exists
+						(ADR-0017), and the mark is the half a person is answering.
+
+						`@mousedown.prevent` keeps the focus in the field beside it, whose
+						`@blur` cancels the whole add: without it, reaching for the
+						pictogram would throw away the name already typed.
+					-->
+					<button class="territorio-capas__swatch"
+						type="button"
+						:style="{ background: NEUTRAL }"
+						title="Elegir pictograma de la nueva categoría"
+						aria-label="Elegir pictograma de la nueva categoría"
+						@mousedown.prevent
+						@click.stop.prevent="startPicking(null)">
+						<NcIconSvgWrapper :svg="glyphFor(null, draftGlyph)" :size="11" />
+					</button>
+					<input ref="editor"
+						v-model="draftLabel"
+						class="territorio-capas__input"
+						:maxlength="LABEL_LENGTH"
+						placeholder="Nueva categoría"
+						aria-label="Nombre de la nueva categoría"
+						@keydown.stop.enter.prevent="commitCategory"
+						@keydown.esc="cancel"
+						@blur="cancel">
+				</template>
 				<NcButton v-else variant="tertiary" @click="startAddCategory">
 					Agregar categoría
 				</NcButton>
+			</div>
+
+			<!--
+				One picker for every Category, in one place, rather than a grid
+				folded into each of the eleven rows: only one can be open at a time
+				— the same rule `editing` already holds for the name fields — and
+				eleven copies of 215 marks is eleven copies of the same markup.
+				It sits beside «Agregar categoría» because that is the one flow
+				where the mark and the name are answered together.
+
+				Previewed at the size the MAP PIN draws, which is what ADR-0017 asks
+				and why `PIN_GLYPH_SIZE` is imported rather than typed: a mark judged
+				at the 11px of the legend can dissolve at the size it is used, and
+				that is exactly what happened to the seeded eleven before #37.
+			-->
+			<div v-if="picking !== null" ref="picker" class="territorio-capas__picker">
+				<p class="territorio-capas__picker-title">
+					Pictograma de «{{ picking.label }}»
+				</p>
+				<div class="territorio-capas__glyphs" :style="{ '--territorio-pin': `${PIN_DOT_SIZE}px` }">
+					<!--
+						The way back from a mark picked in a hurry that turns out to mean
+						something else — which is worse than no mark, because it asserts.
+						The Category goes back to the neutral fallback (ADR-0017).
+					-->
+					<button type="button"
+						class="territorio-capas__glyph"
+						:style="{ background: NEUTRAL }"
+						title="Sin pictograma"
+						aria-label="Sin pictograma"
+						@mousedown.prevent
+						@click="choose('')">
+						<NcIconSvgWrapper :svg="glyphFor(null, null)" :size="PIN_GLYPH_SIZE" />
+					</button>
+					<button v-for="mark in CATALOGUE"
+						:key="mark"
+						type="button"
+						class="territorio-capas__glyph"
+						:style="{ background: picking.color }"
+						:title="mark"
+						:aria-label="mark"
+						@mousedown.prevent
+						@click="choose(mark)">
+						<NcIconSvgWrapper :svg="glyphFor(null, mark)" :size="PIN_GLYPH_SIZE" />
+					</button>
+				</div>
 			</div>
 		</div>
 	</details>
@@ -287,9 +367,10 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import { glyphFor } from '../glyphs.js'
+import { CATALOGUE, glyphFor } from '../glyphs.js'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
-import { divisionsOf, treeOf } from '../taxonomy.js'
+import { PIN_DOT_SIZE, PIN_GLYPH_SIZE } from '../marks.js'
+import { DEFAULT_SECTOR_COLOUR, divisionsOf, treeOf } from '../taxonomy.js'
 
 /**
  * mdi-pencil-outline, inlined like the empty-state icon in AnalisisView.
@@ -328,6 +409,7 @@ export default {
 		'add-category',
 		'add-subcategory',
 		'remove',
+		'choose-glyph',
 		'clear-taxonomy-message',
 	],
 
@@ -352,6 +434,26 @@ export default {
 			 */
 			confirming: null,
 			draftLabel: '',
+			/**
+			 * Which Category the pictogram grid is open for, as
+			 * `{ slug, label, color }`, or null. One shape for both cases — the
+			 * Category that exists and the one being named — with a null `slug`
+			 * meaning "the one that does not exist yet", so `choose()` has one
+			 * thing to branch on instead of two pieces of state that can disagree
+			 * about which is open.
+			 */
+			picking: null,
+			/**
+			 * The mark picked for a Category that has not been created yet. It
+			 * cannot be written anywhere until the row exists, so it waits here and
+			 * goes up with the label on the POST.
+			 */
+			draftGlyph: null,
+			CATALOGUE,
+			PIN_DOT_SIZE,
+			PIN_GLYPH_SIZE,
+			/** What a not-yet-created Category is previewed on: see the button. */
+			NEUTRAL: DEFAULT_SECTOR_COLOUR,
 			/*
 			 * The key for the new-Category field. A constant and not `keyOf()`,
 			 * because that one is built from a row's id and this field has no row
@@ -415,6 +517,56 @@ export default {
 		},
 
 		/**
+		 * Open the pictogram grid for one Category, or close it again (#46).
+		 *
+		 * `null` means the Category being named below, which is the one case where
+		 * the grid and a name field are open at once: they are two halves of the
+		 * same answer. For every other Category the name field closes, because the
+		 * grid stands where it would be read from.
+		 *
+		 * Toggles on the same Category, so the swatch that opened it closes it —
+		 * there is no other way back from a grid somebody opened by mistake, and a
+		 * «Cerrar» button would be a second control saying what the first already
+		 * says.
+		 */
+		startPicking(category) {
+			this.$emit('clear-taxonomy-message')
+			if (category !== null) {
+				this.editing = null
+			}
+			const slug = category?.slug ?? null
+			if (this.picking?.slug === slug) {
+				this.picking = null
+
+				return
+			}
+			this.picking = category === null
+				? { slug: null, label: 'la nueva categoría', color: DEFAULT_SECTOR_COLOUR }
+				: { slug: category.slug, label: category.label, color: category.color }
+			// The grid is rendered under the tree and the panel scrolls, so a
+			// Category near the top would open a picker nobody can see.
+			this.$nextTick(() => this.$refs.picker?.scrollIntoView({ block: 'nearest' }))
+		},
+
+		/**
+		 * Take the mark, or clear it with `''`.
+		 *
+		 * A Category that exists is written straight away — there is nothing to
+		 * confirm, and the swatch it was picked from shows the answer. One that
+		 * does not exist yet keeps it in the draft until the name is committed.
+		 */
+		choose(glyph) {
+			const target = this.picking
+			this.picking = null
+			if (target.slug === null) {
+				this.draftGlyph = glyph === '' ? null : glyph
+
+				return
+			}
+			this.$emit('choose-glyph', { categorySlug: target.slug, glyph })
+		},
+
+		/**
 		 * Start naming a new Subcategory under this Category (#44).
 		 *
 		 * The branch is opened first, and from the event rather than through a
@@ -443,6 +595,7 @@ export default {
 		open(key, label) {
 			this.$emit('clear-taxonomy-message')
 			this.confirming = null
+			this.picking = null
 			this.editing = key
 			this.draftLabel = label
 			// v-if means the input does not exist until Vue has patched the DOM.
@@ -474,14 +627,23 @@ export default {
 		 * `<details>` branch, so there is no folded row it could be hidden in.
 		 */
 		startAddCategory() {
+			this.draftGlyph = null
 			this.open(this.NEW_CATEGORY, '')
 		},
 
-		/** The name and nothing else: the app derives the slug and assigns the colour. */
+		/**
+		 * The name and the mark: the app derives the slug and assigns the colour
+		 * (ADR-0017), and the pictogram is the one of the three a person answers.
+		 * `''` when nothing was picked — the Category draws the neutral fallback,
+		 * which is what #45 already shipped.
+		 */
 		commitCategory() {
 			const label = this.draftLabel
+			const glyph = this.draftGlyph ?? ''
 			this.editing = null
-			this.$emit('add-category', { label })
+			this.picking = null
+			this.draftGlyph = null
+			this.$emit('add-category', { label, glyph })
 		},
 
 		/** Only the name goes up; the server derives the slug (#40). */
@@ -522,6 +684,10 @@ export default {
 		cancel() {
 			this.$emit('clear-taxonomy-message')
 			this.editing = null
+			// The grid is only ever open beside a field when the two are halves of
+			// one answer, so abandoning the field abandons the mark with it.
+			this.picking = null
+			this.draftGlyph = null
 		},
 	},
 }
@@ -591,11 +757,55 @@ export default {
 	height: 16px;
 	border-radius: 50%;
 	flex: 0 0 auto;
+	/* It is a <button> since #46 — the control that opens the pictogram grid —
+	   and a button brings a border, a padding and a background of its own that
+	   would hide the Category colour this element exists to show. */
+	border: none;
+	padding: 0;
+	cursor: pointer;
 	/* White, fed to NcIconSvgWrapper as `currentColor` rather than forced onto
 	   the svg: its own `.icon-vue[data-v-…] svg { fill: currentColor }` ties with
 	   a scoped `:deep(svg)` rule at specificity (0,2,1), the library's stylesheet
 	   loaded last, and these glyphs rendered in the theme's dark text colour for
 	   as long as the rule claimed otherwise (#37). See FeatureList.vue. */
+	color: #fff;
+}
+
+.territorio-capas__picker {
+	padding: 4px 12px 12px;
+}
+
+.territorio-capas__picker-title {
+	font-weight: bold;
+	padding-block: 6px;
+}
+
+.territorio-capas__glyphs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	/* The panel itself is capped at 45% of the column and scrolls; a grid of 215
+	   marks inside it would push everything else out of reach, so it scrolls on
+	   its own. */
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.territorio-capas__glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* The pin, exactly: the dot from `PIN_DOT_SIZE` through the custom property
+	   the grid writes, and the mark from `PIN_GLYPH_SIZE` on the wrapper itself.
+	   ADR-0017 — a mark judged at legend size can fail at the size it is used. */
+	width: var(--territorio-pin);
+	height: var(--territorio-pin);
+	border-radius: 50%;
+	border: none;
+	padding: 0;
+	flex: 0 0 auto;
+	cursor: pointer;
+	/* White, fed as `currentColor`, for the reason the swatch above gives. */
 	color: #fff;
 }
 
@@ -621,6 +831,8 @@ export default {
    every other field in this panel does. */
 .territorio-capas__new {
 	display: flex;
+	align-items: center;
+	gap: 6px;
 	margin-top: 4px;
 }
 

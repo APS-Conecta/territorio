@@ -21,6 +21,18 @@ use PHPUnit\Framework\TestCase;
  * having it. Tidying up after a test run is not the app.
  */
 abstract class IntegrationTestCase extends TestCase {
+	/** A closed ring in La Florida, as geoman hands one over. */
+	protected const BOUNDARY = [
+		'type' => 'Polygon',
+		'coordinates' => [[
+			[-70.60, -33.53],
+			[-70.57, -33.53],
+			[-70.57, -33.51],
+			[-70.60, -33.51],
+			[-70.60, -33.53],
+		]],
+	];
+
 	/** @var int[] rows this test made, to be removed afterwards */
 	protected array $created = [];
 
@@ -69,6 +81,28 @@ abstract class IntegrationTestCase extends TestCase {
 			'name' => $name,
 			'subcategoryId' => $this->anySubcategoryId(),
 			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
+		], $extra))->getId();
+		$this->created[] = $id;
+
+		return $id;
+	}
+
+	/**
+	 * A Sector: the boundary Polygon of `self::BOUNDARY`, registered for cleanup.
+	 *
+	 * Four tests had a copy of this helper apiece, differing only in which field
+	 * they hard-coded and which they took as an argument (issue #60). `$extra`
+	 * is the same door `place()` opens: pass `geometry`, `colour` or `limit` to
+	 * override a default. It goes through `FeatureService` like every other
+	 * write, so the Places inside the new boundary are assigned as they would be
+	 * in the app (ADR-0008).
+	 */
+	protected function sector(string $name, array $extra = []): int {
+		$id = (int)Server::get(FeatureService::class)->create(array_merge([
+			'name' => $name,
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
+			'colour' => '#16a34a',
+			'geometry' => self::BOUNDARY,
 		], $extra))->getId();
 		$this->created[] = $id;
 

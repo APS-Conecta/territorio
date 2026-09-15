@@ -20,22 +20,22 @@ use OCP\Server;
  */
 final class AssignmentTest extends IntegrationTestCase {
 	/** A square around (-70.60..-70.56, -33.54..-33.50). */
-	private const WEST = [[
+	private const WEST = ['type' => 'Polygon', 'coordinates' => [[
 		[-70.60, -33.54], [-70.56, -33.54], [-70.56, -33.50], [-70.60, -33.50], [-70.60, -33.54],
-	]];
+	]]];
 
 	/** The same square, shifted east so it no longer covers -70.59. */
-	private const EAST = [[
+	private const EAST = ['type' => 'Polygon', 'coordinates' => [[
 		[-70.55, -33.54], [-70.51, -33.54], [-70.51, -33.50], [-70.55, -33.50], [-70.55, -33.54],
-	]];
+	]]];
 
 	/** Far from the seed's own boundaries, so only this test's shape can answer. */
-	private const REMOTE = [[
+	private const REMOTE = ['type' => 'Polygon', 'coordinates' => [[
 		[-71.02, -29.52], [-70.98, -29.52], [-70.98, -29.48], [-71.02, -29.48], [-71.02, -29.52],
-	]];
+	]]];
 
 	public function testCreatingAPlaceInsideASectorAssignsIt(): void {
-		$sector = $this->sector('Sector Poniente', self::WEST);
+		$sector = $this->sector('Sector Poniente', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
 
 		self::assertSame($sector, $this->stored($place)->getSectorId());
@@ -51,8 +51,11 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * Sector contained nothing at all.
 	 */
 	public function testAnUnclosedRingStillClaimsWhatIsInsideIt(): void {
-		$triangle = [[[-70.60, -33.54], [-70.56, -33.54], [-70.56, -33.50]]];
-		$sector = $this->sector('Sector triángulo', $triangle);
+		$triangle = [
+			'type' => 'Polygon',
+			'coordinates' => [[[-70.60, -33.54], [-70.56, -33.54], [-70.56, -33.50]]],
+		];
+		$sector = $this->sector('Sector triángulo', ['geometry' => $triangle]);
 
 		$place = $this->place('Escuela dentro del triángulo', ['geometry' => self::at(-70.58, -33.53)]);
 
@@ -60,7 +63,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	}
 
 	public function testAPlaceOutsideEveryBoundaryIsAssignedToNone(): void {
-		$this->sector('Sector Poniente', self::WEST);
+		$this->sector('Sector Poniente', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela lejos', ['geometry' => self::at(-70.40, -33.52)]);
 
 		self::assertNull($this->stored($place)->getSectorId());
@@ -72,7 +75,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * resolved, and they are valid records.
 	 */
 	public function testAPlaceWithNoCoordinateResolvesToNothingAndDoesNotThrow(): void {
-		$this->sector('Sector Poniente', self::WEST);
+		$this->sector('Sector Poniente', ['geometry' => self::WEST]);
 		$place = $this->place('Junta sin coordenada', ['geometry' => null]);
 
 		$stored = $this->stored($place);
@@ -82,7 +85,7 @@ final class AssignmentTest extends IntegrationTestCase {
 
 	/** Moving a Place re-resolves it, because the answer depends on where it is. */
 	public function testMovingAPlaceReassignsIt(): void {
-		$sector = $this->sector('Sector Poniente', self::WEST);
+		$sector = $this->sector('Sector Poniente', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela que se muda', ['geometry' => self::at(-70.58, -33.52)]);
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 
@@ -100,7 +103,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * Place inside it… and it must be visible in history like any other change."
 	 */
 	public function testRedrawingASectorReassignsWhatItGainedAndLost(): void {
-		$sector = $this->sector('Sector que se mueve', self::WEST);
+		$sector = $this->sector('Sector que se mueve', ['geometry' => self::WEST]);
 		$inside = $this->place('Queda fuera', ['geometry' => self::at(-70.58, -33.52)]);
 		$outside = $this->place('Queda dentro', ['geometry' => self::at(-70.53, -33.52)]);
 
@@ -111,7 +114,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que se mueve',
 			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::EAST],
+			'geometry' => self::EAST,
 		]);
 
 		// Not null — NOT THIS ONE. This runs against an instance other things have
@@ -140,14 +143,14 @@ final class AssignmentTest extends IntegrationTestCase {
 
 	/** Renaming a boundary moves nobody, and must not spend a Revision saying so. */
 	public function testRenamingASectorReassignsNobody(): void {
-		$sector = $this->sector('Sector con nombre feo', self::WEST);
+		$sector = $this->sector('Sector con nombre feo', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela quieta', ['geometry' => self::at(-70.58, -33.52)]);
 		$before = $this->stored($place)->getRevision();
 
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector con nombre mejor',
 			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::WEST],
+			'geometry' => self::WEST,
 		]);
 
 		self::assertSame($before, $this->stored($place)->getRevision());
@@ -166,8 +169,11 @@ final class AssignmentTest extends IntegrationTestCase {
 		$place = $this->place('Escuela que ya estaba', ['geometry' => self::at(-71.90, -30.10)]);
 		$before = $this->stored($place)->getSectorId();
 
-		$sector = $this->sector('Sector que llega después', [[
-			[-71.92, -30.12], [-71.88, -30.12], [-71.88, -30.08], [-71.92, -30.08], [-71.92, -30.12],
+		$sector = $this->sector('Sector que llega después', ['geometry' => [
+			'type' => 'Polygon',
+			'coordinates' => [[
+				[-71.92, -30.12], [-71.88, -30.12], [-71.88, -30.08], [-71.92, -30.08], [-71.92, -30.12],
+			]],
 		]]);
 
 		self::assertNotSame($before, $this->stored($place)->getSectorId());
@@ -180,7 +186,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * asignar" about a record that is assigned (ADR-0005).
 	 */
 	public function testRetiringASectorLetsGoOfWhatItHeld(): void {
-		$sector = $this->sector('Sector que se retira', self::WEST);
+		$sector = $this->sector('Sector que se retira', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 
@@ -200,8 +206,11 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * not however many the instance already had inside WEST.
 	 */
 	public function testTheServiceCountsBySector(): void {
-		$sector = $this->sector('Sector contado', [[
-			[-72.02, -30.52], [-71.98, -30.52], [-71.98, -30.48], [-72.02, -30.48], [-72.02, -30.52],
+		$sector = $this->sector('Sector contado', ['geometry' => [
+			'type' => 'Polygon',
+			'coordinates' => [[
+				[-72.02, -30.52], [-71.98, -30.52], [-71.98, -30.48], [-72.02, -30.48], [-72.02, -30.52],
+			]],
 		]]);
 		$this->place('Una', ['geometry' => self::at(-72.00, -30.50)]);
 		$this->place('Otra', ['geometry' => self::at(-71.99, -30.51)]);
@@ -226,7 +235,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		// A Polygon in a Subcategory that is not a division: a shape, not a boundary.
 		$zone = $this->place('Zona que asciende', [
 			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+			'geometry' => self::REMOTE,
 		]);
 		$place = $this->place('Escuela dentro de la zona', ['geometry' => self::at(-71.00, -29.50)]);
 		self::assertNotSame($zone, $this->stored($place)->getSectorId(), 'not a boundary yet');
@@ -235,14 +244,14 @@ final class AssignmentTest extends IntegrationTestCase {
 		Server::get(FeatureService::class)->update($zone, [
 			'name' => 'Zona que asciende',
 			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+			'geometry' => self::REMOTE,
 		]);
 
 		self::assertSame($zone, $this->stored($place)->getSectorId(), 'it is a Sector now');
 	}
 
 	public function testReclassifyingOutOfABoundarySubcategoryLetsGoOfWhatItHeld(): void {
-		$sector = $this->sector('Sector que desciende', self::REMOTE);
+		$sector = $this->sector('Sector que desciende', ['geometry' => self::REMOTE]);
 		$place = $this->place('Escuela dentro del sector', ['geometry' => self::at(-71.00, -29.50)]);
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 
@@ -250,7 +259,7 @@ final class AssignmentTest extends IntegrationTestCase {
 			'name' => 'Sector que desciende',
 			// A Subcategory that is not a division.
 			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+			'geometry' => self::REMOTE,
 		]);
 
 		// Not null: see the redraw test above — another boundary may legitimately
@@ -266,7 +275,7 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * that no Sector holds any more and never gained the Unidad Vecinal it is in.
 	 */
 	public function testReclassifyingBetweenDivisionsMovesWhatItHoldsAcross(): void {
-		$sector = $this->sector('Sector que cambia de división', self::REMOTE);
+		$sector = $this->sector('Sector que cambia de división', ['geometry' => self::REMOTE]);
 		$place = $this->place('Escuela dentro', ['geometry' => self::at(-71.00, -29.50)]);
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 		self::assertNotSame($sector, $this->stored($place)->getUnidadVecinalId());
@@ -274,7 +283,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que cambia de división',
 			'subcategoryId' => $this->subcategoryIdBySlug('unidad_vecinal'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+			'geometry' => self::REMOTE,
 		]);
 
 		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer its Sector');
@@ -288,18 +297,5 @@ final class AssignmentTest extends IntegrationTestCase {
 
 	private function stored(int $id): \OCA\Territorio\Db\Feature {
 		return Server::get(FeatureMapper::class)->find($id);
-	}
-
-	/** @param array<int, array<int, array{float, float}>> $rings */
-	private function sector(string $name, array $rings): int {
-		$id = (int)Server::get(FeatureService::class)->create([
-			'name' => $name,
-			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'colour' => '#16a34a',
-			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
 	}
 }

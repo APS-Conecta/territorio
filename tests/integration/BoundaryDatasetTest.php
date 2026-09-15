@@ -128,7 +128,7 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	 * slice.
 	 */
 	public function testARefreshCannotReachAHandDrawnSector(): void {
-		$sector = $this->sector();
+		$sector = $this->sector('Sector de prueba');
 		$before = Server::get(FeatureMapper::class)->find($sector);
 
 		$this->importBoundaries();
@@ -268,23 +268,6 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 
 	private function datasetId(): int {
 		return (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
-	}
-
-	/** A hand-drawn Sector, as issue #10 saves one. */
-	private function sector(): int {
-		$subcategoryId = $this->subcategoryIdBySlug('sector');
-
-		$id = (int)Server::get(FeatureService::class)->create([
-			'name' => 'Sector de prueba',
-			'subcategoryId' => $subcategoryId,
-			'colour' => '#16a34a',
-			'geometry' => ['type' => 'Polygon', 'coordinates' => [[
-				[-70.60, -33.53], [-70.57, -33.53], [-70.57, -33.51], [-70.60, -33.53],
-			]]],
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
 	}
 
 	/**

@@ -3,6 +3,62 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.63.0] — unreleased
+
+A layer the clinic does not use can go — and cannot go while it holds records.
+
+### Added
+
+- **A Category or a Subcategory can be removed, and is refused while it holds records** (#47). The
+  bin beside the pencil takes away a layer a clinic does not use. It asks first, in the row itself
+  — the same two-step inline shape retiring a record already uses, and never a browser `confirm()`,
+  which blocks the page. The row leaves the Capas panel and the Subcategoría picker at once, with
+  no reload, because the server answers with the whole tree and the browser swaps its copy for it,
+  exactly as a rename and an add already do. A removed Category takes its Subcategories with it:
+  they carry its id, nothing in the schema would catch the orphan, and left behind they would
+  vanish from every screen while staying in the table forever.
+
+  **While anything is filed under it, the removal is refused** (ADR-0016). Two other options were
+  weighed there and rejected: moving the records to «Sin clasificar» is a silent bulk
+  reclassification triggered by a click somebody meant as tidying, and retiring them alongside
+  hides «retire 340 places» behind a button that says «remove this layer». Refusing is the only one
+  where the size of the consequence is visible before it happens — and it keeps ADR-0005's promise
+  that nothing in the Registry is destroyed by never putting it to the test. So there is no
+  `?force`: a flag re-offering the retire-alongside option would be that decision put back as a
+  query parameter.
+
+  **The count is a new query, and it is not the one Análisis shows.** Análisis counts what a person
+  is looking at — filters applied, retired records and boundary Datasets excluded. The refusal has
+  to count what would be *orphaned*, retired records included, because a retired record can be
+  restored and the schema carries no foreign key from a Feature to its Subcategory that would catch
+  the orphan afterwards. Two numbers answering two questions; conflating them is exactly how the
+  orphan gets through, so `FeatureMapper::countBySubcategory()` is unfiltered and
+  `findAll()` — which is the display read — is deliberately not reused. The integration suite
+  measures both numbers against the same Subcategory in one test, and the refusal *says* the
+  retired ones are counted: a person who filters Capas to that Category and counts nine against a
+  refusal that said twelve has been handed a contradiction.
+
+  **The refusal is a next step rather than a dead end.** It names how many records there are and
+  where to see them — «deje visible solo «X» en Capas y revise «Ver retirados» en Datos» — because
+  «84 registros» on its own leaves somebody stuck with a number.
+
+  **«División territorial» can never be removed, and neither can Sector or Unidad Vecinal.** A
+  Sector and a Unidad Vecinal cannot be saved without one of those Subcategories and the seed
+  restores them on every upgrade, so a removal would be undone by the next `occ upgrade` with no
+  refusal anywhere. The panel says so where the control would otherwise be — in the toggles block
+  beside the tree, which is where CONTEXT.md puts a territorial division — rather than at save
+  time, so nobody spends time trying and then wonders whether they did it wrong. The server refuses
+  it too, and that guard runs *before* the count: an empty division would pass the in-use one.
+
+  The browser's own filter is pruned on the way. It records what is HIDDEN, which is what makes a
+  row added to the taxonomy appear on its own — and leaves a row removed from it as an id naming
+  nothing, still counted by the «N ocultas» badge with «Ver todo» offering to reveal it.
+
+  Like a rename and an add, a removal does not advance the Revision cursor (ADR-0002's counter
+  hangs on a Feature id and a Category is not a Feature), so a colleague's open browser still lists
+  the removed row until it reloads. Nothing can be filed under it there either, so what they see is
+  a stale panel rather than a record going astray.
+
 ## [0.62.0] — unreleased
 
 A Category is the clinic's to add, and the app is the one that picks its colour.

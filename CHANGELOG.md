@@ -198,6 +198,14 @@ the pictogram that identifies it.
   what ADR-0017 says must read as «unclassified», rather than to a blank that reads as a rendering
   failure.
 
+  **The grid holds the focus, all of it and not only its cells.** The field a new Category is named
+  in cancels the whole add on blur (#45), so the picker carries `@mousedown.prevent` — on its root,
+  where it also covers the title, the padding and the gaps between the 215 wrapped circles. Guarded
+  per cell it looked right and was not: a wrapped row of 26px circles is mostly gap, and landing on
+  one threw away both the typed name and the mark already picked, silently. The browser gate now
+  clicks the grid's own title and watches the name survive, because a check that only clicks a cell
+  dead centre cannot tell the two versions apart.
+
   The name's SHAPE is checked on the write path and its existence is not. The inventory belongs to
   `@mapbox/maki` and lives in the frontend; a second copy of 215 names in PHP is exactly the drift
   `nextColour()` refuses to introduce for colours.

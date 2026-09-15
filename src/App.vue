@@ -1143,6 +1143,13 @@ export default {
 					// just been chosen — and blamed the lines (issue #49).
 					this.draft.pickedGeometry = pickedGeometry
 				}
+				// This save wrote a Revision, and the sidebar is still showing the
+				// ones from before it. That was merely incomplete while history was
+				// a list nobody reads twice; it is wrong now that a Sector states
+				// how its line came to be from those same entries (issue #50) — a
+				// polygon generated a second ago would go on calling itself
+				// hand-drawn until somebody closed the record and opened it again.
+				this.loadHistory(data.id)
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
 				this.error = exception.response?.data?.message

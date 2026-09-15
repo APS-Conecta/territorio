@@ -1043,6 +1043,12 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     elif kept.is_disabled():
         failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
 
+    # #50's middle case, and the only place anything generates one: this save
+    # wrote the geometry and the Limit in the same revision. Read here, with the
+    # draft still open, because the editable-polygon check below drags a vertex
+    # and saves again — which makes it the third case instead.
+    a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
+
     page.keyboard.press("Escape")
     page.wait_for_timeout(600)
 
@@ -1386,6 +1392,92 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
+
+
+def _last_wrote(history, field):
+    """The newest revision that wrote a value into one field, as the sidebar reads it.
+
+    A revision that CLEARED the field does not count: an emptied Limit is stored
+    as null (`FeatureService::limit`), and a Sector whose Limit was removed was
+    not built against one.
+    """
+    for entry in history:
+        change = (entry.get("changes") or {}).get(field)
+        if change is not None and change.get("to") is not None:
+            return entry
+
+    return None
+
+
+def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=True):
+    """#50: a Sector says whether its line was generated or drawn, and when it moved.
+
+    Asserted twice over, because either half alone can be green while the feature
+    is broken. The sentence on screen is what the criterion is about — and the
+    stored revisions are what it must be derived FROM, so this fetches the record's
+    own history through the API and checks the shape the sentence claims. A
+    sidebar reading «junto con el límite» over a history where nothing ever wrote a
+    Limit is exactly the failure this gate exists to catch, and it looks identical
+    on screen to the real thing.
+
+    `state` is one of drawn / together / adjusted — the three the ticket's last
+    criterion asks to be distinguishable.
+    """
+    wording = {
+        "drawn": "dibujada a mano",
+        "together": "junto con el límite",
+        "adjusted": "después del límite",
+    }[state]
+
+    if open_it and not open_the_runs_sector(page, failures):
+        return
+
+    said = page.locator('[data-testid="boundary-provenance"]')
+    # The sentence needs the history, which is fetched after the sidebar opens.
+    if not settles(page, lambda: said.count() > 0, timeout=10_000):
+        failures.append(f"the Sector says nothing about how its boundary came to be (#50, {state})")
+    else:
+        text = said.inner_text().strip()
+        if wording not in text:
+            failures.append(f"the Sector says {text!r}, which does not read as {state!r} (#50)")
+        # The framing constraint, on the real path: the Limit records intent and
+        # the geometry records the agreed line, so a sentence calling them wrong
+        # to differ is a defect however accurate its dates are.
+        for wrong in ("desfase", "no coinciden", "desajust", "corregir"):
+            if wrong in text.lower():
+                failures.append(f"the provenance sentence reads as a defect to fix: {text!r} (#50)")
+
+    name = f"Sector Navegador {RUN}"
+    feature = registry_feature(page, name)
+    if feature is None:
+        failures.append(f"{name!r} is not in the Registry, so its provenance rests on nothing")
+    else:
+        history = page.evaluate(
+            """async (id) => {
+                const response = await fetch(
+                    `/index.php/apps/territorio/features/${id}/history`,
+                    { headers: { requesttoken: window.OC.requestToken } },
+                )
+                return await response.json()
+            }""",
+            feature["id"],
+        )
+        line = _last_wrote(history, "geometry")
+        limit = _last_wrote(history, "limit")
+
+        if line is None:
+            failures.append("the stored history records no geometry, so the sentence is derived from nothing (#50)")
+        elif state == "drawn" and limit is not None:
+            failures.append("the sidebar said hand-drawn while the stored history holds a Limit (#50)")
+        elif state == "together" and (limit is None or limit["revision"] != line["revision"]):
+            failures.append("the sidebar said generated while no stored revision wrote both (#50)")
+        elif state == "adjusted" and (limit is None or line["revision"] <= limit["revision"]):
+            failures.append("the sidebar dated an adjustment the stored history does not show (#50)")
+
+    if open_it:
+        page.keyboard.press("Escape")
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
 
 
 def the_map_survives_churn(page, errors, failures):
@@ -1961,6 +2053,10 @@ def main():
 
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
 
+        # Before anything picks a Limit for it: this run's Sector was drawn
+        # freehand and has one revision, which is #50's first case.
+        a_sector_says_how_its_boundary_came_to_be(page, "drawn", failures)
+
         # Before the polygonize check below, which grows this run's Sector to four
         # kilometres across: a vertex of the small drawn one is on screen and
         # draggable, which is what this needs.
@@ -1981,6 +2077,9 @@ def main():
         the_editor_says_so_when_the_lines_do_not_close(page, failures)
         a_sector_can_be_built_from_picked_lines(page, failures)
         the_limit_is_kept_and_survives_adjustment(page, failures)
+        # Which has just dragged a vertex and saved, so the line is now newer
+        # than the Limit — #50's third case, the one a person would ask about.
+        a_sector_says_how_its_boundary_came_to_be(page, "adjusted", failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         a_tramo_typed_before_the_first_save_is_kept(page, failures)

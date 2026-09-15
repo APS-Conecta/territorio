@@ -618,6 +618,13 @@ export default {
 			this.$emit('clear-taxonomy-message')
 			this.confirming = null
 			this.picking = null
+			// With `picking`, and here rather than in `startAddCategory()`: a
+			// draft mark is meaningful only while `editing === NEW_CATEGORY`, and
+			// an invariant maintained at three call sites is the "two pieces of
+			// state that can stop agreeing" the `editing` docblock above argues
+			// against. `cancel()` and `commitCategory()` keep their own — they
+			// close a field rather than open one.
+			this.draftGlyph = null
 			this.editing = key
 			this.draftLabel = label
 			// v-if means the input does not exist until Vue has patched the DOM.
@@ -649,7 +656,6 @@ export default {
 		 * `<details>` branch, so there is no folded row it could be hidden in.
 		 */
 		startAddCategory() {
-			this.draftGlyph = null
 			this.open(this.NEW_CATEGORY, '')
 		},
 
@@ -781,9 +787,18 @@ export default {
 	flex: 0 0 auto;
 	/* It is a <button> since #46 — the control that opens the pictogram grid —
 	   and a button brings a border, a padding and a background of its own that
-	   would hide the Category colour this element exists to show. */
+	   would hide the Category colour this element exists to show. `min-height`
+	   is the one that is not obvious: the server stylesheet gives every button
+	   the 34px clickable area, which beats `height: 16px` and drew this circle
+	   as a 16×34 ellipse. Only a browser could say so — jsdom has no server
+	   stylesheet — and the gate did, the first time it ran against the built
+	   bundle.
+	   ponytail: the tap target comes down to the 16px dot with it. The row is
+	   34px tall, so the way back is a 34px button wrapping a 16px dot, the day
+	   this panel is used on a touch screen. */
 	border: none;
 	padding: 0;
+	min-height: 0;
 	cursor: pointer;
 	/* White, fed to NcIconSvgWrapper as `currentColor` rather than forced onto
 	   the svg: its own `.icon-vue[data-v-…] svg { fill: currentColor }` ties with
@@ -825,6 +840,9 @@ export default {
 	border-radius: 50%;
 	border: none;
 	padding: 0;
+	/* Same server-stylesheet 34px as the swatch above: without this the preview
+	   is not the pin's size, which is the whole of ADR-0017's ask. */
+	min-height: 0;
 	flex: 0 0 auto;
 	cursor: pointer;
 	/* White, fed as `currentColor`, for the reason the swatch above gives. */

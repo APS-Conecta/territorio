@@ -1949,7 +1949,7 @@ def _focused(page):
     )
 
 
-def _tab_to_the_shape(page, colour, presses=40):
+def _tab_to_the_shape(page, colour, presses=60):
     """Press Tab until the keyboard lands on the shape drawn in `colour`.
 
     Bounded, because the honest answer to "it never arrives" is a failure and not

@@ -77,7 +77,7 @@
 			:force-display-actions="false"
 			@click="$emit('select', feature.id)">
 			<template #icon>
-				<span class="territorio-list__swatch" v-bind="swatchFor(feature)">
+				<span class="territorio-list__swatch" v-bind="markFor(feature)">
 					<NcIconSvgWrapper :svg="glyphFor(categorySlugOf(feature))" :size="12" />
 				</span>
 			</template>
@@ -146,7 +146,7 @@ export default {
 		 * that looks like is this component's, which is why the class name is
 		 * built here and not there.
 		 */
-		swatchFor(feature) {
+		markFor(feature) {
 			const { mark, background } = swatchFor(
 				this.subcategories.get(feature.subcategoryId)?.slug ?? null,
 				colourOf(feature, this.subcategories),

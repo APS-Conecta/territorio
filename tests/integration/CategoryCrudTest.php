@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\Subcategory;
+use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidTaxonomyException;
 use OCA\Territorio\Migration\EnsureSeedData;
+use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -58,11 +61,13 @@ final class CategoryCrudTest extends IntegrationTestCase {
 		$db = Server::get(IDBConnection::class);
 
 		if ($this->added !== []) {
-			// Raw SQL, for the reason `IntegrationTestCase` gives about hard-deleting
-			// a Feature: the app has no way to remove a Subcategory yet (#47), and
-			// adding one so the tests could tidy up would be building the next slice
-			// to make this one green. Left behind, each run would add a row the next
-			// run's duplicate check would collide with.
+			// Raw SQL, not `removeSubcategory()`, now that #47 exists: the app's
+			// removal is REFUSED while anything is filed under the row, which is
+			// the thing several of these tests deliberately arrange — a tidy-up
+			// that went through it would fail on exactly the runs that matter.
+			// Cleaning up after a test run is not the app (IntegrationTestCase).
+			// Left behind, each run would add a row the next run's duplicate check
+			// would collide with.
 			$qb = $db->getQueryBuilder();
 			$qb->delete('territorio_subcategory')
 				->where($qb->expr()->in('id', $qb->createNamedParameter(
@@ -139,11 +144,11 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	/**
 	 * The spares no Category holds right now, in the order the app hands them out.
 	 *
-	 * Derived rather than assumed to be all eight: the browser gate adds a
-	 * Category per run and cannot remove one until #47, so on the dev instance
-	 * these tests read, some spares are already spent. A test that hard-coded
-	 * eight would go red on a correct install — and the contract it is really
-	 * asserting is "the next unused one" (ADR-0017), which this states exactly.
+	 * Derived rather than assumed to be all eight: these tests read the dev
+	 * instance, where a clinic — or the browser gate — may already hold some of
+	 * the spares. A test that hard-coded eight would go red on a correct install,
+	 * and the contract it is really asserting is "the next unused one"
+	 * (ADR-0017), which this states exactly.
 	 *
 	 * @return list<string>
 	 */
@@ -686,6 +691,204 @@ final class CategoryCrudTest extends IntegrationTestCase {
 		}
 
 		self::assertCount($before, $this->taxonomy()->tree());
+	}
+
+	/**
+	 * Issue #47: a Category the clinic does not use leaves — and takes its
+	 * Subcategories with it.
+	 *
+	 * Read back through the served tree rather than the tables, like every other
+	 * test here: that tree is what the browser swaps in, so a row still in it is
+	 * a row still on every screen.
+	 */
+	public function testAnUnusedCategoryIsRemovedWithEverythingUnderIt(): void {
+		[, $category] = $this->addCategory('Comité que se va');
+		$otro = (int)$category['subcategories'][0]['id'];
+
+		$tree = $this->taxonomy()->removeCategory($category['slug']);
+
+		self::assertNull($this->served($category['slug']),
+			'the Category is still served after being removed');
+		self::assertSame($this->taxonomy()->tree(), $tree,
+			'the removal answered with something other than the tree the browser swaps in');
+		self::assertNull(
+			$this->subcategoryById($otro),
+			'the «Otro» under the removed Category was left behind: it points at a Category id '
+			. 'nothing answers to, and nothing in the schema would catch it (issue #40)',
+		);
+	}
+
+	/** A Subcategory goes on its own, and its Category and siblings stay. */
+	public function testAnUnusedSubcategoryIsRemovedAndItsSiblingsStay(): void {
+		[, $subcategory] = $this->add(self::CATEGORY, 'Punto de acopio temporal');
+		$siblings = array_column($this->served(self::CATEGORY)['subcategories'], 'slug');
+
+		$this->taxonomy()->removeSubcategory(self::CATEGORY, $subcategory['slug']);
+
+		self::assertNull($this->servedSub(self::CATEGORY, $subcategory['slug']));
+		self::assertNotNull($this->served(self::CATEGORY),
+			'removing a Subcategory took its Category with it');
+		self::assertSame(
+			array_values(array_diff($siblings, [$subcategory['slug']])),
+			array_column($this->served(self::CATEGORY)['subcategories'], 'slug'),
+			'removing one Subcategory disturbed its siblings',
+		);
+	}
+
+	/**
+	 * ADR-0016: refused while records are filed under it, and NOTHING is
+	 * reassigned, retired or destroyed on the person's behalf.
+	 *
+	 * The last clause is the one asserted hardest. A Category is refused on the
+	 * total over every Subcategory under it, so this files the record under a
+	 * Subcategory that is NOT the one a naive implementation would look at first.
+	 */
+	public function testACategoryHoldingARecordIsRefusedAndNothingIsTouched(): void {
+		[, $category] = $this->addCategory('Comité con registros');
+		[, $subcategory] = $this->add($category['slug'], 'Sede vecinal');
+		$place = $this->place('Sede con registro', ['subcategoryId' => (int)$subcategory['id']]);
+
+		try {
+			$this->taxonomy()->removeCategory($category['slug']);
+			self::fail('a Category holding a record was removed, orphaning it');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('1 registro clasificado', $e->getMessage());
+			self::assertStringContainsString('Capas', $e->getMessage(),
+				'the refusal says how many but not where to see them, so it is a dead end');
+		}
+
+		self::assertNotNull($this->served($category['slug']),
+			'the refusal removed the Category anyway');
+		$feature = Server::get(FeatureMapper::class)->find($place);
+		self::assertSame((int)$subcategory['id'], (int)$feature->getSubcategoryId(),
+			'the record was reclassified on the person\'s behalf (ADR-0016 says nothing is)');
+		self::assertFalse((bool)$feature->getRetired(),
+			'the record was retired alongside — the option ADR-0016 considered and rejected');
+	}
+
+	/**
+	 * The criterion this slice is really about, and the obvious way to get it
+	 * wrong: **the count includes retired records, and the display count does
+	 * not.**
+	 *
+	 * Both numbers are measured here, in the same test, against the same
+	 * Subcategory — because the failure is not "the count is wrong", it is "the
+	 * count that was reused answers a different question". A retired record can
+	 * be restored and no foreign key would catch the orphan afterwards, so a
+	 * removal that ignored it destroys a record that was only ever put aside.
+	 */
+	public function testTheRefusalCountsARetiredRecordThatTheDisplayCountDoesNot(): void {
+		[, $subcategory] = $this->add(self::CATEGORY, 'Bodega retirada');
+		$id = (int)$subcategory['id'];
+		$place = $this->place('Bodega que se retiró', ['subcategoryId' => $id]);
+		Server::get(FeatureService::class)->retire($place);
+
+		$features = Server::get(FeatureMapper::class);
+		self::assertSame(
+			0,
+			count(array_filter(
+				$features->findAll(),
+				static fn ($feature): bool => (int)$feature->getSubcategoryId() === $id,
+			)),
+			'the record is not retired, so this test is not measuring what it claims to',
+		);
+
+		try {
+			$this->taxonomy()->removeSubcategory(self::CATEGORY, $subcategory['slug']);
+			self::fail(
+				'a Subcategory holding a RETIRED record was removed: the count was taken from '
+				. 'the display read, and restoring that record would now point it at nothing',
+			);
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('1 registro clasificado', $e->getMessage());
+			self::assertStringContainsString('retirados', $e->getMessage(),
+				'the number includes retired records and the sentence does not say so, so it '
+				. 'contradicts what the panel shows and reads as a bug');
+		}
+
+		self::assertSame(1, $features->countBySubcategory([$id]),
+			'countBySubcategory() answers the display question rather than the orphan one');
+		self::assertNotNull($this->servedSub(self::CATEGORY, $subcategory['slug']));
+	}
+
+	/**
+	 * «División territorial» can never be removed, and neither can its two
+	 * Subcategories: a Sector and a Unidad Vecinal cannot be saved without one,
+	 * and the seed restores them on every upgrade (ADR-0016).
+	 *
+	 * Refused even though a fresh install may have nothing filed under them — so
+	 * this is proved against the real seed rather than assumed from the in-use
+	 * guard, which is exactly the case that guard would let through.
+	 *
+	 * @dataProvider structuralPaths
+	 */
+	public function testTheTerritorialDivisionAndItsSubcategoriesCannotBeRemoved(?string $subSlug): void {
+		try {
+			$subSlug === null
+				? $this->taxonomy()->removeCategory(EnsureSeedData::DIVISIONS_SLUG)
+				: $this->taxonomy()->removeSubcategory(EnsureSeedData::DIVISIONS_SLUG, $subSlug);
+			self::fail('the territorial division was removed; the seed will put it back and a '
+				. 'Sector saved in between has nothing to be filed under');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('división territorial', $e->getMessage());
+		}
+
+		self::assertNotNull($this->served(EnsureSeedData::DIVISIONS_SLUG));
+		self::assertCount(2, $this->served(EnsureSeedData::DIVISIONS_SLUG)['subcategories']);
+	}
+
+	/** @return array<string, array{0: ?string}> */
+	public static function structuralPaths(): array {
+		return [
+			'the Category itself' => [null],
+			'Sector' => ['sector'],
+			'Unidad Vecinal' => ['unidad_vecinal'],
+		];
+	}
+
+	/**
+	 * ADR-0017: assigning a colour IS taking the next unused spare, derived from
+	 * the Categories that exist — so removing one hands its spare back rather
+	 * than spending it forever.
+	 *
+	 * Worth its own test because "the spare comes back" is not something the
+	 * removal code does; it is something the removal code must not PREVENT, and
+	 * the difference only shows against the real table.
+	 */
+	public function testARemovedCategoryHandsItsSpareColourBack(): void {
+		$owed = $this->freeSpares();
+		self::assertNotEmpty($owed, 'no spare is free on this instance, so this test asserts nothing');
+
+		[, $first] = $this->addCategory('Comité efímero');
+		self::assertSame($owed[0], $first['color']);
+
+		$this->taxonomy()->removeCategory($first['slug']);
+		[, $second] = $this->addCategory('Comité siguiente');
+
+		self::assertSame($owed[0], $second['color'],
+			'the spare the removed Category held was not offered again: ADR-0017 derives the '
+			. 'colour from the Categories that exist, so a counter has crept in somewhere');
+	}
+
+	public function testRemovingACategoryNobodyHasIsNotFound(): void {
+		$this->expectException(DoesNotExistException::class);
+
+		$this->taxonomy()->removeCategory('no-existe');
+	}
+
+	public function testRemovingASubcategoryNobodyHasIsNotFound(): void {
+		$this->expectException(DoesNotExistException::class);
+
+		$this->taxonomy()->removeSubcategory(self::CATEGORY, 'no-existe');
+	}
+
+	/** One Subcategory row by id, straight off the mapper — or null if it is gone. */
+	private function subcategoryById(int $id): ?Subcategory {
+		try {
+			return Server::get(SubcategoryMapper::class)->find($id);
+		} catch (DoesNotExistException) {
+			return null;
+		}
 	}
 
 	/** The whole tree comes back, because that is what the browser swaps in. */

@@ -55,7 +55,8 @@ boundary came to be.
 
 - **A Sector says whether its line was generated or drawn, and when it last moved** (#50). One
   sentence in the sidebar, at Sector level: «Línea dibujada a mano.», «Línea fijada junto con el
-  límite el 05-08-2026.» or «Línea guardada el 12-08-2026, después del límite.» The per-row «a
+  límite el 05-08-2026.» or, once that line has been saved again, «Línea fijada junto con el límite
+  el 05-08-2026 y guardada de nuevo el 12-08-2026.» The per-row «a
   mano» chip was the only signal there was, and it answers a different question — it marks a typed
   stretch *within* a Limit, so a fully hand-drawn Sector whose Limit is all picked streets shows
   none of them.
@@ -77,9 +78,22 @@ boundary came to be.
   **It names an act only where history establishes one, which is why a later line is «guardada»
   and not «ajustada».** Writing `geometry` alone in a later revision is what a dragged vertex
   does — and equally what «Generar» does on a reopened Sector whose Limit did not change, the flow
-  #49 exists to support. So that sentence states the order and the date and stops there: an
+  #49 exists to support. So that clause states the order and the date and stops there: an
   earlier wording announced a hand adjustment over polygons the app had itself just generated,
-  which of the three shapes is the one somebody is likeliest to hit. The two it *can* establish it
+  which of the three shapes is the one somebody is likeliest to hit.
+
+  **Saying nothing about the act is not the same as saying nothing about the origin**, and the
+  first wording of this conflated them: the generated-then-dragged Sector — the state a person is
+  likeliest to open — read «Línea guardada el 12-08-2026, después del límite.», which says when the
+  line was last written and never that it came from the Limit at all. The origin is in the history
+  and does not expire when the line is saved again: the revision that created the Sector wrote
+  `geometry` and `limit` together, which is the same fact «fijada junto con el límite» reports.
+  Reading only the *newest* write of each field threw it away. Where a revision at or before the
+  line's own write recorded both, the sentence now names it before the date; where none ever did —
+  a hand-drawn Sector whose Limit was typed later and then regenerated (#49) — it still reads
+  «Línea guardada el 12-08-2026, después del límite.», because there is no origin to report.
+
+  The two acts it *can* establish it
   still says outright — generating needs picked lines, so a Limit, and saves the two together, so
   a line last written while no Limit had ever been recorded was not generated, however late the
   Limit was typed. Without that last reading a hand-drawn Sector stopped saying so the moment

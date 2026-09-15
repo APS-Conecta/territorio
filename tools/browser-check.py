@@ -1431,7 +1431,10 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
     wording = {
         "drawn": "dibujada a mano",
         "together": "junto con el límite",
-        "adjusted": "después del límite",
+        # A generated Sector saved again still names the Limit it came from, and
+        # adds the second date — so what tells this state from "together" on screen
+        # is the re-save clause, not the origin one (#50, criterion 1).
+        "adjusted": "guardada de nuevo",
     }[state]
 
     if open_it and not open_the_runs_sector(page, failures):
@@ -1484,6 +1487,13 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
             failures.append("the sidebar said generated while no stored revision wrote both (#50)")
         elif state == "adjusted" and (limit is None or line["revision"] <= limit["revision"]):
             failures.append("the sidebar dated an adjustment the stored history does not show (#50)")
+        elif state == "adjusted" and not any(
+            _wrote(entry, "geometry") and _wrote(entry, "limit") and entry["revision"] <= line["revision"]
+            for entry in history
+        ):
+            # The origin half of the same sentence: it credits the Limit for this
+            # boundary, so some revision must have written the two together.
+            failures.append("the sidebar credited the Limit for a line no revision wrote with one (#50)")
 
     if open_it:
         page.keyboard.press("Escape")

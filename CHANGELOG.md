@@ -94,6 +94,34 @@ A Limit says when the cadastre lost the line it cites.
   prevent — and the part already says «ya no está en el catastro» on screen, so the person is told
   either way. The stale shape is per-session: `pickedGeometry` starts empty on every reopen.
 
+### Fixed
+
+- **«Retirar del mapa» is reachable without scrolling** (#35). Reported from real use as "there is
+  no button that allows deletion". There was one: `FeatureDetail` rendered *below* the Limit editor,
+  so a Sector's suggestions, picked groups and limit sentence pushed every control of the form down
+  and retiring, being the last of them, sat 721px past the bottom of a 620px screen. Nothing
+  underneath was broken — the browser gate retired a Sector on every run — which is exactly why
+  three suites and a gate stayed green while a person could not find the control.
+
+  **Two halves, because reordering alone does not hold.** Mocked up at the measured viewport, the
+  record-above-the-editor order clears the fold with a 4-tramo límite, is marginal at 16 and is back
+  under it at 30, because the control is still the last thing in a component that grows. So Guardar
+  and «Retirar del mapa» now sit in one action group at the top of the form, stuck there with
+  `position: sticky` — the same shape `CapasPanel.vue` already uses. Sticky is what makes the
+  position independent of the Limit's length, and it is the only version where a browser assertion
+  about a viewport position cannot be quietly invalidated by a longer límite.
+
+  **The group stays inside the `<form>`**, so Guardar is still a real `type="submit"` and the
+  @nextcloud/vue 9 `native-type` trap is not reopened. Pairing a destructive button beside the
+  primary one is safe *because* the two-step confirmation stays — which is also why it must not be
+  dropped now that they sit together. Retiring is still not deleting: the confirmation still says
+  the record keeps its history and can be restored (ADR-0005), and the header, an action menu and a
+  fixed footer were all considered as homes and rejected.
+
+  The browser gate now **measures** rather than clicks: `bounding_box()` against the viewport
+  height, at 1366×768 and at the 1362×620 the issue was measured in, for a Sector carrying 30
+  tramos, a Place, a Route and a Unidad Vecinal.
+
 ## [0.47.0] — unreleased
 
 A Sector says how its boundary came to be.

@@ -333,7 +333,15 @@ final class ExportTest extends IntegrationTestCase {
 
 		// What a person does in the Fuente box. No Provenance, so this is a local
 		// override and `official` is left exactly as the import wrote it.
-		$edited = Server::get(FeatureService::class)->update($id, ['sourceRef' => 'Municipalidad']);
+		// `apply()` reads name and subcategoryId out of the input on every write,
+		// not out of the entity, so an edit has to restate them — as every other
+		// caller of update() in this suite does. Geometry may stay out: an update
+		// that says nothing about the shape leaves it alone.
+		$edited = Server::get(FeatureService::class)->update($id, [
+			'name' => 'Calle Vicuña Mackenna',
+			'subcategoryId' => $imported['ef-1']->getSubcategoryId(),
+			'sourceRef' => 'Municipalidad',
+		]);
 		self::assertSame('Municipalidad', $edited->getSourceRef(), 'the edit must have landed');
 
 		$geojson = $this->exports->export([$id], 'geojson', false)['body'];

@@ -30,6 +30,26 @@ An update that omitted the geometry destroyed it.
 
 ### Fixed
 
+- **Reclassifying a record into or out of a boundary Subcategory reassigned nothing** (#84).
+  `reassignAround()` was given the geometry the record had before the write, and decided whether to
+  sweep by comparing it. A Subcategory change moves no shape, so the comparison said "nothing
+  happened" in both directions: a Zone promoted to `sector` claimed nobody, and a Sector demoted out
+  of one kept every Place pointing at an id no read would resolve — «sin asignar» in the sidebar for
+  records that were, in the database, assigned.
+
+  It is ADR-0008's invariant — what falls inside a boundary is derived at the one door every write
+  comes through — broken by an ordinary edit that never touches a shape, and reachable from the UI
+  since long before #63; that change only added a second route to it.
+
+  The seam now also receives what the record **was**: `$wasDivision`, read at the same moment and
+  for the same reason as the old geometry, because after the write there is no way to ask. Becoming
+  a boundary or ceasing to be one sweeps; everything else behaves exactly as before, and a rename
+  still reassigns nobody.
+
+  Also the third direction: Sector to Unidad Vecinal with the shape unchanged — both are boundaries,
+  so a bool could not see it; the sweep now compares the division slug and runs from `write()`, the
+  one door.
+
 - **An update that omitted the geometry destroyed it** (#63). `applyGeometry` read the key with
   `?? null`, so an **absent** geometry and an explicitly **empty** one were the same thing — and
   both wiped four columns at once: the shape, the bounding box, the Kind and the Location quality.

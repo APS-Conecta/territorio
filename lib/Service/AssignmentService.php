@@ -82,9 +82,9 @@ class AssignmentService {
 		}
 	}
 
-	/** Whether this record is one of the boundaries others are assigned by. */
-	public function isBoundary(Feature $feature): bool {
-		return isset($this->divisions()[$feature->getSubcategoryId()]);
+	/** The division this record is a boundary of — 'sector', 'unidad_vecinal' — or null. */
+	public function divisionOf(Feature $feature): ?string {
+		return $this->divisions()[$feature->getSubcategoryId()] ?? null;
 	}
 
 	/**
@@ -195,13 +195,13 @@ class AssignmentService {
 	 *
 	 * Read once, because two paths ask and both asked the whole Category tree — two
 	 * full table scans for an answer that cannot change while the service lives.
-	 * `isBoundary()` asks on every create, update, retire and restore;
+	 * `divisionOf()` asks on every create, update, retire and restore;
 	 * `boundaries()` asks again each time `forget()` empties it, which is every
 	 * boundary write whose shape moved. The CHANGELOG has the measurement.
 	 *
 	 * As a map rather than a list of ids: `boundaries()` needs to know WHICH
-	 * division a Subcategory is, `isBoundary()` only that it is one, and one
-	 * `isset` answers the second without walking the first.
+	 * division a Subcategory is, and `divisionOf()` asks the same question — one
+	 * taxonomy read per request, keyed by subcategory id, answers both.
 	 *
 	 * Memoising `TaxonomyService::tree()` itself was tried and is wrong: the ramp
 	 * repair writes a Category and reads the tree back in the same request, so a

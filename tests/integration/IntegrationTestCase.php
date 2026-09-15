@@ -52,6 +52,17 @@ abstract class IntegrationTestCase extends TestCase {
 		return (int)$subcategories[0]->getId();
 	}
 
+	/** The seeded Subcategory with this slug; fails rather than guesses. */
+	protected function subcategoryIdBySlug(string $slug): int {
+		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
+			if ($subcategory->getSlug() === $slug) {
+				return (int)$subcategory->getId();
+			}
+		}
+
+		self::fail("the seed should have created the \"$slug\" subcategory");
+	}
+
 	/** A Place at a real La Florida coordinate, registered for cleanup. */
 	protected function place(string $name, array $extra = []): int {
 		$id = (int)Server::get(FeatureService::class)->create(array_merge([

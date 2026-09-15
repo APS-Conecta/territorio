@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\RegistryService;
 use OCP\Server;
@@ -28,6 +27,11 @@ final class AssignmentTest extends IntegrationTestCase {
 	/** The same square, shifted east so it no longer covers -70.59. */
 	private const EAST = [[
 		[-70.55, -33.54], [-70.51, -33.54], [-70.51, -33.50], [-70.55, -33.50], [-70.55, -33.54],
+	]];
+
+	/** Far from the seed's own boundaries, so only this test's shape can answer. */
+	private const REMOTE = [[
+		[-71.02, -29.52], [-70.98, -29.52], [-70.98, -29.48], [-71.02, -29.48], [-71.02, -29.52],
 	]];
 
 	public function testCreatingAPlaceInsideASectorAssignsIt(): void {
@@ -106,7 +110,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		// Drag the whole boundary east.
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector que se mueve',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::EAST],
 		]);
 
@@ -142,7 +146,7 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->update($sector, [
 			'name' => 'Sector con nombre mejor',
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'geometry' => ['type' => 'Polygon', 'coordinates' => self::WEST],
 		]);
 
@@ -205,6 +209,78 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame(2, Server::get(RegistryService::class)->counts()['bySector'][$sector] ?? 0);
 	}
 
+	/**
+	 * Reclassification is a redraw of the map without a redraw of the shape.
+	 *
+	 * Both directions go through `update()` with the geometry untouched, which is
+	 * exactly the shape the sweep used to skip: it asked whether the geometry had
+	 * moved, and a Subcategory change moves nothing. ADR-0008 says what falls
+	 * inside a boundary is derived at the one door every write comes through, so
+	 * becoming a boundary and ceasing to be one both have to derive.
+	 *
+	 * Far from La Florida on purpose: this runs against an instance the browser
+	 * gate and other suites have written to, and a coordinate near the seed's own
+	 * Sectores would let somebody else's boundary answer for ours.
+	 */
+	public function testReclassifyingIntoABoundarySubcategoryAssignsWhatItCovers(): void {
+		// A Polygon in a Subcategory that is not a division: a shape, not a boundary.
+		$zone = $this->place('Zona que asciende', [
+			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+		$place = $this->place('Escuela dentro de la zona', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertNotSame($zone, $this->stored($place)->getSectorId(), 'not a boundary yet');
+
+		// The shape is re-sent unchanged, which is what the browser does on an edit.
+		Server::get(FeatureService::class)->update($zone, [
+			'name' => 'Zona que asciende',
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		self::assertSame($zone, $this->stored($place)->getSectorId(), 'it is a Sector now');
+	}
+
+	public function testReclassifyingOutOfABoundarySubcategoryLetsGoOfWhatItHeld(): void {
+		$sector = $this->sector('Sector que desciende', self::REMOTE);
+		$place = $this->place('Escuela dentro del sector', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+
+		Server::get(FeatureService::class)->update($sector, [
+			'name' => 'Sector que desciende',
+			// A Subcategory that is not a division.
+			'subcategoryId' => $this->subcategoryIdBySlug('colegio'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		// Not null: see the redraw test above — another boundary may legitimately
+		// hold this point. What is promised is that it let go of THIS one, which
+		// is no longer a boundary at all.
+		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer a boundary');
+	}
+
+	/**
+	 * The third direction #84 missed: Sector to Unidad Vecinal with the shape
+	 * unchanged. Both are boundaries, so "was it a boundary?" answers the same
+	 * before and after and the sweep stayed skipped — the Place kept a sectorId
+	 * that no Sector holds any more and never gained the Unidad Vecinal it is in.
+	 */
+	public function testReclassifyingBetweenDivisionsMovesWhatItHoldsAcross(): void {
+		$sector = $this->sector('Sector que cambia de división', self::REMOTE);
+		$place = $this->place('Escuela dentro', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+		self::assertNotSame($sector, $this->stored($place)->getUnidadVecinalId());
+
+		Server::get(FeatureService::class)->update($sector, [
+			'name' => 'Sector que cambia de división',
+			'subcategoryId' => $this->subcategoryIdBySlug('unidad_vecinal'),
+			'geometry' => ['type' => 'Polygon', 'coordinates' => self::REMOTE],
+		]);
+
+		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'no longer its Sector');
+		self::assertSame($sector, $this->stored($place)->getUnidadVecinalId(), 'now its Unidad Vecinal');
+	}
+
 	/** @return array<string, mixed> */
 	private static function at(float $lon, float $lat): array {
 		return ['type' => 'Point', 'coordinates' => [$lon, $lat]];
@@ -218,22 +294,12 @@ final class AssignmentTest extends IntegrationTestCase {
 	private function sector(string $name, array $rings): int {
 		$id = (int)Server::get(FeatureService::class)->create([
 			'name' => $name,
-			'subcategoryId' => $this->sectorSubcategoryId(),
+			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
 			'colour' => '#16a34a',
 			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
 		])->getId();
 		$this->created[] = $id;
 
 		return $id;
-	}
-
-	private function sectorSubcategoryId(): int {
-		foreach (Server::get(SubcategoryMapper::class)->findAll() as $subcategory) {
-			if ($subcategory->getSlug() === 'sector') {
-				return (int)$subcategory->getId();
-			}
-		}
-
-		self::fail('the seed should have created the "sector" subcategory');
 	}
 }

@@ -169,7 +169,7 @@ class FeatureService {
 		// everything it held has to be let go of — otherwise a record keeps an id
 		// pointing at a boundary the app will not show, and the sidebar says "sin
 		// asignar" about a record that is assigned (ADR-0005, ADR-0008).
-		$this->reassignAround($gone, $gone->getGeometry());
+		$this->reassignAround($gone, $gone->getGeometry(), $this->assignments->divisionOf($gone));
 
 		return $gone;
 	}
@@ -184,7 +184,7 @@ class FeatureService {
 		$mergedInto = $feature->getMergedInto();
 		$restored = $this->features->restore($feature);
 		// And a restored one takes back what falls inside it.
-		$this->reassignAround($restored, null);
+		$this->reassignAround($restored, null, $this->assignments->divisionOf($restored));
 
 		// Undoing a merge puts its pair back in the queue. Both records are on the
 		// map again and still look like one place, so the question is open again —
@@ -232,7 +232,7 @@ class FeatureService {
 		// Vecinales into an install that already holds its catastro leaves every
 		// one of those records assigned to nothing — which is the case ADR-0008
 		// exists for, arriving through the door it is most likely to arrive by.
-		$this->reassignAround($created, null);
+		$this->reassignAround($created, null, null);
 
 		return $created;
 	}
@@ -252,14 +252,7 @@ class FeatureService {
 			throw new InvalidFeatureException('El registro está retirado. Restáurelo antes de editarlo.');
 		}
 
-		// Read before the entity is mutated: reassigning after a boundary moves
-		// needs the shape it used to have as well as the one it has now, or a
-		// record the Sector no longer covers is never let go of.
-		$before = $feature->getGeometry();
-		$written = $this->write($feature, $input, $provenance, markOverride: $provenance === null);
-		$this->reassignAround($written, $before);
-
-		return $written;
+		return $this->write($feature, $input, $provenance, markOverride: $provenance === null);
 	}
 
 	/**
@@ -273,14 +266,28 @@ class FeatureService {
 	 * Only when the shape actually moved. Renaming a Sector or recolouring it
 	 * changes nobody's assignment, and spending a Revision per Place to discover
 	 * that would make every edit to a boundary expensive.
+	 *
+	 * Or when the record became a boundary, or stopped being one, or changed from
+	 * one division to another. Reclassifying a Zone into `sector` redraws the map
+	 * without touching a shape, and so does reclassifying a Sector back out — the
+	 * geometry is identical either way, so `$before` cannot see it and the sweep
+	 * used to be skipped in both directions (#84). `$wasDivision` is the division
+	 * the record was a boundary of before this write, or null.
 	 */
-	private function reassignAround(Feature $boundary, ?string $before): void {
-		if (!$this->assignments->isBoundary($boundary)) {
+	private function reassignAround(Feature $boundary, ?string $before, ?string $wasDivision): void {
+		$isDivision = $this->assignments->divisionOf($boundary);
+
+		// Nothing to sweep for a record that is not a boundary and never was. One
+		// that has just stopped being a boundary still owes every record it held.
+		if ($isDivision === null && $wasDivision === null) {
 			return;
 		}
 		// Retiring and restoring pass the same geometry on purpose: what changed is
-		// whether it counts at all, not its shape.
-		if ($boundary->getGeometry() === $before && !$boundary->getRetired() && $before !== null) {
+		// whether it counts at all, not its shape. The division is compared as a
+		// slug, not as "is it a boundary": Sector to Unidad Vecinal is a redraw of
+		// the map with the shape untouched, and a bool says both sides are true.
+		if ($isDivision === $wasDivision
+			&& $boundary->getGeometry() === $before && !$boundary->getRetired() && $before !== null) {
 			return;
 		}
 
@@ -320,14 +327,7 @@ class FeatureService {
 	 * @throws DoesNotExistException
 	 */
 	public function revertTo(int $id, array $input): Feature {
-		$feature = $this->features->find($id);
-		// Read before the entity is mutated, exactly as update() does: letting go
-		// of what a boundary no longer covers needs the shape it used to have.
-		$before = $feature->getGeometry();
-		$written = $this->write($feature, $input, null, markOverride: false);
-		$this->reassignAround($written, $before);
-
-		return $written;
+		return $this->write($this->features->find($id), $input, null, markOverride: false);
 	}
 
 	/** @param array<string, mixed> $input */
@@ -337,6 +337,12 @@ class FeatureService {
 		?Provenance $provenance,
 		bool $markOverride,
 	): Feature {
+		// Read before the entity is mutated: letting go of what a boundary no
+		// longer covers needs the shape and the division it had, and after the
+		// write there is no way to ask for either. Here, at the one door both
+		// update() and revertTo() come through, so neither can forget it (#84).
+		$before = $feature->getGeometry();
+		$wasDivision = $this->assignments->divisionOf($feature);
 		$wasImported = $feature->getDatasetId() !== null;
 		$this->apply($feature, $input, whole: false);
 		$this->applyProvenance($feature, $provenance);
@@ -349,7 +355,10 @@ class FeatureService {
 			$feature->setOverridden(true);
 		}
 
-		return $this->features->update($feature);
+		$written = $this->features->update($feature);
+		$this->reassignAround($written, $before, $wasDivision);
+
+		return $written;
 	}
 
 	/** Import-only: says which Dataset this record belongs to and what the

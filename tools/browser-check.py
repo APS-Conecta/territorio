@@ -1985,8 +1985,19 @@ def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
     if not draw_a_sector(page, name, failures, colour=colour):
         return
 
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(500)
+    # A reload, and not Escape: nothing in this app closes a record on Escape
+    # (there is no such handler — NcAppSidebar's own button is the way out), and
+    # while a record is open its shape on the map is the geoman DRAFT layer.
+    # `drawShapes` deliberately skips the feature being edited so nobody drags
+    # the vertices of one polygon while looking at another on top of it — and
+    # the draft layer is not the Registry's shape and gets no tab stop. Tabbing
+    # to it would prove nothing about the map a person actually reads.
+    #
+    # A reload also starts this check from stored data rather than from the draw
+    # that just happened, which is the state every other visit to the map is in.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1500)
 
     # From the Registry, so the name this check compares against is the one the
     # server stored and not the one this file typed: an aria-label built from a
@@ -2030,6 +2041,19 @@ def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
         )
     if reached["role"] != "button":
         failures.append(f"the focused Sector carries role={reached['role']!r}, not 'button'")
+
+    # Reaching it is not the same as having a tab stop, measured here: Chromium
+    # gives sequential focus to a bare SVG `<path>` in a Leaflet pane with no
+    # `tabindex` at all — the 119 unpicked Limit lines walk past in the same Tab
+    # order, and dropping the `tabindex` line from src/a11y.js still lets the
+    # loop above arrive. Firefox and Safari do not, so the attribute is what the
+    # criterion actually rests on and it is asserted rather than inferred from
+    # this browser's generosity.
+    if reached["tabindex"] != "0":
+        failures.append(
+            f"the Sector carries tabindex={reached['tabindex']!r}: Chromium focused it anyway, but "
+            f"a browser that follows the spec would not (#25)",
+        )
 
     # In both themes, because the ring is drawn in the theme's own primary
     # element colour and a fixed one would disappear into one of them.
@@ -2078,26 +2102,35 @@ def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
             f"Enter opened {opened!r} while the keyboard was on {stored['name']!r} — the wrong record",
         )
 
-    # Selecting rebuilds the whole layer group, so the element tabbed to a moment
-    # ago is gone and this is a NEW one. That it still carries the tab stop is
-    # the criterion about surviving a rebuild: the poll swaps the group the same
-    # way, and an attribute set once at start-up would be lost on the first merge.
-    redrawn = shape.first.evaluate(
-        "(path) => ({ tabindex: path.getAttribute('tabindex'), dashed: path.getAttribute('stroke-dasharray') })",
-    )
-    if redrawn["tabindex"] != "0":
-        failures.append(
-            "a redrawn Sector has no tab stop: the keyboard reaches the shapes only until the "
-            "first rebuild (#25)",
-        )
-    if not redrawn["dashed"]:
+    # With the record open the shape on the map is the draft layer, drawn in the
+    # selected style. All this says is that the map and the sidebar agree about
+    # which record is open — the tab stop is asserted after it closes, below,
+    # because the draft layer is not the shape that carries one.
+    if not shape.first.get_attribute("stroke-dasharray"):
         failures.append(
             f"Enter opened {opened!r} but the shape on the map is not drawn as selected — the "
             f"sidebar and the map disagree about what is open",
         )
 
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(300)
+    # Closing rebuilds the whole layer group: the element tabbed to a moment ago
+    # is gone and this is a NEW path. That it carries the tab stop is the
+    # criterion about surviving a rebuild — a poll-driven redraw swaps the group
+    # the same way, and an attribute set once at start-up would be lost on the
+    # first merge that arrived.
+    page.locator(".app-sidebar__close").first.click()
+    if not settles(page, lambda: page.locator(".territorio-detail").count() == 0, timeout=6_000):
+        failures.append("the sidebar did not close, so the redraw after closing was not checked")
+    else:
+        redrawn = shape.first.evaluate(
+            "(path) => ({ tabindex: path.getAttribute('tabindex'), label: path.getAttribute('aria-label') })",
+        )
+        if redrawn["tabindex"] != "0" or redrawn["label"] != stored["name"]:
+            failures.append(
+                "a redrawn Sector has no tab stop: the keyboard reaches the shapes only until the "
+                f"first rebuild (#25) — tabindex={redrawn['tabindex']!r}, "
+                f"aria-label={redrawn['label']!r}",
+            )
+
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
     retire_the_runs_record(page, name)

@@ -3,6 +3,56 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.55.0] — unreleased
+
+The map pin is big enough to read, and the glyphs beside a label are white at last.
+
+### Changed
+
+- **The map pin is 26px with a 19px glyph** (#37). It was 22/14, and 12px of mark was derived by
+  rendering the eleven pictograms side by side at a desk — which says nothing about reading a pin
+  on a busy basemap, at a glance, on whatever screen a clinic actually uses. From real use it came
+  back as «not great or not easily visualised», and the report beats the measurement. Most of the
+  four extra pixels go to the mark rather than to the footprint — the glyph is now 73% of the dot
+  against 64% — because a bigger dot is also a dot that overlaps its neighbours sooner, and La
+  Florida holds ~865 places against this instance's few hundred. The 2px white ring stays: it is
+  what keeps a dot off fill-vs-tint contrast over a tinted Sector.
+
+  **The Datos list (18/12) and the Capas legend (16/11) deliberately did not move.** The pin is the
+  only mark with no label beside it; the other two have their name right there and only have to
+  read as the same pictogram. "Scale them all together" is the tidy-looking change that undoes this.
+
+- **All eleven Category pictograms were re-picked at pin size** (#37), still from Maki, and judged
+  as rendered pixels at 19px rather than as vector art. `school` (a pencil crossed with an apple),
+  `recycling` (three hairline arrows) and `residential-community` (a tower block beside a lamp post)
+  became `college`, `park` and `town` — the cap, the tree and the houses a phone map already taught
+  everyone to read. The other eight survived, three of them on purpose: `place-of-worship` because
+  the app must not assume a denomination, `circle-stroked` because «Sin clasificar» must read as
+  undecided and not as an error, and `pitch` over `soccer` because the list and the legend draw the
+  same mark at 12px and 11px, where `soccer`'s ball detaches into a stray speck.
+
+  **`police` is the weakest of the eleven and stayed anyway.** Maki ships no shield and no badge,
+  and every alternative in the set means something narrower — a flame is bomberos, a warning
+  triangle is danger — so it is flagged in #37 for the owner rather than swapped for a crisper mark
+  that means the wrong thing.
+
+### Fixed
+
+- **The glyphs in the Datos list and the Capas legend were never white** (#37). They rendered in
+  the theme's text colour, which is dark, on a coloured dot — and the comment in both files said
+  the opposite. Not a missing rule: `@nextcloud/vue` ships `.icon-vue[data-v-…] svg { fill:
+  currentColor }` at specificity (0,2,1), and a scoped `:deep(svg) { fill: #fff }` compiles to
+  (0,2,1) as well, so the tie went to whichever stylesheet loaded last and the library won. The fix
+  is to stop fighting the component — `NcIconSvgWrapper` is built to take `currentColor`, so the
+  swatch sets `color: #fff` and both `:deep()` blocks are gone. No `!important`, no specificity
+  war, and nothing to re-lose at the next `@nextcloud/vue` bump. The map pin was never affected: it
+  injects raw SVG with no wrapper, so nothing competes there.
+
+  It shipped for as long as it did because no test could see it. The browser gate now measures the
+  painted fill of both, and the pin's dot, glyph and anchor with them — the anchor against the dot
+  it has just measured, so «resized the dot, forgot `iconAnchor`», which puts every pin off its own
+  coordinate, cannot pass by agreeing with a constant.
+
 ## [0.54.0] — unreleased
 
 «Retirar del mapa» is where the hand reaches for it.

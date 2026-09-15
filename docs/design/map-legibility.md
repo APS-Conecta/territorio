@@ -258,6 +258,8 @@ tiles under every screenshot would flake it into being ignored. Each assertion m
 defect is reintroduced.
 
 - a Salud record's pin carries the `hospital` glyph and the `salud` fill
+- a pin draws 26px with a 19px glyph, anchored on the centre of the dot just measured
+- the Datos list (18/12) and the Capas legend (16/11) paint their glyph white
 - a Sector carries a permanent tooltip holding its name, at `direction: center`
 - a Unidad Vecinal renders with no fill and a dashed hairline
 - a cluster's icon reflects the categories of `getAllChildMarkers()`, not its count

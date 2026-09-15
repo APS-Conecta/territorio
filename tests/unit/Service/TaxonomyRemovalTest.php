@@ -248,6 +248,43 @@ final class TaxonomyRemovalTest extends TestCase {
 		$this->taxonomy->removeSubcategory(EnsureSeedData::DIVISIONS_SLUG, $slug);
 	}
 
+	/**
+	 * The last Subcategory of a Category stays, and the refusal says what to do
+	 * instead.
+	 *
+	 * Not in #47's criteria, and added because the path #47 opens is the only one
+	 * that can reach the state CONTEXT.md says does not exist: "A Category always
+	 * carries at least an «Otro» Subcategory… a Category with none is one nothing
+	 * can be filed under and one neither the picker nor Análisis shows."
+	 * `addCategory()` already goes out of its way to make sure a new Category has
+	 * one. Emptying a Category would leave a branch visible in the Capas panel and
+	 * absent from the two surfaces that matter, with no refusal anywhere.
+	 *
+	 * Refused rather than cascaded into removing the Category, for ADR-0016's own
+	 * reason: «quitar esta subcategoría» and «quitar toda la categoría» are not
+	 * the same sentence and must not be the same button.
+	 */
+	public function testTheLastSubcategoryOfACategoryCannotBeRemovedOnItsOwn(): void {
+		$salud = self::category(1, 'salud', 'Salud');
+		$this->categories->method('findBySlug')->willReturn($salud);
+		$this->categories->method('findAll')->willReturn([$salud]);
+		$only = self::subcategory(11, 1, 'otro', 'Otro');
+		$this->subcategories->method('findAll')->willReturn([$only]);
+		$this->subcategories->method('findBySlug')->willReturn($only);
+		$this->features->method('countBySubcategory')->willReturn(0);
+		$this->subcategories->expects(self::never())->method('delete');
+		$this->categories->expects(self::never())->method('delete');
+
+		try {
+			$this->taxonomy->removeSubcategory('salud', 'otro');
+			self::fail('«Salud» was left with no Subcategory: nothing can be filed under it, and '
+				. 'it reaches neither the picker nor Análisis (CONTEXT.md)');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('categoría', $e->getMessage(),
+				'the refusal does not say that removing the whole Category is the way to do this');
+		}
+	}
+
 	/** The whole served tree comes back, because that is what the browser swaps in. */
 	public function testARemovalAnswersWithTheWholeServedTree(): void {
 		$this->seedMappers();

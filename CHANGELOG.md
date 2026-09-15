@@ -50,6 +50,14 @@ A layer the clinic does not use can go — and cannot go while it holds records.
   time, so nobody spends time trying and then wonders whether they did it wrong. The server refuses
   it too, and that guard runs *before* the count: an empty division would pass the in-use one.
 
+  **A Category cannot be emptied of its last Subcategory either.** Not one of #47's criteria, and
+  in because removal is the only path that can reach a state CONTEXT.md says does not exist: a
+  Category always carries at least an «Otro», and one with none is a branch in the Capas panel that
+  reaches neither the Subcategoría picker nor Análisis, with nothing filable under it. The refusal
+  says to remove the whole Category instead — not a cascade into doing that, for ADR-0016's own
+  reason about the option it rejected: «quitar esta subcategoría» and «quitar toda la categoría»
+  are not the same sentence and must not be the same button.
+
   The browser's own filter is pruned on the way. It records what is HIDDEN, which is what makes a
   row added to the taxonomy appear on its own — and leaves a row removed from it as an id naming
   nothing, still counted by the «N ocultas» badge with «Ver todo» offering to reveal it.

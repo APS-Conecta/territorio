@@ -338,13 +338,17 @@ class TaxonomyService {
 	 * every screen at once, because `tree()` groups them under the Categories
 	 * `findAll()` answers with — and stay in the table forever.
 	 *
-	 * ponytail: no transaction, like `addCategory()`'s two inserts. A database
+	 * ponytail: no transaction and no lock, like `addCategory()`'s two inserts.
+	 * Two ceilings, both named because neither is free to raise. A database
 	 * failure between two of these statements leaves a Category holding fewer
 	 * empty Subcategories than it did, which the same click completes on a
-	 * retry — nothing is filed under any of them, which is the condition that
-	 * got this far. The upgrade is an `IDBConnection` on this service and one
-	 * `beginTransaction`, worth taking the day a write path here has more than
-	 * one thing to lose.
+	 * retry — nothing is filed under any of them, which is the condition that got
+	 * this far. And a Feature saved in the gap between the count and the delete
+	 * is orphaned: it is the whole width of one HTTP request against a person who
+	 * is removing a layer nobody has used, and the schema carries no foreign key
+	 * that would catch it. The upgrade for the first is an `IDBConnection` on this
+	 * service and one `beginTransaction`; the second needs that transaction to
+	 * also LOCK what it counted, or the foreign key this schema does not have.
 	 *
 	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no Category carries that slug
@@ -384,6 +388,29 @@ class TaxonomyService {
 		$category = $this->categories->findBySlug($categorySlug);
 		$subcategory = $this->subcategories->findBySlug((int)$category->getId(), $slug);
 		$this->refuseIfStructural($category, $subcategory->getLabel());
+
+		// Not one of #47's criteria, and here because this is the only path that
+		// can reach a state CONTEXT.md says does not exist: "A Category always
+		// carries at least an «Otro» Subcategory… a Category with none is one
+		// nothing can be filed under and one neither the picker nor Análisis
+		// shows." `addCategory()` already goes out of its way to give a new one
+		// its «Otro»; emptying an old one would leave a branch in the Capas panel
+		// and nothing on the two surfaces that matter.
+		//
+		// Refused rather than cascaded into removing the Category, for ADR-0016's
+		// own reason about the retire-alongside option: «quitar esta subcategoría»
+		// and «quitar toda la categoría» are not the same sentence and must not be
+		// the same button.
+		if (count($this->subcategoriesOf((int)$category->getId())) === 1) {
+			throw new InvalidTaxonomyException(sprintf(
+				'No se puede quitar «%s»: es la única subcategoría de «%s», y una categoría '
+				. 'sin subcategorías no sirve para clasificar nada. Quite la categoría entera '
+				. 'si ya no la usa.',
+				$subcategory->getLabel(),
+				$category->getLabel(),
+			));
+		}
+
 		$this->refuseIfInUse([(int)$subcategory->getId()], $subcategory->getLabel());
 
 		$this->subcategories->delete($subcategory);

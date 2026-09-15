@@ -2480,6 +2480,41 @@ def _the_ground_label_waits_for_its_zoom(page, uv, failures):
         failures.append(
             f"the ground label reads {label.first.inner_text().strip()!r} rather than {uv!r}",
         )
+    else:
+        # Here and not beside the Sector's: this is the only moment in the run
+        # when a ground label is on screen, the zoom loop above having just put
+        # it there.
+        _label_colour_follows_the_tile(page, label.first, "a Unidad Vecinal's label", failures)
+
+
+def _label_colour_follows_the_tile(page, label, what, failures):
+    """A map label's colour is literal, never a Nextcloud variable (#21).
+
+    The basemap is raster OpenStreetMap under BOTH themes, so a label that
+    follows the theme is illegible in one of them: a dark-theme #ebebeb over OSM
+    land #f2efe9 renders at 1.04:1. Measured rather than read off the
+    stylesheet, because swapping a hex for `var(--color-main-text)` is a one-
+    character edit that no unit test in this repo can see.
+
+    Both labels go through it. They are two CSS blocks with two literal hexes —
+    `.territorio-label` sits on a white plate and `--ground` sits directly on
+    the tile with nothing behind it, which makes the ground label the one with
+    more to lose — so checking the Sector's alone would leave the other free to
+    drift to a variable and still pass.
+    """
+    painted = {}
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(300)
+        painted[scheme] = label.evaluate("(node) => getComputedStyle(node).color")
+    page.emulate_media(color_scheme="no-override")
+    page.wait_for_timeout(200)
+
+    if painted["light"] != painted["dark"]:
+        failures.append(
+            f"{what} is drawn {painted['light']} on light and {painted['dark']} on dark — "
+            f"it sits on a raster OSM tile in both, so its colour follows the TILE (#21)",
+        )
 
 
 def _figure_is_drawn_as_figure(page, sector, neutral, failures):
@@ -2527,20 +2562,7 @@ def _figure_is_drawn_as_figure(page, sector, neutral, failures):
             f"the Sector label is placed {classes!r} rather than at the centroid (#21)",
         )
 
-    # Never the theme. The basemap is raster OSM under both, so a dark-theme
-    # #ebebeb over OSM land #f2efe9 renders at 1.04:1 — invisible.
-    painted = {}
-    for scheme in ("light", "dark"):
-        page.emulate_media(color_scheme=scheme)
-        page.wait_for_timeout(300)
-        painted[scheme] = label.evaluate("(node) => getComputedStyle(node).color")
-    page.emulate_media(color_scheme="no-override")
-
-    if painted["light"] != painted["dark"]:
-        failures.append(
-            f"a map label is drawn {painted['light']} on light and {painted['dark']} on dark — "
-            f"it sits on a raster OSM tile in both, so its colour follows the TILE (#21)",
-        )
+    _label_colour_follows_the_tile(page, label, "a Sector's label", failures)
 
 
 def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures):
@@ -2621,6 +2643,13 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
     clinic is drawing right now. True of a new polygon; false of a cadastre
     boundary somebody merely clicked. The checks above measure the path before
     any row is clicked, so they cannot see this.
+
+    The LABEL is re-measured with the fill and the dashes, and for the same
+    reason: `drawShapes` binds it and the draft layer has to reproduce
+    everything `drawShapes` would have drawn. The style was carried across when
+    this was first fixed and the label was not, so an open division was the one
+    division on the map with no name on it — «a Sector carries a permanent label
+    at its centroid» (#21) being false for precisely the record being worked on.
     """
     shapes = _only_shape(page, uv)
     if shapes.count() == 0:
@@ -2650,6 +2679,28 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
             failures.append(
                 f"an OPEN Unidad Vecinal's outline is {drawn['dashes']!r}, not the '2 3' "
                 f"dashed hairline it is drawn with when nothing is open (#21)",
+            )
+
+        # The zoom loop in _the_ground_label_waits_for_its_zoom left the map past
+        # the threshold, so a ground label is due here — which is what makes its
+        # absence an assertion rather than a coin toss.
+        labels = page.locator(".leaflet-tooltip.territorio-label")
+        if labels.count() == 0 or not labels.first.is_visible():
+            failures.append(
+                f"opening {uv!r} took its permanent label off the map — the draft layer draws "
+                f"the record in place of drawShapes and has to say the same things about it, "
+                f"the name included (#21)",
+            )
+        elif labels.first.inner_text().strip() != uv:
+            failures.append(
+                f"an OPEN Unidad Vecinal is labelled {labels.first.inner_text().strip()!r} "
+                f"rather than {uv!r} (#21)",
+            )
+        elif "territorio-label--ground" not in (labels.first.get_attribute("class") or ""):
+            failures.append(
+                f"an OPEN Unidad Vecinal's label is drawn as a Sector's — being looked at "
+                f"does not turn ground into figure, for the label any more than for the "
+                f"fill (#21)",
             )
 
     page.keyboard.press("Escape")
@@ -2864,9 +2915,19 @@ def _swatch_glyphs(page, selector, swatch_px, glyph_px, where, failures):
 
 
 def the_glyphs_beside_a_label_are_white_too(page, failures):
-    """#37: the Datos list and the Capas legend, which rendered dark for months."""
+    """#37: the Datos list and the Capas legend, which rendered dark for months.
+
+    `--dot`, not any swatch. Since #29 a territorial division draws a RING with
+    no pictogram inside it — a division has no glyph of its own and would fall
+    back to `circle-stroked`, an outlined circle inside an outlined ring. So
+    "the first swatch on screen" is only sometimes a thing with a glyph in it,
+    and this check measured [0, 0]px the first time a Sector sorted to the top.
+    Narrowing it keeps #37's assertion exactly as strong — the class is emitted
+    by `markFor`, so a swatch with no dots on screen still fails as "nothing was
+    checked" rather than passing quietly.
+    """
     _swatch_glyphs(
-        page, ".territorio-list__swatch", LIST_SWATCH, LIST_GLYPH, "the Datos list", failures,
+        page, ".territorio-list__swatch--dot", LIST_SWATCH, LIST_GLYPH, "the Datos list", failures,
     )
     _swatch_glyphs(
         page, ".territorio-capas__swatch", CAPAS_SWATCH, CAPAS_GLYPH, "the Capas legend", failures,

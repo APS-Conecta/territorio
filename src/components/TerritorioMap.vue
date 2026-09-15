@@ -23,7 +23,14 @@ import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
-import { boundsOf, colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
+import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import {
+	boundsOf,
+	colourOf,
+	indexSubcategories,
+	UNIDAD_VECINAL_SLUG,
+	UNKNOWN_COLOUR,
+} from '../taxonomy.js'
 
 /**
  * OpenStreetMap's own credit, as markup, from here and never from configuration.
@@ -42,9 +49,6 @@ const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
  * yet — an empty map somewhere plausible beats an empty map over the ocean.
  */
 const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
-
-/** The division whose boundaries describe the comuna (CONTEXT.md). */
-const COMUNA_EXTENT = 'unidad_vecinal'
 
 /** Between overlayPane (400) and markerPane (600): above shapes, below pins. */
 const PICKABLE_PANE = 'territorio-pickable'
@@ -199,7 +203,7 @@ export default {
 			this.drawShapes()
 		},
 		draftColour() {
-			this.draftLayer?.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
+			this.draftLayer?.setStyle(shapeStyle(null, this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
 		// Not deep: this array is replaced wholesale by a fetch, never edited in
 		// place, and walking a few thousand geometries on every change to notice
@@ -254,7 +258,9 @@ export default {
 		// and any redraw landing inside that flight leaves it holding a layer whose
 		// map is already gone. Moving the view first means there is nothing to
 		// animate over.
-		const comuna = boundsOf(this.features, this.subcategories, COMUNA_EXTENT)
+		// The Unidad Vecinal is the division whose boundaries describe the comuna
+		// (CONTEXT.md).
+		const comuna = boundsOf(this.features, this.subcategories, UNIDAD_VECINAL_SLUG)
 		if (comuna !== null) {
 			this.map.fitBounds(comuna, { padding: [16, 16], animate: false })
 		}
@@ -290,6 +296,9 @@ export default {
 		// when "on screen" changes. moveend covers panning and zooming both.
 		this.map.on('moveend', () => this.announceView())
 		this.announceView()
+
+		this.map.on('zoomend', () => this.updateGroundLabels())
+		this.updateGroundLabels()
 
 		// A Leaflet map sized before its container settles renders grey. Nextcloud
 		// animates the sidebar and navigation, so observe rather than guess.
@@ -371,8 +380,14 @@ export default {
 					return
 				}
 
+				// What a record IS decides how it is drawn: a Unidad Vecinal is read
+				// from the cadastre and never drawn by the clinic, so it is ground
+				// (#21). The Subcategory slug is the stable identifier — ids differ per
+				// install — and the index already carries it.
+				const slug = this.subcategories.get(feature.subcategoryId)?.slug ?? null
 				const layer = L.GeoJSON.geometryToLayer(feature.geometry)
-				layer.setStyle(this.styleFor(
+				layer.setStyle(shapeStyle(
+					slug,
 					colourOf(feature, this.subcategories),
 					feature.id === this.selectedId,
 				))
@@ -380,7 +395,12 @@ export default {
 				// innerHTML, so a stored name was parsed as markup — and while CSP stops
 				// script and every exfiltration channel here, nothing covers navigation
 				// (issue #62). A text node cannot be parsed at all.
-				layer.bindTooltip(document.createTextNode(feature.name))
+				//
+				// A division's label is permanent and at its centroid, which is what
+				// identifies a Sector now that its colour is only a wash: Leaflet 1.9
+				// falls through to a real area-weighted centroid for `direction:
+				// 'center'`, so this costs no plugin and no geometry of our own.
+				layer.bindTooltip(document.createTextNode(feature.name), labelOptions(slug))
 				// One function for both ways in. A keydown that emitted `select`
 				// itself would go round the `placing` guard below, which is exactly
 				// the guard that keeps a click during placement belonging to the map —
@@ -577,7 +597,9 @@ export default {
 			}
 
 			const layer = L.GeoJSON.geometryToLayer(this.draftGeometry).addTo(this.map)
-			layer.setStyle(this.styleFor(this.draftColour ?? UNKNOWN_COLOUR, true))
+			// Figure, whatever it will be filed as: a draft is a shape the clinic is
+			// drawing right now, which is the definition of curated (CONTEXT.md).
+			layer.setStyle(shapeStyle(null, this.draftColour ?? UNKNOWN_COLOUR, true))
 			layer.pm.enable({ allowSelfIntersection: false })
 			// pm:edit covers a dragged vertex, pm:update the end of a move.
 			layer.on('pm:edit pm:update', () => this.report(layer))
@@ -591,18 +613,23 @@ export default {
 		},
 
 		/**
-		 * A light translucent fill under a clear outline: a Sector has to be
-		 * readable as an area without hiding the basemap or the records inside it.
+		 * Hide the Unidad Vecinal labels at a zoom where they would not fit.
+		 *
+		 * A class on the map container rather than binding and unbinding tooltips:
+		 * the answer to ~50-100 labels is cartography (marks.js), and rebuilding
+		 * layers on every zoom is exactly the window the four workarounds in this
+		 * file exist to keep shut. CSS already knows how to hide something.
+		 *
+		 * ponytail: every ground label is still built and repositioned while it is
+		 * hidden — a comuna of a hundred Unidades Vecinales is a hundred divs
+		 * Leaflet moves on each zoom. Bind them on crossing the threshold instead
+		 * if a real catastro makes this stutter.
 		 */
-		styleFor(colour, selected = false) {
-			return {
-				color: colour,
-				weight: selected ? 4 : 2,
-				opacity: 1,
-				fillColor: colour,
-				fillOpacity: 0.15,
-				dashArray: selected ? '6 4' : null,
-			}
+		updateGroundLabels() {
+			this.map.getContainer().classList.toggle(
+				'territorio-map__canvas--far',
+				!showsGroundLabels(this.map.getZoom()),
+			)
 		},
 
 		iconFor(feature) {
@@ -650,6 +677,55 @@ export default {
 </style>
 
 <style lang="scss">
+/* Not scoped: Leaflet builds these elements itself, outside Vue's tree. */
+
+/*
+ * The basemap recedes, so that what the clinic drew reads as figure over it
+ * (docs/design/map-legibility.md § 2). One line and no plugin.
+ *
+ * `saturate` and not `grayscale` or `brightness`: the CSS saturate matrix is
+ * luminance-preserving, so every contrast ratio § 2 measured against a tile —
+ * the Unidad Vecinal hairline at 1.35–1.49:1, the Sector wash at 3.04:1 — still
+ * holds after it. A brightness filter would move all of them at once.
+ */
+.leaflet-tile-pane {
+	filter: saturate(0.55);
+}
+
+/*
+ * A label sits ON a tile, and the tile is raster OpenStreetMap in BOTH themes.
+ * So these colours are literal and never Nextcloud variables: a dark-theme
+ * label of #ebebeb over OSM land #f2efe9 renders at 1.04:1 — invisible.
+ * Label colour follows the tile (map-legibility § 2).
+ *
+ * Qualified with .leaflet-tooltip rather than left alone, so this wins over
+ * Leaflet's own tooltip rules whichever order the bundler emits them in.
+ */
+.leaflet-tooltip.territorio-label {
+	background: rgba(255, 255, 255, 0.78);
+	border: none;
+	box-shadow: none;
+	color: #1a1a1a;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 1px 5px;
+}
+
+/* Ground: quieter than the Sector above it, and no plate behind it — a hundred
+   white boxes would be the noise the figure/ground rule is removing. */
+.leaflet-tooltip.territorio-label--ground {
+	background: none;
+	color: #4c4c4c;
+	font-size: 11px;
+	font-weight: 400;
+}
+
+/* Below the zoom where a Unidad Vecinal is wide enough to hold its name, fifty
+   of them at once are a sheet of text rather than a map. See marks.js. */
+.territorio-map__canvas--far .territorio-label--ground {
+	display: none;
+}
+
 /*
  * One ring, worn by the two things this map singles out: the shape the keyboard
  * is on, and the pin that is selected. The theme's own primary element colour,
@@ -673,7 +749,6 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	outline-offset: 2px;
 }
 
-/* Not scoped: Leaflet builds the marker element itself, outside Vue's tree. */
 .territorio-pin__dot {
 	display: flex;
 	align-items: center;

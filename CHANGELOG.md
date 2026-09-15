@@ -56,6 +56,20 @@ A layer the clinic does not use can go — and cannot go while it holds records.
   accepts, deliberately, as #44 recorded — is restored by nothing, so refusing to remove that one
   too would only make a mistake permanent.
 
+  **«Sin clasificar · Otro» can never be removed either, and for a harder reason.** It is not a
+  layer a clinic chose, it is where the app puts what it cannot classify: an import resolves that
+  exact pair on every run and refuses the whole file without it, a brand-new record starts there
+  rather than at whatever Category sorts first — «Comercio y economía · Feria», the silent
+  misfiling the explicit lookup exists to prevent — and `tools/boundary-features.php` stamps it on
+  every Limit it fetches. Being EMPTY is its ordinary state on a clinic whose imports resolve
+  cleanly, so the in-use guard would have waved it through on exactly the installs that depend on
+  it, and the seed would have put it back on the next `occ upgrade`: imports broken this morning
+  and working after the upgrade, with no refusal anywhere to say what happened. The pair is now
+  named once, in the seed that creates it (`EnsureSeedData::FALLBACK`), and both the import and the
+  refusal read it from there. The Subcategory is refused as well as the Category: the
+  last-Subcategory rule below happens to cover today's single «Otro», but only for as long as it is
+  the only row under it, and a second one can be added.
+
   **A Category cannot be emptied of its last Subcategory either.** Not one of #47's criteria, and
   in because removal is the only path that can reach a state CONTEXT.md says does not exist: a
   Category always carries at least an «Otro», and one with none is a branch in the Capas panel that

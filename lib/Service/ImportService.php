@@ -14,6 +14,7 @@ use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Exception\InvalidImportException;
+use OCA\Territorio\Migration\EnsureSeedData;
 
 /**
  * Brings a file into a Dataset, once or repeatedly.
@@ -45,8 +46,6 @@ use OCA\Territorio\Exception\InvalidImportException;
  * its counts are written even when the run throws.
  */
 class ImportService {
-	/** Where a row goes when its Category or Subcategory is not one we hold. */
-	private const FALLBACK = ['sin_clasificar', 'otro'];
 
 
 	public function __construct(
@@ -258,7 +257,7 @@ class ImportService {
 	 */
 	private function prepare(array $rows): array {
 		$subcategories = $this->subcategoryIndex();
-		$fallback = $subcategories[implode('/', self::FALLBACK)] ?? null;
+		$fallback = $subcategories[implode('/', EnsureSeedData::FALLBACK)] ?? null;
 		if ($fallback === null) {
 			throw new InvalidImportException(
 				'Falta la subcategoría "Sin clasificar · Otro"; no hay dónde poner lo no reconocido.',

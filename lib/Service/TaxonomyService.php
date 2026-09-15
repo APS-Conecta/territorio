@@ -323,9 +323,10 @@ class TaxonomyService {
 	 * Remove a Category the clinic does not use (#47).
 	 *
 	 * Three refusals, in this order, and the order is the decision (ADR-0016):
-	 * structural first, because «División territorial» would pass the in-use
-	 * guard on an empty install and come back on the next upgrade anyway; then
-	 * in use, which is the one the ADR is about; and only then the delete.
+	 * structural first, because «División territorial» and «Sin clasificar» would
+	 * both pass the in-use guard on an empty install and come back on the next
+	 * upgrade anyway; then in use, which is the one the ADR is about; and only
+	 * then the delete.
 	 *
 	 * There is no `?force` and there never was one. ADR-0016 weighed retiring the
 	 * records alongside and rejected it — "«remove this layer» and «retire 340
@@ -446,7 +447,31 @@ class TaxonomyService {
 	}
 
 	/**
-	 * «División territorial» and everything under it stay, always (ADR-0016).
+	 * What the app itself depends on stays, always (ADR-0016): «División
+	 * territorial» and the two rows under it, and «Sin clasificar · Otro».
+	 *
+	 * The two are structural for the same reason told twice. The division is
+	 * where every Sector and every Unidad Vecinal is filed, so without it a
+	 * boundary cannot be saved. «Sin clasificar · Otro» is where everything the
+	 * app cannot classify goes: `ImportService::prepare()` resolves that exact
+	 * pair on every run and refuses the whole file without it, `defaultSubcategoryId()`
+	 * in `src/taxonomy.js` starts every new record there — falling through to the
+	 * first Category in the tree, «Comercio y economía · Feria», which is the
+	 * silent misfiling that function exists to prevent — and
+	 * `tools/boundary-features.php` stamps it on every Limit it fetches. The pair
+	 * is named once, in the seed that creates it (`EnsureSeedData::FALLBACK`).
+	 *
+	 * And both come back on the next `occ upgrade`, which is what makes the
+	 * refusal necessary rather than merely tidy: without it the Category goes,
+	 * imports break, and the seed restores it — the symptom appears and vanishes
+	 * with nothing said anywhere.
+	 *
+	 * Being empty is the ORDINARY state of «Sin clasificar» on a clinic whose
+	 * imports resolve cleanly, so the in-use guard would wave it through on
+	 * exactly the installs that depend on it. The last-Subcategory guard does
+	 * happen to cover its «Otro» today, but only for as long as that is the only
+	 * row under it, and `addSubcategory()` accepts a second one deliberately — so
+	 * the pair is refused here, where the reason is written down.
 	 *
 	 * The Category by slug, and a Subcategory by BOTH its Category's slug and its
 	 * own. The reason those two Subcategories cannot go is that the seed restores
@@ -463,6 +488,18 @@ class TaxonomyService {
 	 * @throws InvalidTaxonomyException
 	 */
 	private function refuseIfStructural(Category $category, ?Subcategory $subcategory = null): void {
+		if ($category->getSlug() === EnsureSeedData::FALLBACK['category']
+			&& ($subcategory === null || $subcategory->getSlug() === EnsureSeedData::FALLBACK['subcategory'])) {
+			throw new InvalidTaxonomyException(sprintf(
+				'No se puede quitar «%s»: es donde llega lo que no se reconoce al importar. '
+				. 'Sin ella ningún archivo se puede importar, y cada registro nuevo quedaría '
+				. 'clasificado en otra parte sin que nadie lo decida.',
+				$subcategory === null
+					? $category->getLabel()
+					: $category->getLabel() . ' · ' . $subcategory->getLabel(),
+			));
+		}
+
 		if ($category->getSlug() !== EnsureSeedData::DIVISIONS_SLUG) {
 			return;
 		}

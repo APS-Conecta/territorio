@@ -45,6 +45,27 @@ Two numbers answering two questions; conflating them is exactly how the orphan g
 - Removing still asks first, in the same two-step inline shape retiring a record already uses — never
   a browser dialog, which blocks the page.
 
+## Amendment — «Sin clasificar · Otro» is permanent too (2026-09-15, #47)
+
+Building the removal path found a second pair that can never go, and the consequence above named
+only the territorial division. Three things resolve «Sin clasificar · Otro» by slug and none of them
+creates it: `ImportService::prepare()` refuses a whole file without it, `defaultSubcategoryId()` in
+`src/taxonomy.js` starts every new record there rather than at whatever Category sorts first, and
+`tools/boundary-features.php` stamps it on every Limit. `EnsureSeedData::FALLBACK` owns the slugs,
+because the seeder is what creates them.
+
+The in-use count is no protection here: being **empty** is this Category's ordinary state on a clinic
+whose imports resolve cleanly, so the guard above would have waved it through on exactly the installs
+that depend on it — and the seed would put it back on the next upgrade, with nothing said anywhere.
+
+**Unlike the division, this one is discovered at save time, and that is a deliberate difference.** The
+division has no row in the Capas panel at all — `treeOf` leaves it out, because ADR-0015 puts one
+toggle per division beside the tree — so the panel had somewhere to put a sentence and nowhere to put
+a control. «Sin clasificar» is an ordinary Category branch with an ordinary bin, and hiding that bin
+would put the rule in a second place and let the two drift. The cost is real and is accepted here: a
+person can click that bin and be refused, which is the experience the consequence above exists to
+avoid. Worth revisiting if anybody actually tries it — the panel already knows the slug.
+
 ## Sources
 
 - ADR-0005 — open editing, guarded by history rather than permissions

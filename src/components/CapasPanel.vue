@@ -325,6 +325,13 @@
 				and why `PIN_GLYPH_SIZE` is imported rather than typed: a mark judged
 				at the 11px of the legend can dissolve at the size it is used, and
 				that is exactly what happened to the seeded eleven before #37.
+
+				ponytail: all 215 are mounted at once, and each one sanitises its own
+				markup inside NcIconSvgWrapper — so opening this costs 215 of those,
+				once, while it is open. Scrolled rather than searched, too: the names
+				are Maki's and they are in English, so a box to type «cancha» into
+				would need a vocabulary this repo does not have. Render on scroll, or
+				give the marks Spanish keywords, when either is actually in the way.
 			-->
 			<div v-if="picking !== null" ref="picker" class="territorio-capas__picker">
 				<p class="territorio-capas__picker-title">

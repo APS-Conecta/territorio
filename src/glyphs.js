@@ -59,6 +59,12 @@ import { layouts, svgArray } from '@mapbox/maki/browser.esm.js'
  * from one source — so `webpack.config.js` no longer needs to know about this
  * package at all.
  *
+ * ponytail: the whole set is in the main bundle — 180 KB of raw markup, about
+ * 11% on top of it — because the picker offers all 215 and the app has no
+ * endpoint of its own to fetch them from. The upgrade, if that ever bites, is a
+ * second webpack entry the Capas panel loads on demand, which buys nothing until
+ * somebody measures the panel opening slowly.
+ *
  * A Map and not an object literal, because the key comes from a database column.
  * `constructor`, `toString` and `valueOf` are shaped exactly like Maki names —
  * lower case letters and nothing else — so the server's shape check stores them

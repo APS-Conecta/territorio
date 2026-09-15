@@ -1,4 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#fff">
+  <!--
+    The white variant, and the one nearly every surface uses. Nextcloud 34 picks by
+    name: AppManager::getAppIcon() without $dark takes 'app.svg'
+    (lib/private/App/AppManager.php:118), and that is what the header's current-app
+    button and the apps grid get (lib/private/NavigationManager.php:353) and what
+    Theming\Util::getAppIcon() rasterises into the favicon and the touch icon. All
+    three draw the glyph on a dark or primary-coloured surface, so it has to be
+    white; core inverts it itself when that surface is bright, with the
+    primary-invert-if-bright custom property in core/src/components/AppItem.vue,
+    whose own comment reads "App icons are bright by default".
+
+    The developer manual documents none of this: it says the navigation icon
+    "defaults to app.svg" and nothing about colour. So the citations point at the
+    server's source, where the convention actually lives. img/app-dark.svg is the
+    other half.
+
+    Two traps live in this comment. It sits inside the root element because
+    IconBuilder decides a file is an SVG by looking for a leading '<svg' or '<?xml'
+    before handing it to Imagick (apps/theming/lib/IconBuilder.php), and a comment
+    above the root costs the app its favicon. And a CSS custom property cannot be
+    written here with its two leading hyphens: a double hyphen inside an XML comment
+    is illegal and librsvg refuses the whole file.
+  -->
   <path d="M15 4.5 9 2.6 3.6 4.4a1 1 0 0 0-.6.95v14.2a.6.6 0 0 0 .8.57L9 18.4l6 1.9 5.4-1.8a1 1 0 0 0 .6-.95V3.35a.6.6 0 0 0-.8-.57L15 4.5Zm-5.4-.1 4.8 1.52v13.68L9.6 18.08V4.4Z"/>
   <circle cx="17.6" cy="9.2" r="2.1"/>
 </svg>

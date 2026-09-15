@@ -1,4 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!--
+    The black variant. One caller asks for it: OC_App::listAllApps() calls
+    getAppIcon($app, dark: true) (lib/private/legacy/OC_App.php:440) for the apps
+    list in Settings, which is a white page — so the SVG default, black, is the
+    colour that reads there, and this file carries no colour at all.
+
+    Same drawing as img/app.svg, which is white for the dark header. Do not delete
+    it because it looks redundant: the name is what selects it, and without the file
+    the apps list falls back to the generic icon.
+  -->
   <path d="M15 4.5 9 2.6 3.6 4.4a1 1 0 0 0-.6.95v14.2a.6.6 0 0 0 .8.57L9 18.4l6 1.9 5.4-1.8a1 1 0 0 0 .6-.95V3.35a.6.6 0 0 0-.8-.57L15 4.5Zm-5.4-.1 4.8 1.52v13.68L9.6 18.08V4.4Z"/>
   <circle cx="17.6" cy="9.2" r="2.1"/>
 </svg>

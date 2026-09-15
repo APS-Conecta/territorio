@@ -56,6 +56,31 @@ An update that omitted the geometry destroyed it.
 
 ### Fixed
 
+- **The app icon was the black one on every surface that draws it on a dark background** (#26).
+  `img/app.svg` and `img/app-dark.svg` were the same 311 bytes, neither carrying a `fill`, so both
+  drew black — and the light variant is the one nearly everything asks for. The plan had the pair
+  backwards, and the server settles it: `AppManager::getAppIcon()` takes `app.svg` **without**
+  `$dark` (`lib/private/App/AppManager.php:118`), which is what the header's current-app button and
+  the app menu get (`lib/private/NavigationManager.php:353`) and what the favicon is rasterised from
+  (`Theming\Util::getAppIcon()`). All three paint it on the primary colour. The only caller asking
+  with `dark: true` is the apps list in Settings (`lib/private/legacy/OC_App.php:440`), a white page.
+  So `app.svg` gained `fill="#fff"` and `app-dark.svg` keeps none, and each file now carries a
+  comment saying which surface it serves.
+
+  The convention is cited from the server's source rather than from the manual because the manual
+  does not contain it: the `info.xml` page says the navigation icon "defaults to app.svg" and the
+  Icons page says nothing about `app-dark.svg` or about colour at all (both checked against the 34
+  manual on 2026-09-15). Core states it in a CSS comment instead — "App icons are bright by default"
+  in `core/src/components/AppItem.vue`, which flips them with `primary-invert-if-bright` when the
+  circle behind them is bright.
+
+  Two things about the comments themselves are load-bearing and are now guarded by tests, because
+  both fail silently. They sit **inside** the root element: `IconBuilder` decides a file is an SVG
+  by looking for a leading `<svg` or `<?xml`, so a comment above the root costs the app its favicon.
+  And they cannot spell a CSS custom property out in full — a double hyphen inside an XML comment is
+  illegal, librsvg refuses the whole file, and the first draft of this fix did exactly that and was
+  caught by rasterising it through Imagick rather than by reading it.
+
 - **Reclassifying a record into or out of a boundary Subcategory reassigned nothing** (#84).
   `reassignAround()` was given the geometry the record had before the write, and decided whether to
   sweep by comparing it. A Subcategory change moves no shape, so the comparison said "nothing

@@ -62,11 +62,20 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertSame($sector, $this->stored($place)->getSectorId());
 	}
 
-	public function testAPlaceOutsideEveryBoundaryIsAssignedToNone(): void {
-		$this->sector('Sector Poniente', ['geometry' => self::WEST]);
+	/**
+	 * A boundary does not claim what falls outside it.
+	 *
+	 * It used to assert "assigned to nothing", which is a claim about every
+	 * boundary the install holds — and this suite runs against an instance the
+	 * browser gate and every other suite also write to (#117, #121). The null
+	 * half is proven where the Registry is a set the test owns entirely:
+	 * `Tests\Unit\Service\AssignmentBoundary::testOnlyABoundaryThatContainsTheRecordClaimsIt`.
+	 */
+	public function testAPlaceOutsideABoundaryIsNotClaimedByIt(): void {
+		$sector = $this->sector('Sector Poniente', ['geometry' => self::WEST]);
 		$place = $this->place('Escuela lejos', ['geometry' => self::at(-70.40, -33.52)]);
 
-		self::assertNull($this->stored($place)->getSectorId());
+		self::assertNotSame($sector, $this->stored($place)->getSectorId());
 	}
 
 	/**
@@ -95,7 +104,10 @@ final class AssignmentTest extends IntegrationTestCase {
 			'geometry' => self::at(-70.40, -33.52),
 		]);
 
-		self::assertNull($this->stored($place)->getSectorId(), 'it moved out and was not let go of');
+		// Not null, for the reason the redraw test below gives at length: where it
+		// landed depends on what else the instance holds, and what the move
+		// promises is that the answer was derived again rather than carried along.
+		self::assertNotSame($sector, $this->stored($place)->getSectorId(), 'it moved out and was not let go of');
 	}
 
 	/**
@@ -103,11 +115,19 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * Place inside it… and it must be visible in history like any other change."
 	 */
 	public function testRedrawingASectorReassignsWhatItGainedAndLost(): void {
+		// Somebody else's Sector over the same coordinate, drawn first so this
+		// test's own boundary still answers for the Place while it covers it
+		// (`findAll()` reads newest first). This is what a shared instance looks
+		// like on an ordinary day — a crashed browser-gate run left one behind and
+		// the history assertion below went red for it (#117, #121) — so it is
+		// arranged here rather than waited for, and the awkward case is measured
+		// on every run instead of on the unlucky one.
+		$rival = $this->sector('Sector de otra persona');
 		$sector = $this->sector('Sector que se mueve', ['geometry' => self::WEST]);
 		$inside = $this->place('Queda fuera', ['geometry' => self::at(-70.58, -33.52)]);
 		$outside = $this->place('Queda dentro', ['geometry' => self::at(-70.53, -33.52)]);
 
-		self::assertSame($sector, $this->stored($inside)->getSectorId());
+		self::assertSame($sector, $this->stored($inside)->getSectorId(), 'the newest boundary over it answers');
 		self::assertNotSame($sector, $this->stored($outside)->getSectorId());
 
 		// Drag the whole boundary east.
@@ -138,7 +158,17 @@ final class AssignmentTest extends IntegrationTestCase {
 		self::assertCount(1, $updates, 'the reassignment is an ordinary edit');
 		self::assertArrayHasKey('sectorId', $updates[0]['changes']);
 		self::assertSame($sector, $updates[0]['changes']['sectorId']['from']);
-		self::assertNull($updates[0]['changes']['sectorId']['to']);
+		// And not null here either, which is the same claim about the whole
+		// instance the comment fifteen lines above forbids: `to` is null only
+		// while nothing else covers the coordinate. What the redraw promises is
+		// that the record left the boundary that moved away from it; which
+		// boundary picked it up is a fact about the Registry, not about the redraw.
+		self::assertNotSame($sector, $updates[0]['changes']['sectorId']['to'], 'recorded as leaving it');
+
+		// Retired through the app rather than left to the raw-SQL teardown:
+		// retiring a boundary releases what it claimed (#30), and deleting one
+		// leaves every record it covered pointing at an id no read resolves.
+		Server::get(FeatureService::class)->retire($rival);
 	}
 
 	/** Renaming a boundary moves nobody, and must not spend a Revision saying so. */

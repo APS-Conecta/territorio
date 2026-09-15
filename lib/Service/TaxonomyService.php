@@ -32,6 +32,15 @@ class TaxonomyService {
 	 * `territorio_subcategory.slug` is `VARCHAR(64)`. The label it is derived
 	 * from may be twice that, so the cap is reached by ordinary names and not
 	 * only by abuse.
+	 *
+	 * ponytail: two labels that differ only after their 64th slug character
+	 * derive to the same slug, so the second is refused with «Ya existe una
+	 * subcategoría con ese nombre en esta categoría» — a sentence that is false
+	 * about two names the person reads as different. Accepted because a name
+	 * that long is not one a clinic types; the upgrade is to widen the column to
+	 * `LABEL_LENGTH` in a migration, or to disambiguate the cut slug with a
+	 * suffix. Named here rather than at the refusal because this is where the
+	 * ceiling is decided.
 	 */
 	private const SLUG_LENGTH = 64;
 

@@ -2497,6 +2497,12 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
     failing at, and the Limit is the only thing here that can quietly invalidate
     this check by getting longer — so the check states the length it was proven
     at instead of inheriting whatever the run happened to leave.
+
+    Then it scrolls. At scroll 0 the action group is the first child of the form
+    and is on screen with or without `position: sticky`, so that measurement
+    alone grades the reorder twice and the sticky bar not at all. The Sector is
+    measured a second time with the sidebar scrolled to its end, which is the
+    only position from which the two can be told apart.
     """
     sector = registry_feature(page, f"Sector Navegador {RUN}")
     if sector is None:
@@ -2593,6 +2599,65 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
             # Saved for whoever lands this to look at, per SKILL.md § 5.
             if (width, height) == (1362, 620) and name.startswith("Sector "):
                 page.screenshot(path=str(SHOTS / "retire-above-the-fold.png"), full_page=False)
+
+            # Everything above was measured at scroll 0, where the action group
+            # is the first child of the form and is on screen whether or not it
+            # is sticky — the reorder alone satisfies it, 30 tramos and all. What
+            # only `position: sticky` can do is keep the group there once the
+            # form scrolls, so the Sector — the one record tall enough to scroll
+            # — is measured again at the bottom of the sidebar. Without this the
+            # sticky half of the fix is guarded by nothing that can observe it.
+            if box is not None and name.startswith("Sector "):
+                # `.app-sidebar` is the element that scrolls, measured on this
+                # instance rather than read off the stylesheet: one match,
+                # `overflow-y: auto`, scrollHeight 1336 over clientHeight 562 on
+                # a 620px screen, while `.app-sidebar-tabs__content` inside it is
+                # `overflow-y: visible`. If a later @nextcloud/vue moves the
+                # scroller this stops matching and the branch below says so.
+                sidebar = page.locator(".app-sidebar")
+                if sidebar.count() == 0:
+                    failures.append(
+                        f"no .app-sidebar to scroll for {name!r} at {width}x{height}, so "
+                        "nothing measured whether «Retirar del mapa» stays put (#35)",
+                    )
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(300)
+                    continue
+
+                scrolled = sidebar.first.evaluate(
+                    "el => { el.scrollTop = el.scrollHeight; return el.scrollTop }",
+                )
+                page.wait_for_timeout(400)
+                # What makes the pair of measurements a test of sticky rather
+                # than of luck: a group that merely sat somewhere in the middle
+                # of the form would need `y + height <= height` at scroll 0 AND
+                # `y >= scrolled` at the end, which is only possible when the
+                # sidebar scrolls less than one screenful. So too short a scroll
+                # is a failure, not a pass — it is the one way this check could
+                # report green having observed nothing.
+                if scrolled < height:
+                    failures.append(
+                        f"the sidebar scrolled only {round(scrolled)}px on a {height}px screen "
+                        f"for {name!r}: less than a screenful, so the measurement below cannot "
+                        "tell a stuck group from one that happens to be in view (#35)",
+                    )
+                else:
+                    stuck = control.first.bounding_box()
+                    if stuck is None:
+                        where = "not rendered any more"
+                    else:
+                        top, bottom = round(stuck["y"]), round(stuck["y"] + stuck["height"])
+                        where = "y={}..{}px on a {}px screen".format(top, bottom, height)
+                    if stuck is None or stuck["y"] < 0 or stuck["y"] + stuck["height"] > height:
+                        failures.append(
+                            f"«Retirar del mapa» scrolled away with the form for {name!r} at "
+                            f"{width}x{height} ({where}) — the action group is not stuck (#35)",
+                        )
+                    elif (width, height) == (1362, 620):
+                        # The picture for criterion 3: the bar still under the
+                        # sidebar header with the form scrolled to its end.
+                        page.screenshot(path=str(SHOTS / "retire-still-stuck.png"),
+                                        full_page=False)
 
             page.keyboard.press("Escape")
             page.wait_for_timeout(300)

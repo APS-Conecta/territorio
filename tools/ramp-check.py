@@ -62,6 +62,12 @@ SPARE_CHROMA = 0.090
 SPARE_LIGHTNESS_STEP = 0.005
 NEUTRAL_CHROMA = 0.02        # below this a colour has no hue to speak of: `sin_clasificar`
                              # sits at 0.011 and must not be read as a seventh family
+NEUTRALS = ('sin_clasificar', 'DEFAULT_SECTOR_COLOUR', 'UNKNOWN_COLOUR')
+                             # neutral BY CONTRACT, not by measurement: ADR-0013's three
+                             # greys. `NEUTRAL_CHROMA` is only the threshold that spots
+                             # them, so the contract is gated rather than assumed.
+RAMP_HUE_FAMILIES = 6        # ADR-0013: what chroma 0.090 buys for eleven Categories, and
+                             # #40 puts opening a seventh out of scope
 SPARE_CHROMA_TOLERANCE = 0.002   # 8-bit rounding: the seeded eleven land between 0.089 and 0.091
 SPARE_HUE_TOLERANCE = 1.0        # degrees, same reason
 
@@ -142,10 +148,13 @@ def hue_families(colours):
     """The hue families the ramp already uses, read off the ramp itself.
 
     Derived rather than listed so that repainting a Category moves its family with
-    it, and so that a seventh family cannot arrive by editing a constant here —
-    ADR-0013 holds the ramp at six and #40 puts opening a seventh out of scope.
+    it. That is all deriving buys: the ramp is held at ADR-0013's six by the count
+    check in `spare_failures()`, because the palette this reads is in another file
+    and a hue added there would otherwise open a seventh family in silence.
 
     Neutrals are excluded by chroma: `sin_clasificar` has no hue to be a family of.
+    Which colours are allowed to be neutral is a contract, not a measurement, so
+    `spare_failures()` gates that too — a tinted grey lands here as a family.
     """
     hues = sorted(hue for lightness, chroma, hue in map(oklch, colours) if chroma > NEUTRAL_CHROMA)
     # ponytail: clusters along a line rather than around the circle — no family
@@ -284,11 +293,25 @@ def spare_failures(spares, taken):
 
     Pairs among the spares are checked once, not twice — separation is symmetric.
     """
-    if not spares:
-        return ['no spares found in the seed — SPARES or the regex reading it has drifted']
-
-    families = hue_families([colour for _, colour in taken])
     failures = []
+    if not spares:
+        failures.append('no spares found in the seed — SPARES or the regex reading it has drifted')
+
+    # Everything below derives from "the ramp has six hue families and three greys that
+    # are not families at all". Both halves are gated here rather than trusted, because
+    # the colours come out of two other files: an edit there that opens a seventh family
+    # would have the derivation quietly recommending colours ADR-0013 never decided on.
+    families = hue_families([colour for _, colour in taken])
+    if len(families) > RAMP_HUE_FAMILIES:
+        failures.append(f'the palette now has {len(families)} hue families {families} — '
+                        f'ADR-0013 holds the ramp at {RAMP_HUE_FAMILIES} and opens no seventh')
+    for name, colour in taken:
+        if name in NEUTRALS:
+            chroma = oklch(colour)[1]
+            if chroma >= NEUTRAL_CHROMA:
+                failures.append(f'{name} {colour}: chroma {chroma:.3f} is not neutral '
+                                f'(< {NEUTRAL_CHROMA}) — ADR-0013 keeps these three grey, and a '
+                                'tinted one reads as a hue family the spares get derived inside')
     for index, spare in enumerate(spares):
         name = f'spare {index + 1}'
         others = list(taken) + [(f'spare {other + 1}', colour)

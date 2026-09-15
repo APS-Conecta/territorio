@@ -59,6 +59,31 @@ const FIGURE_FILL_OPACITY = 0.10
 export const GROUND_LABEL_MIN_ZOOM = 15
 
 /**
+ * The pin: 26px of dot with a 19px mark inside it (#37).
+ *
+ * Here rather than in TerritorioMap.vue because two things outside that
+ * component need the same numbers. The divIcon is an HTML string and its
+ * `iconSize` is JS, while the dot's geometry is CSS, so 26 was already written
+ * twice inside the one component; and ADR-0017 makes the pictogram picker in
+ * the Capas panel preview «at the size the map pin actually draws», which is a
+ * third copy in a third file. The CSS reads them as custom properties the
+ * divIcon writes, so the number exists once.
+ *
+ * Not a preference. 26px replaced 22px because the mark, derived at a desk, was
+ * reported as not easily visualised on a busy basemap, and most of what the
+ * extra 4px buys goes to the mark rather than to the footprint — 73% of the dot
+ * against 64% — because a bigger dot overlaps its neighbours sooner and La
+ * Florida holds ~865 records. The 2px ring stays: it is what keeps the dot off
+ * fill-vs-tint contrast over a tinted Sector (docs/design/map-legibility.md
+ * §1.2).
+ *
+ * The Datos list (18/12) and the Capas legend (16/11) deliberately do not
+ * follow. The pin is the one place a mark has no label beside it.
+ */
+export const PIN_DOT_SIZE = 26
+export const PIN_GLYPH_SIZE = 19
+
+/**
  * The Leaflet path style for one shape.
  *
  * @param {?string} slug the record's Subcategory slug, from indexSubcategories()

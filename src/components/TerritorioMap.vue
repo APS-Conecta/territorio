@@ -28,7 +28,7 @@ import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
-import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { PIN_DOT_SIZE, PIN_GLYPH_SIZE, labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { clusterRing, isApproximate } from '../pins.js'
 import {
 	boundsOf,
@@ -703,7 +703,8 @@ export default {
 			// bundled Maki asset resolved at build time, not a stored value. The
 			// colour is something a person typed into a picker, which is why that
 			// one goes through escapeHtml.
-			const glyph = glyphFor(this.subcategories.get(feature.subcategoryId)?.categorySlug)
+			const category = this.subcategories.get(feature.subcategoryId)
+			const glyph = glyphFor(category?.categorySlug, category?.categoryGlyph)
 
 			// The ring the pin already wears goes dashed when the Registry only
 			// knows the coordinate approximately (#23). A modifier and a
@@ -720,12 +721,19 @@ export default {
 				classes.push('territorio-pin__dot--approximate')
 			}
 
+			// The geometry travels as custom properties rather than as a second
+			// copy of the numbers in the stylesheet below: `iconSize` is JS and
+			// the dot's width is CSS, so 26 used to be written twice in this one
+			// component — and #46's picker previews at the mark size, which would
+			// have made a third copy in a third file (marks.js).
 			return L.divIcon({
 				className: 'territorio-pin',
 				html: `<span class="${classes.join(' ')}"`
-					+ ` style="background:${escapeHtml(colour)}">${glyph}</span>`,
-				iconSize: [26, 26],
-				iconAnchor: [13, 13],
+					+ ` style="--territorio-pin:${PIN_DOT_SIZE}px;`
+					+ `--territorio-pin-mark:${PIN_GLYPH_SIZE}px;`
+					+ `background:${escapeHtml(colour)}">${glyph}</span>`,
+				iconSize: [PIN_DOT_SIZE, PIN_DOT_SIZE],
+				iconAnchor: [PIN_DOT_SIZE / 2, PIN_DOT_SIZE / 2],
 			})
 		},
 
@@ -879,20 +887,17 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	align-items: center;
 	justify-content: center;
 	/*
-	 * 26px, not the 22px this was (#37). 12px of mark was derived by rendering
-	 * the eleven side by side at a desk; used on a busy basemap at a glance it
-	 * was reported as "not easily visualised", and the report beats the
-	 * measurement. Most of what 26 buys goes to the glyph rather than to the
-	 * footprint — the mark is now 73% of the dot against 64% — because a bigger
-	 * dot is also a dot that overlaps its neighbours sooner, and La Florida holds
-	 * ~865 records against this instance's few hundred.
+	 * Written onto the element by `iconFor()` from `PIN_DOT_SIZE` — which is
+	 * where the measurement and the reason for it are (marks.js).
 	 *
-	 * The Datos list (18/12) and the Capas legend (16/11) deliberately do not
-	 * follow. This is the one place a glyph has no label beside it; there they
-	 * only have to read as the same pictogram.
+	 * No fallback value. `iconFor()` is the only thing that builds a
+	 * `.territorio-pin__dot`, so a missing property is not a pin drawn slightly
+	 * wrong, it is this component having stopped building its own markup — and a
+	 * dot that silently kept its old size would hide that from the browser gate,
+	 * which measures the rendered box.
 	 */
-	width: 26px;
-	height: 26px;
+	width: var(--territorio-pin);
+	height: var(--territorio-pin);
 	border-radius: 50%;
 	border: 2px solid var(--color-main-background, #fff);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -902,13 +907,14 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	 * specifically — every Category clears 3:1 against it (WCAG 1.4.11,
 	 * tools/ramp-check.py) — and the dot's fill is a data colour that does not
 	 * change with the theme, so a glyph that did would stop clearing on one of
-	 * them. 19px inside a dot whose 2px border leaves 22px — the ring stays,
-	 * because it is what keeps a dot off fill-vs-tint contrast over a tinted
-	 * Sector (docs/design/map-legibility.md §1.2).
+	 * them. The mark's own size comes from `PIN_GLYPH_SIZE` (marks.js), which
+	 * #46's picker previews at; the ring stays, because it is what keeps a dot
+	 * off fill-vs-tint contrast over a tinted Sector
+	 * (docs/design/map-legibility.md §1.2).
 	 */
 	svg {
-		width: 19px;
-		height: 19px;
+		width: var(--territorio-pin-mark);
+		height: var(--territorio-pin-mark);
 		fill: #fff;
 		flex: 0 0 auto;
 	}

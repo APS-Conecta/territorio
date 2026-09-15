@@ -14,6 +14,7 @@
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
 						@rename="rename"
+						@clear-rename-error="renameError = ''"
 						@reset="resetFilter" />
 
 					<FeatureList :features="listed"

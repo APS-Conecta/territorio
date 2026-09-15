@@ -173,7 +173,7 @@ export default {
 		error: { type: String, default: '' },
 	},
 
-	emits: ['toggle-category', 'toggle-subcategory', 'reset', 'rename'],
+	emits: ['toggle-category', 'toggle-subcategory', 'reset', 'rename', 'clear-rename-error'],
 
 	data() {
 		return {
@@ -224,7 +224,17 @@ export default {
 			return subcategory === null ? `c${category.id}` : `s${subcategory.id}`
 		},
 
+		/**
+		 * Opening or abandoning a rename clears the last refusal.
+		 *
+		 * The note card sits at the top of the panel body and names no row, so a
+		 * refusal left over from a rename somebody gave up on reads as a refusal
+		 * of the one they are typing now — with eleven Categories and some fifty
+		 * Subcategories in one scrolling panel, there is nothing to tell them
+		 * apart by. `rename()` in App.vue only ever clears it on success.
+		 */
 		startRename(category, subcategory = null) {
+			this.$emit('clear-rename-error')
 			this.renaming = this.keyOf(category, subcategory)
 			this.draftLabel = (subcategory ?? category).label
 			// v-if means the input does not exist until Vue has patched the DOM.
@@ -250,6 +260,7 @@ export default {
 		},
 
 		cancel() {
+			this.$emit('clear-rename-error')
 			this.renaming = null
 		},
 	},

@@ -264,6 +264,71 @@ final class ExportTest extends IntegrationTestCase {
 		self::assertSame([], $added, 'a KML carries nobody, so there is nothing to record');
 	}
 
+	/**
+	 * A KMZ is the KML it would have exported, in an archive (#102).
+	 *
+	 * Here as well as in `ExportServiceTest` because what a unit test cannot say
+	 * is that the archive holds the KML of the RECORDS — the ids from the browser,
+	 * through `rows()`, through the taxonomy, into the file. The comparison is
+	 * against the KML export of the same ids in the same run rather than against a
+	 * fixture, because the criterion is that the two cannot drift apart.
+	 */
+	public function testAKmzCarriesTheSameKmlTheKmlExportWouldHaveWritten(): void {
+		$id = $this->place('KMZ', ['phone' => '+56 9 7777 7777']);
+
+		$kmz = $this->exports->export([$id], 'kmz', false);
+		$kml = $this->exports->export([$id], 'kml', false);
+
+		self::assertSame('application/vnd.google-earth.kmz', $kmz['mime']);
+		self::assertStringEndsWith('.kmz', $kmz['filename']);
+		self::assertSame($kml['body'], self::docKml($kmz['body']));
+		// The KML inside is a KML: it names the record and carries nobody's
+		// telephone number, whatever the archive around it is called.
+		self::assertStringContainsString('KMZ', (string)self::docKml($kmz['body']));
+		self::assertStringNotContainsString('+56 9 7777 7777', $kmz['body']);
+	}
+
+	/**
+	 * And the refusal that covers a KML covers it, for the same reason (#102).
+	 *
+	 * The log assertion is the half that matters most: a KMZ let through would
+	 * ask for a password over a file with nothing personal in it AND leave an
+	 * entry saying contact data left the building when none did — a false line in
+	 * the one record that says who took personal data out (ADR-0006, ADR-0012).
+	 */
+	public function testAKmzCannotBeAskedForWithContactsEither(): void {
+		$id = $this->place('KMZ con contactos', ['phone' => '+56 9 8888 8888']);
+
+		$added = $this->logging(function () use ($id): void {
+			try {
+				$this->exports->export([$id], 'kmz', true);
+				self::fail('a KMZ with contacts should be refused');
+			} catch (InvalidFeatureException $refusal) {
+				// The same sentence a KML gets, because it is the same reason.
+				self::assertStringContainsString('no lleva datos de contacto', $refusal->getMessage());
+			}
+		});
+
+		self::assertSame([], $added, 'a refused export must leave nothing in the log');
+	}
+
+	/** What the archive holds, or null if it holds no `doc.kml`. */
+	private static function docKml(string $kmz): ?string {
+		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-test-');
+		file_put_contents($path, $kmz);
+
+		try {
+			$zip = new \ZipArchive();
+			self::assertTrue($zip->open($path) === true, 'the KMZ should open as an archive');
+			$doc = $zip->getFromName('doc.kml');
+			$zip->close();
+
+			return $doc === false ? null : $doc;
+		} finally {
+			unlink($path);
+		}
+	}
+
 	public function testARetiredRecordIsNotExportedEvenIfAskedFor(): void {
 		$id = $this->place('Retirado antes de exportar');
 		Server::get(FeatureService::class)->retire($id);

@@ -34,6 +34,7 @@ import re
 import subprocess
 import sys
 import uuid
+import zipfile
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
@@ -789,12 +790,64 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     if not kml.suggested_filename.endswith(".kml"):
         failures.append(f"the KML export arrived as {kml.suggested_filename!r}")
 
+    a_kmz_is_that_kml_in_an_archive(page, Path(kml.path()).read_bytes(), failures)
+
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
     the_server_refuses_an_unconfirmed_export(page, failures)
     the_administrator_can_read_the_export_log(page, failures)
+
+
+def a_kmz_is_that_kml_in_an_archive(page, kml_bytes, failures):
+    """#102: a KMZ is the KML in a ZIP, and the dialog treats it as the KML it is.
+
+    Driven straight after the KML download, on the same filtered set, and given
+    that download's bytes: the criterion is that the two are IDENTICAL, so
+    anything less than comparing them against each other would be checking a
+    weaker thing. This is also the one criterion no PHP test can reach — the
+    file has to come down the wire, through the route the dialog chose.
+    """
+    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.wait_for_timeout(600)
+    page.get_by_text("KMZ —").click()
+    page.wait_for_timeout(300)
+
+    # The same sentence a KML gets, naming the format the person chose: a KMZ
+    # cannot carry a telephone number either.
+    if page.get_by_text("No lleva teléfono").count() == 0:
+        failures.append("choosing KMZ did not say what it cannot carry")
+
+    # And no contacts switch, which is the half that matters: offering it would
+    # ask for the person's password over a file with nothing personal in it
+    # (ADR-0006) and the server would refuse the export afterwards anyway.
+    if page.get_by_text("Incluir datos de contacto").count() != 0:
+        failures.append("the KMZ format offered the contacts switch")
+
+    with page.expect_download(timeout=20_000) as download:
+        page.get_by_role("button", name="Exportar", exact=True).last.click()
+    kmz = download.value
+    if not kmz.suggested_filename.endswith(".kmz"):
+        failures.append(f"the KMZ export arrived as {kmz.suggested_filename!r}")
+        return
+
+    path = Path(kmz.path())
+    if not zipfile.is_zipfile(path):
+        failures.append("the KMZ did not arrive as an archive")
+        return
+
+    with zipfile.ZipFile(path) as archive:
+        if "doc.kml" not in archive.namelist():
+            failures.append(f"the KMZ holds {archive.namelist()} and no doc.kml")
+            return
+        inside = archive.read("doc.kml")
+
+    if inside != kml_bytes:
+        failures.append(
+            "the doc.kml inside the KMZ is not what the KML export wrote "
+            f"({len(inside)} bytes against {len(kml_bytes)})",
+        )
 
 
 def an_export_of_osm_data_names_the_licence(page, failures):

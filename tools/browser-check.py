@@ -4270,6 +4270,233 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
         retire_the_runs_record(page, filed)
 
 
+def _add_a_category_in_capas(page, label, failures):
+    """Press «Agregar categoría» under the tree, type a name and press Enter.
+
+    By its accessible name, like `_add_in_capas()`: «Agregar categoría» is the
+    string a screen reader reads, and `exact=True` keeps it clear of the Datos
+    column's «Agregar» and of #44's «Agregar subcategoría en «X»».
+    """
+    add = page.get_by_role("button", name="Agregar categoría", exact=True)
+    if add.count() == 0:
+        failures.append("the Capas panel offers no way to add a Category")
+        return False
+
+    add.first.click()
+    field = page.locator(CAPAS_INPUT)
+    if not settles(page, lambda: field.count() > 0, timeout=4_000):
+        failures.append("«Agregar categoría» opened no field to type in")
+        return False
+
+    field.fill(label)
+    field.press("Enter")
+    page.wait_for_timeout(900)
+
+    return True
+
+
+def _colour_owed_to_a_new_category(page):
+    """What the app owes the next Category it is asked to create (ADR-0017).
+
+    The first spare the seed ships that no Category already holds, and the
+    neutral once they are gone. Derived here rather than hard-coded to a spare,
+    because this check adds a Category per run and cannot remove one until #47 —
+    so the instance walks down the list over time, and a fixed expectation would
+    go red on an install doing exactly what it should. Deriving it also means the
+    exhaustion branch below starts being exercised for real on a long-lived
+    instance rather than only in the integration suite.
+
+    The spares and the neutral are read out of the repo's own two sources, the
+    way `_ramp_check()` reads everything else here: a third copy of either in
+    this file would be the drift the whole arrangement exists to prevent.
+    """
+    ramp = _ramp_check()
+    taken = {
+        category["color"].lower() for category in served_taxonomy(page) or []
+    }
+
+    return next(
+        (spare for spare in ramp.seeded_spares() if spare.lower() not in taken),
+        ramp.javascript_colours()["DEFAULT_SECTOR_COLOUR"],
+    )
+
+
+def a_category_can_be_added_without_a_reload(page, errors, failures):
+    """#45: add a Category from the Capas panel and use it straight away.
+
+    The criteria only a browser can prove are the ones about *appearing* — in
+    the panel, in the Subcategoría picker and in Análisis, with nothing reloaded
+    — and the one about the neutral not reading as a failure, which is a question
+    about which note card it lands in. The integration suite proves the write,
+    the derived slug, the unique index and the walk down the spare list against
+    the real schema; none of that says a person can see any of it.
+
+    What was written is asserted against the Registry per SKILL.md § 5, through
+    `served_taxonomy()` — the read a second browser does. The colour is pinned to
+    the exact one the app OWED, which is the whole of ADR-0017's rule: an
+    assertion that merely checked "some spare" would pass against an
+    implementation that hands out the first one every time.
+
+    Named per run for the reason #44's check gives: nothing can take a Category
+    away until #47, so a fixed name would be added by the first run and refused
+    as a duplicate by every run after it.
+    """
+    # ponytail: the Category this adds is left behind, one per run, and each one
+    # spends a spare colour — so this instance walks toward the neutral branch
+    # below, which is a real ADR-0017 case rather than a broken check. Retire it
+    # here once #47 gives the app a way to remove one; `make instance-clean` is
+    # the reset until then.
+    added = f"Comité {RUN}"
+    slug = f"comite_{RUN}"
+    filed = f"Registro {RUN} en Comité"
+
+    owed = _colour_owed_to_a_new_category(page)
+    neutral = _ramp_check().javascript_colours()["DEFAULT_SECTOR_COLOUR"]
+
+    if not _add_a_category_in_capas(page, added, failures):
+        return
+
+    try:
+        row = _capas_category(page, added)
+        if not settles(page, lambda: row.count() > 0, timeout=6_000):
+            failures.append(
+                f"«{added}» is not in the Capas panel after being added — it did not appear "
+                f"without a reload",
+            )
+            return
+        if not row.first.is_visible():
+            failures.append(
+                f"«{added}» is in the Capas panel's markup but not on the screen",
+            )
+
+        # «It renders a pictogram rather than a blank». The glyph lookup has no
+        # mark for a slug it has never seen and falls back to the neutral one —
+        # a blank would read as a rendering failure, which is the thing #45 says
+        # must not happen. Choosing a mark of its own is #46.
+        mark = row.locator(".territorio-capas__swatch").first.evaluate(
+            """(swatch) => {
+                const box = swatch.querySelector('svg path')?.getBoundingClientRect()
+                return box ? [Math.round(box.width), Math.round(box.height)] : null
+            }""",
+        )
+        if mark is None or min(mark) == 0:
+            failures.append(
+                f"the swatch for «{added}» draws no pictogram ({mark}): a clinic-added Category "
+                f"is showing a blank, which reads as a rendering failure rather than as "
+                f"unclassified",
+            )
+
+        row.first.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        page.locator(".territorio-capas").screenshot(path=str(SHOTS / "45-capas-panel.png"))
+
+        written = next(
+            (entry for entry in served_taxonomy(page) or [] if entry["slug"] == slug), None,
+        )
+        if written is None:
+            failures.append(
+                f"the Capas panel shows «{added}» but the Registry serves no Category under "
+                f"{slug!r}: it was painted and not written, or the slug was not derived from "
+                f"the name (#40)",
+            )
+            return
+        if written["label"] != added:
+            failures.append(f"the Registry filed the new Category as {written['label']!r}")
+        if written["color"].lower() != owed.lower():
+            failures.append(
+                f"«{added}» took {written['color']!r} where the next unused spare was "
+                f"{owed!r} — a colour is not being assigned as ADR-0017 says it is",
+            )
+        if [sub["slug"] for sub in written["subcategories"]] != ["otro"]:
+            failures.append(
+                f"«{added}» arrived with {[sub['slug'] for sub in written['subcategories']]} "
+                f"rather than the «Otro» that makes it usable: nothing can be filed under it, "
+                f"so it can reach neither the picker nor Análisis",
+            )
+            return
+
+        # Created correctly, so nothing about it may be dressed as a refusal —
+        # including the exhausted-spares case, which ADR-0017 says in as many
+        # words must not read as an error.
+        if page.locator(".territorio-capas .notecard--error").count() > 0:
+            failures.append(
+                f"adding «{added}» succeeded and the Capas panel answered with an error note "
+                f"card: a Category that was created correctly is being announced as a refusal",
+            )
+        said = page.locator(".territorio-capas .notecard")
+        if written["color"].lower() == neutral.lower():
+            if said.count() == 0 or "pictograma" not in (said.first.text_content() or ""):
+                failures.append(
+                    f"«{added}» took the neutral because no spare was left and the panel said "
+                    f"nothing about it — a person is left assuming the grey means something "
+                    f"broke (ADR-0017)",
+                )
+        elif said.count() > 0:
+            failures.append(
+                f"«{added}» took the spare {written['color']!r} and the panel explained itself "
+                f"anyway: {said.first.text_content()!r}",
+            )
+
+        _the_picker_offers_the_new_name(page, f"{added} · Otro", failures)
+
+        _a_clustered_place(page, filed, f"{added} · Otro", 7, failures)
+        record = registry_feature(page, filed)
+        if record is None:
+            failures.append(
+                f"{filed!r} is not in the Registry: a record could not be filed under a Category "
+                f"that had just been added",
+            )
+        elif record.get("subcategoryId") != written["subcategories"][0]["id"]:
+            failures.append(
+                f"{filed!r} was filed under Subcategory {record.get('subcategoryId')!r} and not "
+                f"under the {written['subcategories'][0]['id']!r} the new Category arrived with",
+            )
+
+        _analisis_reads_the_new_name(page, added, "Otro", failures, shot="45-analisis.png")
+        _the_same_category_name_twice_is_refused(page, added, slug, errors, failures)
+    finally:
+        # The record, not the Category: nothing in the app removes one of those
+        # until #47, and the ponytail note above says why this one stays.
+        retire_the_runs_record(page, filed)
+
+
+def _the_same_category_name_twice_is_refused(page, label, slug, errors, failures):
+    """The refusal reaches the person who typed, and nothing is written twice.
+
+    `terr_cat_slug_idx` is unique on the slug alone and the integration suite
+    proves that; what only a browser can show is that the refusal arrives in the
+    panel as a sentence rather than as a 500, and that the Registry did not
+    quietly grow a second row while the panel looked unchanged.
+    """
+    before = len(errors)
+
+    if not _add_a_category_in_capas(page, f"  {label.upper()}  ", failures):
+        return
+
+    if page.locator(".territorio-capas .notecard--error").count() == 0:
+        failures.append(
+            f"adding «{label}» a second time said nothing: a duplicate was either accepted or "
+            f"refused somewhere the person cannot see",
+        )
+    carrying = [entry for entry in served_taxonomy(page) or [] if entry["slug"] == slug]
+    if len(carrying) != 1:
+        failures.append(
+            f"{len(carrying)} Categories now carry the slug {slug!r}: the refusal wrote one anyway",
+        )
+
+    # The refusal IS an HTTP 422 and the browser logs every failed response as a
+    # console error, which main()'s run-wide gate would then report. Exactly the
+    # entries this refusal added are dropped, and only the 422 among them.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
+
+    # Leave the panel as it was found: the note card names no row, so one left
+    # behind reads as a refusal of whatever the next check does.
+    page.get_by_role("button", name="Agregar categoría", exact=True).first.click()
+    page.wait_for_timeout(300)
+    page.locator(CAPAS_INPUT).press("Escape")
+    page.wait_for_timeout(500)
+
+
 def _the_same_name_twice_is_refused(page, label, errors, failures):
     """The duplicate refusal, where the person typed it — and nothing written.
 
@@ -4580,6 +4807,12 @@ def main():
         # After it, and not before: that check renames «Salud» and puts it back,
         # and this one addresses the Category by that name throughout.
         a_subcategory_can_be_added_without_a_reload(page, errors, failures)
+        # After both, and last of the taxonomy checks: this one adds a Category
+        # that nothing can take away again (#47), and every check above that
+        # addresses «Salud» by name would otherwise have one more branch in the
+        # panel to scroll past. It files its own record, so Análisis has a
+        # section to read.
+        a_category_can_be_added_without_a_reload(page, errors, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

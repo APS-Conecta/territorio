@@ -3,6 +3,67 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.56.0] — unreleased
+
+A territorial division renders as a division.
+
+### Changed
+
+- **A Unidad Vecinal is ground and a Sector is figure** (#21, #24, #29). CONTEXT.md separates a
+  Cadastral Dataset — «the clinic reads it, never draws it» — from a Curated Dataset, «born inside
+  the clinic». Enormous operational weight and, until now, zero visual weight: both were drawn with
+  the same fill, the same outline and the same hover tooltip, differing only in hue. A Unidad
+  Vecinal now draws with **no fill and a dashed `#7d7d7d` hairline**, and a Sector keeps a fill —
+  now a 0.10 wash — and gains a **permanent label at its centroid**.
+
+  **The label, not the colour, is what identifies a Sector.** CONTEXT.md says a clinic names its
+  sectores «words, numbers or colours», so a colour-first identity is right for one naming scheme
+  out of three and a label is right for all three. Colour is demoted to a wash that tells neighbours
+  apart, neutral when nobody set one.
+
+  **The `#949494` and the `0.10` are one decision, not two.** Composited over OSM land at the
+  `fillOpacity: 0.15` that shipped, the worst dot-on-tint pair measures 2.90:1 — under WCAG
+  1.4.11's 3:1 floor. At 0.10 it is 3.04:1. Changing either alone puts a measured contrast below
+  its floor (`docs/design/map-legibility.md` § 2).
+
+  **Label colour follows the tile and never the theme.** The basemap is raster OpenStreetMap under
+  both themes, so a dark-theme label of `#ebebeb` over OSM land `#f2efe9` would render at 1.04:1 —
+  invisible. The hexes in `TerritorioMap.vue` are literal on purpose. The tile pane itself is
+  de-emphasised with one line of CSS; `saturate` rather than `brightness` because its matrix is
+  luminance-preserving, so every contrast ratio measured against a tile still holds.
+
+  **Unidad Vecinal labels wait for zoom 15**, held back by a class on the map container. Across the
+  fifty to a hundred of a comuna they would be a sheet of text, and the alternative — the one
+  Leaflet plugin that does label collision — monkey-patches `L.LayerGroup.prototype`, which is the
+  exact invariant the layer swapping in `TerritorioMap.vue` protects.
+
+  **A side effect worth knowing:** with no fill, a Unidad Vecinal stops answering clicks across its
+  whole area. Once a comuna's cadastre is loaded it tiles the entire view, so a click meant for the
+  map beneath it now reaches the map. It is still selected from the list, and its outline is still
+  clickable.
+
+- **Only a Sector is offered a colour** (#24). The picker was gated on `isDivision`, true for any
+  territorial division — an editing affordance on a record the domain says the clinic only reads,
+  and one that made the figure-and-ground rule unguaranteeable, because `colourOf` honours a
+  Feature's own colour over its Category's. **A Unidad Vecinal that already carries one keeps it**:
+  nothing is cleared and there is no migration. It simply has nowhere left to render.
+
+- **A territorial division draws a ring in the Datos list, not a dot** (#29). Every Unidad Vecinal,
+  and every Sector nobody recoloured, was painted as an 18px `#334155` dot — **1.73:1 against the
+  dark theme**, where WCAG 1.4.11 asks 3:1. There was no legible grey to move it to: ADR-0013
+  measures the neutral band as full at ΔE 0.055 against a 0.05 floor, and every candidate outside it
+  reads wrong for a boundary. So the division stops being a dot. The ring echoes the map — dashed
+  for a Unidad Vecinal, solid for a Sector — and follows the **theme** rather than a data colour,
+  which is what makes it legible in both. The glyph inside is dropped: a division has no pictogram,
+  so it fell back to `circle-stroked` — an outlined circle inside an outlined ring.
+
+  `#334155` stays in the seed as **inert data** and now says so in a comment. `colourOf` answers
+  with the Sector neutral for a division with no colour of its own, `divisionsOf` stops carrying a
+  copy nobody painted, and the Análisis chart — the last surface it could still reach — draws a
+  division neutral through `categoryColour`. `tools/ramp-check.py` drops its `KNOWN, issue #29`
+  block and the helper that fed it: a division is not a dot, so its colour is out of that check's
+  scope.
+
 ## [0.55.0] — unreleased
 
 The map pin is big enough to read, and the glyphs beside a label are white at last.

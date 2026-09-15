@@ -205,7 +205,7 @@ def derive_spares(taken):
             candidate = from_oklch(step * SPARE_LIGHTNESS_STEP, SPARE_CHROMA, hue)
             if candidate is None:
                 continue
-            if not gate_failures(candidate, candidate, taken + [(s, s) for s in spares]):
+            if not gate_failures('candidate', candidate, taken + [(s, s) for s in spares]):
                 spares.append(candidate)
     return spares
 
@@ -269,11 +269,10 @@ def seeded_spares():
     failure rather than a vacuous pass, because an empty list satisfies every
     assertion below and would report OK while gating nothing.
     """
-    source = SEED.read_text(encoding='utf-8')
-    if 'const SPARES' not in source:
+    block = re.search(r'const SPARES\s*=\s*\[(.*?)\]', SEED.read_text(encoding='utf-8'), re.S)
+    if block is None:
         return []
-    block = source.split('const SPARES')[1].split(';')[0]
-    return re.findall(r"'(#[0-9a-fA-F]{6})'", block)
+    return re.findall(r"'(#[0-9a-fA-F]{6})'", block.group(1))
 
 
 def spare_failures(spares, taken):

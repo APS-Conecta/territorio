@@ -186,15 +186,19 @@ export default {
 	justify-content: center;
 	/* 16px, not the 12px it was. A Maki glyph is drawn on a 15-unit grid and
 	   needs about 12px of mark to hold its detail; this is the legend for the
-	   map, so the two have to read as the same pictogram. */
+	   map, so the two have to read as the same pictogram. It stayed at 16/11
+	   while #37 took the pin to 26/19 — the legend has its Category name beside
+	   it and the pin has nothing. */
 	width: 16px;
 	height: 16px;
 	border-radius: 50%;
 	flex: 0 0 auto;
-}
-
-.territorio-capas__swatch :deep(svg) {
-	fill: #fff;
+	/* White, fed to NcIconSvgWrapper as `currentColor` rather than forced onto
+	   the svg: its own `.icon-vue[data-v-…] svg { fill: currentColor }` ties with
+	   a scoped `:deep(svg)` rule at specificity (0,2,1), the library's stylesheet
+	   loaded last, and these glyphs rendered in the theme's dark text colour for
+	   as long as the rule claimed otherwise (#37). See FeatureList.vue. */
+	color: #fff;
 }
 
 .territorio-capas__name {

@@ -177,16 +177,23 @@ export default {
 	align-items: center;
 	justify-content: center;
 	/* The label sits beside it, so this only has to be recognisable as the
-	   same mark the pin uses — see TerritorioMap for why 12px is the floor. */
+	   same mark the pin uses — see TerritorioMap for why 12px is the floor.
+	   It stayed at 18/12 while #37 took the pin to 26/19: the pin is the only
+	   mark with no label beside it. */
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
-}
+	/* White for the reason the map pin's glyph is white: the ramp was validated
+	   against white, and the dot underneath is a data colour that does not
+	   follow the theme.
 
-/* White for the reason the map pin's glyph is white: the ramp was validated
-   against white, and the dot underneath is a data colour that does not follow
-   the theme. */
-.territorio-list__swatch :deep(svg) {
-	fill: #fff;
+	   Set as `color`, not as `fill` on the svg, because NcIconSvgWrapper ships
+	   `.icon-vue[data-v-…] svg { fill: currentColor }` at specificity (0,2,1) and
+	   a scoped `:deep(svg) { fill: #fff }` compiles to exactly (0,2,1) too. The
+	   tie went to whichever stylesheet loaded last, which was the library's, so
+	   these glyphs rendered in the theme's dark text colour for as long as the
+	   rule existed (#37). Feeding `currentColor` is what the component is built
+	   for; out-specifying it would only move the same fight one bump away. */
+	color: #fff;
 }
 </style>

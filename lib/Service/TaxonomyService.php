@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Db\CategoryMapper;
+use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidTaxonomyException;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\DB\Exception as DbException;
 
 /**
  * The Category tree, as the client needs it.
@@ -25,6 +27,13 @@ class TaxonomyService {
 	 * than as the database's own error through a 500.
 	 */
 	private const LABEL_LENGTH = 128;
+
+	/**
+	 * `territorio_subcategory.slug` is `VARCHAR(64)`. The label it is derived
+	 * from may be twice that, so the cap is reached by ordinary names and not
+	 * only by abuse.
+	 */
+	private const SLUG_LENGTH = 64;
 
 	public function __construct(
 		private CategoryMapper $categories,
@@ -104,6 +113,89 @@ class TaxonomyService {
 		$this->subcategories->update($subcategory);
 
 		return $this->tree();
+	}
+
+	/**
+	 * Add a Subcategory under an existing Category (#44).
+	 *
+	 * No colour and no pictogram: both belong to the parent Category (ADR-0013 —
+	 * hue groups Categories and the glyph identifies them), and a Subcategory is
+	 * drawn with its Category's. So the clinic types one thing, a label.
+	 *
+	 * The slug is derived and never typed (issue #40): it is the stable
+	 * identifier a later rename leaves alone, and it is unique within its
+	 * Category rather than globally — "otro" is in nearly every one of them.
+	 *
+	 * Uniqueness is the index's, not this method's. A check-then-insert here
+	 * would be a second statement of the same rule, one that two people adding
+	 * «Taller» at once would both pass; `terr_subcat_slug_idx` is the rule, and
+	 * what is caught here is its violation, turned into a sentence.
+	 *
+	 * Answers with the whole served tree, like the renames, because that is the
+	 * one property the Capas panel, the Subcategoría picker, Análisis and the
+	 * map's colours all read — see `renameCategory()` for why a single row would
+	 * be a second description of the taxonomy.
+	 *
+	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws DoesNotExistException when no Category carries that slug
+	 * @throws InvalidTaxonomyException when the label is not one this app will store
+	 */
+	public function addSubcategory(string $categorySlug, string $label): array {
+		$category = $this->categories->findBySlug($categorySlug);
+		$clean = $this->cleanLabel($label);
+		$slug = self::slugFor($clean);
+		if ($slug === '') {
+			throw new InvalidTaxonomyException('El nombre necesita alguna letra o algún número.');
+		}
+
+		$subcategory = new Subcategory();
+		$subcategory->setCategoryId((int)$category->getId());
+		$subcategory->setSlug($slug);
+		$subcategory->setLabel($clean);
+
+		try {
+			$this->subcategories->insert($subcategory);
+		} catch (DbException $e) {
+			if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+				throw $e;
+			}
+			// Said of the name and not of the slug: the slug is derived, so
+			// «Punto Limpio» collides with «punto limpio» and naming the slug
+			// would describe a thing the person never typed.
+			throw new InvalidTaxonomyException(
+				'Ya existe una subcategoría con ese nombre en esta categoría.',
+			);
+		}
+
+		return $this->tree();
+	}
+
+	/**
+	 * The identifier a label makes: accents off, case down, everything else a
+	 * separator.
+	 *
+	 * Not `KmlReader::slug()`, which drops «y», «de», «la» and «el» so that a KML
+	 * Folder name lands on a slug the seed already carries. That is a heuristic
+	 * for matching existing rows and the wrong rule for a name somebody just
+	 * typed: «Casa de la cultura» is `casa_de_la_cultura` here, and nothing has
+	 * to recognise it afterwards.
+	 *
+	 * Decomposes and drops the combining marks rather than mapping the seven
+	 * Spanish letters, for the reason `DuplicateFinder::fold()` gives: a clinic
+	 * types what it types, and a list of seven is a list that is missing one.
+	 *
+	 * Public and static because it is pure — the only rule on this write path
+	 * that has no database in it, and the only one with no screen that would show
+	 * it going wrong (`TaxonomySlugTest`).
+	 */
+	public static function slugFor(string $label): string {
+		$decomposed = \Normalizer::normalize($label, \Normalizer::FORM_D);
+		$stripped = preg_replace('/\p{Mn}/u', '', $decomposed === false ? $label : $decomposed);
+		$slug = (string)preg_replace('/[^a-z0-9]+/', '_', mb_strtolower((string)$stripped));
+
+		// Trimmed again after the cut, so a name cut mid-separator does not make
+		// a slug the same label would not make twice.
+		return trim(mb_substr(trim($slug, '_'), 0, self::SLUG_LENGTH), '_');
 	}
 
 	/**

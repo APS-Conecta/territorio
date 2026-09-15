@@ -65,6 +65,7 @@ final class RoutesTest extends TestCase {
 			'export#history',
 			'changes#since',
 			'category#rename',
+			'category#addSubcategory',
 			'category#renameSubcategory',
 			'adminSettings#save',
 			'adminSettings#saveComuna',

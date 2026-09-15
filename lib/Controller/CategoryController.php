@@ -42,6 +42,13 @@ class CategoryController extends Controller {
 	}
 
 	#[NoAdminRequired]
+	public function addSubcategory(string $slug): JSONResponse {
+		return $this->attempt(fn (): array => $this->taxonomy->addSubcategory(
+			$slug, (string)($this->request->getParam('label') ?? ''),
+		));
+	}
+
+	#[NoAdminRequired]
 	public function renameSubcategory(string $slug, string $subSlug): JSONResponse {
 		return $this->attempt(fn (): array => $this->taxonomy->renameSubcategory(
 			$slug, $subSlug, (string)($this->request->getParam('label') ?? ''),

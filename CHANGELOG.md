@@ -23,6 +23,12 @@ The pictogram that identifies a Category is the clinic's to choose.
   side by side at a desk, and three of them had to be re-picked once they were seen on a busy
   basemap. A mark that reads at the legend's 11px can dissolve at the size it is used.
 
+  Making the swatch a control is also what nearly cost the size: a `<button>` takes the server
+  stylesheet's 34px clickable area, which beats `height: 16px`, so the legend's circle drew as an
+  ellipse and every mark in the grid sat on a 26×34 dot — the one size ADR-0017 says it must not
+  be. Nothing but a browser could see it (jsdom has no server stylesheet), and nothing did until
+  the gate ran against a built bundle.
+
   That number has therefore moved once already, so it now lives in one place. `PIN_DOT_SIZE` and
   `PIN_GLYPH_SIZE` are in `src/marks.js` and the pin reads them through custom properties the
   Leaflet `divIcon` writes onto its own markup; the stylesheet no longer carries a copy. The map

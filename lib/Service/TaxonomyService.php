@@ -182,10 +182,14 @@ class TaxonomyService {
 		if ($clean === '') {
 			return null;
 		}
-		// Lower case, digits and hyphens: every Maki name, and nothing that could
-		// be a path, an underscore-separated slug, or markup — this string is
-		// inlined into the map pin unescaped, as a bundled asset would be.
-		if (preg_match('/^[a-z0-9-]{1,' . self::GLYPH_LENGTH . '}$/', $clean) !== 1) {
+		// Letters, digits and hyphens: every Maki name — thirteen of the 215 are
+		// the `-JP` variants, whose suffix is capitalised — and nothing that could
+		// be a path, an underscore-separated slug, or markup, since this string is
+		// inlined into the map pin unescaped, as a bundled asset would be. Read
+		// back out of this file by `glyphs.test.js`, which fails when the picker
+		// offers a mark this line would refuse: a shape check is still a
+		// description of Maki's inventory, and it was a narrower one.
+		if (preg_match('/^[A-Za-z0-9-]{1,' . self::GLYPH_LENGTH . '}$/', $clean) !== 1) {
 			throw new InvalidTaxonomyException('Ese pictograma no existe en esta aplicación.');
 		}
 

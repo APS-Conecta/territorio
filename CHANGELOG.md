@@ -3,6 +3,45 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.49.0] — unreleased
+
+A Sector can be reached from the keyboard.
+
+### Added
+
+- **Every Zone and every Route on the map is now tab-focusable and opens on Enter** (#25). A Place
+  pin always was: `L.Marker` defaults to `keyboard: true` and sets `tabIndex` and `role` on its own
+  icon. `L.Path` has no keyboard option at all — neither `Path.js` nor `Layer.js` mentions one — so
+  a Sector or a Unidad Vecinal could be selected with a mouse and by no other means. The shapes now
+  carry `tabindex="0"`, `role="button"` and an `aria-label` holding the Feature's name, and Enter or
+  Space does what a click does.
+
+  **The same function, not a parallel one.** The click handler holds the `placing` guard that lets a
+  click through to the map while a draft is waiting for its coordinate; a keydown that emitted
+  `select` on its own would go round it and select a Sector at the one moment selecting one moves
+  the open record. So the callback was extracted and both are bound to it.
+
+  **Set after `addLayer`, on every redraw, and never unbound.** `_initPath` builds the SVG element
+  only when the layer joins the map, so `getElement()` is null before that. And every redraw here
+  builds a NEW group with NEW elements and drops the old one whole — the swap that keeps Leaflet
+  from holding a layer whose map is gone — so a handler bound to an element dies with it and is
+  never bound twice. There is deliberately no teardown: there is nothing that survives to tear down.
+
+  **No plugin.** The Leaflet plugin directory was swept for this (docs/design/map-legibility.md D6);
+  `Leaflet.a11y` covers popup focus and non-interactive marker labelling, neither of which applies.
+
+- **A focus ring on the map** (#25). `:focus-visible`, in the theme's own primary element colour and
+  offset by two pixels, the same idiom the selected pin already uses — so it flips with the theme
+  rather than being one fixed colour that works in one of them, and it never sits directly on a
+  Sector's own stroke, which is a colour the clinic chose and could match.
+
+### Changed
+
+- **The zoom buttons are labelled in Spanish** (#25) — «Acercar» and «Alejar», through
+  `L.control.zoom`'s own `zoomInTitle` / `zoomOutTitle`. They were Leaflet's English defaults, and
+  they are the only text on the map a screen reader reads out of a control rather than out of a
+  record.
+
 ## [0.48.0] — unreleased
 
 A Limit says when the cadastre lost the line it cites.

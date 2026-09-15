@@ -86,14 +86,32 @@ export function withNote(parts, text) {
  *
  * `picked` says whether the row stands for Boundary features, because removing
  * one has to unpick them too, and a described stretch has nothing to unpick.
+ *
+ * `gone` is how many of the row's parts cite a Boundary feature the cadastre no
+ * longer has (issue #51). The server says WHICH ids those are — the client
+ * cannot tell «gone» from «off-screen», since `/boundaries` only ever loads what
+ * is in view. Counted part by part rather than decided for the row: a street is
+ * dozens of separate ways, so three of Vicuña Mackenna's thirty going away is
+ * three, and calling the whole name gone would be false. A part with no
+ * `featureId` cites nothing and can never be gone — that row reads «a mano»,
+ * which is the other answer the picker has to keep distinct.
+ *
+ * @param {Array} parts the Limit as stored
+ * @param {number[]} gone ids the server says are no longer live Boundary features
  */
-export function groups(parts) {
+export function groups(parts, gone = []) {
+	const missing = new Set(gone ?? [])
 	const rows = new Map()
 
 	;(parts ?? []).forEach((part) => {
-		const row = rows.get(part.name) ?? { name: part.name, parts: 0, picked: false }
+		const row = rows.get(part.name) ?? { name: part.name, parts: 0, picked: false, gone: 0 }
 		row.parts += 1
 		row.picked = row.picked || part.featureId !== undefined
+		// By id, so a part that cites nothing can never be gone: `featureId` is
+		// undefined on a typed stretch and the server only ever names integers.
+		if (missing.has(part.featureId)) {
+			row.gone += 1
+		}
 		rows.set(part.name, row)
 	})
 

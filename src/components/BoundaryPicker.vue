@@ -56,6 +56,18 @@
 					<span v-if="row.parts > 1" class="territorio-picker__count">{{ row.parts }}</span>
 					<!-- And which rows follow nothing anybody could have picked. -->
 					<span v-if="!row.picked" class="territorio-picker__count">a mano</span>
+					<!--
+						A different answer from «a mano», and shown beside it (issue #51):
+						this row DID cite a line somebody picked, and the cadastre no
+						longer has it. The name stays — a Limit is what a team says out
+						loud, and a cadastre release does not change that — so this is
+						the only place the fact appears. The count only when part of the
+						name is left: a street is dozens of ways, and «3 de 30» is a
+						different thing to go and check than the whole street going away.
+					-->
+					<span v-if="row.gone > 0" class="territorio-picker__count">
+						ya no está en el catastro<template v-if="row.gone < row.parts"> ({{ row.gone }})</template>
+					</span>
 				</span>
 				<NcButton variant="tertiary"
 					:aria-label="`Quitar ${row.name} del límite`"

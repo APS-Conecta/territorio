@@ -131,14 +131,51 @@ describe('groups', () => {
 			{ featureId: 8, name: 'Avenida Vicuña Mackenna' },
 			{ name: 'por el canal' },
 		])).toEqual([
-			{ name: 'Avenida Vicuña Mackenna', parts: 2, picked: true },
-			{ name: 'por el canal', parts: 1, picked: false },
+			{ name: 'Avenida Vicuña Mackenna', parts: 2, picked: true, gone: 0 },
+			{ name: 'por el canal', parts: 1, picked: false, gone: 0 },
 		])
 	})
 
 	it('is empty for an empty Limit', () => {
 		expect(groups([])).toEqual([])
 		expect(groups(null)).toEqual([])
+	})
+
+	/**
+	 * Issue #51. A boundary feature can be retired or withdrawn from the cadastre
+	 * after a Limit cited it, and the part must say so without losing its name —
+	 * "the sentence a team says out loud does not change because a cadastre
+	 * release did".
+	 *
+	 * Counted part by part rather than as a verdict on the whole row: a street is
+	 * dozens of separate ways, and three of Vicuña Mackenna's thirty going away is
+	 * three, not "Vicuña Mackenna is gone".
+	 */
+	it('counts how many parts of a name are gone from the cadastre', () => {
+		expect(groups([
+			{ featureId: 7, name: 'Avenida Vicuña Mackenna' },
+			{ featureId: 8, name: 'Avenida Vicuña Mackenna' },
+			{ featureId: 9, name: 'Avenida Vicuña Mackenna' },
+		], [8, 9])).toEqual([
+			{ name: 'Avenida Vicuña Mackenna', parts: 3, picked: true, gone: 2 },
+		])
+	})
+
+	it('says nothing is gone when the server named none', () => {
+		expect(groups([{ featureId: 7, name: 'Calle Uno' }])).toEqual([
+			{ name: 'Calle Uno', parts: 1, picked: true, gone: 0 },
+		])
+	})
+
+	/**
+	 * «a mano» and «ya no está en el catastro» are different answers, and the
+	 * picker shows them side by side. A typed stretch cites no feature, so no set
+	 * of missing ids can make it gone — and it goes on reading «a mano».
+	 */
+	it('never calls a hand-typed stretch gone, whatever ids are missing', () => {
+		expect(groups([{ name: 'por el canal' }], [7, 8])).toEqual([
+			{ name: 'por el canal', parts: 1, picked: false, gone: 0 },
+		])
 	})
 })
 

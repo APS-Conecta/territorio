@@ -1,6 +1,6 @@
 ---
 name: slice
-description: Build one Territorio issue end to end — pin the ticket, /implement (which runs /tdd then /code-review), the four suites, the browser gate, then land it. Use when the user says "slice 19", "/slice <issue>", "do ticket 9", or asks to work through the open issues.
+description: Build one Territorio issue end to end — pin the ticket, /tdd, /review, the four suites, the browser gate, then land it. Use when the user says "slice 19", "/slice <issue>", "do ticket 9", or asks to work through the open issues.
 ---
 
 # One slice, end to end
@@ -40,14 +40,19 @@ closing comment needs anyway.
 
 ## 3. Implement
 
-Run **`/implement`**, handing it the acceptance criteria as the spec. It chains
-the rest of the build for you:
+Run **`/tdd`**, handing it the acceptance criteria as the spec: the failing test
+first, then the code, and the test must actually fail first or it is proving
+nothing.
 
-- it uses **`/tdd`** at the seams — the failing test first, then the code, and the
-  test must actually fail first or it is proving nothing;
-- when it is done it runs **`/code-review main`**, the two-axis review (Standards
-  against the repo's own conventions and Fowler's smells; Spec against the
-  issue's criteria), as parallel subagents.
+When it is green, run **`/review main`** — the two-axis review (Standards against
+the repo's own conventions and Fowler's smells; Spec against the issue's criteria)
+as parallel subagents. `/code-review` is a different thing, a correctness-bug hunt
+over the diff; run it too if the slice touches money-like logic, but it is not the
+two-axis review and it does not replace it.
+
+This step used to say "run `/implement`". No such skill exists on this machine, and
+it named `/code-review` as the two-axis review, which it is not — so the step could
+not be followed as written.
 
 Write the least code that works, in this order — stop at the first rung that
 holds:
@@ -97,6 +102,8 @@ it as the step you do not skip, and say in the closing comment whether you ran i
 
 ```bash
 make build
+git add js/                             # js/ IS the deployment and IS committed;
+#                                         CI fails the PR on any drift from src/
 # bump <version> in appinfo/info.xml
 docker compose -f compose.dev.yaml exec --user www-data nextcloud php occ upgrade
 make test-browser
@@ -141,7 +148,7 @@ git push -u origin feat/<n>-<slug>
 gh pr create                            # opens an editor pre-filled with PULL_REQUEST_TEMPLATE.md
 #                                         NOT --fill: that takes title and body from the commits
 #                                         and bypasses the template entirely
-gh pr checks --watch                    # the docs workflow — red for now, see CLAUDE.md
+gh pr checks --watch                    # php tests+lint, js lint+tests+no-drift, docs gate
 gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"
 ```

@@ -303,6 +303,29 @@ describe('provenance', () => {
 		expect(provenance(history)).toBe('Línea dibujada a mano.')
 	})
 
+	/**
+	 * The timestamp is whatever the database handed back — `RevisionLog` reads the
+	 * column raw — so the date is taken off either shape rather than off a
+	 * separator this driver happens to use today.
+	 */
+	it('reads the date whichever separator the timestamp carries', () => {
+		const iso = [revision(1, { geometry: { from: null, to: SHAPE } }, 'created', '2026-08-05T11:00:00+00:00')]
+
+		expect(provenance(iso)).toBe('Línea dibujada a mano.')
+		expect(provenance([
+			revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-09-01T08:00:00+00:00'),
+			...iso,
+		])).toBe('Línea fijada el 05-08-2026; el límite se anotó después.')
+	})
+
+	/** A timestamp that is not a date says nothing, rather than saying nonsense. */
+	it('leaves the date out when the timestamp is not one', () => {
+		expect(provenance([
+			revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', null),
+			...GENERATED,
+		])).toBe('Línea ajustada, después del límite.')
+	})
+
 	/** Nothing to say rather than a guess: a record whose history never arrived. */
 	it('says nothing when no revision recorded a geometry', () => {
 		expect(provenance([])).toBe('')

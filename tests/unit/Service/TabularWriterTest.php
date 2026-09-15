@@ -34,6 +34,22 @@ final class TabularWriterTest extends TestCase {
 	];
 
 	/**
+	 * The same record as it reaches an export from an OSM-derived Dataset.
+	 *
+	 * `tools/boundary-features.php` stamps `source_es: OpenStreetMap` and a
+	 * `source_url` on everything it produces (ADR-0004), and `GeoJsonReader`
+	 * joins the two into the `sourceRef` an exported row carries.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function osmRow(): array {
+		return array_merge(self::ROW, [
+			'name' => 'Calle Vicuña Mackenna',
+			'sourceRef' => 'OpenStreetMap — https://www.openstreetmap.org/way/101',
+		]);
+	}
+
+	/**
 	 * Parse it the way a spreadsheet does, which includes eating the BOM.
 	 *
 	 * @return list<array<int, string>>
@@ -176,6 +192,57 @@ final class TabularWriterTest extends TestCase {
 		self::assertSame('Junta de Vecinos Los Navegantes', $row['Nombre']);
 	}
 
+	/**
+	 * ODbL asks for the LICENCE to be named, and a CSV can only say it in a cell.
+	 *
+	 * RFC 4180 has no comment syntax: a line above the header breaks header
+	 * detection, and a trailing line of a different width breaks a strict parser
+	 * — both of which would be the export "not breaking a consumer" in the only
+	 * format most consumers here are a spreadsheet (#28).
+	 */
+	public function testTheCsvNamesTheLicenceInAColumnOfItsOwn(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::osmRow()], false));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertArrayHasKey('Licencia', $row);
+		self::assertStringContainsString('OpenStreetMap', $row['Licencia']);
+		self::assertStringContainsString('ODbL', $row['Licencia']);
+		self::assertStringContainsString('https://www.openstreetmap.org/copyright', $row['Licencia']);
+	}
+
+	/** Every row the same width as the header, or a strict parser stops reading. */
+	public function testTheLicenceColumnDoesNotRaggedTheFile(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::ROW, self::osmRow()], true));
+
+		self::assertCount(3, $rows);
+		foreach ($rows as $index => $row) {
+			self::assertCount(count($rows[0]), $row, "row $index is not as wide as the header");
+		}
+	}
+
+	/**
+	 * Only the rows that ARE OSM's carry the cell.
+	 *
+	 * A mixed set is the normal case — a comuna's own catastro beside imported
+	 * streets — and a notice repeated on every row would say the municipality's
+	 * own records belong to OpenStreetMap.
+	 */
+	public function testOnlyTheOsmRowsCarryTheLicenceCell(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::ROW, self::osmRow()], false));
+		$local = array_combine($rows[0], $rows[1]);
+		$osm = array_combine($rows[0], $rows[2]);
+
+		self::assertSame('', $local['Licencia']);
+		self::assertStringContainsString('ODbL', $osm['Licencia']);
+	}
+
+	/** And with nothing of OSM's in the set there is no column at all. */
+	public function testTheCsvHasNoLicenceColumnWithoutOsmData(): void {
+		$header = $this->parse((new CsvWriter())->write([self::ROW], false))[0];
+
+		self::assertNotContains('Licencia', $header);
+	}
+
 	/** KML carries the geometry and the name, and that is the whole claim. */
 	public function testKmlCarriesTheNameAndTheGeometry(): void {
 		$kml = (new KmlWriter())->write([self::ROW]);
@@ -233,6 +300,28 @@ final class TabularWriterTest extends TestCase {
 	 */
 	public function testTheKmlNoticeMentionsTheLimit(): void {
 		self::assertStringContainsString('límite', mb_strtolower((new KmlWriter())->write([])));
+	}
+
+	/**
+	 * The KML says the licence in the one place the format lets it (#28).
+	 *
+	 * Appended to the `<description>` this Document already has, rather than
+	 * given an `<atom:author>` of its own: that would need a namespace
+	 * declaration for a line nobody opening the file would read any differently.
+	 */
+	public function testKmlNamesTheLicenceWhenItCarriesOsmData(): void {
+		$kml = (new KmlWriter())->write([self::osmRow()]);
+
+		$doc = simplexml_load_string($kml);
+		self::assertNotFalse($doc, 'the export must be parseable XML');
+		$description = (string)$doc->Document->description;
+		self::assertStringContainsString('OpenStreetMap', $description);
+		self::assertStringContainsString('ODbL', $description);
+	}
+
+	/** And a KML of the clinic's own records does not claim OSM wrote them. */
+	public function testKmlCarriesNoLicenceWithoutOsmData(): void {
+		self::assertStringNotContainsString('ODbL', (new KmlWriter())->write([self::ROW]));
 	}
 
 	/** And it does not carry them, whatever the caller passed in. */

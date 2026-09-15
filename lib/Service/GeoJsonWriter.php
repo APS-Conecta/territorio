@@ -69,6 +69,15 @@ class GeoJsonWriter {
 			$collection[ContactFields::PARTIAL] = true;
 		}
 
+		// One line for the whole file, as ODbL asks (#28): a top-level foreign
+		// member, which RFC 7946 §6.1 allows and `GeoJsonReader` ignores, so the
+		// export that goes back in still goes back in. Not a property on each
+		// feature — that would be read on the next import as something a person
+		// typed about the record.
+		if (OsmAttribution::required($rows)) {
+			$collection['license'] = OsmAttribution::NOTICE;
+		}
+
 		// array_values, because a caller filtering its rows leaves gaps in the
 		// keys and json_encode would then write an object where GeoJSON requires
 		// an array.

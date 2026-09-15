@@ -2201,6 +2201,11 @@ def main():
         # four kilometres across by the polygonize check above.
         retire_the_runs_record(page, f"Sector Navegador {RUN}")
         retire_the_runs_record(page, f"Sector a mano {RUN}")
+        # Imported, not drawn, but a Sector all the same: left behind it claims
+        # every Place it covers, run after run, on the instance the integration
+        # suite reads. Siting it away from the data limits today's damage and does
+        # not make the record go away.
+        retire_the_runs_record(page, f"Sector Catastro {RUN}")
 
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)

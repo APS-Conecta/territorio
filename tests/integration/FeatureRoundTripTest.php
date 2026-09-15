@@ -111,6 +111,38 @@ final class FeatureRoundTripTest extends IntegrationTestCase {
 		self::assertNull($read->getMinLat());
 	}
 
+	/**
+	 * The seeding the report asks for (issue #83): a stored record, an update
+	 * that names only the quality, and the new value read back out of the
+	 * database rather than off the object the service returned. A mocked mapper
+	 * cannot tell an applied quality from one that was set and never written.
+	 */
+	public function testAQualityCorrectedWithoutResendingTheGeometryReachesTheDatabase(): void {
+		$created = $this->service->create([
+			'name' => 'Sede de Prueba',
+			'subcategoryId' => $this->anySubcategoryId(),
+			'geometry' => ['type' => 'Point', 'coordinates' => [-70.60, -33.55]],
+		]);
+		$id = (int)$created->getId();
+		$this->created[] = $id;
+		self::assertSame(LocationQuality::Exact->value, $created->getLocationQuality());
+
+		$this->service->update($id, [
+			'name' => 'Sede de Prueba',
+			'subcategoryId' => $this->anySubcategoryId(),
+			'locationQuality' => LocationQuality::Approximate->value,
+		]);
+
+		$read = $this->features->find($id);
+		self::assertSame(LocationQuality::Approximate->value, $read->getLocationQuality());
+		// The shape it describes is untouched: the point of the fix is that
+		// correcting the judgement does not mean re-sending the geometry.
+		self::assertSame(
+			['type' => 'Point', 'coordinates' => [-70.60, -33.55]],
+			json_decode((string)$read->getGeometry(), true),
+		);
+	}
+
 	public function testFindAllReturnsWhatWasStored(): void {
 		$created = $this->service->create([
 			'name' => 'Plaza de prueba',

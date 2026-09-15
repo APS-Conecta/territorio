@@ -507,9 +507,10 @@ export default {
 	gap: 6px;
 }
 
-/* The add-a-Category control sits under the tree with the same inset the
-   Category rows have, so it reads as the end of the list rather than as part of
-   the panel's chrome. */
+/* Under the tree and inside the panel body, so it takes the same inset the
+   Category rows do and reads as the end of the list rather than as chrome. Flex
+   so the field, when it replaces the button, takes the row's full width the way
+   every other field in this panel does. */
 .territorio-capas__new {
 	display: flex;
 	margin-top: 4px;

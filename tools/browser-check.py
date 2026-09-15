@@ -4094,6 +4094,12 @@ def a_category_can_be_renamed_without_a_reload(page, errors, failures):
         )
         _analisis_reads_the_new_name(page, renamed_category, renamed_sub, failures)
 
+        if not _capas_child(page, SEEDED_CATEGORY, added).first.is_visible():
+            failures.append(
+                f"«{added}» is in the Capas panel's markup but not on the screen: the branch it "
+                f"was added to was left folded shut",
+            )
+
         served = served_taxonomy(page)
         _the_registry_kept_the_slugs(served, renamed_category, renamed_sub, failures)
 
@@ -4170,6 +4176,9 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
     dev instance, which `make instance-clean` resets and which is the smaller of
     the two bad options.
     """
+    # ponytail: the Subcategory this adds is left behind — one per run on the dev
+    # instance. Retire it here once #47 gives the app a way to remove one; until
+    # then there is no path to call, and `make instance-clean` is the reset.
     added = f"Prueba {RUN}"
     slug = f"prueba_{RUN}"
     filed = f"Registro {RUN} en Prueba"

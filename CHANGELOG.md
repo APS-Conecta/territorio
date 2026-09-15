@@ -5,7 +5,37 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [0.45.0] — unreleased
 
-Every package that ships in the bundle is named, and a command says so.
+Every package that ships in the bundle is named, and a command says so, and a Location quality can
+be corrected on its own.
+
+### Fixed
+
+- **Location quality can now be corrected without re-sending the geometry** (#83). It was read in
+  exactly one place — `FeatureService::applyGeometry()`, inside the branch that runs when a geometry
+  *is* submitted — so `PUT /features/3` with `{"name": "X", "subcategoryId": 7, "locationQuality":
+  "aproximada"}` returned 200 and stored nothing. The field has never been settable on its own:
+  before #63 the same request wiped the quality to `sin_coordenada` along with the shape, so #63
+  changed only *how* it was ignored, from destructively to quietly.
+
+  The issue asked for a decision, not a line, and this takes its option **(a)**: `apply()` reads
+  `locationQuality` like every other optional field, and `applyGeometry` keeps owning the
+  with-geometry case. Location quality is a judgement about **how well a record's coordinate is
+  known** — about a shape that is already stored — so making the judgement re-state the shape it
+  describes is backwards, and option (b) would have written that into the API as a rule. What (a)
+  costs is the guard `applyGeometry` used to enforce by construction, so the new door carries it:
+  a quality for a record whose stored geometry is null is refused with a message naming «Exactitud»,
+  because `LocationQuality::Absent` is derived from having no coordinate and is never chosen.
+
+  Two conditions, each for a reason. The door only opens when `geometry` was **not** submitted, so
+  the with-geometry case stays in one place rather than two that can disagree. And it reads the key
+  with `array_key_exists` rather than applying it unconditionally, which matters more than it looks:
+  `locationQuality()` reads an absent value as `exacta`, so an unconditional write would reset every
+  stored `aproximada` on any update that never mentioned the field — #63 again under another name.
+  A test holds that line: reintroducing the unconditional write makes it fail.
+
+  Nothing in the browser changes. `App.vue`'s `payload()` always sends `geometry`, as a shape or as
+  `null`, so the client never takes the new door; it exists for a caller that sends only what
+  changed, and for #23, which has to decide what the client may send for this same field.
 
 ### Documentation
 

@@ -50,6 +50,12 @@ A layer the clinic does not use can go — and cannot go while it holds records.
   time, so nobody spends time trying and then wonders whether they did it wrong. The server refuses
   it too, and that guard runs *before* the count: an empty division would pass the in-use one.
 
+  The server's rule names the two slugs the seed actually ships, read out of `EnsureSeedData` rather
+  than repeated, and not "anything under the division". The reason those two cannot go is that the
+  seed puts them back; a third row somebody posts under it by hand — which the add route still
+  accepts, deliberately, as #44 recorded — is restored by nothing, so refusing to remove that one
+  too would only make a mistake permanent.
+
   **A Category cannot be emptied of its last Subcategory either.** Not one of #47's criteria, and
   in because removal is the only path that can reach a state CONTEXT.md says does not exist: a
   Category always carries at least an «Otro», and one with none is a branch in the Capas panel that

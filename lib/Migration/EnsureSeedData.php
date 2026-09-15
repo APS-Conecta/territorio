@@ -145,6 +145,20 @@ class EnsureSeedData implements IRepairStep {
 	public const DIVISIONS_SLUG = 'division_territorial';
 
 	/**
+	 * The Subcategories of the territorial division this file puts back on every
+	 * upgrade — which is exactly why they cannot be removed (ADR-0016, #47).
+	 *
+	 * Derived from `DIVISIONS` rather than repeated, so a third division ever
+	 * shipped here becomes unremovable without anybody remembering to update a
+	 * second list. `TaxonomyService::removeSubcategory()` is the only reader.
+	 *
+	 * @return list<string>
+	 */
+	public static function divisionSubcategorySlugs(): array {
+		return array_keys(self::DIVISIONS['subcategories']);
+	}
+
+	/**
 	 * The colours a Category added by a clinic can be given, in the order they are
 	 * handed out. The app assigns one; nobody is asked to pick a colour by eye,
 	 * because the constraints cannot be satisfied that way (ADR-0017).

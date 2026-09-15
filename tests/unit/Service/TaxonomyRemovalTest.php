@@ -285,6 +285,44 @@ final class TaxonomyRemovalTest extends TestCase {
 		}
 	}
 
+	/**
+	 * A row somebody posted under the division by hand is NOT structural, and can
+	 * go.
+	 *
+	 * ADR-0016 names two Subcategories, and the two it names are the two the seed
+	 * restores on every upgrade — that is the whole reason they cannot be removed.
+	 * A third one is possible today: `addSubcategory()` accepts any Category, and
+	 * `App.vue` says in as many words that the route is left open deliberately
+	 * although the panel draws no «+» for the division. Refusing to remove it too
+	 * would be tidier to write and would make a mistake permanent, which is the
+	 * opposite of what every refusal in this slice is for.
+	 *
+	 * The two slugs are read from the seed rather than repeated here, so a third
+	 * division the seed ever ships becomes structural without anybody remembering
+	 * to come back.
+	 */
+	public function testARowPostedUnderTheDivisionByHandIsNotStructuralAndCanBeRemoved(): void {
+		$divisions = self::category(2, EnsureSeedData::DIVISIONS_SLUG, 'División territorial');
+		$stray = self::subcategory(23, 2, 'inventado', 'Inventado');
+		$this->categories->method('findBySlug')->willReturn($divisions);
+		$this->categories->method('findAll')->willReturn([$divisions]);
+		$this->subcategories->method('findAll')->willReturn([
+			self::subcategory(21, 2, 'sector', 'Sector'),
+			self::subcategory(22, 2, 'unidad_vecinal', 'Unidad Vecinal'),
+			$stray,
+		]);
+		$this->subcategories->method('findBySlug')->willReturn($stray);
+		$this->features->expects(self::once())
+			->method('countBySubcategory')
+			->with([23])
+			->willReturn(0);
+		$this->subcategories->expects(self::once())
+			->method('delete')
+			->willReturnCallback(static fn (Subcategory $s): Subcategory => $s);
+
+		$this->taxonomy->removeSubcategory(EnsureSeedData::DIVISIONS_SLUG, 'inventado');
+	}
+
 	/** The whole served tree comes back, because that is what the browser swaps in. */
 	public function testARemovalAnswersWithTheWholeServedTree(): void {
 		$this->seedMappers();

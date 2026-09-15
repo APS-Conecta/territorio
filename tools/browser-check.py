@@ -1448,6 +1448,17 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
         text = said.inner_text().strip()
         if wording not in text:
             failures.append(f"the Sector says {text!r}, which does not read as {state!r} (#50)")
+        # The keys stopped being mutually exclusive when the adjusted sentence
+        # gained its origin clause: «Línea fijada junto con el límite … y guardada
+        # de nuevo …» CONTAINS "together"'s whole key, so the key alone lets an
+        # adjusted sentence pass as a together one and the two states are no
+        # longer distinguishable — which is criterion 5 itself (#50). What
+        # separates them is the re-save clause, so "together" must also NOT have
+        # it.
+        if state == "together" and "guardada de nuevo" in text:
+            failures.append(
+                f"the Sector says {text!r}, which is an adjusted sentence read as {state!r} (#50)"
+            )
         # The framing constraint, on the real path: the Limit records intent and
         # the geometry records the agreed line, so a sentence calling them wrong
         # to differ is a defect however accurate its dates are.

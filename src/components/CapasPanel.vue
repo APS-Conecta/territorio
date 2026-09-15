@@ -36,6 +36,17 @@
 				{{ error }}
 			</NcNoteCard>
 
+			<!--
+				`info`, never `error` or `warning`: a Category that took the neutral
+				because the spares ran out was created correctly, and ADR-0017 says
+				in as many words that it must not read as a failure. Hue only groups
+				Categories into families; the pictogram identifies them (ADR-0013),
+				so this Category is doing what that ADR says all of them do anyway.
+			-->
+			<NcNoteCard v-if="notice !== ''" type="info">
+				{{ notice }}
+			</NcNoteCard>
+
 			<NcButton v-if="anythingHidden"
 				variant="tertiary"
 				class="territorio-capas__reset"
@@ -180,6 +191,30 @@
 					</div>
 				</div>
 			</details>
+
+			<!--
+				The one control in this panel that belongs to no row, so it sits
+				under the tree rather than in a summary (#45). Only a name is asked
+				for: the slug is derived by the server and the colour is ASSIGNED
+				from a vetted list, because its constraints cannot be satisfied by
+				eye (ADR-0017) — which is why no colour input appears here or
+				anywhere else.
+			-->
+			<div class="territorio-capas__new">
+				<input v-if="editing === NEW_CATEGORY"
+					ref="editor"
+					v-model="draftLabel"
+					class="territorio-capas__input"
+					:maxlength="LABEL_LENGTH"
+					placeholder="Nueva categoría"
+					aria-label="Nombre de la nueva categoría"
+					@keydown.stop.enter.prevent="commitCategory"
+					@keydown.esc="cancel"
+					@blur="cancel">
+				<NcButton v-else variant="tertiary" @click="startAddCategory">
+					Agregar categoría
+				</NcButton>
+			</div>
 		</div>
 	</details>
 </template>
@@ -215,6 +250,8 @@ export default {
 		filter: { type: Object, required: true },
 		/** Why the last rename or add was refused, shown beside the row it came from. */
 		error: { type: String, default: '' },
+		/** Something worth saying about a change that WORKED — see the note card above. */
+		notice: { type: String, default: '' },
 	},
 
 	emits: [
@@ -222,8 +259,9 @@ export default {
 		'toggle-subcategory',
 		'reset',
 		'rename',
+		'add-category',
 		'add-subcategory',
-		'clear-taxonomy-error',
+		'clear-taxonomy-message',
 	],
 
 	data() {
@@ -236,6 +274,13 @@ export default {
 			 */
 			editing: null,
 			draftLabel: '',
+			/*
+			 * The key for the new-Category field. A constant and not `keyOf()`,
+			 * because that one is built from a row's id and this field has no row
+			 * — and it cannot collide with one: those are `c<id>`, `s<id>` and
+			 * `n<id>`.
+			 */
+			NEW_CATEGORY: 'new-category',
 			PENCIL,
 			PLUS,
 			// The column is VARCHAR(128) and the server refuses more (TaxonomyService).
@@ -317,7 +362,7 @@ export default {
 		 * it on success.
 		 */
 		open(key, label) {
-			this.$emit('clear-taxonomy-error')
+			this.$emit('clear-taxonomy-message')
 			this.editing = key
 			this.draftLabel = label
 			// v-if means the input does not exist until Vue has patched the DOM.
@@ -342,6 +387,23 @@ export default {
 			})
 		},
 
+		/**
+		 * Start naming a Category the seed does not have (#45).
+		 *
+		 * Nothing to open first, unlike `startAdd()`: this field is not inside any
+		 * `<details>` branch, so there is no folded row it could be hidden in.
+		 */
+		startAddCategory() {
+			this.open(this.NEW_CATEGORY, '')
+		},
+
+		/** The name and nothing else: the app derives the slug and assigns the colour. */
+		commitCategory() {
+			const label = this.draftLabel
+			this.editing = null
+			this.$emit('add-category', { label })
+		},
+
 		/** Only the name goes up; the server derives the slug (#40). */
 		commitAdd(category) {
 			const label = this.draftLabel
@@ -350,7 +412,7 @@ export default {
 		},
 
 		cancel() {
-			this.$emit('clear-taxonomy-error')
+			this.$emit('clear-taxonomy-message')
 			this.editing = null
 		},
 	},
@@ -443,6 +505,14 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+}
+
+/* The add-a-Category control sits under the tree with the same inset the
+   Category rows have, so it reads as the end of the list rather than as part of
+   the panel's chrome. */
+.territorio-capas__new {
+	display: flex;
+	margin-top: 4px;
 }
 
 /* Takes the width the label had, so the row does not jump when it turns into a

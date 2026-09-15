@@ -10,11 +10,12 @@
 				<div class="territorio-column">
 					<CapasPanel :taxonomy="taxonomy"
 						:filter="filter"
-						:error="renameError"
+						:error="taxonomyError"
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
 						@rename="rename"
-						@clear-rename-error="renameError = ''"
+						@add-subcategory="addSubcategory"
+						@clear-taxonomy-error="taxonomyError = ''"
 						@reset="resetFilter" />
 
 					<FeatureList :features="listed"
@@ -285,9 +286,9 @@ export default {
 			saving: false,
 			error: '',
 			// Separate from `error`: that one renders in the map column and only
-			// while no record is open, and a rename is refused from the Capas
-			// panel, which is beside the list and always on screen.
-			renameError: '',
+			// while no record is open, and the Capas panel — where a rename or an
+			// add is refused — is beside the list and always on screen.
+			taxonomyError: '',
 			pollTimer: null,
 			pollFailed: false,
 			// Loaded only while a Sector's Limit is being built, and thrown away
@@ -733,11 +734,36 @@ export default {
 			try {
 				const { data } = await axios.put(generateUrl(url), { label })
 				this.taxonomy = data
-				this.renameError = ''
+				this.taxonomyError = ''
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
-				this.renameError = exception.response?.data?.message
+				this.taxonomyError = exception.response?.data?.message
 					?? 'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.'
+			}
+		},
+
+		/**
+		 * Add a Subcategory under a Category (#44).
+		 *
+		 * Only a label goes up: the slug is derived by the server, because it is
+		 * the identifier every record is filed under and nobody should be able to
+		 * type one that collides or reads as something else (#40).
+		 *
+		 * The answer is the whole tree, swapped in here exactly as a rename's is
+		 * — which is what puts the new Subcategory in the Capas panel and in the
+		 * Subcategoría picker at once, with no reload and no second copy that can
+		 * disagree.
+		 */
+		async addSubcategory({ categorySlug, label }) {
+			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}/subcategories`
+
+			try {
+				const { data } = await axios.post(generateUrl(url), { label })
+				this.taxonomy = data
+				this.taxonomyError = ''
+			} catch (exception) {
+				this.taxonomyError = exception.response?.data?.message
+					?? 'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.'
 			}
 		},
 

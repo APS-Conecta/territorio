@@ -83,8 +83,8 @@
 						to toggling the branch — typing a two-word name would otherwise
 						fold the row being renamed.
 					-->
-					<input v-if="renaming === keyOf(category)"
-						ref="rename"
+					<input v-if="editing === keyOf(category)"
+						ref="editor"
 						v-model="draftLabel"
 						class="territorio-capas__input"
 						:maxlength="LABEL_LENGTH"
@@ -105,15 +105,46 @@
 								<path fill="currentColor" :d="PENCIL" />
 							</svg>
 						</button>
+						<!--
+							Adding a Subcategory starts where a person is already looking at
+							the Category it will sit under (#44). Only a name is asked for:
+							a Subcategory has no colour and no pictogram of its own — it is
+							drawn with its Category's (ADR-0013) — and the slug is derived by
+							the server, never typed.
+						-->
+						<button class="territorio-capas__rename"
+							type="button"
+							:title="`Agregar subcategoría en «${category.label}»`"
+							:aria-label="`Agregar subcategoría en «${category.label}»`"
+							@click.stop.prevent="startAdd(category, $event)">
+							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+								<path fill="currentColor" :d="PLUS" />
+							</svg>
+						</button>
 					</template>
 				</summary>
 
 				<div class="territorio-capas__children">
+					<!--
+						The new row is typed where it will appear, at the top of its own
+						branch, rather than in a dialog over the panel.
+					-->
+					<div v-if="editing === addKeyOf(category)" class="territorio-capas__child">
+						<input ref="editor"
+							v-model="draftLabel"
+							class="territorio-capas__input"
+							:maxlength="LABEL_LENGTH"
+							placeholder="Nueva subcategoría"
+							:aria-label="`Nombre de la nueva subcategoría en «${category.label}»`"
+							@keydown.stop.enter.prevent="commitAdd(category)"
+							@keydown.esc="cancel"
+							@blur="cancel">
+					</div>
 					<div v-for="subcategory in category.subcategories"
 						:key="subcategory.id"
 						class="territorio-capas__child">
-						<input v-if="renaming === keyOf(category, subcategory)"
-							ref="rename"
+						<input v-if="editing === keyOf(category, subcategory)"
+							ref="editor"
 							v-model="draftLabel"
 							class="territorio-capas__input"
 							:maxlength="LABEL_LENGTH"
@@ -161,6 +192,9 @@ const PENCIL = 'M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1
 	+ 'l-1.83 1.83 3.75 3.75 1.83-1.83a.996.996 0 0 0 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29z'
 	+ 'm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z'
 
+/** mdi-plus, inlined beside PENCIL for the same reason. */
+const PLUS = 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z'
+
 export default {
 	name: 'CapasPanel',
 
@@ -173,14 +207,26 @@ export default {
 		error: { type: String, default: '' },
 	},
 
-	emits: ['toggle-category', 'toggle-subcategory', 'reset', 'rename', 'clear-rename-error'],
+	emits: [
+		'toggle-category',
+		'toggle-subcategory',
+		'reset',
+		'rename',
+		'add-subcategory',
+		'clear-taxonomy-error',
+	],
 
 	data() {
 		return {
-			/** Which row is being renamed, as keyOf() names it. Null while none is. */
-			renaming: null,
+			/**
+			 * Which row has a field open, as keyOf() or addKeyOf() names it, or
+			 * null. One key and not two flags: exactly one field is open at a
+			 * time, and two pieces of state that must disagree can stop doing so.
+			 */
+			editing: null,
 			draftLabel: '',
 			PENCIL,
+			PLUS,
 			// The column is VARCHAR(128) and the server refuses more (TaxonomyService).
 			// Capping the field here means the usual way of hitting that limit — a
 			// pasted paragraph — never becomes a round trip that ends in a refusal.
@@ -224,6 +270,11 @@ export default {
 			return subcategory === null ? `c${category.id}` : `s${subcategory.id}`
 		},
 
+		/** The field for a Subcategory that does not exist yet, under this Category. */
+		addKeyOf(category) {
+			return `n${category.id}`
+		},
+
 		/**
 		 * Opening or abandoning a rename clears the last refusal.
 		 *
@@ -234,12 +285,32 @@ export default {
 		 * apart by. `rename()` in App.vue only ever clears it on success.
 		 */
 		startRename(category, subcategory = null) {
-			this.$emit('clear-rename-error')
-			this.renaming = this.keyOf(category, subcategory)
-			this.draftLabel = (subcategory ?? category).label
+			this.open(this.keyOf(category, subcategory), (subcategory ?? category).label)
+		},
+
+		/**
+		 * Start naming a new Subcategory under this Category (#44).
+		 *
+		 * The branch is opened first, and from the event rather than through a
+		 * ref: the field is rendered inside `<details>`, and the pencil beside
+		 * this control already stops the click that would otherwise have opened
+		 * it — so on a folded branch the field would be in the DOM and nowhere on
+		 * screen. `open` is a native property of the element and nothing here
+		 * binds it, so there is no second copy of the state to keep in step.
+		 */
+		startAdd(category, event) {
+			event.target.closest('.territorio-capas__category').open = true
+			this.open(this.addKeyOf(category), '')
+		},
+
+		/** Open one field, with what it starts out saying, and put the cursor in it. */
+		open(key, label) {
+			this.$emit('clear-taxonomy-error')
+			this.editing = key
+			this.draftLabel = label
 			// v-if means the input does not exist until Vue has patched the DOM.
 			this.$nextTick(() => {
-				const input = this.$refs.rename
+				const input = this.$refs.editor
 				;(Array.isArray(input) ? input[0] : input)?.focus()
 			})
 		},
@@ -251,7 +322,7 @@ export default {
 		 */
 		commit(category, subcategory = null) {
 			const label = this.draftLabel
-			this.renaming = null
+			this.editing = null
 			this.$emit('rename', {
 				categorySlug: category.slug,
 				subcategorySlug: subcategory?.slug ?? null,
@@ -259,9 +330,16 @@ export default {
 			})
 		},
 
+		/** Only the name goes up; the server derives the slug (#40). */
+		commitAdd(category) {
+			const label = this.draftLabel
+			this.editing = null
+			this.$emit('add-subcategory', { categorySlug: category.slug, label })
+		},
+
 		cancel() {
-			this.$emit('clear-rename-error')
-			this.renaming = null
+			this.$emit('clear-taxonomy-error')
+			this.editing = null
 		},
 	},
 }

@@ -8,11 +8,18 @@ where the shape is made. It was not taken, because the revision history already 
 question and because the column would be worse than what it replaced.
 
 Every write records which fields it changed, and `Feature::comparable()` carries both `geometry`
-and `limit`. So a Sector generated from picked lines wrote the two in one revision, a dragged
-vertex wrote `geometry` alone, and a Sector drawn freehand has a Created entry with a `geometry`
-key and no `limit` key at all — `asChanges()` drops nulls, and `FeatureService::limit()` stores an
-empty Limit as null rather than `[]`. `src/limit.js` reads those three shapes and says which
-happened, with the date the line last moved.
+and `limit`. So a Sector generated from picked lines wrote the two in one revision, and a Sector
+drawn freehand has a Created entry with a `geometry` key and no `limit` key at all — `asChanges()`
+drops nulls, and `FeatureService::limit()` stores an empty Limit as null rather than `[]`.
+`src/limit.js` reads those shapes and says which happened, with the date the line last moved.
+
+What the shapes do **not** carry is the act. `geometry` written alone in a later revision is what a
+dragged vertex leaves behind, and equally what «Generar» leaves behind on a reopened Sector whose
+Limit did not change — the flow `keepPickedGeometry()` and issue #49 exist to make possible. So
+the sentence for that shape states the order and the date, never a hand. What history does
+establish is the other way round: generating needs picked lines, so a Limit, and saves the two
+together, so a line last written while no Limit had ever been recorded can only have been drawn
+by hand.
 
 A column would also not have been the truth. `faceAround()` runs in the browser, so the server
 never witnesses "generated" — `Action` has created, updated, retired, restored and merged and
@@ -32,6 +39,11 @@ and is never drift to be corrected (`CONTEXT.md`).
   dragged before its first save, and one drawn by hand with streets picked in the same save, both
   read as "fixed together with the Limit". Telling those apart means recording the act rather than
   the fields it changed — a product question, and still not a column.
+- **The sentence names an act only where history establishes one.** «dibujada a mano» and «fijada
+  junto con el límite» are derived; a later geometry-only write is said as «Línea guardada … », with
+  the order and the date and no verb for the act, because a drag and a regenerate write the same
+  shape. Wording it «ajustada» announced a hand adjustment for polygons the app itself had
+  generated, which is the likeliest of these three cases to be hit.
 - **A Limit removed is not a Limit recorded.** The revision that cleared one is skipped, because a
   Sector whose Limit was deleted was not built against it.
 - The sidebar reloads a record's history after every save, since the sentence is derived from it.

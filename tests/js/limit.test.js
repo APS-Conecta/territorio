@@ -256,6 +256,34 @@ const DRAGGED = [
 	...GENERATED,
 ]
 
+/**
+ * Drawn freehand, the Limit typed afterwards — a first-class shape, not an
+ * afterthought: ADR-0007 is explicit that a Sector built without picking
+ * anything is just as valid, and «a mano» stretches are typed, never picked.
+ * No revision ever wrote the two together, which is what makes it hand-drawn.
+ */
+const DRAWN_THEN_LIMIT = [
+	revision(4, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20 08:00:00'),
+	...DRAWN,
+]
+
+/** Generated, a vertex dragged, and then the Limit edited once more. */
+const DRAGGED_THEN_LIMIT = [
+	revision(5, { limit: { from: STREETS, to: STREETS } }, 'updated', '2026-08-25 08:00:00'),
+	...DRAGGED,
+]
+
+/**
+ * Drawn by hand, the Limit typed, and then «Generar» run on the reopened
+ * Sector — which #49 exists to make possible, and which writes `geometry`
+ * alone because the Limit it was generated from did not change.
+ */
+const REGENERATED = [
+	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 09:30:00'),
+	revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-06 09:00:00'),
+	...DRAWN,
+]
+
 describe('provenance', () => {
 	it('says a Sector was drawn by hand when no revision ever recorded a Limit', () => {
 		expect(provenance(DRAWN)).toBe('Línea dibujada a mano.')
@@ -269,8 +297,19 @@ describe('provenance', () => {
 	 * Issue #50's third criterion: when the geometry was last edited, relative to
 	 * the Limit, without reading raw history. The date is the geometry's own.
 	 */
-	it('dates the adjustment when the line moved after the Limit', () => {
-		expect(provenance(DRAGGED)).toBe('Línea ajustada el 12-08-2026, después del límite.')
+	it('dates the line moving after the Limit', () => {
+		expect(provenance(DRAGGED)).toBe('Línea guardada el 12-08-2026, después del límite.')
+	})
+
+	/**
+	 * And it says WHEN rather than by which act, because history cannot tell the
+	 * act: writing `geometry` alone in a later revision is what a dragged vertex
+	 * does AND what «Generar» does on a reopened Sector whose Limit did not
+	 * change (#49, `keepPickedGeometry`). Calling this one «ajustada» announced a
+	 * hand adjustment for a polygon the app had just generated.
+	 */
+	it('does not call a later line a hand adjustment, since «Generar» writes the same shape', () => {
+		expect(provenance(REGENERATED)).toBe('Línea guardada el 12-08-2026, después del límite.')
 	})
 
 	/**
@@ -279,12 +318,19 @@ describe('provenance', () => {
 	 * límite" here would be false, so it says the true thing instead.
 	 */
 	it('says so when the Limit was written down after the line', () => {
-		const history = [
-			revision(3, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20 08:00:00'),
-			...DRAWN,
-		]
+		expect(provenance(DRAWN_THEN_LIMIT)).toBe('Línea dibujada a mano; el límite se anotó después.')
+	})
 
-		expect(provenance(history)).toBe('Línea fijada el 05-08-2026; el límite se anotó después.')
+	/**
+	 * Issue #50's fifth criterion, at the one place it used to collapse: with the
+	 * Limit as the newest write, a hand-drawn Sector and a generated-then-moved
+	 * one read as one sentence. They are distinguishable — generating needs
+	 * picked lines, so a Limit, and «Generar» saves the two together — so a line
+	 * written while no Limit had ever been recorded can only have been drawn.
+	 */
+	it('keeps a hand-drawn Sector apart from a generated one whose Limit is the newest write', () => {
+		expect(provenance(DRAGGED_THEN_LIMIT)).toBe('Línea guardada el 12-08-2026; el límite se anotó después.')
+		expect(provenance(DRAWN_THEN_LIMIT)).not.toBe(provenance(DRAGGED_THEN_LIMIT))
 	})
 
 	/**
@@ -313,9 +359,10 @@ describe('provenance', () => {
 
 		expect(provenance(iso)).toBe('Línea dibujada a mano.')
 		expect(provenance([
-			revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-09-01T08:00:00+00:00'),
+			revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-09-01T08:00:00+00:00'),
+			revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20T08:00:00+00:00'),
 			...iso,
-		])).toBe('Línea fijada el 05-08-2026; el límite se anotó después.')
+		])).toBe('Línea guardada el 01-09-2026, después del límite.')
 	})
 
 	/** A timestamp that is not a date says nothing, rather than saying nonsense. */
@@ -323,7 +370,7 @@ describe('provenance', () => {
 		expect(provenance([
 			revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', null),
 			...GENERATED,
-		])).toBe('Línea ajustada, después del límite.')
+		])).toBe('Línea guardada, después del límite.')
 	})
 
 	/** Nothing to say rather than a guess: a record whose history never arrived. */
@@ -341,7 +388,8 @@ describe('provenance', () => {
 	 * here rather than reaching a screen.
 	 */
 	it('never words it as a mismatch to be corrected', () => {
-		const said = [DRAWN, GENERATED, DRAGGED].map(provenance).join(' ').toLowerCase()
+		const said = [DRAWN, GENERATED, DRAGGED, DRAWN_THEN_LIMIT, DRAGGED_THEN_LIMIT, REGENERATED]
+			.map(provenance).join(' ').toLowerCase()
 
 		for (const wrong of ['desfase', 'no coinciden', 'desajust', 'corregir', 'error', 'inconsist']) {
 			expect(said).not.toContain(wrong)

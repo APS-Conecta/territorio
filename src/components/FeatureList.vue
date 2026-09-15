@@ -77,7 +77,7 @@
 			:force-display-actions="false"
 			@click="$emit('select', feature.id)">
 			<template #icon>
-				<span class="territorio-list__swatch" :style="{ background: swatchFor(feature) }">
+				<span class="territorio-list__swatch" v-bind="swatchFor(feature)">
 					<NcIconSvgWrapper :svg="glyphFor(categorySlugOf(feature))" :size="12" />
 				</span>
 			</template>
@@ -96,6 +96,7 @@ import NcListItem from '@nextcloud/vue/components/NcListItem'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { glyphFor } from '../glyphs.js'
+import { swatchFor } from '../marks.js'
 import { colourOf, indexSubcategories } from '../taxonomy.js'
 
 export default {
@@ -138,9 +139,20 @@ export default {
 			return this.subcategories.get(feature.subcategoryId)?.label ?? 'Clasificación desconocida'
 		},
 
-		/** The record's own colour if it has one — which is how sectores differ. */
+		/**
+		 * The mark beside a record: a filled dot, or a ring for a territorial
+		 * division — dashed for a Unidad Vecinal, solid for a Sector — so the list
+		 * says what the map says (#29). Which it is, is marks.js's decision; what
+		 * that looks like is this component's, which is why the class name is
+		 * built here and not there.
+		 */
 		swatchFor(feature) {
-			return colourOf(feature, this.subcategories)
+			const { mark, background } = swatchFor(
+				this.subcategories.get(feature.subcategoryId)?.slug ?? null,
+				colourOf(feature, this.subcategories),
+			)
+
+			return { class: `territorio-list__swatch--${mark}`, style: { background } }
 		},
 	},
 }
@@ -184,6 +196,9 @@ export default {
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
+	/* So a ring's border stays inside the 18px a dot occupies and the two line
+	   up down the column. */
+	box-sizing: border-box;
 	/* White for the reason the map pin's glyph is white: the ramp was validated
 	   against white, and the dot underneath is a data colour that does not
 	   follow the theme.
@@ -194,7 +209,35 @@ export default {
 	   tie went to whichever stylesheet loaded last, which was the library's, so
 	   these glyphs rendered in the theme's dark text colour for as long as the
 	   rule existed (#37). Feeding `currentColor` is what the component is built
-	   for; out-specifying it would only move the same fight one bump away. */
+	   for; out-specifying it would only move the same fight one bump away.
+
+	   Left on the base class rather than on the dot variant: a ring hides its
+	   svg outright below, and its border names its own colour. */
 	color: #fff;
+}
+
+/*
+ * A territorial division draws a ring, not a dot (#29). It follows the THEME,
+ * unlike every dot above it, and that is the point: a dot is filled with a data
+ * colour, and the division's own `#334155` measured 1.73:1 against the dark
+ * background. A ring has no data colour to be illegible in.
+ */
+.territorio-list__swatch--ring,
+.territorio-list__swatch--ring-dashed {
+	border: 1.5px solid var(--color-main-text);
+}
+
+/* Dashed for a Unidad Vecinal, echoing its dashed hairline on the map; solid
+   for a Sector, echoing its solid outline. */
+.territorio-list__swatch--ring-dashed {
+	border-style: dashed;
+}
+
+/* No pictogram inside a ring. A division has no glyph of its own, so it would
+   fall back to `circle-stroked` — an outlined circle inside an outlined circle,
+   which reads as a bullseye rather than as a boundary. The ring is the mark. */
+.territorio-list__swatch--ring :deep(svg),
+.territorio-list__swatch--ring-dashed :deep(svg) {
+	display: none;
 }
 </style>

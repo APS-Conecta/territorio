@@ -321,6 +321,16 @@ describe('counts for Análisis', () => {
 		expect(counts.categories[0].total).toBe(1)
 	})
 
+	/**
+	 * The slug, not just the label: the chart colours a division with the
+	 * neutral rather than its inert `#334155` (#29), and slug is the stable
+	 * identifier — a clinic may rename a label and ids differ per install.
+	 */
+	it('reports each Category by slug, so the chart can tell a division apart', () => {
+		expect(countsFor(FEATURES, TAXONOMY).categories.map((category) => category.slug))
+			.toEqual(TAXONOMY.map((category) => category.slug))
+	})
+
 	it('keeps a category with nothing in it, so the legend stays stable', () => {
 		const counts = countsFor([feature(9, 11)], TAXONOMY)
 

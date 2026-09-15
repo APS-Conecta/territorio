@@ -230,6 +230,11 @@ export function countsFor(features, taxonomy) {
 
 		return {
 			id: category.id,
+			// The stable identifier, carried so a caller can tell WHICH Category
+			// this is without matching a label a clinic may have renamed. Análisis
+			// needs it to draw a territorial division neutral rather than in the
+			// inert `#334155` the seed gives it (#29).
+			slug: category.slug,
 			label: category.label,
 			color: category.color,
 			total: subcategories.reduce((sum, subcategory) => sum + subcategory.total, 0),

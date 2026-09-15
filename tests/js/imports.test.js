@@ -43,7 +43,7 @@ const componentFiles = [
 const exportsOf = (module) => [...readFileSync(join(SRC, module), 'utf8')
 	.matchAll(/export (?:function|const) (\w+)/g)].map((match) => match[1])
 
-const MODULES = ['filters.js', 'taxonomy.js']
+const MODULES = ['filters.js', 'marks.js', 'taxonomy.js']
 
 describe('component imports', () => {
 	it.each(componentFiles)('%s calls nothing it has not imported', (file) => {

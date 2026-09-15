@@ -1923,6 +1923,205 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
     retire_the_runs_record(page, name)
 
 
+def _focused(page):
+    """What the keyboard is on right now, and how it is drawn.
+
+    Read in one evaluate rather than through a locator: the thing being checked
+    is precisely *which* element has focus, and a locator would ask about an
+    element chosen beforehand.
+    """
+    return page.evaluate(
+        """() => {
+            const active = document.activeElement
+            if (active === null) {
+                return null
+            }
+            const style = getComputedStyle(active)
+            return {
+                tag: active.tagName.toLowerCase(),
+                stroke: active.getAttribute('stroke'),
+                role: active.getAttribute('role'),
+                tabindex: active.getAttribute('tabindex'),
+                label: active.getAttribute('aria-label'),
+                outline: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`,
+            }
+        }""",
+    )
+
+
+def _tab_to_the_shape(page, colour, presses=40):
+    """Press Tab until the keyboard lands on the shape drawn in `colour`.
+
+    Bounded, because the honest answer to "it never arrives" is a failure and not
+    a loop. The list is filtered to one record first, so this is a handful of
+    stops and not a comuna's worth.
+    """
+    for _ in range(presses):
+        page.keyboard.press("Tab")
+        focused = _focused(page)
+        if focused is not None and focused["stroke"] == colour:
+            return focused
+
+    return None
+
+
+def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
+    """#25: a Sector could be clicked and reached by no other means.
+
+    `L.Marker` defaults to `keyboard: true`, so a Place pin has always been
+    tab-focusable; `L.Path` has no keyboard option at all, so every Zone and
+    every Route in the Registry was mouse-only (docs/design/map-legibility.md
+    D6). Only a browser can say whether a real Tab now lands on a polygon and a
+    real Enter opens the record — the unit suite runs in node and loads no
+    component, and the element does not even exist until the layer joins the map.
+
+    Draws its own Sector, in a colour of its own, for the reason every other
+    check here does: `path[stroke="…"]` is what identifies it among whatever
+    else the instance holds, and a check that writes may only write to a record
+    it made.
+    """
+    name = f"Sector Teclado {RUN}"
+    colour = "#7c3aed"
+    if not draw_a_sector(page, name, failures, colour=colour):
+        return
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+
+    # From the Registry, so the name this check compares against is the one the
+    # server stored and not the one this file typed: an aria-label built from a
+    # local literal would agree with itself while the map announced something
+    # else entirely.
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} did not reach the Registry, so the keyboard check could not run")
+        retire_the_runs_record(page, name)
+        return
+
+    # Narrow everything to this one record. That leaves one shape on the map and
+    # one row in the list, which is what makes "Tab reaches it" a handful of
+    # presses instead of a walk through a comuna.
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(1200)
+
+    shape = page.locator(f'.leaflet-overlay-pane path[stroke="{colour}"]')
+    if not settles(page, lambda: shape.count() > 0, timeout=6_000):
+        failures.append(f"{name!r} is in the Registry but drew no shape, so it could not be tabbed to")
+        page.locator(SEARCH).fill("")
+        retire_the_runs_record(page, name)
+        return
+
+    page.focus(SEARCH)
+    reached = _tab_to_the_shape(page, colour)
+    if reached is None:
+        failures.append(
+            f"Tab never reaches {stored['name']!r}: a Sector is selectable with a mouse and by "
+            f"no other means (#25)",
+        )
+        page.screenshot(path=str(SHOTS / "keyboard-unreachable.png"), full_page=False)
+        page.locator(SEARCH).fill("")
+        retire_the_runs_record(page, name)
+        return
+
+    if reached["label"] != stored["name"]:
+        failures.append(
+            f"the focused Sector announces {reached['label']!r}, but the Registry holds "
+            f"{stored['name']!r} — a screen reader would name the wrong record",
+        )
+    if reached["role"] != "button":
+        failures.append(f"the focused Sector carries role={reached['role']!r}, not 'button'")
+
+    # In both themes, because the ring is drawn in the theme's own primary
+    # element colour and a fixed one would disappear into one of them.
+    backgrounds = {}
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(300)
+        backgrounds[scheme] = page.evaluate(
+            "() => getComputedStyle(document.body).getPropertyValue('--color-main-background')",
+        )
+        outline = _focused(page)["outline"]
+        if outline.startswith("none") or " 0px " in outline:
+            failures.append(
+                f"the focused Sector has no visible focus ring in the {scheme} theme "
+                f"(outline: {outline!r})",
+            )
+        page.screenshot(path=str(SHOTS / f"keyboard-focus-{scheme}.png"), full_page=False)
+
+    page.emulate_media(color_scheme="no-override")
+    page.wait_for_timeout(300)
+    if backgrounds["light"] == backgrounds["dark"]:
+        skip("the focus ring was only seen in one theme: this instance pins a theme, so "
+             "prefers-color-scheme does not switch it")
+
+    # Tab has to keep going. A shape that swallowed the key would strand a
+    # keyboard user on the map with the rest of the app behind it.
+    page.keyboard.press("Tab")
+    after = _focused(page)
+    if after is not None and after["stroke"] == colour and after["label"] == stored["name"]:
+        failures.append("Tab does not move on from a focused Sector — the map traps the keyboard")
+    page.keyboard.press("Shift+Tab")
+    if (_focused(page) or {}).get("label") != stored["name"]:
+        failures.append("Shift+Tab does not come back to the Sector: the shapes are one-way")
+
+    page.keyboard.press("Enter")
+    if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
+        failures.append(f"Enter on {stored['name']!r} opened nothing — the shape is focusable and inert (#25)")
+        page.screenshot(path=str(SHOTS / "keyboard-enter-dead.png"), full_page=False)
+        page.locator(SEARCH).fill("")
+        retire_the_runs_record(page, name)
+        return
+
+    opened = page.get_by_label("Nombre").input_value().strip()
+    if opened != stored["name"]:
+        failures.append(
+            f"Enter opened {opened!r} while the keyboard was on {stored['name']!r} — the wrong record",
+        )
+
+    # Selecting rebuilds the whole layer group, so the element tabbed to a moment
+    # ago is gone and this is a NEW one. That it still carries the tab stop is
+    # the criterion about surviving a rebuild: the poll swaps the group the same
+    # way, and an attribute set once at start-up would be lost on the first merge.
+    redrawn = shape.first.evaluate(
+        "(path) => ({ tabindex: path.getAttribute('tabindex'), dashed: path.getAttribute('stroke-dasharray') })",
+    )
+    if redrawn["tabindex"] != "0":
+        failures.append(
+            "a redrawn Sector has no tab stop: the keyboard reaches the shapes only until the "
+            "first rebuild (#25)",
+        )
+    if not redrawn["dashed"]:
+        failures.append(
+            f"Enter opened {opened!r} but the shape on the map is not drawn as selected — the "
+            f"sidebar and the map disagree about what is open",
+        )
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+    retire_the_runs_record(page, name)
+
+
+def the_zoom_controls_are_in_spanish(page, failures):
+    """#25: the zoom buttons' titles were Leaflet's English defaults.
+
+    They are the only text on the map a screen reader reads out of a control
+    rather than out of a record, in an app whose every other word is Spanish.
+    `L.control.zoom` takes `zoomInTitle` / `zoomOutTitle`; nothing else does.
+    """
+    for selector, expected in ((".leaflet-control-zoom-in", "Acercar"),
+                               (".leaflet-control-zoom-out", "Alejar")):
+        button = page.locator(selector)
+        if button.count() == 0:
+            failures.append(f"there is no {selector} on the map, so its title was not checked")
+            continue
+
+        title = button.first.get_attribute("title")
+        if title != expected:
+            failures.append(f"the zoom control {selector} is titled {title!r}, expected {expected!r}")
+
+
 def registry_feature(page, name):
     """One record as the Registry holds it, by name. None if it is not there.
 
@@ -2261,6 +2460,9 @@ def main():
         a_dragged_vertex_stays_with_its_own_record(page, failures)
         a_pin_says_what_kind_of_place_it_is(page, failures)
         a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures)
+
+        a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures)
+        the_zoom_controls_are_in_spanish(page, failures)
 
         clicking_places_the_coordinate(page, failures)
         the_assignment_is_shown_and_not_editable(page, failures)

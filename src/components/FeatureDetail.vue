@@ -29,6 +29,17 @@
 			se pegan a los bordes ya dibujados.
 		</p>
 
+		<!-- Provenance, never a warning (issue #50). The Limit records intent and
+		     the geometry records the agreed line: they stop matching the moment
+		     somebody drags a vertex, and that is expected rather than drift to be
+		     corrected (CONTEXT.md). So it reads as a plain hint like the one above
+		     it — no colour, no icon, nothing offering to put anything right. -->
+		<p v-if="boundaryProvenance"
+			class="territorio-detail__field territorio-detail__hint"
+			data-testid="boundary-provenance">
+			{{ boundaryProvenance }}
+		</p>
+
 		<fieldset v-if="!hasShape" class="territorio-detail__field territorio-detail__coords">
 			<legend>Ubicación</legend>
 			<p class="territorio-detail__hint">
@@ -122,6 +133,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
+import { provenance } from '../limit.js'
 import { DEFAULT_SECTOR_COLOUR, divisionsOf, subcategoryOptions, treeOf } from '../taxonomy.js'
 
 // Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
@@ -188,6 +200,19 @@ export default {
 
 		unidadVecinalName() {
 			return this.nameOf(this.draft.unidadVecinalId)
+		},
+
+		/**
+		 * How this Sector's line came to be, in one sentence (issue #50).
+		 *
+		 * Sectores only, and `draft.limit` is what says so — App.vue puts the
+		 * Limit on a draft exactly when the record is a Sector, and it is already
+		 * the app's own test for it (`editingLimit`, `payload()`). A Place's
+		 * history carries geometry edits too, and reading them the same way would
+		 * tell somebody a clinic was drawn by hand.
+		 */
+		boundaryProvenance() {
+			return this.draft.limit === undefined ? '' : provenance(this.history)
 		},
 
 		/** Drawn on the map rather than typed as a coordinate. */

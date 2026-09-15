@@ -29,6 +29,12 @@ final class TaxonomyGlyphTest extends TestCase {
 			'a Maki name' => ['park', 'park'],
 			'one with a hyphen in it' => ['place-of-worship', 'place-of-worship'],
 			'one with a digit' => ['building-alt1', 'building-alt1'],
+			// Thirteen of Maki's 215 carry a `-JP` suffix — the Japanese variants
+			// of `bank`, `hospital`, `school` and the rest. The picker offers all
+			// 215, so a shape that refused a capital refused thirteen marks the
+			// app itself put in the grid (`glyphs.test.js` pins the two sides
+			// against each other).
+			'a Maki variant, which is suffixed in capitals' => ['bank-JP', 'bank-JP'],
 			'surrounding space is not part of the name' => ['  bakery  ', 'bakery'],
 			// Clearing the choice: the Category goes back to drawing the neutral,
 			// which is what it drew before anybody picked (ADR-0017).
@@ -49,7 +55,7 @@ final class TaxonomyGlyphTest extends TestCase {
 			// database's own error through a 500, the way an over-long label did
 			// before TaxonomyService started naming that limit.
 			'longer than the column' => [str_repeat('a', 65)],
-			'a capital, which no Maki name has' => ['Park'],
+			'punctuation, which no Maki name carries' => ['park!'],
 			'a path, which is what an attempt at the filesystem looks like' => ['../../etc/passwd'],
 			'markup, because this string is inlined into the pin unescaped' => ['<svg onload=1>'],
 			'an underscore, which is a slug separator and not a Maki one' => ['town_hall'],
@@ -69,7 +75,7 @@ final class TaxonomyGlyphTest extends TestCase {
 	 */
 	public function testTheRefusalSaysWhatWasWrong(): void {
 		try {
-			TaxonomyService::glyphName('Park');
+			TaxonomyService::glyphName('park!');
 			self::fail('a name no Maki icon carries was accepted');
 		} catch (InvalidTaxonomyException $e) {
 			self::assertStringContainsString('pictograma', $e->getMessage());

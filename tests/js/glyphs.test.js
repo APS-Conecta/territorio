@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CATALOGUE, GLYPH_SLUGS, glyphFor } from '../../src/glyphs.js'
 
@@ -60,7 +62,7 @@ const CHOSEN_BY_SLUG = {
  * @return {?string} the Maki icon name, or null if this file's premise broke
  */
 function makiIdOf(glyph) {
-	return String(glyph).match(/id=['"]([a-z0-9-]+)['"]/)?.[1] ?? null
+	return String(glyph).match(/id=['"]([A-Za-z0-9-]+)['"]/)?.[1] ?? null
 }
 
 describe('glyphFor', () => {
@@ -127,6 +129,53 @@ describe('glyphFor', () => {
 describe('a chosen pictogram', () => {
 	/** Not one of the eleven, so nothing here can pass by accident. */
 	const CHOSEN = 'bakery'
+
+	/**
+	 * The shape `TaxonomyService::glyphName()` enforces, read out of the file
+	 * that enforces it.
+	 *
+	 * Not copied here, and that is the whole point of the test below. PHP checks
+	 * the name's shape rather than keeping a second copy of Maki's 215 names —
+	 * but a character class IS a description of that inventory, and it was a
+	 * narrower one: `^[a-z0-9-]$` refused the thirteen marks Maki suffixes `-JP`,
+	 * which the grid offered anyway. A copy of the class in this test would drift
+	 * exactly the same way, staying green against its own stale copy while the
+	 * server answered 422.
+	 *
+	 * @return {RegExp} the shape a name must have to be stored
+	 */
+	function serverShape() {
+		const php = readFileSync(
+			fileURLToPath(new URL('../../lib/Service/TaxonomyService.php', import.meta.url)), 'utf8')
+		const marks = php.match(/preg_match\('\/\^(\[[^\]]+\])\{1,' \. self::GLYPH_LENGTH/)
+		const length = php.match(/const GLYPH_LENGTH = (\d+);/)
+
+		// Before building anything out of them: a rename or a reformat over there
+		// would leave both of these null, and a shape built from null matches
+		// nothing or everything — either way this file would stop being about the
+		// server and nothing would say so.
+		expect(marks, 'the shape check could not be found in TaxonomyService').not.toBeNull()
+		expect(length, 'GLYPH_LENGTH could not be found in TaxonomyService').not.toBeNull()
+
+		return new RegExp(`^${marks[1]}{1,${length[1]}}$`)
+	}
+
+	it('offers nothing the server will refuse to store', () => {
+		// The criterion is «the choice comes from the set already vendored», and a
+		// mark in the grid that the write path answers 422 for fails it about a
+		// mark the app itself put there: on an existing Category the message lands
+		// where somebody clicked, and on the add path the Category is never created
+		// and the typed name goes with it.
+		const shape = serverShape()
+
+		// Before filtering: an empty catalogue would make the assertion below
+		// vacuously true, which is how this check would quietly stop checking.
+		expect(CATALOGUE.length).toBeGreaterThan(0)
+
+		const refused = CATALOGUE.filter((mark) => !shape.test(mark))
+
+		expect(refused, `the picker offers marks the server refuses: ${refused.join(', ')}`).toEqual([])
+	})
 
 	it('is offered the whole set the app already vendors', () => {
 		// "From the set already vendored — no new dependency" is the criterion,

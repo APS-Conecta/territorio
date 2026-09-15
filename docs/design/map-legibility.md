@@ -69,8 +69,13 @@ take their colour from CSS. Two render paths, because there are two rendering co
   outside Vue's render tree, so `NcIconSvgWrapper` cannot be used, and nothing competes for the
   fill. Inline the markup into the string and set `fill` in CSS.
 
-Both paths need the raw markup, so `webpack.config.js` overrides the inherited `.svg` rule
-(`asset/inline`, a data URI) with `asset/source` for `node_modules/@mapbox/maki` only.
+Both paths need the raw markup, and since #46 it arrives as JavaScript: `src/glyphs.js` imports
+`layouts` and `svgArray` from `@mapbox/maki/browser.esm.js`, Maki's own browser bundle, which ships
+every name and its markup. So `webpack.config.js` no longer knows about the package at all — it
+carried an `asset/source` override of the inherited `.svg` rule (`asset/inline`, a data URI) while
+eleven icons were imported one file at a time, and a picker offering all 215 cannot be built that
+way. Deliberately not `require.context()`, which is webpack's alone: under vitest the catalogue would
+be empty and every assertion about a chosen mark would pass while proving nothing.
 
 ### 1.2 The ramp
 

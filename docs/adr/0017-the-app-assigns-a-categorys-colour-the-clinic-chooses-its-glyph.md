@@ -43,6 +43,11 @@ a distinct hue is doing what that ADR says every Category does anyway.
 - The pictogram is chosen from the set already vendored, and previewed at the size the map pin
   actually draws — 12px of mark is the floor at which a Maki glyph holds its detail, and a choice
   judged at list size can fail at pin size.
+  **Amended by #37 (2026-09-15): the pin now draws a 19px mark inside a 26px dot, so the preview
+  size is 19px, not 12px.** 12px was derived by rendering the eleven side by side at a desk; used
+  on a busy basemap at a glance it was reported as not easily visualised, and the re-pick that
+  followed changed three of the eleven. The floor argument stands; the number it was measured at
+  does not. The picker #46 builds previews at 19px.
 - No colour input is offered for a Category, on any screen. A person who wants a specific colour has
   no path, and that is the trade: they get one that works instead of one they chose.
 

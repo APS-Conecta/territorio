@@ -4,15 +4,17 @@ import { GLYPH_SLUGS, glyphFor } from '../../src/glyphs.js'
 /**
  * The Category → pictogram mapping (issue #20, ADR-0013).
  *
- * This pins the MAPPING, not the markup. vitest resolves an `.svg` import the
- * way Vite does and webpack resolves it the way `webpack.config.js` says, so
- * what these imports evaluate to differs between here and the browser — and
- * asserting on it here would be asserting on the test runner's asset handling.
- * That the glyph is real SVG, drawn white, and legible is the browser gate's
- * job, which is where it can actually be seen.
+ * This pins the MAPPING, not the markup: that every Category resolves to
+ * something, that nothing resolves to nothing, and — since #37 — which
+ * pictogram each one draws.
  *
- * What matters here is that every Category resolves to something and that
- * nothing resolves to nothing.
+ * Which pictogram is read out of the asset's own `id` (see `makiIdOf`)
+ * precisely so the two bundlers' asset handling does not matter: vitest
+ * resolves an `.svg` import the way Vite does and webpack resolves it the way
+ * `webpack.config.js` says, and asserting on the shape of what those return
+ * would be asserting on the test runner. That the glyph is real SVG, drawn
+ * white, and legible at its size is the browser gate's job, which is where it
+ * can actually be seen.
  */
 
 /** The eleven the seed ships — EnsureSeedData::TAXONOMY. */
@@ -83,6 +85,11 @@ describe('glyphFor', () => {
 	})
 
 	it('draws each Category with the icon #37 re-picked for it', () => {
+		// Before iterating CHOSEN: drop a Category from it and the loop below
+		// would stop pinning that Category's pictogram while every test here
+		// stayed green. The test above only proves a glyph exists.
+		expect(Object.keys(CHOSEN).sort()).toEqual([...SEEDED].sort())
+
 		for (const [slug, icon] of Object.entries(CHOSEN)) {
 			const drawn = makiIdOf(glyphFor(slug))
 

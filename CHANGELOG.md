@@ -31,6 +31,10 @@ The map pin is big enough to read, and the glyphs beside a label are white at la
   undecided and not as an error, and `pitch` over `soccer` because the list and the legend draw the
   same mark at 12px and 11px, where `soccer`'s ball detaches into a stray speck.
 
+  **ADR-0017 is amended with this**, because it tells the picker #46 builds to preview a pictogram
+  "at the size the map pin actually draws — 12px of mark is the floor". The pin draws 19px now, so
+  a picker previewing at 12 would be choosing at a size nothing renders.
+
   **`police` is the weakest of the eleven and stayed anyway.** Maki ships no shield and no badge,
   and every alternative in the set means something narrower — a flame is bomberos, a warning
   triangle is danger — so it is flagged in #37 for the owner rather than swapped for a crisper mark

@@ -177,9 +177,10 @@ export default {
 	align-items: center;
 	justify-content: center;
 	/* The label sits beside it, so this only has to be recognisable as the
-	   same mark the pin uses — see TerritorioMap for why 12px is the floor.
-	   It stayed at 18/12 while #37 took the pin to 26/19: the pin is the only
-	   mark with no label beside it. */
+	   same mark the pin uses. It stayed at 18/12 while #37 took the pin to
+	   26/19 — see `.territorio-pin__dot` in TerritorioMap for why the pin, and
+	   only the pin, had to grow: it is the one place a glyph has no label
+	   beside it. */
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;

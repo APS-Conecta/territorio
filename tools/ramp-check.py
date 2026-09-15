@@ -55,6 +55,16 @@ MIN_SEPARATION = 0.05        # dE-OK; below this two 18px dots read as one colou
 CVD_CATASTROPHE_FLOOR = 0.015
 DICHROMACIES = ('protanopia', 'deuteranopia', 'tritanopia')
 
+# Where a spare is allowed to live. ADR-0013 fixes chroma at 0.090 and says not to
+# raise it — raising it is the recurring wrong fix — and holds the ramp at the six
+# hue families that C buys. So the only free variable in the search is lightness.
+SPARE_CHROMA = 0.090
+SPARE_LIGHTNESS_STEP = 0.005
+NEUTRAL_CHROMA = 0.02        # below this a colour has no hue to speak of: `sin_clasificar`
+                             # sits at 0.011 and must not be read as a seventh family
+SPARE_CHROMA_TOLERANCE = 0.002   # 8-bit rounding: the seeded eleven land between 0.089 and 0.091
+SPARE_HUE_TOLERANCE = 1.0        # degrees, same reason
+
 
 def _to_linear(channel):
     return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
@@ -96,6 +106,108 @@ def oklab(hex_colour):
 def separation(one, other):
     """dE-OK: Euclidean distance in OKLab."""
     return math.dist(oklab(one), oklab(other))
+
+
+def oklch(hex_colour):
+    """OKLab in polar form — (lightness, chroma, hue in degrees).
+
+    ADR-0013's rules are written in these terms ("chroma 0.090", "six hue
+    families"), so this is the form that can check them.
+    """
+    lightness, a, b = oklab(hex_colour)
+    return lightness, math.hypot(a, b), math.degrees(math.atan2(b, a)) % 360
+
+
+def from_oklch(lightness, chroma, hue):
+    """The inverse of `oklab()`: an OKLCh coordinate back to a hex colour.
+
+    Returns None outside sRGB rather than clamping, because a clamped channel
+    quietly moves the colour off the chroma ADR-0013 pins it to, and the whole
+    point of the search is that chroma is not negotiable.
+    """
+    a = chroma * math.cos(math.radians(hue))
+    b = chroma * math.sin(math.radians(hue))
+    l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    linear = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+              -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+              -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s]
+    if min(linear) < 0 or max(linear) > 1:
+        return None
+    return _to_hex(linear)
+
+
+def hue_families(colours):
+    """The hue families the ramp already uses, read off the ramp itself.
+
+    Derived rather than listed so that repainting a Category moves its family with
+    it, and so that a seventh family cannot arrive by editing a constant here —
+    ADR-0013 holds the ramp at six and #40 puts opening a seventh out of scope.
+
+    Neutrals are excluded by chroma: `sin_clasificar` has no hue to be a family of.
+    """
+    hues = sorted(hue for lightness, chroma, hue in map(oklch, colours) if chroma > NEUTRAL_CHROMA)
+    # ponytail: clusters along a line rather than around the circle — no family
+    # straddles 0 degrees today. Cluster modulo 360 if one ever does.
+    families = []
+    for hue in hues:
+        if families and hue - families[-1][-1] < 15:
+            families[-1].append(hue)
+        else:
+            families.append([hue])
+    return [round(sum(family) / len(family)) for family in families]
+
+
+def gate_failures(name, colour, others):
+    """Everything a colour must clear to be a Category's colour, in one place.
+
+    The same three rules the module docstring states: 3:1 against both backgrounds,
+    dE-OK 0.05 under normal vision, and no catastrophic collapse under any of the
+    three dichromacies. `others` is (name, colour) pairs.
+    """
+    failures = []
+    for what, against in (('a white glyph and a white page', WHITE), ('the dark theme', DARK_BG)):
+        ratio = contrast(colour, against)
+        if ratio < MIN_CONTRAST:
+            failures.append(f'{name} {colour}: {ratio:.2f}:1 vs {what} — needs {MIN_CONTRAST}:1')
+    for other, other_colour in others:
+        distance = separation(colour, other_colour)
+        if distance < MIN_SEPARATION:
+            failures.append(f'{name} {colour} is indistinguishable from {other} {other_colour}: '
+                            f'dE {distance:.3f} < {MIN_SEPARATION}')
+        for kind in DICHROMACIES:
+            distance = separation(dichromat(colour, kind), dichromat(other_colour, kind))
+            if distance < CVD_CATASTROPHE_FLOOR:
+                failures.append(f'{kind}: {name} {colour} and {other} {other_colour} are the same '
+                                f'colour — dE {distance:.3f} < {CVD_CATASTROPHE_FLOOR}')
+    return failures
+
+
+def derive_spares(taken):
+    """Every colour a Category added by a clinic could take (ADR-0017).
+
+    Chroma where ADR-0013 fixes it, hue inside a family the ramp already uses, and
+    clearing every gate a seeded Category clears — against the eleven, against both
+    neutrals, and against the other spares, which is why this is greedy rather than
+    a filter: each spare has to survive the ones already accepted.
+
+    Walking lightness upwards takes the darkest value of each hue that still clears
+    everything, and the step is what fixes the count: 0.005 yields the eight #40 and
+    ADR-0017 record. A finer grid finds more only by packing them onto the dE 0.05
+    floor exactly, which is the floor at which two dots start to read as one colour
+    — not a place to sit a palette on purpose.
+    """
+    spares = []
+    for hue in hue_families([colour for _, colour in taken]):
+        steps = round(1 / SPARE_LIGHTNESS_STEP)
+        for step in range(steps + 1):
+            candidate = from_oklch(step * SPARE_LIGHTNESS_STEP, SPARE_CHROMA, hue)
+            if candidate is None:
+                continue
+            if not gate_failures(candidate, candidate, taken + [(s, s) for s in spares]):
+                spares.append(candidate)
+    return spares
 
 
 def dichromat(hex_colour, kind):
@@ -143,6 +255,55 @@ def javascript_colours():
             raise SystemExit(f'{name} not found in {TAXONOMY_JS}')
         found[name] = match.group(1)
     return found
+
+
+def seeded_spares():
+    """The spare colours the seed ships, straight out of the PHP, for the same
+    reason the Categories are read rather than copied.
+
+    Its own regex, and deliberately outside the slice `seeded_categories()` reads:
+    `SPARES` sits after `DIVISIONS_SLUG` precisely so a bare `'#rrggbb'` in it is
+    never mistaken for a Category row.
+
+    Returns [] if the constant is not there at all — main() turns that into a
+    failure rather than a vacuous pass, because an empty list satisfies every
+    assertion below and would report OK while gating nothing.
+    """
+    source = SEED.read_text(encoding='utf-8')
+    if 'const SPARES' not in source:
+        return []
+    block = source.split('const SPARES')[1].split(';')[0]
+    return re.findall(r"'(#[0-9a-fA-F]{6})'", block)
+
+
+def spare_failures(spares, taken):
+    """Every shipped spare still clears what it was derived under (ADR-0017).
+
+    This is the half that turns a palette edit red: `taken` is the eleven and both
+    neutrals, so moving a Category onto a spare's colour fails here, at the moment
+    it is made, rather than the first time a clinic adds a Category.
+
+    Pairs among the spares are checked once, not twice — separation is symmetric.
+    """
+    if not spares:
+        return ['no spares found in the seed — SPARES or the regex reading it has drifted']
+
+    families = hue_families([colour for _, colour in taken])
+    failures = []
+    for index, spare in enumerate(spares):
+        name = f'spare {index + 1}'
+        others = list(taken) + [(f'spare {other + 1}', colour)
+                                for other, colour in enumerate(spares) if other > index]
+        failures += gate_failures(name, spare, others)
+
+        lightness, chroma, hue = oklch(spare)
+        if chroma > SPARE_CHROMA + SPARE_CHROMA_TOLERANCE:
+            failures.append(f'{name} {spare}: chroma {chroma:.3f} is above {SPARE_CHROMA} — '
+                            'ADR-0013 forbids raising it to make room')
+        if min(abs(hue - family) for family in families) > SPARE_HUE_TOLERANCE:
+            failures.append(f'{name} {spare}: hue {hue:.0f} is not one of the {len(families)} '
+                            f'families {families} — ADR-0013 opens no seventh')
+    return failures
 
 
 def main():
@@ -202,13 +363,28 @@ def main():
     print(f'  normal vision  {len(collapsed)}/{len(pairs)} collapsed, '
           f'min dE {distances[0]:.3f}, median {distances[len(distances) // 2]:.3f}')
 
+    # The spares a Category added by a clinic can take (ADR-0017). Derived here and
+    # shipped as data in the seed, because the alternative is a second implementation
+    # of this arithmetic on the write path, in PHP, drifting silently from this one.
+    taken = sorted(ramp.items()) + sorted(javascript_colours().items())
+    spares = seeded_spares()
+    failures += spare_failures(spares, taken)
+    derived = derive_spares(taken)
+    print(f'  spares         {len(spares)} shipped, {len(derived)} derivable: {" ".join(derived)}')
+    # Derived and shipped differing is REPORTED, not gated. Fewer shipped than
+    # derivable only means a clinic has fewer colours to be given; what must not
+    # happen is a shipped spare that no longer clears the gates, and that is what
+    # `spare_failures` above fails on.
+    if sorted(derived) != sorted(spares):
+        print('                 (shipped and derivable differ — see ADR-0017 before changing either)')
+
     if failures:
         print('\nFAIL', file=sys.stderr)
         for failure in failures:
             print(f'  - {failure}', file=sys.stderr)
         return 1
 
-    print(f'\nOK — {len(ramp)} Categories, {len(pairs)} pairs checked')
+    print(f'\nOK — {len(ramp)} Categories, {len(pairs)} pairs, {len(spares)} spares checked')
     return 0
 
 

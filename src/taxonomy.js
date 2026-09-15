@@ -29,7 +29,15 @@ export const UNKNOWN_COLOUR = '#62676c'
 const DIVISIONS_SLUG = 'division_territorial'
 
 /** Sector's slug within it. Nothing else may be filed under this. */
-const SECTOR_SLUG = 'sector'
+export const SECTOR_SLUG = 'sector'
+
+/**
+ * The cadastre's own division — read by the clinic, never drawn by it
+ * (CONTEXT.md). Named here beside Sector because the pair is what tells figure
+ * from ground (#21), and because the map already needed it to open on the
+ * comuna the install serves.
+ */
+export const UNIDAD_VECINAL_SLUG = 'unidad_vecinal'
 
 /**
  * What a Sector is coloured when nobody has chosen. Neutral, because a clinic

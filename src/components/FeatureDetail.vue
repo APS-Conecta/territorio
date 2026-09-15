@@ -387,9 +387,17 @@ export default {
 	color: var(--color-error);
 }
 
-/* Its own row, so the promise reads as a sentence rather than as a label
-   squeezed between two buttons. */
-.territorio-detail__confirm {
+/*
+ * Its own row, so the promise reads as a sentence rather than as a label
+ * squeezed between two buttons. The gap already separates the rows, so it drops
+ * the hint's bottom margin.
+ *
+ * Selected through the group for the same reason the retire button is: the
+ * paragraph carries `territorio-detail__hint` too, and under `scoped` a bare
+ * class ties with it on specificity — `.territorio-detail__hint` is declared
+ * after this rule and would win the tie, leaving `margin-bottom: 0` dead.
+ */
+.territorio-detail__actions .territorio-detail__confirm {
 	flex-basis: 100%;
 	margin-bottom: 0;
 }

@@ -433,6 +433,13 @@ class FeatureService {
 		// Refused rather than ignored when nothing is stored: `Absent` is derived
 		// from having no geometry and never chosen, so a quality for a coordinate
 		// that does not exist has to be a 4xx the caller can read, not a silent 200.
+		//
+		// One deliberate disagreement with the optional-text rule above, where a
+		// field submitted empty CLEARS it: submitted empty here means `exacta`,
+		// not cleared, because `locationQuality()` defaults that way and a record
+		// that has a coordinate has no null state for how well it is known. The
+		// default belongs to the helper `applyGeometry` shares, so it is stated
+		// here rather than forked.
 		if (array_key_exists('locationQuality', $input) && !array_key_exists('geometry', $input)) {
 			if ($feature->getGeometry() === null) {
 				throw new InvalidFeatureException(

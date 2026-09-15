@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-	FIGURE_FILL_OPACITY,
 	GROUND_LABEL_MIN_ZOOM,
 	labelOptions,
 	shapeStyle,
@@ -59,7 +58,6 @@ describe('how a shape is drawn', () => {
 		const style = shapeStyle(SECTOR_SLUG, SECTOR_COLOUR)
 
 		expect(style.fillOpacity).toBe(0.1)
-		expect(FIGURE_FILL_OPACITY).toBe(0.1)
 		expect(style.fillColor).toBe(SECTOR_COLOUR)
 		expect(style.color).toBe(SECTOR_COLOUR)
 		expect(style.weight).toBe(2)

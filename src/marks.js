@@ -39,7 +39,7 @@ const GROUND_OUTLINE = '#7d7d7d'
  * number are one decision and #21 owns both; changing either alone puts a
  * measured contrast below its floor.
  */
-export const FIGURE_FILL_OPACITY = 0.10
+const FIGURE_FILL_OPACITY = 0.10
 
 /**
  * The zoom at which a Unidad Vecinal is big enough to carry its name.

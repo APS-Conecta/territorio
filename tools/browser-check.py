@@ -80,6 +80,11 @@ ROWS = ".app-content-list .list-item"
 MARKERS = ".leaflet-marker-icon"
 SEARCH = ".territorio-list__search input"
 
+# The Capas panel's own rename affordance (#41): the pencil per row, and the
+# field it turns the label into.
+CAPAS_RENAME = ".territorio-capas__rename"
+CAPAS_INPUT = ".territorio-capas__input"
+
 
 def dismiss_first_run_wizard():
     """Nextcloud's welcome modal intercepts every click, so nothing below works.
@@ -3819,6 +3824,296 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
         retire_the_runs_record(page, unidad)
 
 
+def served_taxonomy(page):
+    """The Category tree as a browser opening the app fresh would receive it.
+
+    Through the app's own page rather than through the screen: initial state is
+    what every surface in this app reads the taxonomy from, so this is the read
+    a colleague who loads the app next does. It is the taxonomy's equivalent of
+    registry_feature() above, and it exists for the same reason — a label that
+    is only on screen looks exactly like one that was saved.
+
+    Decoded the way `loadState` decodes it (`JSON.parse(atob(value))`), which is
+    safe for accented labels because PHP escapes non-ASCII as \\uXXXX.
+    """
+    return page.evaluate(
+        """async () => {
+            const response = await fetch('/index.php/apps/territorio/', {
+                headers: { requesttoken: window.OC.requestToken },
+            })
+            const html = await response.text()
+            const node = new DOMParser()
+                .parseFromString(html, 'text/html')
+                .getElementById('initial-state-territorio-taxonomy')
+            return node === null ? null : JSON.parse(atob(node.getAttribute('value')))
+        }""",
+    )
+
+
+def _capas_category(page, label):
+    """One Category branch of the Capas panel, by the label it currently shows.
+
+    `:text-is` and not a substring: «Salud» is the start of «Salud mental», and
+    the Subcategory rows carry no `__name` class precisely so this cannot pick
+    one of them up.
+    """
+    return page.locator(
+        f'.territorio-capas__category:has(.territorio-capas__name:text-is("{label}"))',
+    )
+
+
+def _rename_in_capas(page, row, label, what, failures):
+    """Press the pencil on one Capas row, type a name and press Enter.
+
+    `.first` is the row's own control: a Category's pencil sits in its
+    `<summary>`, before the Subcategory rows the open branch adds below it.
+    """
+    pencil = row.locator(CAPAS_RENAME).first
+    if pencil.count() == 0:
+        failures.append(f"the Capas panel offers no way to rename {what}")
+        return False
+
+    pencil.click()
+    field = page.locator(CAPAS_INPUT)
+    if not settles(page, lambda: field.count() > 0, timeout=4_000):
+        failures.append(f"the rename control on {what} opened no field to type in")
+        return False
+
+    field.fill(label)
+    field.press("Enter")
+    page.wait_for_timeout(700)
+
+    return True
+
+
+def a_layer_can_be_renamed_without_a_reload(page, failures):
+    """#41: rename a Category and a Subcategory, and see it everywhere at once.
+
+    "Without a reload" is the criterion, and it is the one thing no other suite
+    can see: the integration suite proves the write and the served tree, but
+    only a browser can show that the Capas panel, the Subcategoría picker and
+    Análisis all moved without the page being loaded again. So nothing here
+    reloads — if a reload turned out to be needed, these assertions fail.
+
+    What was WRITTEN is still asserted against the Registry, per SKILL.md § 5:
+    served_taxonomy() re-reads the app's initial state, which is the read a
+    second browser does, and the slugs are checked there rather than the labels
+    on screen — a rename that moved a slug would take every Feature filed under
+    it with it (#40), and no screen shows a slug.
+
+    Renames «Salud» and its «CESFAM», because this run's clustered records are
+    filed there, and Análisis draws no section for a Category holding nothing.
+    Both names are put back at the end: this instance is shared, and several
+    checks here pick "Salud · CESFAM" out of the picker by name.
+    """
+    original_category, original_sub = "Salud", "CESFAM"
+    renamed_category = f"Salud {RUN}"
+    renamed_sub = f"CESFAM {RUN}"
+
+    # Análisis counts the filtered set, and an earlier check may have left a
+    # query in the box.
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+    row = _capas_category(page, original_category)
+    if row.count() == 0:
+        failures.append(
+            f"the Capas panel shows no «{original_category}» Category to rename"
+        )
+        return
+    if not _rename_in_capas(
+        page, row, renamed_category, f"«{original_category}»", failures
+    ):
+        return
+
+    renamed_row = _capas_category(page, renamed_category)
+    if not settles(page, lambda: renamed_row.count() > 0, timeout=6_000):
+        failures.append(
+            f"the Capas panel still reads «{original_category}» after a rename — it did not "
+            f"update without a reload",
+        )
+        return
+
+    # Open the branch, so the Subcategory rows are on screen to rename.
+    renamed_row.locator(".territorio-capas__name").click()
+    page.wait_for_timeout(400)
+    child = renamed_row.locator(".territorio-capas__child").filter(
+        has_text=original_sub
+    )
+    if child.count() == 0:
+        failures.append(
+            f"«{original_sub}» is not under «{renamed_category}» in the Capas panel"
+        )
+        return
+    if not _rename_in_capas(
+        page, child.first, renamed_sub, f"«{original_sub}»", failures
+    ):
+        return
+
+    if not settles(
+        page,
+        lambda: (
+            _capas_category(page, renamed_category)
+            .locator(".territorio-capas__child")
+            .filter(has_text=renamed_sub)
+            .count()
+            > 0
+        ),
+        timeout=6_000,
+    ):
+        failures.append(
+            f"the Capas panel still reads «{original_sub}» after a rename — it did not update "
+            f"without a reload",
+        )
+
+    _the_picker_offers_the_new_name(
+        page, f"{renamed_category} · {renamed_sub}", failures
+    )
+    _analisis_reads_the_new_name(page, renamed_category, renamed_sub, failures)
+
+    served = served_taxonomy(page)
+    _the_registry_kept_the_slugs(served, renamed_category, renamed_sub, failures)
+
+    _a_blank_name_is_refused_in_the_panel(page, renamed_category, failures)
+
+    # Put the seeded names back, through the app, and check they went back.
+    restored = _capas_category(page, renamed_category)
+    back = restored.locator(".territorio-capas__child").filter(has_text=renamed_sub)
+    if back.count() > 0:
+        _rename_in_capas(
+            page, back.first, original_sub, "the Subcategory back", failures
+        )
+    _rename_in_capas(
+        page,
+        _capas_category(page, renamed_category),
+        original_category,
+        "the Category back",
+        failures,
+    )
+    if not settles(
+        page,
+        lambda: _capas_category(page, original_category).count() > 0,
+        timeout=6_000,
+    ):
+        failures.append(
+            f"«{renamed_category}» could not be renamed back, so this run has left the seeded "
+            f"taxonomy changed on a shared instance",
+        )
+
+
+def _the_picker_offers_the_new_name(page, expected, failures):
+    """The Subcategoría picker, which is the other surface #41 names.
+
+    Opens a draft and throws it away: the picker exists only inside a record's
+    form, and typing into it is how a person finds an option in a list of a few
+    dozen.
+    """
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.wait_for_timeout(400)
+    page.get_by_label("Subcategoría").click()
+    page.get_by_label("Subcategoría").fill(expected)
+    page.wait_for_timeout(700)
+
+    offered = page.locator(".vs__dropdown-option").all_inner_texts()
+    if not any(expected in text for text in offered):
+        failures.append(
+            f"the Subcategoría picker does not offer {expected!r} — it is still showing the "
+            f"names from before the rename (offered: {offered[:5]})",
+        )
+
+    # Twice: the first closes the open dropdown, the second the draft itself.
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(200)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
+def _analisis_reads_the_new_name(page, category, subcategory, failures):
+    """Análisis: the report somebody is about to show a colleague (#40, story 9)."""
+    switch = page.locator(".territorio-main__switch")
+    switch.get_by_role("button", name="Análisis").click()
+    page.wait_for_timeout(700)
+
+    section = page.locator(".territorio-analisis__category").filter(has_text=category)
+    if section.count() == 0:
+        failures.append(
+            f"Análisis has no «{category}» section: either it is still drawing the old name, or "
+            f"this run's records are not filed under it",
+        )
+    elif subcategory not in section.first.inner_text():
+        failures.append(
+            f"Análisis draws «{category}» but still calls its Subcategory by the old name — the "
+            f"chart reads the Subcategory rows through a separate binding",
+        )
+
+    switch.get_by_role("button", name="Mapa").click()
+    page.wait_for_timeout(400)
+
+
+def _the_registry_kept_the_slugs(served, category, subcategory, failures):
+    """The half no screen can show: the labels moved and the slugs did not."""
+    if served is None:
+        failures.append(
+            "the app served no taxonomy in initial state, so nothing confirmed the rename was "
+            "written rather than only painted",
+        )
+        return
+
+    stored = next((entry for entry in served if entry["slug"] == "salud"), None)
+    if stored is None:
+        failures.append(
+            "no Category carries the slug «salud» any more — a rename moved the slug, and every "
+            "Feature, glyph and colour keyed on it is now adrift (#40)",
+        )
+        return
+
+    if stored["label"] != category:
+        failures.append(
+            f"the served taxonomy still calls «salud» {stored['label']!r}: the panel changed and "
+            f"the Registry did not",
+        )
+
+    sub = next(
+        (entry for entry in stored["subcategories"] if entry["slug"] == "cesfam"), None
+    )
+    if sub is None:
+        failures.append(
+            "no Subcategory under «salud» carries the slug «cesfam» any more"
+        )
+    elif sub["label"] != subcategory:
+        failures.append(
+            f"the served taxonomy still calls «cesfam» {sub['label']!r}",
+        )
+
+
+def _a_blank_name_is_refused_in_the_panel(page, label, failures):
+    """A refusal has to reach the person who typed, where they typed it."""
+    row = _capas_category(page, label)
+    pencil = row.locator(CAPAS_RENAME).first
+    if pencil.count() == 0:
+        failures.append("the renamed Category lost its rename control")
+        return
+
+    pencil.click()
+    field = page.locator(CAPAS_INPUT)
+    if not settles(page, lambda: field.count() > 0, timeout=4_000):
+        failures.append("the rename control opened no field for the blank-name check")
+        return
+
+    field.fill("   ")
+    field.press("Enter")
+    page.wait_for_timeout(800)
+
+    refusal = page.locator(".territorio-capas .notecard--error")
+    if refusal.count() == 0:
+        failures.append(
+            "a name of spaces was not refused where it was typed: the Capas panel showed no "
+            "reason at all",
+        )
+    if _capas_category(page, label).count() == 0:
+        failures.append("a refused rename changed the name in the panel anyway")
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -3927,6 +4222,11 @@ def main():
         page.wait_for_timeout(1000)
         the_exactitud_is_drawn_on_the_pin(page, failures)
         a_cluster_says_what_is_under_it(page, failures)
+
+        # After the cluster records above, because it renames the Category they
+        # are filed under and Análisis draws no section for a Category holding
+        # nothing. It puts both names back when it is done.
+        a_layer_can_be_renamed_without_a_reload(page, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

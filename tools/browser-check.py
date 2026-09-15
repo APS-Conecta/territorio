@@ -2390,6 +2390,22 @@ def a_division_renders_as_a_division(page, failures):
         failures.append(f"{uv!r} did not reach the Registry, so nothing was drawn to check (#21)")
         return
 
+    # Not an assertion — the computed-style checks below are. «A Unidad Vecinal
+    # recedes and a Sector reads as figure» is the one criterion in #21 that is a
+    # judgement rather than a number, and § 6 forbids asserting it on a picture
+    # because remote OSM tiles sit under every one. So the run leaves a picture
+    # for a person (or the agent landing it) to look at and say what they saw,
+    # in both themes. Taken here, before anything filters or zooms: the reload
+    # above put the Unidad Vecinal toggle on screen for the first time — main()
+    # could not have turned it off, there being no such toggle until this import
+    # made one — so the cadastre is drawn and nothing is filtered.
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(1200)
+        page.screenshot(path=str(SHOTS / f"figure-and-ground-{scheme}.png"), full_page=False)
+    page.emulate_media(color_scheme="no-override")
+    page.wait_for_timeout(400)
+
     _ground_is_drawn_as_ground(page, uv, failures)
     _the_ground_label_waits_for_its_zoom(page, uv, failures)
     _figure_is_drawn_as_figure(page, sector, neutral, failures)

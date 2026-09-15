@@ -77,9 +77,10 @@
 					<!--
 						Renaming happens in place, in the row itself: this panel IS the
 						Category tree, and it is where a person already goes to think
-						about layers (#36). The input is wrapped in @click.stop like the
-						checkbox above it, or every keystroke that reaches <summary>
-						collapses the branch being renamed.
+						about layers (#36). A click is stopped like the checkbox above
+						stops one, and so is a space: this input sits inside a
+						<summary>, where both default to toggling the branch — typing
+						a two-word name would otherwise fold the row being renamed.
 					-->
 					<input v-if="renaming === keyOf(category)"
 						ref="rename"
@@ -90,6 +91,7 @@
 						@click.stop
 						@keydown.stop.enter.prevent="commit(category)"
 						@keydown.esc="cancel"
+						@keydown.space.stop
 						@blur="cancel">
 					<template v-else>
 						<span class="territorio-capas__name">{{ category.label }}</span>

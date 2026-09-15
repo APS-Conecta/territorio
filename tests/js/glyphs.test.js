@@ -22,6 +22,45 @@ const SEEDED = [
 	'religion', 'comercio_economia', 'sin_clasificar',
 ]
 
+/**
+ * The Maki icon each Category draws, re-picked at pin size for #37.
+ *
+ * Named here rather than left implicit because the choice is the decision: #37
+ * re-picked all eleven against the vocabulary a phone map uses, and a silent
+ * swap afterwards would undo that without anything saying so.
+ */
+const CHOSEN = {
+	salud: 'hospital',
+	educacion: 'college',
+	deporte_recreacion: 'pitch',
+	seguridad: 'police',
+	medioambiente: 'park',
+	organizacion_social: 'town',
+	servicio_publico: 'town-hall',
+	movilidad_transporte: 'bus',
+	religion: 'place-of-worship',
+	comercio_economia: 'shop',
+	sin_clasificar: 'circle-stroked',
+}
+
+/**
+ * The Maki icon name out of whatever the bundler handed us.
+ *
+ * Maki writes the icon's own name into the `<svg>`'s `id` — the first `id` in
+ * the file — and both handlings carry it: webpack's `asset/source` as raw markup
+ * with double quotes, vitest's as a URL-encoded data URI with single ones and
+ * the angle brackets escaped, which is why nothing here anchors on a `<svg`
+ * that is only literal in one of them. That is the whole reason this can
+ * assert a name without keeping a second copy of the mapping to drift against
+ * the first — and it is still the mapping being asserted, not the markup.
+ *
+ * @param {string} glyph whatever `glyphFor()` returned
+ * @return {?string} the Maki icon name, or null if this file's premise broke
+ */
+function makiIdOf(glyph) {
+	return String(glyph).match(/id=['"]([a-z0-9-]+)['"]/)?.[1] ?? null
+}
+
 describe('glyphFor', () => {
 	it('gives every seeded Category a glyph', () => {
 		for (const slug of SEEDED) {
@@ -49,6 +88,17 @@ describe('glyphFor', () => {
 	 * reads as a rendering failure, and the row beside it already says which case
 	 * it is.
 	 */
+	it('draws each Category with the icon #37 re-picked for it', () => {
+		for (const [slug, icon] of Object.entries(CHOSEN)) {
+			const drawn = makiIdOf(glyphFor(slug))
+
+			// Before comparing: a null here means the id could not be read at all,
+			// and every comparison below it would be vacuously about `null`.
+			expect(drawn, `${slug}: no Maki id could be read out of its glyph`).not.toBeNull()
+			expect(drawn, `${slug} draws a different pictogram`).toBe(icon)
+		}
+	})
+
 	it('falls back rather than rendering nothing', () => {
 		for (const unknown of ['una_categoria_nueva', '', null, undefined]) {
 			expect(glyphFor(unknown), `${unknown} rendered nothing`).toBeTruthy()

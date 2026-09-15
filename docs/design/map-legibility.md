@@ -31,11 +31,17 @@ match; no Temaki fallback is needed.
 | Category | Maki icon | Category | Maki icon |
 |---|---|---|---|
 | salud | `hospital` | servicio_publico | `town-hall` |
-| educacion | `school` | movilidad_transporte | `bus` |
+| educacion | `college` | movilidad_transporte | `bus` |
 | deporte_recreacion | `pitch` | religion | `place-of-worship` |
 | seguridad | `police` | comercio_economia | `shop` |
-| medioambiente | `recycling` | sin_clasificar | `circle-stroked` |
-| organizacion_social | `residential-community` | | |
+| medioambiente | `park` | sin_clasificar | `circle-stroked` |
+| organizacion_social | `town` | | |
+
+All eleven were re-picked at pin size in #37, judged as rendered pixels at 19px rather than as
+vector art: `college`, `park` and `town` replaced `school`, `recycling` and `residential-community`,
+which read as blobs on a busy basemap. `police` is the weakest survivor — Maki ships no shield or
+badge, and every alternative means something narrower — and is flagged in #37 rather than swapped
+for a crisper mark that means the wrong thing.
 
 `place-of-worship` over `religious-christian` deliberately: the app must not assume a
 denomination. `circle-stroked` reads as *nobody has decided yet*, which is what "Sin clasificar"

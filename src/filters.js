@@ -94,6 +94,29 @@ export function toggleSubcategory(filter, subcategoryId) {
 }
 
 /**
+ * Drop the ids the taxonomy no longer has (#47).
+ *
+ * The filter records what is HIDDEN, which is what makes a row ADDED to the
+ * taxonomy appear on its own — and the same choice means a row REMOVED from it
+ * leaves an id behind that names nothing. Invisible, and not harmless: the
+ * «N ocultas» badge counts it and «Ver todo» stays on screen offering to reveal
+ * something that is gone.
+ *
+ * Called where the tree is swapped in, not from a watcher. The taxonomy also
+ * changes on a rename and on an add, where there is nothing to forget, and a
+ * watcher would rebuild the set on every one of them.
+ */
+export function forgetRemoved(filter, taxonomy) {
+	const alive = new Set(
+		taxonomy.flatMap((category) => category.subcategories.map((subcategory) => subcategory.id)),
+	)
+
+	// Spread, for the reason toggleSubcategory spreads: what was typed is part
+	// of the View too.
+	return { ...filter, hidden: new Set([...filter.hidden].filter((id) => alive.has(id))) }
+}
+
+/**
  * Clicking a Category is "show me all of this" unless all of it is already
  * shown, in which case it is "hide all of this".
  *

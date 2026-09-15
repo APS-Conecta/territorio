@@ -17,6 +17,7 @@
 						@rename="rename"
 						@add-category="addCategory"
 						@add-subcategory="addSubcategory"
+						@remove="removeFromTaxonomy"
 						@clear-taxonomy-message="clearTaxonomyMessage"
 						@reset="resetFilter" />
 
@@ -204,6 +205,7 @@ import {
 	emptyFilter,
 	featureById,
 	filterFeatures,
+	forgetRemoved,
 	isFiltered,
 	listFor,
 	toggleCategory,
@@ -793,6 +795,57 @@ export default {
 			} catch (exception) {
 				this.taxonomyError = exception.response?.data?.message
 					?? 'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.'
+			}
+		},
+
+		/**
+		 * Remove a Category, or a Subcategory of one (#47).
+		 *
+		 * Addressed by slug like every other write on this panel, and with no
+		 * body: ADR-0016 refuses a Category that still holds records rather than
+		 * emptying or retiring them, so there is nothing for the browser to
+		 * choose and no `?force` to send.
+		 *
+		 * The answer is the whole tree, swapped in exactly as a rename's is —
+		 * which is what takes the removed row out of the Capas panel, the
+		 * Subcategoría picker and Análisis at once with no reload.
+		 *
+		 * `forgetRemoved()` is the part a swap alone does not do. The filter is
+		 * this browser's own and records what is HIDDEN, so a Subcategory that
+		 * was ticked off and then removed leaves an id naming nothing: the
+		 * «N ocultas» badge counts it and «Ver todo» stays offering to reveal it.
+		 *
+		 * The records are not refetched, and they do not need to be: a removal
+		 * only gets this far when nothing is filed under the row, so no Feature
+		 * in `features` can be pointing at it. The refusal is what guarantees
+		 * that — which is the same reason nothing here has to worry about
+		 * FeatureList drawing «Clasificación desconocida».
+		 *
+		 * The same ponytail ceiling `addSubcategory()` names applies unchanged: a
+		 * removal does not advance the Revision cursor (ADR-0002's counter hangs
+		 * on a Feature id and a Category is not a Feature), so a colleague's open
+		 * browser still lists the removed row until it reloads. Nothing can be
+		 * filed under it there either — the server refuses a Feature carrying a
+		 * Subcategory id that is gone — so what they see is a stale panel, not a
+		 * record going astray.
+		 */
+		async removeFromTaxonomy({ categorySlug, subcategorySlug }) {
+			const category = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
+			const url = subcategorySlug === null
+				? category
+				: `${category}/subcategories/${encodeURIComponent(subcategorySlug)}`
+
+			try {
+				const { data } = await axios.delete(generateUrl(url))
+				this.taxonomy = data
+				this.filter = forgetRemoved(this.filter, data)
+				this.clearTaxonomyMessage()
+			} catch (exception) {
+				// 422 carries the refusal — how many records and where to see
+				// them (ADR-0016). Anything else does not, and a generic sentence
+				// in its place must not pretend to.
+				this.taxonomyError = exception.response?.data?.message
+					?? 'No se pudo quitar. Revise la conexión e inténtelo de nuevo.'
 			}
 		},
 

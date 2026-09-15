@@ -5,6 +5,7 @@ import {
 	emptyFilter,
 	featureById,
 	filterFeatures,
+	forgetRemoved,
 	isFiltered,
 	isSubcategoryVisible,
 	listFor,
@@ -445,5 +446,42 @@ describe('isFiltered', () => {
 		const filter = toggleSubcategory(toggleSubcategory(emptyFilter(), 11), 11)
 
 		expect(isFiltered(filter)).toBe(false)
+	})
+})
+
+/**
+ * Removing a Category (#47) leaves the panel, the picker and Análisis on the
+ * next tree the server answers with — but the filter is the browser's own and
+ * nobody swaps it. The hidden set is a set of ids, and an id that no longer
+ * names anything is invisible: it is counted by the «N ocultas» badge and it
+ * keeps «Ver todo» on screen with nothing left to reveal.
+ */
+describe('a taxonomy that lost a row', () => {
+	it('forgets a hidden Subcategory that is no longer in the tree', () => {
+		const hidden = toggleSubcategory(toggleSubcategory(emptyFilter(), 12), 21)
+		const withoutEducacion = TAXONOMY.filter((category) => category.slug !== 'educacion')
+
+		const kept = forgetRemoved(hidden, withoutEducacion)
+
+		expect([...kept.hidden]).toEqual([12])
+		expect(isFiltered(kept)).toBe(true)
+	})
+
+	/** Nothing hidden that still exists is dropped, and the query is left alone. */
+	it('keeps what is still there, and what was typed', () => {
+		const hidden = { ...toggleSubcategory(emptyFilter(), 11), query: 'cesfam' }
+
+		const kept = forgetRemoved(hidden, TAXONOMY)
+
+		expect([...kept.hidden]).toEqual([11])
+		expect(kept.query).toBe('cesfam')
+	})
+
+	/** The badge and «Ver todo» go with the last id that meant anything. */
+	it('leaves nothing filtered once the last hidden row is removed', () => {
+		const hidden = toggleSubcategory(emptyFilter(), 21)
+
+		expect(isFiltered(forgetRemoved(hidden, TAXONOMY.filter((c) => c.slug !== 'educacion'))))
+			.toBe(false)
 	})
 })

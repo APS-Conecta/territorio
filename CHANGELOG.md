@@ -46,7 +46,7 @@ record is.
   nobody satisfies that by eye. `tools/ramp-check.py` already implements exactly that arithmetic,
   so it gained `derive_spares()`: at the chroma ADR-0013 fixes (0.090), inside the six hue families
   it allows — read off the seeded ramp rather than listed, so repainting a Category moves its
-  family with it and no seventh can arrive by editing a constant — it walks lightness and keeps
+  family with it — it walks lightness and keeps
   every value that clears all of it against the eleven, both neutrals, and the spares already
   taken. Eight, matching the ceiling recorded in #40 and ADR-0017. They ship as
   `EnsureSeedData::SPARES`, which is data the app can read rather than a number in a comment.
@@ -57,7 +57,10 @@ record is.
   becomes taking the next unused spare, with no colour maths on the write path at all.
 
   `make lint` re-checks every shipped spare on every run — contrast, separation, dichromacy, chroma
-  not raised, hue still inside a family — so moving a seeded colour to within ΔE 0.05 of a spare
+  not raised, hue still inside a family — and gates the two things the derivation assumes about the
+  palette it reads: that there are six hue families and not a seventh, and that ADR-0013's three
+  greys are still grey. A tinted neutral is a hue family with no decision behind it, and the
+  derivation would offer spares inside it. So moving a seeded colour to within ΔE 0.05 of a spare
   turns the build red at the moment the edit is made rather than the first time a clinic adds a
   Category. Editing a Category's colour is now also a statement about colours no Category holds
   yet. The number eight is the search grid's as much as the palette's: lightness steps by 0.005,

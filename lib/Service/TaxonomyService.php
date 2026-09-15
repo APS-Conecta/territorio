@@ -192,6 +192,13 @@ class TaxonomyService {
 			throw new InvalidTaxonomyException('Ya existe una categoría con ese nombre.');
 		}
 
+		// ponytail: two inserts, no transaction — the ceiling no write path in
+		// this service has ever raised. If the «Otro» fails after the Category
+		// row lands, the Category reaches neither the picker nor Análisis,
+		// nothing can be filed under it, and it has spent a spare colour that
+		// `nextColour()` will not offer again. It needs a database failure
+		// between two statements; the recovery is #47's removal, which is also
+		// what would make wrapping this worth its weight.
 		$subcategory = new Subcategory();
 		$subcategory->setCategoryId((int)$category->getId());
 		$subcategory->setSlug(self::FIRST_SUBCATEGORY['slug']);
@@ -206,9 +213,18 @@ class TaxonomyService {
 	 *
 	 * "Assigning a colour becomes taking the next unused spare" (ADR-0017). No
 	 * counter and no new state — the answer is derived from the Categories that
-	 * exist, so a Category removed (#47) hands its spare back, and two adds in a
-	 * row cannot take the same one because the first is a row by the time the
-	 * second looks.
+	 * exist, so a Category removed (#47) hands its spare back, and two adds one
+	 * after the other cannot take the same one because the first is a row by the
+	 * time the second looks.
+	 *
+	 * Two SIMULTANEOUS adds can: this reads `findAll()` and then inserts with no
+	 * lock, and there is no unique index on `color`. Accepted rather than fixed,
+	 * and it is the one rule here `addCategory()` does not hand to the database —
+	 * because a duplicate hue is cosmetic. Hue only groups Categories and the
+	 * glyph identifies them (ADR-0013), so two Categories sharing one is the same
+	 * thing that already happens the moment the spares run out and both take the
+	 * neutral. A duplicate SLUG is not cosmetic, which is why that one is an
+	 * index and this one is a comment.
 	 *
 	 * No colour arithmetic here on purpose. The OKLab separation, the WCAG
 	 * contrast and the three dichromacy transforms live in `tools/ramp-check.py`,

@@ -31,6 +31,12 @@ The clinic can put a word of its own into the taxonomy, not only re-word the see
   every Category and means something different in each. A name that is blank, or that derives to no
   slug at all («»»), is refused the same way, in the panel where it was typed.
 
+  Every Category the panel draws as a branch gets a «+», which is every Category except
+  `division_territorial`: that one is drawn as the Sector and Unidad Vecinal toggles above the tree,
+  not as a branch, and a territorial division is drawn on the map rather than typed into a field.
+  The exclusion is deliberate and is now said so in the panel; the route itself still accepts that
+  Category, because narrowing it would be a decision this slice was not asked to make.
+
   Nothing removes a Subcategory yet (#47), which is why the browser gate names the one it adds
   after the run: a fixed name would be added once and refused as a duplicate by every run
   afterwards, and a check that only works the first time is not a check.

@@ -1887,8 +1887,13 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 
     # NcSelect labels its options "Category · Subcategory", because "Otro"
     # appears in nearly every Category and means something different in each.
-    page.get_by_label("Subcategoría").click()
-    page.get_by_label("Subcategoría").fill("Salud · CESFAM")
+    #
+    # `exact=True` or this matches twelve elements: get_by_label is a substring
+    # match, and #44 gave every Category a «+» named "Agregar subcategoría en
+    # «X»". The accessible names are right — a person hears one picker and
+    # twelve add buttons — so it is the locator that had to say which it means.
+    page.get_by_label("Subcategoría", exact=True).click()
+    page.get_by_label("Subcategoría", exact=True).fill("Salud · CESFAM")
     page.wait_for_timeout(500)
     page.keyboard.press("Enter")
     page.wait_for_timeout(300)
@@ -2020,8 +2025,10 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
     for label, option in (("Subcategoría", subcategory), ("Exactitud", quality)):
         if option is None:
             continue
-        page.get_by_label(label).click()
-        page.get_by_label(label).fill(option)
+        # exact=True: "Subcategoría" is a substring of the accessible name of
+        # each of #44's twelve «+» buttons ("Agregar subcategoría en «X»").
+        page.get_by_label(label, exact=True).click()
+        page.get_by_label(label, exact=True).fill(option)
         page.wait_for_timeout(500)
         page.keyboard.press("Enter")
         page.wait_for_timeout(300)
@@ -4205,6 +4212,16 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
                 f"was added to was left folded shut",
             )
 
+        # The assertions above are the gate; this is so a person can see what
+        # the gate approved, which is the habit SKILL.md § 5 asks for on any
+        # criterion about something appearing. Scrolled to first: the panel is
+        # a scrolling column and an element screenshot of it captures what is
+        # in view, so without this the picture shows the branch and not the row
+        # it is supposed to be evidence of.
+        _capas_child(page, SEEDED_CATEGORY, added).first.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        page.locator(".territorio-capas").screenshot(path=str(SHOTS / "44-capas-panel.png"))
+
         served = served_taxonomy(page)
         stored = None if served is None else next(
             (entry for entry in served if entry["slug"] == "salud"), None,
@@ -4244,7 +4261,8 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
                 f"under the {written['id']!r} that was just added",
             )
 
-        _analisis_reads_the_new_name(page, SEEDED_CATEGORY, added, failures)
+        _analisis_reads_the_new_name(page, SEEDED_CATEGORY, added, failures,
+                                     shot="44-analisis.png")
         _the_same_name_twice_is_refused(page, added, errors, failures)
     finally:
         # The record, not the Subcategory: nothing in the app removes one of
@@ -4301,8 +4319,10 @@ def _the_picker_offers_the_new_name(page, expected, failures):
     """
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.wait_for_timeout(400)
-    page.get_by_label("Subcategoría").click()
-    page.get_by_label("Subcategoría").fill(expected)
+    # exact=True for the reason given in a_pin_says_what_kind_of_place_it_is():
+    # #44's twelve «+» buttons are all named "Agregar subcategoría en «X»".
+    page.get_by_label("Subcategoría", exact=True).click()
+    page.get_by_label("Subcategoría", exact=True).fill(expected)
     page.wait_for_timeout(700)
 
     # `all_text_contents()` and not `all_inner_texts()`: innerText is the
@@ -4323,8 +4343,12 @@ def _the_picker_offers_the_new_name(page, expected, failures):
     page.wait_for_timeout(400)
 
 
-def _analisis_reads_the_new_name(page, category, subcategory, failures):
-    """Análisis: the report somebody is about to show a colleague (#40, story 9)."""
+def _analisis_reads_the_new_name(page, category, subcategory, failures, shot=None):
+    """Análisis: the report somebody is about to show a colleague (#40, story 9).
+
+    `shot` names a screenshot to save of the section, for a criterion whose
+    wording is about what a person sees; the assertions do not depend on it.
+    """
     switch = page.locator(".territorio-main__switch")
     switch.get_by_role("button", name="Análisis").click()
     page.wait_for_timeout(700)
@@ -4340,6 +4364,9 @@ def _analisis_reads_the_new_name(page, category, subcategory, failures):
             f"Análisis draws «{category}» but still calls its Subcategory by the old name — the "
             f"chart reads the Subcategory rows through a separate binding",
         )
+
+    if shot is not None and section.count() > 0:
+        section.first.screenshot(path=str(SHOTS / shot))
 
     switch.get_by_role("button", name="Mapa").click()
     page.wait_for_timeout(400)

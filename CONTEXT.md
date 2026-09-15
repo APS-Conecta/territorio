@@ -63,7 +63,9 @@ _Avoid_: geometry type, feature type, shape
 The top level of the taxonomy that says what a Feature is about — Salud, Educación, Deporte y
 recreación, Seguridad, Medioambiente, Organización social, Servicio público, Movilidad y
 transporte, Religión, Comercio y economía, Sin clasificar. Editable data, not code: a clinic adds
-its own and it appears in the panel and in reports at once.
+its own and it appears in the panel and in reports at once. A Category always carries at least an
+«Otro» Subcategory, including one a clinic just added: a Feature travels as a Subcategory id, so a
+Category with none is one nothing can be filed under and one neither the picker nor Análisis shows.
 _Avoid_: type, group, layer
 
 **Subcategory**:

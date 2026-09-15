@@ -3162,9 +3162,13 @@ def _ramp_check():
 
     Imported rather than re-implemented. The hyphen in the filename keeps it off
     the normal import path, and a second copy of the contrast formula here is
-    exactly the drift this whole check exists to catch. Its seed reader is no
-    longer called from here: what a Category is coloured is read from what the
-    app serves (#42), and only what the SEEDED ramp is worth is still ramp-check's.
+    exactly the drift this whole check exists to catch.
+
+    What a Category IS coloured is never read from here: that comes from what the
+    app serves (#42). What the seed reader still answers is the two things no
+    surface serves at all — the spare list a new Category draws from and the
+    neutral it falls back to (#45) — so `seeded_spares()` is called again, while
+    the TAKEN set beside it is still the served one.
     """
     import importlib.util
 

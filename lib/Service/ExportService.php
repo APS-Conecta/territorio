@@ -11,13 +11,15 @@ use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\IUserSession;
+use ZipArchive;
 
 /**
  * Taking the filtered set out of the app (issue #17, ADR-0006).
  *
- * Three formats, one set. The format decides only which writer runs, exactly as
+ * Four formats, one set. The format decides only which writer runs, exactly as
  * it decides only which reader runs on the way in — so "the current filtered
- * set" means the same thing in all three and cannot drift between them.
+ * set" means the same thing in all of them and cannot drift between them. KMZ is
+ * not a fourth writer: it is the KML one, zipped (issue #102).
  *
  * The contact fields are the whole reason this is not a plain download. The
  * Registry holds the names, mobile numbers and email addresses of identifiable
@@ -34,12 +36,16 @@ use OCP\IUserSession;
  */
 class ExportService {
 	/** What each format is called, what it writes, and what it is served as. */
-	private const FORMATS = ['geojson', 'csv', 'kml'];
+	private const FORMATS = ['geojson', 'csv', 'kml', 'kmz'];
+
+	/** The formats that are a KML, whatever their extension. */
+	private const KML_FAMILY = ['kml', 'kmz'];
 
 	private const MIME = [
 		'geojson' => 'application/geo+json',
 		'csv' => 'text/csv; charset=utf-8',
 		'kml' => 'application/vnd.google-earth.kml+xml',
+		'kmz' => 'application/vnd.google-earth.kmz',
 	];
 
 	public function __construct(
@@ -76,7 +82,11 @@ class ExportService {
 		// it — the unearned prompt ADR-0006 exists to avoid. Refused rather than
 		// quietly downgraded, because a request nobody can mean is a bug in the
 		// caller and silently doing something else hides it.
-		if ($format === 'kml' && $contacts) {
+		//
+		// A KMZ is that same KML in an archive, so it is refused by the same rule:
+		// letting it through would prompt for a password AND write an entry to the
+		// export log claiming contact data left the building when none did.
+		if (in_array($format, self::KML_FAMILY, true) && $contacts) {
 			throw new InvalidFeatureException(
 				'Un archivo KML no lleva datos de contacto; expórtelo sin marcarlos.',
 			);
@@ -88,6 +98,7 @@ class ExportService {
 			'geojson' => $this->geoJson->write($rows, $contacts),
 			'csv' => $this->csv->write($rows, $contacts),
 			'kml' => $this->kml->write($rows),
+			'kmz' => $this->kmz($rows),
 		};
 
 		if ($contacts) {
@@ -99,6 +110,45 @@ class ExportService {
 			'mime' => self::MIME[$format],
 			'body' => $body,
 		];
+	}
+
+	/**
+	 * The same KML, in the archive Google Earth calls a KMZ.
+	 *
+	 * A KMZ is a ZIP holding one `doc.kml`, so there is nothing to write here
+	 * beyond what `KmlWriter` already writes — a second rendering would be a
+	 * second thing to keep in step with it.
+	 *
+	 * `ZipArchive` is PHP's own and cannot write to memory: `close()` is what
+	 * flushes the archive, and it flushes it to a path. So the file is built in
+	 * the temporary directory and read back, and the `finally` is the point of
+	 * the shape — the KML is rendered INTO the open archive, so a writer that
+	 * throws halfway leaves a file behind unless something removes it.
+	 *
+	 * @param list<array<string, mixed>> $rows
+	 */
+	private function kmz(array $rows): string {
+		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-');
+		if ($path === false) {
+			throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
+		}
+
+		try {
+			$zip = new ZipArchive();
+			if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
+				throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
+			}
+
+			$zip->addFromString('doc.kml', $this->kml->write($rows));
+			$body = $zip->close() ? file_get_contents($path) : false;
+			if ($body === false) {
+				throw new InvalidFeatureException('No se pudo escribir el archivo KMZ.');
+			}
+
+			return $body;
+		} finally {
+			unlink($path);
+		}
 	}
 
 	/**

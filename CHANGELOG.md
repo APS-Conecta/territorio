@@ -3,6 +3,32 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.42.0] — unreleased
+
+Four copies of one fixture, now one.
+
+### Changed
+
+- **One `sector()` fixture for the whole integration suite** (#60). Four tests carried the same
+  twenty lines apiece — `SectorTest`, `AssignmentTest`, `LimitTest` and `BoundaryDatasetTest` —
+  each hard-coding the fields it did not care about and taking as an argument the one it did: a
+  colour, a set of rings, a Limit, nothing at all. `IntegrationTestCase` already owned `place()`
+  for exactly this job, so `sector()` now sits beside it and opens the same `$extra` door: a test
+  passes only the field it is about, and the fixture still goes through `FeatureService`, which is
+  what makes the Places inside the new boundary get assigned as they would be in the app
+  (ADR-0008).
+
+  The issue was opened for a leak — Sectores surviving a run and claiming Places in the next one —
+  and was re-titled on 2026-09-14 after the owner measured that all four copies did register their
+  fixture for cleanup. What was left was the duplication, which is why this is a `Changed` and not
+  a `Fixed`.
+
+  Two fixtures changed shape in passing, neither asserted on: the Sectores in `LimitTest` now sit
+  on the shared default boundary instead of a square of their own, and `BoundaryDatasetTest`'s
+  hand-drawn Sector is that square rather than a triangle. And the copy cannot quietly come back as
+  it was: the shared helper is `protected`, so a `private sector()` in a subclass is now a fatal
+  error rather than a shadow.
+
 ## [0.41.0] — unreleased
 
 An update that omitted the geometry destroyed it.
@@ -81,26 +107,6 @@ An update that omitted the geometry destroyed it.
   prerequisite and is the one command run against an instance that is already up.
 
 ### Changed
-
-- **One `sector()` fixture for the whole integration suite** (#60). Four tests carried the same
-  twenty lines apiece — `SectorTest`, `AssignmentTest`, `LimitTest` and `BoundaryDatasetTest` —
-  each hard-coding the fields it did not care about and taking as an argument the one it did: a
-  colour, a set of rings, a Limit, nothing at all. `IntegrationTestCase` already owned `place()`
-  for exactly this job, so `sector()` now sits beside it and opens the same `$extra` door: a test
-  passes only the field it is about, and the fixture still goes through `FeatureService`, which is
-  what makes the Places inside the new boundary get assigned as they would be in the app
-  (ADR-0008).
-
-  The issue was opened for a leak — Sectores surviving a run and claiming Places in the next one —
-  and was re-titled on 2026-09-14 after the owner measured that all four copies did register their
-  fixture for cleanup. What was left was the duplication, which is why this is a `Changed` and not
-  a `Fixed`.
-
-  Two fixtures changed shape in passing, neither asserted on: the Sectores in `LimitTest` now sit
-  on the shared default boundary instead of a square of their own, and `BoundaryDatasetTest`'s
-  hand-drawn Sector is that square rather than a triangle. And the copy cannot quietly come back as
-  it was: the shared helper is `protected`, so a `private sector()` in a subclass is now a fatal
-  error rather than a shadow.
 
 - **`limit`, `picked` and `pickedGeometry` are built by one function.** Two places made a Sector
   draft — starting a new one and reopening a saved one — and each held its own list of the three

@@ -108,33 +108,10 @@ Four copies of one fixture, now one.
   it was: the shared helper is `protected`, so a `private sector()` in a subclass is now a fatal
   error rather than a shadow.
 
-## [0.41.0] — unreleased
-
-An update that omitted the geometry destroyed it.
-
 ### Documentation
 
-- **`splaytree-ts` declares a licence that does not exist, and ships** (#27). Its `package.json`
-  says `"BDS-3-Clause"`; its `LICENSE` file is a correct BSD 3-Clause. Recorded in
-  `THIRD-PARTY-NOTICES.md` — as a paragraph a person reads, not an allowlist a scanner reads;
-  nothing machine-readable exists to wire one to yet. The issue named `@turf/polygonize` as the
-  parent; measured, it arrives inlined inside `@geoman-io/leaflet-geoman-free`'s published `dist`,
-  together with `polyclip-ts` and `bignumber.js`.
-
-  **Corrected within the day.** The first version of that note said whether the code reached `js/`
-  was *"not established"*, because the `SplayTree*` symbols appear in neither bundle. Minification
-  erases symbol names, so that evidence could not have shown presence even if present — the same
-  mistake as grepping a file for a value that lives in a process. String literals survive it:
-  `Concurrent modification during iteration` appears once in `js/territorio-main.js`, and the
-  source map names the package outright. It ships, BSD-3-Clause requires its notice be reproduced
-  in binary redistribution, and the text is now in the file. Found by `/code-review`.
-
-  Counting the shipped set to check that claim surfaced a larger gap: **51 packages are compiled
-  into `js/` and 18 are named**, and the file's documented update method — read the two webpack
-  banner files — structurally cannot see the rest. Filed as #87.
-
 - **`THIRD-PARTY-NOTICES.md` now names every package that ships, and a command says so** (#87).
-  Measured today: **67 packages are compiled into `js/` and 67 are named**. The previous count of
+  Measured 2026-09-15: **67 packages are compiled into `js/` and 67 are named**. The previous count of
   51 was short by sixteen for a reason worth writing down — `@geoman-io/leaflet-geoman-free`
   publishes an esbuild bundle with **23** of its dependencies concatenated in, not the three
   (`splaytree-ts`, `polyclip-ts`, `bignumber.js`) that #86 found. `lodash`, `rbush`,
@@ -163,9 +140,36 @@ An update that omitted the geometry destroyed it.
   packages (`@nextcloud/vue`, `@nextcloud/event-bus`) publish no licence file at all and are
   marked as the exception rather than blending into the table, and `sweepline-intersections` has
   no copy in a development checkout at all — its MIT text was read from the published tarball.
-  The full texts of MIT, ISC, Apache-2.0 (for `dompurify`) and GPL-3.0 (for the Nextcloud
-  packages) are now in the file beside Leaflet's BSD-2 and `splaytree-ts`'s BSD-3, because those
-  licences require the text to travel with a binary redistribution and `js/` is one.
+  The full texts of MIT, ISC and Apache-2.0 (`dompurify`'s election) are now in the file beside
+  Leaflet's BSD-2 and `splaytree-ts`'s BSD-3, because those licences require the text to travel
+  with a binary redistribution and `js/` is one. GPL-3.0's text ships as
+  `LICENSES/GPL-3.0-or-later.txt` instead: the docs gate reads every fenced block in a governed
+  `.md` as commands, and the GPL says "make sure" eight times over.
+
+## [0.41.0] — unreleased
+
+An update that omitted the geometry destroyed it.
+
+### Documentation
+
+- **`splaytree-ts` declares a licence that does not exist, and ships** (#27). Its `package.json`
+  says `"BDS-3-Clause"`; its `LICENSE` file is a correct BSD 3-Clause. Recorded in
+  `THIRD-PARTY-NOTICES.md` — as a paragraph a person reads, not an allowlist a scanner reads;
+  nothing machine-readable exists to wire one to yet. The issue named `@turf/polygonize` as the
+  parent; measured, it arrives inlined inside `@geoman-io/leaflet-geoman-free`'s published `dist`,
+  together with `polyclip-ts` and `bignumber.js`.
+
+  **Corrected within the day.** The first version of that note said whether the code reached `js/`
+  was *"not established"*, because the `SplayTree*` symbols appear in neither bundle. Minification
+  erases symbol names, so that evidence could not have shown presence even if present — the same
+  mistake as grepping a file for a value that lives in a process. String literals survive it:
+  `Concurrent modification during iteration` appears once in `js/territorio-main.js`, and the
+  source map names the package outright. It ships, BSD-3-Clause requires its notice be reproduced
+  in binary redistribution, and the text is now in the file. Found by `/code-review`.
+
+  Counting the shipped set to check that claim surfaced a larger gap: **51 packages are compiled
+  into `js/` and 18 are named**, and the file's documented update method — read the two webpack
+  banner files — structurally cannot see the rest. Filed as #87.
 
 ### Fixed
 

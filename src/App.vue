@@ -11,11 +11,13 @@
 					<CapasPanel :taxonomy="taxonomy"
 						:filter="filter"
 						:error="taxonomyError"
+						:notice="taxonomyNotice"
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
 						@rename="rename"
+						@add-category="addCategory"
 						@add-subcategory="addSubcategory"
-						@clear-taxonomy-error="taxonomyError = ''"
+						@clear-taxonomy-message="clearTaxonomyMessage"
 						@reset="resetFilter" />
 
 					<FeatureList :features="listed"
@@ -289,6 +291,9 @@ export default {
 			// while no record is open, and the Capas panel — where a rename or an
 			// add is refused — is beside the list and always on screen.
 			taxonomyError: '',
+			// Not an error, and it must not read as one (ADR-0017): what a
+			// Category on the neutral means, said once, where it was added.
+			taxonomyNotice: '',
 			pollTimer: null,
 			pollFailed: false,
 			// Loaded only while a Sector's Limit is being built, and thrown away
@@ -734,12 +739,67 @@ export default {
 			try {
 				const { data } = await axios.put(generateUrl(url), { label })
 				this.taxonomy = data
-				this.taxonomyError = ''
+				this.clearTaxonomyMessage()
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
 				this.taxonomyError = exception.response?.data?.message
 					?? 'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.'
 			}
+		},
+
+		/**
+		 * Add a Category (#45).
+		 *
+		 * Only a label goes up. The server derives the slug and ASSIGNS the
+		 * colour from the vetted spare list (ADR-0017), which is why there is no
+		 * colour input here or anywhere else: the constraints — 3:1 against white
+		 * and against the dark theme, and separation from every other Category
+		 * under three dichromacies — cannot be satisfied by eye, and an input that
+		 * accepts a failing value is worse than no input.
+		 *
+		 * The answer is the whole tree, swapped in exactly as a rename's is, which
+		 * is what puts the new Category in the Capas panel, in the Subcategoría
+		 * picker and in Análisis at once. The same ponytail ceiling
+		 * `addSubcategory()` names applies unchanged — a colleague's open browser
+		 * learns about it on their next load.
+		 *
+		 * When no spare is left the server hands back the neutral, and that is the
+		 * whole of the signal: `DEFAULT_SECTOR_COLOUR` on a Category means the app
+		 * had no distinguishable colour to give. Nothing extra travels on the
+		 * response to say so, because a flag would be a second description of the
+		 * same fact that could disagree with the colour it describes.
+		 *
+		 * It is a notice and not an error. ADR-0013 holds that hue only groups
+		 * Categories into families and the pictogram is what identifies them, so a
+		 * Category without a distinct hue is doing what that ADR says every
+		 * Category does anyway — and a refusal-coloured note card over a Category
+		 * that was created correctly would send somebody looking for the failure.
+		 */
+		async addCategory({ label }) {
+			try {
+				const { data } = await axios.post(
+					generateUrl('/apps/territorio/categories'), { label },
+				)
+				const added = data.find((category) => !this.taxonomy
+					.some((existing) => existing.id === category.id))
+				this.taxonomy = data
+				this.clearTaxonomyMessage()
+
+				if (added?.color === DEFAULT_SECTOR_COLOUR) {
+					this.taxonomyNotice = `Se agregó «${added.label}», pero ya no quedan colores `
+						+ 'que se distingan entre sí: se muestra en gris y se reconoce por su '
+						+ 'pictograma, como todas las categorías.'
+				}
+			} catch (exception) {
+				this.taxonomyError = exception.response?.data?.message
+					?? 'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.'
+			}
+		},
+
+		/** One message at a time, and never one left over from something else. */
+		clearTaxonomyMessage() {
+			this.taxonomyError = ''
+			this.taxonomyNotice = ''
 		},
 
 		/**
@@ -785,7 +845,7 @@ export default {
 			try {
 				const { data } = await axios.post(generateUrl(url), { label })
 				this.taxonomy = data
-				this.taxonomyError = ''
+				this.clearTaxonomyMessage()
 			} catch (exception) {
 				this.taxonomyError = exception.response?.data?.message
 					?? 'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.'

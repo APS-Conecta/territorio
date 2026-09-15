@@ -58,12 +58,12 @@ final class CategoryControllerTest extends TestCase {
 
 	public function testABlankLabelIsUnprocessableNotAServerError(): void {
 		$this->taxonomy->method('renameCategory')
-			->willThrowException(new InvalidTaxonomyException('La capa necesita un nombre.'));
+			->willThrowException(new InvalidTaxonomyException('El nombre no puede quedar vacío.'));
 
 		$response = $this->controller->rename('salud');
 
 		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
-		self::assertSame('La capa necesita un nombre.', $response->getData()['message']);
+		self::assertSame('El nombre no puede quedar vacío.', $response->getData()['message']);
 	}
 
 	public function testRenamingSomethingThatIsGoneIsNotFound(): void {

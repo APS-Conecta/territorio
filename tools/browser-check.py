@@ -720,6 +720,12 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
             )
         elif "phone" in written["features"][0]["properties"]:
             failures.append("an export without contacts carried a phone number")
+        elif "license" in written:
+            # #28: the record on screen was typed into this instance, so an ODbL
+            # notice here would be a false claim about the clinic's own catastro
+            # — and a notice on every file is read as boilerplate, which is how
+            # the real one stops being seen.
+            failures.append("an export of local records claimed OpenStreetMap's licence")
 
     # Turning contacts on says so before anything is downloaded.
     open_dialog()
@@ -783,6 +789,72 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
 
     the_server_refuses_an_unconfirmed_export(page, failures)
     the_administrator_can_read_the_export_log(page, failures)
+
+
+def an_export_of_osm_data_names_the_licence(page, failures):
+    """#28: a file holding OpenStreetMap's data names ODbL, through the real door.
+
+    The unit tests pin what each writer emits from a row. This is the half only
+    the running app can answer: that a record which arrived from an OSM-derived
+    Dataset still looks OSM-derived by the time the browser has downloaded it —
+    through the controller, the filter the browser sends, and the download.
+
+    The Dataset is imported through `occ` and NOT as a Boundary one: boundary
+    features are left out of every ordinary read, so an export can never contain
+    them, and keying this check on one would check nothing. It is stamped the way
+    `tools/boundary-features.php` stamps what it produces (ADR-0004), because
+    that stamp is the whole signal.
+    """
+    name = f"Calle del Navegador {RUN}"
+    geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {
+                "id": f"osm-{RUN}",
+                "name": name,
+                "source_es": "OpenStreetMap",
+                "source_url": "https://www.openstreetmap.org/way/101",
+            },
+            "geometry": {"type": "Point", "coordinates": [-70.585, -33.525]},
+        }],
+    })
+
+    if not import_dataset(geojson, f"osm-{RUN}", boundary=False):
+        skip("could not import an OSM-derived Dataset through occ; the ODbL notice is unchecked")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1500)
+
+    # Assert the record reached the Registry before asking what an export of it
+    # says: a notice missing from a file that holds nothing would look identical
+    # to a notice the writer failed to emit.
+    if registry_feature(page, name) is None:
+        failures.append(f"{name!r} did not reach the Registry, so the ODbL notice was not checked")
+        return
+
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.wait_for_timeout(600)
+
+    with page.expect_download(timeout=20_000) as download:
+        page.get_by_role("button", name="Exportar", exact=True).last.click()
+    written = json.loads(Path(download.value.path()).read_text())
+
+    if len(written.get("features", [])) != 1:
+        failures.append(
+            f"the export carried {len(written.get('features', []))} records, expected the 1 on screen",
+        )
+    licence = written.get("license", "")
+    if "ODbL" not in licence or "OpenStreetMap" not in licence:
+        failures.append(f"an export of OSM-derived records did not name the licence: {licence!r}")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
 
 def the_administrator_can_read_the_export_log(page, failures):
@@ -881,7 +953,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     ]
     geojson = json.dumps({"type": "FeatureCollection", "features": sides})
 
-    if not import_boundaries(geojson, f"cuadro-{RUN}"):
+    if not import_dataset(geojson, f"cuadro-{RUN}", boundary=True):
         skip("could not import boundary lines through occ; polygonize unchecked")
         return
 
@@ -1216,8 +1288,13 @@ def open_the_runs_sector(page, failures):
     return True
 
 
-def import_boundaries(geojson, dataset):
-    """Load lines as a Boundary Dataset, the only way there is: occ."""
+def import_dataset(geojson, dataset, boundary):
+    """Load a GeoJSON as a Dataset through occ, the only way there is.
+
+    `boundary` decides which kind. A Boundary Dataset is left out of every
+    ordinary read — including an export — so a check about what an export
+    carries has to ask for an ordinary one.
+    """
     container = ["docker", "compose", "-f", "compose.dev.yaml", "exec", "-T",
                  "-u", "www-data", "nextcloud"]
     written = subprocess.run(
@@ -1229,7 +1306,7 @@ def import_boundaries(geojson, dataset):
 
     done = subprocess.run(
         [*container, "php", "occ", "territorio:import", f"/tmp/{dataset}.geojson",
-         f"--dataset={dataset}", "--boundary"],
+         f"--dataset={dataset}", *(["--boundary"] if boundary else [])],
         capture_output=True, timeout=300,
     )
 
@@ -1897,6 +1974,7 @@ def main():
         the_limit_can_be_picked(page, failures)
         the_duplicate_queue_works(page, failures)
         exports_ask_for_a_password_only_when_earned(page, failures)
+        an_export_of_osm_data_names_the_licence(page, failures)
         # The failure case first: the check that succeeds retires the Sector both
         # of them open, because a four-kilometre Sector left on a shared instance
         # reassigns half the Registry to itself.

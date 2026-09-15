@@ -26,6 +26,15 @@
 		</summary>
 
 		<div class="territorio-capas__body">
+			<!--
+				A refusal belongs where the person typed. `error` in App.vue renders
+				in the map column and only while no record is open, so a rename
+				refused with the sidebar open would have said nothing at all.
+			-->
+			<NcNoteCard v-if="error !== ''" type="error">
+				{{ error }}
+			</NcNoteCard>
+
 			<NcButton v-if="anythingHidden"
 				variant="tertiary"
 				class="territorio-capas__reset"
@@ -65,16 +74,66 @@
 					<span class="territorio-capas__swatch" :style="{ background: category.color }">
 						<NcIconSvgWrapper :svg="glyphFor(category.slug)" :size="11" />
 					</span>
-					<span class="territorio-capas__name">{{ category.label }}</span>
+					<!--
+						Renaming happens in place, in the row itself: this panel IS the
+						Category tree, and it is where a person already goes to think
+						about layers (#36). The input is wrapped in @click.stop like the
+						checkbox above it, or every keystroke that reaches <summary>
+						collapses the branch being renamed.
+					-->
+					<input v-if="renaming === keyOf(category)"
+						ref="rename"
+						v-model="draftLabel"
+						class="territorio-capas__input"
+						:maxlength="LABEL_LENGTH"
+						aria-label="Nuevo nombre de la capa"
+						@click.stop
+						@keydown.stop.enter.prevent="commit(category)"
+						@keydown.esc="cancel"
+						@blur="cancel">
+					<template v-else>
+						<span class="territorio-capas__name">{{ category.label }}</span>
+						<button class="territorio-capas__rename"
+							type="button"
+							:title="`Renombrar «${category.label}»`"
+							:aria-label="`Renombrar «${category.label}»`"
+							@click.stop.prevent="startRename(category)">
+							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+								<path fill="currentColor" :d="PENCIL" />
+							</svg>
+						</button>
+					</template>
 				</summary>
 
 				<div class="territorio-capas__children">
-					<NcCheckboxRadioSwitch v-for="subcategory in category.subcategories"
+					<div v-for="subcategory in category.subcategories"
 						:key="subcategory.id"
-						:model-value="isVisible(subcategory.id)"
-						@update:model-value="$emit('toggle-subcategory', subcategory.id)">
-						{{ subcategory.label }}
-					</NcCheckboxRadioSwitch>
+						class="territorio-capas__child">
+						<input v-if="renaming === keyOf(category, subcategory)"
+							ref="rename"
+							v-model="draftLabel"
+							class="territorio-capas__input"
+							:maxlength="LABEL_LENGTH"
+							aria-label="Nuevo nombre de la subcategoría"
+							@keydown.stop.enter.prevent="commit(category, subcategory)"
+							@keydown.esc="cancel"
+							@blur="cancel">
+						<template v-else>
+							<NcCheckboxRadioSwitch :model-value="isVisible(subcategory.id)"
+								@update:model-value="$emit('toggle-subcategory', subcategory.id)">
+								{{ subcategory.label }}
+							</NcCheckboxRadioSwitch>
+							<button class="territorio-capas__rename"
+								type="button"
+								:title="`Renombrar «${subcategory.label}»`"
+								:aria-label="`Renombrar «${subcategory.label}»`"
+								@click.stop.prevent="startRename(category, subcategory)">
+								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+									<path fill="currentColor" :d="PENCIL" />
+								</svg>
+							</button>
+						</template>
+					</div>
 				</div>
 			</details>
 		</div>
@@ -85,21 +144,46 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { glyphFor } from '../glyphs.js'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
 import { divisionsOf, treeOf } from '../taxonomy.js'
 
+/**
+ * mdi-pencil-outline, inlined like the empty-state icon in AnalisisView.
+ * The Maki set this app already carries is place pictograms — it holds nothing
+ * for "edit this".
+ */
+const PENCIL = 'M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29'
+	+ 'l-1.83 1.83 3.75 3.75 1.83-1.83a.996.996 0 0 0 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29z'
+	+ 'm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z'
+
 export default {
 	name: 'CapasPanel',
 
-	components: { NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper },
+	components: { NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper, NcNoteCard },
 
 	props: {
 		taxonomy: { type: Array, required: true },
 		filter: { type: Object, required: true },
+		/** Why the last rename was refused, shown beside the row it came from. */
+		error: { type: String, default: '' },
 	},
 
-	emits: ['toggle-category', 'toggle-subcategory', 'reset'],
+	emits: ['toggle-category', 'toggle-subcategory', 'reset', 'rename'],
+
+	data() {
+		return {
+			/** Which row is being renamed, as keyOf() names it. Null while none is. */
+			renaming: null,
+			draftLabel: '',
+			PENCIL,
+			// The column is VARCHAR(128) and the server refuses more (TaxonomyService).
+			// Capping the field here means the usual way of hitting that limit — a
+			// pasted paragraph — never becomes a round trip that ends in a refusal.
+			LABEL_LENGTH: 128,
+		}
+	},
 
 	computed: {
 		anythingHidden() {
@@ -124,6 +208,46 @@ export default {
 
 		isVisible(subcategoryId) {
 			return isSubcategoryVisible(this.filter, subcategoryId)
+		},
+
+		/**
+		 * Which row is open for renaming.
+		 *
+		 * By id and not by slug: a Subcategory slug is unique only within its
+		 * Category — "otro" is in nearly all of them — so a slug alone would put
+		 * every «Otro» in the tree into edit mode at once.
+		 */
+		keyOf(category, subcategory = null) {
+			return subcategory === null ? `c${category.id}` : `s${subcategory.id}`
+		},
+
+		startRename(category, subcategory = null) {
+			this.renaming = this.keyOf(category, subcategory)
+			this.draftLabel = (subcategory ?? category).label
+			// v-if means the input does not exist until Vue has patched the DOM.
+			this.$nextTick(() => {
+				const input = this.$refs.rename
+				;(Array.isArray(input) ? input[0] : input)?.focus()
+			})
+		},
+
+		/**
+		 * Enter commits, Escape or leaving cancels — the shape renaming a file in
+		 * Files already has. Committing on blur would write a half-typed name
+		 * every time somebody clicked away to check something.
+		 */
+		commit(category, subcategory = null) {
+			const label = this.draftLabel
+			this.renaming = null
+			this.$emit('rename', {
+				categorySlug: category.slug,
+				subcategorySlug: subcategory?.slug ?? null,
+				label,
+			})
+		},
+
+		cancel() {
+			this.renaming = null
 		},
 	},
 }
@@ -209,5 +333,44 @@ export default {
 
 .territorio-capas__children {
 	padding-inline-start: 34px;
+}
+
+.territorio-capas__child {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* Takes the width the label had, so the row does not jump when it turns into a
+   field and back. */
+.territorio-capas__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+}
+
+/* Always drawn, never on hover alone: a control that appears under the pointer
+   is not there for a finger or for a keyboard (the panel's checkboxes are
+   already tabbed through). Tertiary ink so eleven of them do not shout over the
+   Category names they belong to. */
+.territorio-capas__rename {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	border-radius: var(--border-radius);
+	background: transparent;
+	color: var(--color-text-maxcontrast);
+	cursor: pointer;
+}
+
+.territorio-capas__rename:hover,
+.territorio-capas__rename:focus-visible {
+	background: var(--color-background-hover);
+	color: var(--color-main-text);
 }
 </style>

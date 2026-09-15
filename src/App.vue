@@ -10,8 +10,10 @@
 				<div class="territorio-column">
 					<CapasPanel :taxonomy="taxonomy"
 						:filter="filter"
+						:error="renameError"
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
+						@rename="rename"
 						@reset="resetFilter" />
 
 					<FeatureList :features="listed"
@@ -281,6 +283,10 @@ export default {
 			draft: null,
 			saving: false,
 			error: '',
+			// Separate from `error`: that one renders in the map column and only
+			// while no record is open, and a rename is refused from the Capas
+			// panel, which is beside the list and always on screen.
+			renameError: '',
 			pollTimer: null,
 			pollFailed: false,
 			// Loaded only while a Sector's Limit is being built, and thrown away
@@ -698,6 +704,39 @@ export default {
 				this.closeDraft()
 			} catch (exception) {
 				this.error = exception.response?.data?.message ?? 'No se pudo retirar el registro.'
+			}
+		},
+
+		/**
+		 * Rename a Category, or a Subcategory of one (#41).
+		 *
+		 * Addressed by slug: it is the identifier the label does not take with it
+		 * when it moves, and the one every record is already filed under.
+		 *
+		 * The server answers with the whole Category tree and it is swapped in
+		 * here, which is the "without a reload" criterion: the Capas panel, the
+		 * Subcategoría picker, Análisis and the map's colours all read this one
+		 * property, so they move together and none of them holds a second copy
+		 * that can disagree.
+		 *
+		 * Nothing else is refetched. A rename does not advance the Revision
+		 * cursor — see the dated correction on ADR-0002 — so a colleague's browser
+		 * reads the new label on its next load.
+		 */
+		async rename({ categorySlug, subcategorySlug, label }) {
+			const category = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
+			const url = subcategorySlug === null
+				? category
+				: `${category}/subcategories/${encodeURIComponent(subcategorySlug)}`
+
+			try {
+				const { data } = await axios.put(generateUrl(url), { label })
+				this.taxonomy = data
+				this.renameError = ''
+			} catch (exception) {
+				// 422 carries a message naming what to fix; anything else does not.
+				this.renameError = exception.response?.data?.message
+					?? 'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.'
 			}
 		},
 

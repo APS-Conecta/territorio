@@ -3,6 +3,39 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.67.0] — unreleased
+
+An export can be a KMZ, which is the KML this app already writes, in an archive.
+
+### Added
+
+- **KMZ joins the export formats** (#102). The archive Google Earth prefers and the one people
+  email each other: a KMZ is a ZIP holding a single `doc.kml`, so this adds no writer. The arm in
+  `ExportService`'s match zips what `KmlWriter` already produces, and the criterion is that the two
+  are byte-identical — a second rendering of the same records would be a second thing to keep in
+  step with the first, and the drift would be invisible until somebody opened both.
+
+  **No dependency.** `ZipArchive` is PHP's own and is in the runtime image already. It cannot write
+  to memory, though: `close()` is what flushes an archive, and it flushes it to a path. So the file
+  is built in the temporary directory and read back, and the KML is rendered *into* the already-open
+  archive rather than before it — which is what makes a write that fails halfway a path the
+  `finally` covers rather than a case nothing reaches.
+
+  **The privacy rule extended with the format, which is the part that was not free.** `ExportService`
+  refuses a KML on the confirmed route because a KML carries no contact details whatever is asked
+  for, and a password prompt over a file with nothing personal in it is the unearned prompt ADR-0006
+  exists to avoid. A KMZ is a KML, so the same refusal covers it, and the four places in the export
+  dialog that compared `format !== 'kml'` now ask one `kmlFamily` instead. Left drifting, a KMZ with
+  contacts ticked would have asked for the person's password, been refused by the server afterwards,
+  and — worse — written an entry to the export log saying contact data left the building when none
+  did. That log is the one record of who took personal data out (ADR-0012); a false line in it is
+  costlier than a missing feature.
+
+  **Not asserted: that Google Earth opens it.** Nothing here has Google Earth in it. What is checked
+  is that the archive is a ZIP, that its only entry is named `doc.kml`, and that those bytes are the
+  KML export's bytes — the format's whole definition, and as far as a check on this machine can
+  honestly go.
+
 ## [0.66.0] — unreleased
 
 The assignment tests stop describing the instance they happen to run on, and the awkward case they

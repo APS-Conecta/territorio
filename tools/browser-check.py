@@ -4109,6 +4109,180 @@ def a_category_can_be_renamed_without_a_reload(page, errors, failures):
         retire_the_runs_record(page, filed_here)
 
 
+def _add_in_capas(page, category_label, label, failures):
+    """Press the «+» on one Category row, type a name and press Enter.
+
+    By its accessible name and not by a class: the control's `aria-label` names
+    the Category it belongs to, so this cannot pick up the pencil beside it or
+    the same control on another branch — and it is the string a screen reader
+    reads, which is a better thing to pin than a class nobody sees.
+    """
+    add = page.get_by_role(
+        "button", name=f"Agregar subcategoría en «{category_label}»", exact=True,
+    )
+    if add.count() == 0:
+        failures.append(
+            f"the Capas panel offers no way to add a Subcategory under «{category_label}»",
+        )
+        return False
+
+    add.first.click()
+    field = page.locator(CAPAS_INPUT)
+    if not settles(page, lambda: field.count() > 0, timeout=4_000):
+        failures.append(
+            f"the add control on «{category_label}» opened no field to type in",
+        )
+        return False
+
+    field.fill(label)
+    field.press("Enter")
+    page.wait_for_timeout(900)
+
+    return True
+
+
+def _capas_child(page, category_label, label):
+    """One Subcategory row of one open Category branch, by the label it shows."""
+    return (
+        _capas_category(page, category_label)
+        .locator(".territorio-capas__child")
+        .filter(has_text=label)
+    )
+
+
+def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
+    """#44: add a Subcategory from the Capas panel and file a record under it.
+
+    The criteria this is the only seam for are the ones about *appearing*: in the
+    panel, in the Subcategoría picker and in Análisis, with nothing reloaded. The
+    integration suite proves the write, the derived slug and the unique index
+    against the real schema; it cannot prove that a person sees any of it.
+
+    What was written is still asserted against the Registry per SKILL.md § 5:
+    `served_taxonomy()` is the read a second browser does, and the slug is
+    checked there, since no screen shows one and the slug is the thing every
+    record filed under this Subcategory will be keyed on.
+
+    Named per run, because nothing can take it away again: the app has no removal
+    path until #47, so a fixed name would be added by the first run and refused
+    as a duplicate by every run after it — and a check that only works once is
+    not a check. The cost is one extra Subcategory under «Salud» per run on the
+    dev instance, which `make instance-clean` resets and which is the smaller of
+    the two bad options.
+    """
+    added = f"Prueba {RUN}"
+    slug = f"prueba_{RUN}"
+    filed = f"Registro {RUN} en Prueba"
+
+    row = _capas_category(page, SEEDED_CATEGORY)
+    if not settles(page, lambda: row.count() > 0, timeout=4_000):
+        failures.append(
+            f"the Capas panel shows no «{SEEDED_CATEGORY}» Category to add a Subcategory under",
+        )
+        return
+
+    if not _add_in_capas(page, SEEDED_CATEGORY, added, failures):
+        return
+
+    try:
+        if not settles(
+            page,
+            lambda: _capas_child(page, SEEDED_CATEGORY, added).count() > 0,
+            timeout=6_000,
+        ):
+            failures.append(
+                f"«{added}» is not in the Capas panel under «{SEEDED_CATEGORY}» after being "
+                f"added — it did not appear without a reload",
+            )
+            return
+
+        served = served_taxonomy(page)
+        stored = None if served is None else next(
+            (entry for entry in served if entry["slug"] == "salud"), None,
+        )
+        if stored is None:
+            failures.append(
+                "the app served no «salud» in initial state, so nothing confirmed the Subcategory "
+                "was written rather than only painted",
+            )
+            return
+
+        written = next(
+            (entry for entry in stored["subcategories"] if entry["label"] == added), None,
+        )
+        if written is None:
+            failures.append(
+                f"the Capas panel shows «{added}» but the Registry does not: it was painted and "
+                f"not written",
+            )
+            return
+        if written["slug"] != slug:
+            failures.append(
+                f"the Registry filed «{added}» under the slug {written['slug']!r} and not "
+                f"{slug!r}: the slug is not being derived from the name (#40)",
+            )
+
+        _a_clustered_place(page, filed, f"{SEEDED_CATEGORY} · {added}", 6, failures)
+        record = registry_feature(page, filed)
+        if record is None:
+            failures.append(
+                f"{filed!r} is not in the Registry: a record could not be filed under a "
+                f"Subcategory that had just been added",
+            )
+        elif record.get("subcategoryId") != written["id"]:
+            failures.append(
+                f"{filed!r} was filed under Subcategory {record.get('subcategoryId')!r} and not "
+                f"under the {written['id']!r} that was just added",
+            )
+
+        _analisis_reads_the_new_name(page, SEEDED_CATEGORY, added, failures)
+        _the_same_name_twice_is_refused(page, added, errors, failures)
+    finally:
+        # The record, not the Subcategory: nothing in the app removes one of
+        # those until #47, and the docstring above says why this one stays.
+        retire_the_runs_record(page, filed)
+
+
+def _the_same_name_twice_is_refused(page, label, errors, failures):
+    """The duplicate refusal, where the person typed it — and nothing written.
+
+    The unique index is `(category_id, slug)` and the integration suite proves
+    that; what only a browser can show is that the refusal reaches the panel
+    instead of arriving as a 500 nobody can act on, and that the row does not
+    quietly double.
+    """
+    before_rows = _capas_child(page, SEEDED_CATEGORY, label).count()
+    before = len(errors)
+
+    if not _add_in_capas(page, SEEDED_CATEGORY, label, failures):
+        return
+
+    if page.locator(".territorio-capas .notecard--error").count() == 0:
+        failures.append(
+            f"adding «{label}» a second time under «{SEEDED_CATEGORY}» said nothing: a duplicate "
+            f"was either accepted or refused somewhere the person cannot see",
+        )
+    if _capas_child(page, SEEDED_CATEGORY, label).count() != before_rows:
+        failures.append(
+            f"«{label}» now appears a different number of times under «{SEEDED_CATEGORY}»: the "
+            f"refusal wrote a row anyway",
+        )
+
+    # The refusal IS an HTTP 422 and the browser logs every failed response as a
+    # console error, which main()'s run-wide gate would then report. Exactly the
+    # entries this refusal added are dropped, and only the 422 among them.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
+
+    # Leave the panel as it was found: the note card names no row, so one left
+    # behind reads as a refusal of whatever the next check does.
+    page.get_by_role(
+        "button", name=f"Agregar subcategoría en «{SEEDED_CATEGORY}»", exact=True,
+    ).first.click()
+    page.wait_for_timeout(300)
+    page.locator(CAPAS_INPUT).press("Escape")
+    page.wait_for_timeout(500)
+
+
 def _the_picker_offers_the_new_name(page, expected, failures):
     """The Subcategoría picker, which is the other surface #41 names.
 
@@ -4367,6 +4541,9 @@ def main():
         # are filed under and Análisis draws no section for a Category holding
         # nothing. It puts both names back when it is done.
         a_category_can_be_renamed_without_a_reload(page, errors, failures)
+        # After it, and not before: that check renames «Salud» and puts it back,
+        # and this one addresses the Category by that name throughout.
+        a_subcategory_can_be_added_without_a_reload(page, errors, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

@@ -1839,12 +1839,28 @@ def kml_says_what_it_cannot_carry(page, failures):
     page.wait_for_timeout(400)
 
 
+# What #37 settled the map pin at, and what the Datos list and the Capas legend
+# deliberately stayed at. Named here rather than inlined because the point of
+# the decision is that the three do NOT move together: the pin is the only mark
+# with no label beside it, and "scale them all up" is the change this guards.
+PIN_DOT, PIN_GLYPH = 26, 19
+LIST_SWATCH, LIST_GLYPH = 18, 12
+CAPAS_SWATCH, CAPAS_GLYPH = 16, 11
+
+
 def a_pin_says_what_kind_of_place_it_is(page, failures):
     """#20: the pictogram, where it has to work — a pin with no label beside it.
 
     Hue only groups Categories into six families (ADR-0013), so this glyph is
     what tells a colegio from a farmacia, and it is the half a dichromacy cannot
     take away. On the map there is no text to fall back on.
+
+    Since #37 it also measures the pin, because "26px with a 19px glyph" is not
+    visible anywhere else: the size lives in a `divIcon` option and a stylesheet,
+    and no unit test renders either. The anchor is measured with it — Leaflet
+    centres a divIcon by writing negative margins from `iconAnchor`, so a dot
+    resized without its anchor draws every pin off the coordinate it belongs to,
+    silently and everywhere.
 
     Creates its own Salud record rather than trusting the instance to hold one:
     a check that cannot set up its own data has nothing to say. The expected fill
@@ -1895,10 +1911,17 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
             const svg = dot.querySelector('svg')
             const path = dot.querySelector('svg path')
             const rgb = getComputedStyle(dot).backgroundColor.match(/\\d+/g) || []
+            const marker = dot.parentElement
+            const box = dot.getBoundingClientRect()
+            const glyphBox = svg ? svg.getBoundingClientRect() : null
+            const margins = getComputedStyle(marker)
             return {
                 fill: '#' + rgb.slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join(''),
                 glyph: svg ? svg.id : null,
                 glyphFill: path ? getComputedStyle(path).fill : null,
+                dot: [Math.round(box.width), Math.round(box.height)],
+                mark: glyphBox ? [Math.round(glyphBox.width), Math.round(glyphBox.height)] : null,
+                anchor: [parseFloat(margins.marginLeft), parseFloat(margins.marginTop)],
             }
         }""",
     )
@@ -1915,6 +1938,34 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
             f"the glyph is drawn {painted['glyphFill']}, not white — the ramp clears 3:1 "
             f"against white and was never checked against anything else",
         )
+
+    if painted["dot"] != [PIN_DOT, PIN_DOT]:
+        failures.append(
+            f"a pin draws {painted['dot']}px, not {PIN_DOT}px — #37 raised it because 22/14 was "
+            f"reported as not easily visualised on a real basemap",
+        )
+    if painted["mark"] != [PIN_GLYPH, PIN_GLYPH]:
+        failures.append(
+            f"a pin's glyph draws {painted['mark']}px, not {PIN_GLYPH}px — the mark is what the "
+            f"size was raised for, and a bigger dot around the same mark buys nothing",
+        )
+
+    # Derived from the dot that was just measured, not from PIN_DOT: this is
+    # asking whether the anchor followed the size, and pinning both to the same
+    # constant would make it agree with itself while every pin sat off its
+    # coordinate.
+    centred = [-painted["dot"][0] / 2, -painted["dot"][1] / 2]
+    if painted["anchor"] != centred:
+        failures.append(
+            f"a {painted['dot']}px pin is anchored at {painted['anchor']}px, not {centred}px — "
+            f"iconAnchor did not follow iconSize, so the pin no longer sits on its coordinate",
+        )
+
+    # "Comfortably readable on a real basemap" is the criterion #37 is judged on
+    # and no assertion settles it. Saved over live OSM tiles, with the map
+    # narrowed to this one record, so whoever lands it can look and say what they
+    # saw — per the slice contract, and per #37's own "confirmed by a person".
+    page.locator('[data-testid="map-canvas"]').screenshot(path=str(SHOTS / "pin-legibility.png"))
 
     # Retired again, so this run still leaves behind exactly the Place and the
     # Sector that the later count assertions are written against. Retiring rather
@@ -2331,6 +2382,71 @@ def every_category_reaches_the_browser_with_its_colour(page, failures):
     # equality test can see — and `tools/ramp-check.py` owns it, because it is
     # the only thing here that can measure OKLab. This gate proves the round
     # trip; that check proves the colour.
+
+
+def _swatch_glyphs(page, selector, swatch_px, glyph_px, where, failures):
+    """One swatch surface: the glyph is white, and it is still the smaller size.
+
+    White is asserted on the `<path>`'s computed fill rather than on any rule,
+    because the defect #37 found is invisible in the source: `NcIconSvgWrapper`
+    ships `.icon-vue[data-v-…] svg { fill: currentColor }` at specificity
+    (0,2,1), a scoped `:deep(svg) { fill: #fff }` compiles to (0,2,1) as well,
+    and the tie went to whichever stylesheet loaded last. Both files carried a
+    comment saying these glyphs were white while they rendered in the theme's
+    dark text colour. Only the browser can tell those two apart.
+
+    The size is asserted with it for the opposite reason: #37 raised the pin
+    alone, on purpose, and "make them match" is the tidy-looking change that
+    would undo it.
+    """
+    swatches = page.locator(selector)
+    if swatches.count() == 0:
+        failures.append(f"{where}: no swatches are on screen, so nothing was checked")
+        return
+
+    measured = swatches.first.evaluate(
+        """(swatch) => {
+            const svg = swatch.querySelector('svg')
+            const path = swatch.querySelector('svg path')
+            const box = swatch.getBoundingClientRect()
+            const glyphBox = svg ? svg.getBoundingClientRect() : null
+            return {
+                glyphFill: path ? getComputedStyle(path).fill : null,
+                swatch: [Math.round(box.width), Math.round(box.height)],
+                mark: glyphBox ? [Math.round(glyphBox.width), Math.round(glyphBox.height)] : null,
+            }
+        }""",
+    )
+
+    if measured["mark"] is None:
+        failures.append(f"{where}: a swatch holds no glyph at all")
+        return
+
+    if measured["glyphFill"] != "rgb(255, 255, 255)":
+        failures.append(
+            f"{where}: the glyph is drawn {measured['glyphFill']}, not white — it is sitting on a "
+            f"data colour that does not follow the theme, and the ramp clears 3:1 against white "
+            f"and against nothing else",
+        )
+    if measured["swatch"] != [swatch_px, swatch_px]:
+        failures.append(
+            f"{where}: the swatch draws {measured['swatch']}px, not {swatch_px}px — #37 raised "
+            f"the map pin alone, because only the pin has no label beside it",
+        )
+    if measured["mark"] != [glyph_px, glyph_px]:
+        failures.append(
+            f"{where}: the glyph draws {measured['mark']}px, not {glyph_px}px",
+        )
+
+
+def the_glyphs_beside_a_label_are_white_too(page, failures):
+    """#37: the Datos list and the Capas legend, which rendered dark for months."""
+    _swatch_glyphs(
+        page, ".territorio-list__swatch", LIST_SWATCH, LIST_GLYPH, "the Datos list", failures,
+    )
+    _swatch_glyphs(
+        page, ".territorio-capas__swatch", CAPAS_SWATCH, CAPAS_GLYPH, "the Capas legend", failures,
+    )
 
 
 # The one file the header, the app menu and the favicon all draw (#26). Named
@@ -2786,6 +2902,10 @@ def main():
                 failures.append(f"{name!r} is not in the list after a reload")
 
         page.screenshot(path=str(SHOTS / "after-reload.png"), full_page=False)
+
+        # Here, and not at the top: the Datos list needs a record in it, and this
+        # run has just made one and proved it survived a reload.
+        the_glyphs_beside_a_label_are_white_too(page, failures)
 
         # Before anything picks a Limit for it: this run's Sector was drawn
         # freehand and has one revision, which is #50's first case.

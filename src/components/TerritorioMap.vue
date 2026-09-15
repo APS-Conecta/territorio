@@ -622,8 +622,8 @@ export default {
 				className: 'territorio-pin',
 				html: `<span class="territorio-pin__dot${selected ? ' territorio-pin__dot--selected' : ''}"`
 					+ ` style="background:${escapeHtml(colour)}">${glyph}</span>`,
-				iconSize: [22, 22],
-				iconAnchor: [11, 11],
+				iconSize: [26, 26],
+				iconAnchor: [13, 13],
 			})
 		},
 	},
@@ -679,14 +679,20 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	align-items: center;
 	justify-content: center;
 	/*
-	 * 22px, not the 18px this was. A Maki icon is drawn on a 15-unit grid and
-	 * needs about 12px of actual mark before its detail survives — at 11px inside
-	 * an 18px dot, `hospital` and `bus` still read but `school`, `police` and
-	 * `place-of-worship` turn to mush. This is the one place a glyph has no label
-	 * beside it, so it is the one that has to be legible on its own.
+	 * 26px, not the 22px this was (#37). 12px of mark was derived by rendering
+	 * the eleven side by side at a desk; used on a busy basemap at a glance it
+	 * was reported as "not easily visualised", and the report beats the
+	 * measurement. Most of what 26 buys goes to the glyph rather than to the
+	 * footprint — the mark is now 73% of the dot against 64% — because a bigger
+	 * dot is also a dot that overlaps its neighbours sooner, and La Florida holds
+	 * ~865 records against this instance's few hundred.
+	 *
+	 * The Datos list (18/12) and the Capas legend (16/11) deliberately do not
+	 * follow. This is the one place a glyph has no label beside it; there they
+	 * only have to read as the same pictogram.
 	 */
-	width: 22px;
-	height: 22px;
+	width: 26px;
+	height: 26px;
 	border-radius: 50%;
 	border: 2px solid var(--color-main-background, #fff);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -696,11 +702,13 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	 * specifically — every Category clears 3:1 against it (WCAG 1.4.11,
 	 * tools/ramp-check.py) — and the dot's fill is a data colour that does not
 	 * change with the theme, so a glyph that did would stop clearing on one of
-	 * them. 11px inside a dot whose border leaves 14px.
+	 * them. 19px inside a dot whose 2px border leaves 22px — the ring stays,
+	 * because it is what keeps a dot off fill-vs-tint contrast over a tinted
+	 * Sector (docs/design/map-legibility.md §1.2).
 	 */
 	svg {
-		width: 14px;
-		height: 14px;
+		width: 19px;
+		height: 19px;
 		fill: #fff;
 		flex: 0 0 auto;
 	}

@@ -8,6 +8,7 @@ import {
 	DEFAULT_SECTOR_COLOUR,
 	indexSubcategories,
 	isDivision,
+	isSectorSubcategory,
 	sectorSubcategoryId,
 	treeOf,
 	UNKNOWN_COLOUR,
@@ -78,6 +79,27 @@ describe('territorial divisions', () => {
 	 */
 	it('report no Sector Subcategory rather than guessing one', () => {
 		expect(sectorSubcategoryId([TAXONOMY[0]])).toBe(null)
+	})
+
+	/**
+	 * «A Sector, and not merely any division» is asked in two places — the
+	 * colour input (#24) and the Limit picker — and used to be written out in
+	 * both. One fact, one owner, and the rule is under test here rather than
+	 * in whichever component happened to be opened.
+	 */
+	it('tell a Sector from any other division', () => {
+		expect(isSectorSubcategory(TAXONOMY, 21)).toBe(true)
+		expect(isSectorSubcategory(TAXONOMY, 22)).toBe(false)
+	})
+
+	/**
+	 * A record filed under no Subcategory at all — a brand-new draft — must not
+	 * come back true from an install where the seed left no Sector either, which
+	 * is what a bare `=== sectorSubcategoryId(...)` did: null === null.
+	 */
+	it('call a record with no Subcategory a Sector nowhere', () => {
+		expect(isSectorSubcategory(TAXONOMY, null)).toBe(false)
+		expect(isSectorSubcategory([TAXONOMY[0]], null)).toBe(false)
 	})
 
 	/** The tree is still the whole taxonomy on an install that has no divisions. */

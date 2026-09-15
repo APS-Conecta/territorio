@@ -74,6 +74,7 @@
 					:draft-geometry="draftGeometry"
 					:draft-colour="draft?.colour ?? null"
 					:draft-subcategory-id="draft?.subcategoryId ?? null"
+					:draft-name="draft?.name ?? ''"
 					:placing="placing"
 					:boundaries="editingLimit ? boundaryFeatures : []"
 					:picked-ids="draft?.picked ?? []"
@@ -207,6 +208,7 @@ import {
 	defaultSubcategoryId,
 	divisionsOf,
 	indexSubcategories,
+	isSectorSubcategory,
 	sectorSubcategoryId,
 } from './taxonomy.js'
 
@@ -578,7 +580,7 @@ export default {
 		 * picker over one would offer to edit a boundary this app does not own.
 		 */
 		isSector(subcategoryId) {
-			return subcategoryId === sectorSubcategoryId(this.taxonomy)
+			return isSectorSubcategory(this.taxonomy, subcategoryId)
 		},
 
 		select(id) {

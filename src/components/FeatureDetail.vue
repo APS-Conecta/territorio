@@ -167,7 +167,7 @@ import { provenance } from '../limit.js'
 import {
 	DEFAULT_SECTOR_COLOUR,
 	divisionsOf,
-	sectorSubcategoryId,
+	isSectorSubcategory,
 	subcategoryOptions,
 	treeOf,
 } from '../taxonomy.js'
@@ -234,8 +234,8 @@ export default {
 		},
 
 		/**
-		 * A Sector, and not merely any division — App.vue draws the same
-		 * distinction, for the Limit picker, for the same reason (#24).
+		 * A Sector, and not merely any division — the rule itself lives in
+		 * taxonomy.js, because App.vue asks it too, for the Limit picker (#24).
 		 *
 		 * A Unidad Vecinal that already carries a colour KEEPS it: nothing here
 		 * clears it and there is no migration. It simply has nowhere left to
@@ -244,7 +244,7 @@ export default {
 		 * seeded `#334155`: inert data, nothing destroyed.
 		 */
 		isSector() {
-			return this.draft.subcategoryId === sectorSubcategoryId(this.taxonomy)
+			return isSectorSubcategory(this.taxonomy, this.draft.subcategoryId)
 		},
 
 		/** What the record's Sector is called, or that it is in none. */

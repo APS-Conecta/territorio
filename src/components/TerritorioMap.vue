@@ -87,6 +87,12 @@ export default {
 		// in `features`, for the reason `draftColour` is: `features` is the
 		// FILTERED set, and a Capas toggle must not change how a shape is drawn.
 		draftSubcategoryId: { type: Number, default: null },
+		// And what it is CALLED, for the same reason and from the same place. The
+		// draft layer replaces the opened record on screen (drawShapes skips it),
+		// so without this an open Sector was the one Sector on the map with no
+		// permanent label — «a Sector carries a permanent label at its centroid»
+		// (#21) being false for precisely the record being worked on.
+		draftName: { type: String, default: '' },
 		// The Boundary features on screen while a Sector is being built, and which
 		// of them are picked. Empty at every other moment: a comuna is around
 		// eleven thousand lines and they are not the map (issue #12).
@@ -616,6 +622,20 @@ export default {
 			// (CONTEXT.md) — but an opened Unidad Vecinal is on this layer too, and
 			// it stays ground (#21).
 			layer.setStyle(shapeStyle(this.draftSlug, this.draftColour ?? UNKNOWN_COLOUR, true))
+			// And labelled as what it IS too, for the same reason: a text node and
+			// the same options drawShapes would have used, so an open division keeps
+			// the permanent centroid label its neighbours are still showing. Empty
+			// for a polygon being drawn, which has no name yet — `bindTooltip` on an
+			// empty node draws nothing, and `labelOptions` answers `{}` for anything
+			// that is not a division anyway.
+			if (this.draftName !== '') {
+				layer.bindTooltip(document.createTextNode(this.draftName), labelOptions(this.draftSlug))
+			}
+			// ponytail: geoman is enabled for whatever is on this layer, so an opened
+			// Unidad Vecinal gets draggable vertices and save() writes the result —
+			// on a record CONTEXT.md says the clinic only reads. It predates #21 (the
+			// draft has always copied any opened shape's geometry) and it is a
+			// write-permission question, not a figure-and-ground one: issue #109.
 			layer.pm.enable({ allowSelfIntersection: false })
 			// pm:edit covers a dragged vertex, pm:update the end of a move.
 			layer.on('pm:edit pm:update', () => this.report(layer))

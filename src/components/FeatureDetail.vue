@@ -136,6 +136,16 @@
 		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
 
 		<FeatureHistory v-if="draft.id !== null" :entries="history" :taxonomy="taxonomy" />
+
+		<!--
+			The Limit editor goes here, not beside this component (issue #35).
+			`position: sticky` is bounded by its containing block, and this form is
+			the action group's: with the editor rendered as a SIBLING of the form,
+			scrolling past the form's own height carried the group away with it —
+			measured at y=-420px on a 620px screen. It is also the same record: the
+			Limit the editor changes is part of the draft Guardar saves.
+		-->
+		<slot />
 	</form>
 </template>
 
@@ -355,6 +365,11 @@ export default {
  * deciding whether a person can reach the controls (issue #35). Same shape as
  * the sticky summary in CapasPanel.vue.
  *
+ * This only holds while the form is the whole of what scrolls, because sticky is
+ * bounded by its containing block — which is the form. That is why the Limit
+ * editor is slotted INSIDE it rather than rendered beside it; measured, with the
+ * editor as a sibling this bar left the screen at y=-420px on a 620px viewport.
+ *
  * The negative inline margin cancels the form's 4px padding, so nothing scrolls
  * past in the gutters either side of an opaque bar.
  */
@@ -377,14 +392,21 @@ export default {
  * the filled Guardar. `tertiary` is transparent with a transparent border, so
  * colouring the border is what draws the outline.
  *
+ * `--color-error-text` (#8A0000), NOT `--color-error`. In this Nextcloud
+ * `--color-error` is #FFE7E7 — the pale tint an error BANNER is filled with, a
+ * background colour — so the button came out at 1.18:1 against the bar, which is
+ * near-white text on white: measured in the browser, not read off a stylesheet.
+ * `--color-error-text` is the theme's readable foreground red and flips with the
+ * theme the same way. The browser gate asserts the contrast now.
+ *
  * Selected through the group rather than on its own: NcButton's own
  * `.button-vue--tertiary[data-v-…]` has the same specificity as a bare scoped
  * class, so which one won would come down to the order style-loader happened to
  * inject them in — an outline that is there or not there depending on the build.
  */
 .territorio-detail__actions .territorio-detail__retire {
-	border-color: var(--color-error);
-	color: var(--color-error);
+	border-color: var(--color-error-text);
+	color: var(--color-error-text);
 }
 
 /*

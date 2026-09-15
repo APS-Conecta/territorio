@@ -50,6 +50,23 @@ describe('the sidebar of a Sector (#35)', () => {
 		expect(app.indexOf('<FeatureDetail'), 'FeatureDetail must come before BoundaryPicker')
 			.toBeLessThan(app.indexOf('<BoundaryPicker'))
 	})
+
+	it('renders the Limit editor inside the record form, which is what lets the bar stick', () => {
+		// Measured in the browser, not reasoned: `position: sticky` is bounded by
+		// its containing block, which is the <form>. With <BoundaryPicker> a
+		// SIBLING of the form, scrolling past the form's own height carried the
+		// action group off screen with it — the browser gate reported the retire
+		// button at y=-420 on a 620px screen. Nested inside the form, the
+		// containing block spans everything that grows, and the bar stays.
+		expect(app).toContain('<FeatureDetail')
+		expect(app).toContain('</FeatureDetail>')
+		expect(app).toContain('<BoundaryPicker')
+
+		expect(app.indexOf('<BoundaryPicker'), 'the Limit editor must be inside FeatureDetail')
+			.toBeGreaterThan(app.indexOf('<FeatureDetail'))
+		expect(app.indexOf('<BoundaryPicker'), 'the Limit editor must be inside FeatureDetail')
+			.toBeLessThan(app.indexOf('</FeatureDetail>'))
+	})
 })
 
 describe('the action group (#35)', () => {

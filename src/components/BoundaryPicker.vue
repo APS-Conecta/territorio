@@ -13,7 +13,8 @@
 			:show-trailing-button="query !== ''"
 			trailing-button-label="Limpiar"
 			@update:model-value="$emit('update:query', $event)"
-			@trailing-button-click="$emit('update:query', '')" />
+			@trailing-button-click="$emit('update:query', '')"
+			@keydown.enter.prevent />
 
 		<!--
 			Every name that matches, never one of them. ADR-0007: "which Los Toros?"

@@ -2478,6 +2478,80 @@ def _imported(name, category, subcategory, geometry):
     }), f"{subcategory}-{RUN}", boundary=False)
 
 
+def _contrast(front, back):
+    """WCAG 2 contrast ratio between two `rgb(r, g, b)` strings.
+
+    The gate had nothing that could see a colour it could not name, and the one
+    thing it could not name was a destructive control painted in a colour that
+    is not a foreground colour: Nextcloud's `--color-error` is #FFE7E7, the pale
+    tint an error BANNER is filled with, and `--color-error-text` (#8A0000) is
+    the readable one. Written as `--color-error`, «Retirar del mapa» came out
+    near-white on white — a ratio of 1.06 — and every assertion in this file
+    passed, because they all ask where the button is and none what it looks like.
+    """
+    def channels(value):
+        numbers = [float(n) for n in re.findall(r"[\d.]+", value)[:3]]
+        return [n / 255 for n in numbers]
+
+    def luminance(rgb):
+        linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    light, dark = sorted((luminance(channels(front)), luminance(channels(back))), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def _the_destructive_action_is_legible(page, failures):
+    """#35 criterion 2: «Retirar del mapa» reads as a destructive outline.
+
+    Measured rather than looked at, because looking at it is what nearly did not
+    happen. Both the text and the border are asserted against the bar's own
+    background at the 4.5:1 WCAG AA text threshold — a border painted in an
+    invisible colour is no outline at all — and the filled Guardar beside it is
+    asserted too, so "destructive outline" cannot be satisfied by making both of
+    them the same thing.
+    """
+    painted = page.evaluate(
+        """() => {
+            const bar = document.querySelector('.territorio-detail__actions')
+            const retire = bar && bar.querySelector('.territorio-detail__retire')
+            const save = bar && bar.querySelector('button[type="submit"]')
+            if (!bar || !retire || !save) return null
+            const read = el => getComputedStyle(el)
+            return {
+                bar: read(bar).backgroundColor,
+                retireText: read(retire).color,
+                retireBorder: read(retire).borderTopColor,
+                retireFill: read(retire).backgroundColor,
+                saveFill: read(save).backgroundColor,
+            }
+        }""",
+    )
+    if painted is None:
+        failures.append("no action group to judge the destructive styling of (#35)")
+        return
+
+    for what, colour in (("text", painted["retireText"]), ("outline", painted["retireBorder"])):
+        ratio = _contrast(colour, painted["bar"])
+        if ratio < 4.5:
+            failures.append(
+                f"«Retirar del mapa»'s {what} is {colour} on {painted['bar']} — a contrast of "
+                f"{ratio:.2f}:1, under the 4.5:1 it needs to be seen at all (#35)",
+            )
+
+    # Filled beside outlined: Guardar is painted, the retire button is not.
+    if _contrast(painted["saveFill"], painted["bar"]) < 1.5:
+        failures.append(
+            f"Guardar is {painted['saveFill']} on {painted['bar']} — it does not read as the "
+            "filled primary action beside the destructive one (#35)",
+        )
+    if "rgba(0, 0, 0, 0)" not in painted["retireFill"]:
+        failures.append(
+            f"«Retirar del mapa» is filled with {painted['retireFill']} — it is meant to be an "
+            "outline beside the filled Guardar, not a second filled button (#35)",
+        )
+
+
 def the_retire_control_is_reachable_without_scrolling(page, failures):
     """#35: «Retirar del mapa» is inside the viewport, whatever the sidebar holds.
 
@@ -2599,6 +2673,7 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
             # Saved for whoever lands this to look at, per SKILL.md § 5.
             if (width, height) == (1362, 620) and name.startswith("Sector "):
                 page.screenshot(path=str(SHOTS / "retire-above-the-fold.png"), full_page=False)
+                _the_destructive_action_is_legible(page, failures)
 
             # Everything above was measured at scroll 0, where the action group
             # is the first child of the form and is on screen whether or not it

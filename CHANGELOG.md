@@ -3,6 +3,35 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.58.0] — unreleased
+
+The browser gate stops grading the app against the seed.
+
+### Changed
+
+- **The browser gate's colour check reads the taxonomy the app serves, not the seed** (#42).
+  Nothing user-visible; a prefactor. `tools/browser-check.py` compared every Category swatch the
+  browser painted against the colours parsed out of `EnsureSeedData`, in both directions — a seeded
+  colour never painted, and a painted colour the seed does not carry. That is correct only while the
+  seed is the only source of Categories. A clinic can already recolour one, and the moment it can add
+  one, every clinic-added Category becomes an "unexpected" colour and the gate goes red on a false
+  positive, permanently — and a gate that is permanently red is a gate everybody learns to ignore.
+
+  It now reads the taxonomy out of the initial state the page was rendered with — the
+  `#initial-state-territorio-taxonomy` element `@nextcloud/initial-state` reads — because that is
+  what Vue received, and nothing serves it over HTTP, so a route invented for a check would have
+  been a path the app never takes. Three checks read it rather than one: the Capas colour check, the
+  Salud fill on a map pin, and the two bands of a cluster ring. The «División territorial» Category
+  is dropped from the mapping, exactly as `treeOf()` drops it from the tree — its `#334155` is inert
+  (#29), so it reaches no swatch and would otherwise be reported missing on every single run.
+
+  What the check asserts is unchanged: every Category reaches the browser, and reaches it with its
+  own colour. What it stops asserting is that the ramp on screen is the ramp the seed ships — and
+  that is deliberate, because it is no longer the browser's business. `tools/ramp-check.py`, which
+  this does not touch, still measures the seeded ramp's contrast and separation, and
+  `tests/integration/RampRepaintTest.php` still proves a seed change reaches an install that already
+  exists.
+
 ## [0.57.0] — unreleased
 
 A cluster's colour means a Category again, and the map finally says how well it knows where a
@@ -46,29 +75,6 @@ record is.
   two options because Absent is derived and never chosen, `payload()` posts the whole draft, and a
   draft left holding `sin_coordenada` would post it alongside the first coordinate someone typed —
   which the server refuses outright — while the sidebar was showing «Exacta».
-
-- **The browser gate's colour check reads the taxonomy the app serves, not the seed** (#42).
-  Nothing user-visible; a prefactor. `tools/browser-check.py` compared every Category swatch the
-  browser painted against the colours parsed out of `EnsureSeedData`, in both directions — a seeded
-  colour never painted, and a painted colour the seed does not carry. That is correct only while the
-  seed is the only source of Categories. A clinic can already recolour one, and the moment it can add
-  one, every clinic-added Category becomes an "unexpected" colour and the gate goes red on a false
-  positive, permanently — and a gate that is permanently red is a gate everybody learns to ignore.
-
-  It now reads the taxonomy out of the initial state the page was rendered with — the
-  `#initial-state-territorio-taxonomy` element `@nextcloud/initial-state` reads — because that is
-  what Vue received, and nothing serves it over HTTP, so a route invented for a check would have
-  been a path the app never takes. Three checks read it rather than one: the Capas colour check, the
-  Salud fill on a map pin, and the two bands of a cluster ring. The «División territorial» Category
-  is dropped from the mapping, exactly as `treeOf()` drops it from the tree — its `#334155` is inert
-  (#29), so it reaches no swatch and would otherwise be reported missing on every single run.
-
-  What the check asserts is unchanged: every Category reaches the browser, and reaches it with its
-  own colour. What it stops asserting is that the ramp on screen is the ramp the seed ships — and
-  that is deliberate, because it is no longer the browser's business. `tools/ramp-check.py`, which
-  this does not touch, still measures the seeded ramp's contrast and separation, and
-  `tests/integration/RampRepaintTest.php` still proves a seed change reaches an install that already
-  exists.
 
 ## [0.56.0] — unreleased
 

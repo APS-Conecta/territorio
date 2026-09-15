@@ -53,6 +53,10 @@ return [
 		// id — the slug is what a rename leaves alone, and ids differ per
 		// install. A Subcategory's slug is unique only within its Category
 		// ("otro" is in nearly all of them), so its URL carries both.
+		// Adding one (#45) posts to the collection itself, for the reason the
+		// Subcategory add below gives: the slug is derived from the label, so
+		// there is nothing to address the new row by until it exists.
+		['name' => 'category#create', 'url' => '/categories', 'verb' => 'POST'],
 		['name' => 'category#rename', 'url' => '/categories/{slug}', 'verb' => 'PUT'],
 		// Adding one (#44) posts to the collection under its parent: the slug is
 		// derived from the label the clinic types, so there is nothing to put it

@@ -291,6 +291,38 @@ def seeded_spares():
     return re.findall(r"'(#[0-9a-fA-F]{6})'", block.group(1))
 
 
+def seeded_neutral():
+    """The colour the seed hands a Category once the spares are gone (ADR-0017).
+
+    None if the constant is not there, which main() turns into a failure: the
+    comparison it feeds is vacuous against a missing value, and a gate that
+    cannot fail is worse than no gate.
+    """
+    match = re.search(r"const NEUTRAL\s*=\s*'(#[0-9a-fA-F]{6})'", SEED.read_text(encoding='utf-8'))
+    return None if match is None else match.group(1)
+
+
+def neutral_failures(neutral, javascript):
+    """PHP and JavaScript still mean the same grey.
+
+    `TaxonomyService` assigns `EnsureSeedData::NEUTRAL` when no spare is left,
+    and the Capas panel decides whether to explain a Category's colour by
+    comparing it against `DEFAULT_SECTOR_COLOUR`. Neither language can read the
+    other's constant, so editing one alone leaves a Category that looks neutral
+    and is never explained — with every suite green, because nothing on either
+    side holds both files open. This does.
+    """
+    if neutral is None:
+        return ['no NEUTRAL found in the seed — the constant or the regex reading it has drifted']
+
+    if neutral != javascript['DEFAULT_SECTOR_COLOUR']:
+        return [f'the seed gives an exhausted-spares Category {neutral} while src/taxonomy.js '
+                f"calls the neutral {javascript['DEFAULT_SECTOR_COLOUR']}: the panel compares "
+                f'against the second, so it would never explain the first (ADR-0017)']
+
+    return []
+
+
 def spare_failures(spares, taken):
     """Every shipped spare still clears what it was derived under (ADR-0017).
 
@@ -409,6 +441,7 @@ def main():
     taken = sorted(ramp.items()) + sorted(javascript_colours().items())
     spares = seeded_spares()
     failures += spare_failures(spares, taken)
+    failures += neutral_failures(seeded_neutral(), javascript_colours())
     derived = derive_spares(taken)
     print(f'  spares         {len(spares)} shipped, {len(derived)} derivable: {" ".join(derived)}')
     # Derived and shipped differing is REPORTED, not gated. Fewer shipped than

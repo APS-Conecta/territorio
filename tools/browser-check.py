@@ -2202,7 +2202,6 @@ def a_cluster_says_what_is_under_it(page, failures):
             const margins = getComputedStyle(ring.parentElement)
             return {
                 gradient: style.backgroundImage,
-                fill: style.backgroundColor,
                 border: style.borderTopStyle,
                 count: count ? count.textContent.trim() : null,
                 ink: inside ? inside.color : null,
@@ -2277,11 +2276,18 @@ def a_cluster_says_what_is_under_it(page, failures):
             f"the bands are what say which Categories are under it, in what proportion",
         )
 
-    if _as_hex(painted["fill"]) in COUNT_HUES:
-        failures.append(
-            f"the cluster is filled {painted['fill']}, which is one of markercluster's own "
-            f"count buckets — a hue that means a number is back on the map (#22)",
-        )
+    # No hue that means a COUNT, read off the pixels the bubble really paints.
+    # This used to read the ring's `backgroundColor`, which the stylesheet never
+    # sets — only `background-image` — so it was always transparent and the
+    # assertion could not fail, not even against the regression it names. The
+    # bands are where a count hue would have to reappear to be seen.
+    if bands is not None:
+        reused = sorted({colour for colour, _, _ in bands if colour in COUNT_HUES})
+        if reused:
+            failures.append(
+                f"the cluster's ring paints {reused}, which markercluster uses for its own "
+                f"count buckets — a hue that means a number is back on the map (#22)",
+            )
     for bucket in ("marker-cluster-small", "marker-cluster-medium", "marker-cluster-large"):
         if page.locator(f".{bucket}").count() > 0:
             failures.append(f"the map still draws a {bucket} bubble: hue is carrying the count again")

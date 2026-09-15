@@ -94,7 +94,7 @@ describe('isApproximate', () => {
 	})
 })
 
-describe('the cluster stylesheet', () => {
+describe('TerritorioMap.vue\'s cluster stylesheet', () => {
 	it('is not markercluster\'s own, which is nothing but count hues', () => {
 		// `MarkerCluster.Default.css` is, in its entirety, the green/yellow/orange
 		// buckets `marker-cluster-small|medium|large` plus the geometry of the
@@ -107,6 +107,11 @@ describe('the cluster stylesheet', () => {
 		// why it does not import this file, and a check that matched the mention
 		// would fail on its own explanation.
 		expect(map).not.toMatch(/^import '[^']*MarkerCluster\.Default\.css'/m)
-		expect(map).toMatch(/iconCreateFunction:/)
+
+		// And no positive half beside it. `expect(map).toMatch(/iconCreateFunction:/)`
+		// stood here and a commented-out line would have satisfied it; whether the
+		// hook is actually wired is settled in the browser gate, where a missing
+		// `iconCreateFunction` draws markercluster's own `.marker-cluster-*`
+		// bubbles and `a_cluster_says_what_is_under_it` fails on them.
 	})
 })

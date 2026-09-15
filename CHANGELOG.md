@@ -133,6 +133,13 @@ Four copies of one fixture, now one.
   inlining — without that last one a minified republish upstream would drop the count back to 51
   and print, confidently and wrongly, that the file named all of them.
 
+  And "no row in the file" is now what the reconciliation actually reads. It used to grep the
+  whole file for the backticked name, which prose satisfies: deleting the seven table rows for
+  the packages that reach the bundle only through the inlined path left the sentence that names
+  them, and `make notices` still reported 67 of 67 and exited 0 — this file's own failure mode,
+  a census going blind quietly, reproduced inside the check written to prevent it. It now parses
+  the Component column of the tables and compares sets, so an attribution has to be a row.
+
   Two things the file used to say were wrong, and both were wrong in the same direction — a real
   string mistaken for a path anyone could look up. The `node_modules/.pnpm/splaytree-ts@1.0.2/…`
   path it cited is not a path in this repository (we install with npm; there is no

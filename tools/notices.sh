@@ -171,19 +171,22 @@ fi
 sort -u "$work/mapped" "$work/inlined-names" "$work/probed" > "$work/ship"
 ship_count=$(wc -l < "$work/ship")
 
-: > "$work/missing"
-while read -r pkg; do
-	grep -qF "\`$pkg\`" "$NOTICES" || printf '%s\n' "$pkg" >> "$work/missing"
-done < "$work/ship"
+# An attribution is a table ROW, not a backtick anywhere in the file. The prose backtick-names
+# packages too — the sentence about geoman's inlined seven names exactly the seven that reach
+# the bundle only through the inlined path, the ones nothing else can see — so a plain
+# `grep -F` for the name still passes with all seven rows deleted. Parse the Component column.
+sed -n 's/^| [^|]* | `\([^`]*\)` |.*/\1/p' "$NOTICES" | sort -u > "$work/attributed"
+comm -23 "$work/ship" "$work/attributed" > "$work/missing"
 named=$((ship_count - $(wc -l < "$work/missing")))
 
 echo
 echo "$ship_count packages ship. $NOTICES names $named of them."
 
-# ponytail: one direction only — it cannot see a row for something that stopped
-# shipping. Backticked names in that file include paths and filenames, so the reverse
-# check needs the tables parsed rather than grepped; write it when a stale row
-# actually survives a dependency removal.
+# ponytail: one direction only — it cannot see a row for something that stopped shipping.
+# `comm -13` on these same two lists would say it, but it is not green today: `vue` has a row
+# and the census names only `@vue/runtime-core`, `@vue/runtime-dom` and `@vue/shared`, the
+# sub-packages webpack actually resolved. Write it once that is reconciled, or when a stale
+# row actually survives a dependency removal.
 [ -s "$work/missing" ] || exit 0
 echo
 echo "Not named — every one of these is redistributed with no attribution:" >&2

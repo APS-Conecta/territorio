@@ -112,7 +112,7 @@
 							drawn with its Category's (ADR-0013) — and the slug is derived by
 							the server, never typed.
 						-->
-						<button class="territorio-capas__rename"
+						<button class="territorio-capas__add"
 							type="button"
 							:title="`Agregar subcategoría en «${category.label}»`"
 							:aria-label="`Agregar subcategoría en «${category.label}»`"
@@ -220,8 +220,9 @@ export default {
 		return {
 			/**
 			 * Which row has a field open, as keyOf() or addKeyOf() names it, or
-			 * null. One key and not two flags: exactly one field is open at a
-			 * time, and two pieces of state that must disagree can stop doing so.
+			 * null. One key rather than a flag per kind of field: exactly one is
+			 * open at a time, and two pieces of state that have to agree about
+			 * that can stop agreeing.
 			 */
 			editing: null,
 			draftLabel: '',
@@ -275,15 +276,6 @@ export default {
 			return `n${category.id}`
 		},
 
-		/**
-		 * Opening or abandoning a rename clears the last refusal.
-		 *
-		 * The note card sits at the top of the panel body and names no row, so a
-		 * refusal left over from a rename somebody gave up on reads as a refusal
-		 * of the one they are typing now — with eleven Categories and some fifty
-		 * Subcategories in one scrolling panel, there is nothing to tell them
-		 * apart by. `rename()` in App.vue only ever clears it on success.
-		 */
 		startRename(category, subcategory = null) {
 			this.open(this.keyOf(category, subcategory), (subcategory ?? category).label)
 		},
@@ -303,7 +295,17 @@ export default {
 			this.open(this.addKeyOf(category), '')
 		},
 
-		/** Open one field, with what it starts out saying, and put the cursor in it. */
+		/**
+		 * Open one field, with what it starts out saying, and put the cursor in
+		 * it — and clear the last refusal on the way.
+		 *
+		 * The note card sits at the top of the panel body and names no row, so a
+		 * refusal left over from something somebody gave up on reads as a refusal
+		 * of what they are typing now — with eleven Categories and some fifty
+		 * Subcategories in one scrolling panel, there is nothing to tell them
+		 * apart by. `rename()` and `addSubcategory()` in App.vue only ever clear
+		 * it on success.
+		 */
 		open(key, label) {
 			this.$emit('clear-taxonomy-error')
 			this.editing = key
@@ -444,8 +446,13 @@ export default {
 /* Always drawn, never on hover alone: a control that appears under the pointer
    is not there for a finger or for a keyboard (the panel's checkboxes are
    already tabbed through). Tertiary ink so eleven of them do not shout over the
-   Category names they belong to. */
-.territorio-capas__rename {
+   Category names they belong to.
+
+   The «+» that adds a Subcategory is the same control in the same row and wears
+   the same treatment, under its own name: `__rename` still means the pencil, and
+   the browser gate picks a pencil by that class. */
+.territorio-capas__rename,
+.territorio-capas__add {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -461,7 +468,9 @@ export default {
 }
 
 .territorio-capas__rename:hover,
-.territorio-capas__rename:focus-visible {
+.territorio-capas__rename:focus-visible,
+.territorio-capas__add:hover,
+.territorio-capas__add:focus-visible {
 	background: var(--color-background-hover);
 	color: var(--color-main-text);
 }

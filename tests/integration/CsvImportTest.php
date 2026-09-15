@@ -35,10 +35,14 @@ use OCP\Server;
 final class CsvImportTest extends IntegrationTestCase {
 	private const DATASET = 'csv-prueba';
 
-	/** What a clinic sends: the app's own headings, comma-delimited, dot decimals. */
+	/**
+	 * What a clinic sends: the app's own headings, comma-delimited, dot decimals
+	 * — and the classification written the way the Capas panel shows it,
+	 * «Salud» · «CESFAM», because that is what a person copies off the screen.
+	 */
 	private const CSV = "Nombre,Categoría,Subcategoría,Latitud,Longitud,Dirección,Teléfono,"
 		. "Correo,Persona de contacto,Cargo,Horario,Notas,Ubicación\n"
-		. 'CESFAM de Prueba,salud,cesfam,-33.5211,-70.5991,"Avenida Uno 123, local 4",'
+		. 'CESFAM de Prueba,Salud,CESFAM,-33.5211,-70.5991,"Avenida Uno 123, local 4",'
 		. "229112233,cesfam@ejemplo.cl,Marcela Ríos,Directora,Lunes a viernes,Sin novedad,exacta\n";
 
 	/**
@@ -62,7 +66,7 @@ final class CsvImportTest extends IntegrationTestCase {
 	 */
 	private const EXCEL_ES_CL = "Nombre;Categoría;Subcategoría;Latitud;Longitud;Dirección;Teléfono;"
 		. "Correo;Persona de contacto;Cargo;Horario;Notas;Ubicación\n"
-		. "CESFAM de Prueba;salud;cesfam;-33,5211;-70,5991;Avenida Uno 123, local 4;"
+		. "CESFAM de Prueba;Salud;CESFAM;-33,5211;-70,5991;Avenida Uno 123, local 4;"
 		. "229112233;cesfam@ejemplo.cl;Marcela Ríos;Directora;Lunes a viernes;Sin novedad;exacta\n";
 
 	protected function setUp(): void {
@@ -144,6 +148,11 @@ final class CsvImportTest extends IntegrationTestCase {
 	 * The pair of columns is what `classify()` needs, and a CSV is the only
 	 * import format that can carry both — which is the reason the reader emits
 	 * `category` and `subcategory` rather than one label.
+	 *
+	 * The cells say «Salud» and «CESFAM», not `salud` and `cesfam`: `classify()`
+	 * looks the pair up by SLUG, so this only files where the reader folds what a
+	 * person typed. A pre-slugged fixture asserted nothing about the file a
+	 * clinic actually sends.
 	 */
 	public function testTheCategoryAndSubcategoryColumnsFileTheRecord(): void {
 		$this->import(self::CSV);

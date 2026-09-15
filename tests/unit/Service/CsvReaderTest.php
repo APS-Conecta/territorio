@@ -33,8 +33,14 @@ final class CsvReaderTest extends TestCase {
 	private const HEADINGS = 'Nombre,Categoría,Subcategoría,Latitud,Longitud,Dirección,'
 		. 'Teléfono,Correo,Persona de contacto,Cargo,Horario,Notas,Fuente,Ubicación';
 
+	/**
+	 * The classification cells carry the LABELS, because that is what a person
+	 * copies off the screen: the Capas panel says «Salud» and «CESFAM», not
+	 * `salud` and `cesfam`. A fixture that was already slugged only tested the
+	 * input the reader happened to handle.
+	 */
 	private const ONE_ROW = self::HEADINGS . "\n"
-		. 'CESFAM de Prueba,salud,cesfam,-33.5211,-70.5991,"Avenida Uno 123, local 4",'
+		. 'CESFAM de Prueba,Salud,CESFAM,-33.5211,-70.5991,"Avenida Uno 123, local 4",'
 		. "229112233,cesfam@ejemplo.cl,Marcela Ríos,Directora,Lunes a viernes,Sin novedad,"
 		. "Catastro municipal,exacta\n";
 
@@ -72,6 +78,26 @@ final class CsvReaderTest extends TestCase {
 			'sourceRef' => 'Catastro municipal',
 			'comuna' => '',
 		], $row);
+	}
+
+	/**
+	 * The two classification cells are folded the way the headings are.
+	 *
+	 * `ImportService::classify()` looks the pair up in an index keyed by SLUG, so
+	 * a clinic that types what the app shows it — «Educación», «Jardín infantil»
+	 * — would land every row in Sin clasificar, silently and with no count to
+	 * explain it. Slugified, not matched, for the reason `KmlReader::folderOf()`
+	 * gives about the Folder it reads: which Categories exist is the import's
+	 * business, not the reader's.
+	 */
+	public function testTheClassificationCellsAreFoldedLikeTheHeadingsAre(): void {
+		$row = $this->reader->read(
+			"Nombre,Categoría,Subcategoría\nJardín de Prueba,Educación,Jardín infantil\n",
+			'prueba',
+		)[0];
+
+		self::assertSame('educacion', $row['categorySlug']);
+		self::assertSame('jardin_infantil', $row['subcategorySlug']);
 	}
 
 	/**

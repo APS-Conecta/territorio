@@ -42,6 +42,11 @@ const actions = () => {
 
 describe('the sidebar of a Sector (#35)', () => {
 	it('renders the record above the Limit editor', () => {
+		// Both present first: -1 is less than any index, so an App.vue that had
+		// dropped <FeatureDetail> altogether would pass the comparison alone.
+		expect(app).toContain('<FeatureDetail')
+		expect(app).toContain('<BoundaryPicker')
+
 		expect(app.indexOf('<FeatureDetail'), 'FeatureDetail must come before BoundaryPicker')
 			.toBeLessThan(app.indexOf('<BoundaryPicker'))
 	})

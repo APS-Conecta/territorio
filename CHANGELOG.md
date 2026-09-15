@@ -62,10 +62,13 @@ An update that omitted the geometry destroyed it.
   backwards, and the server settles it: `AppManager::getAppIcon()` takes `app.svg` **without**
   `$dark` (`lib/private/App/AppManager.php:118`), which is what the header's current-app button and
   the app menu get (`lib/private/NavigationManager.php:353`) and what the favicon is rasterised from
-  (`Theming\Util::getAppIcon()`). All three paint it on the primary colour. The only caller asking
-  with `dark: true` is the apps list in Settings (`lib/private/legacy/OC_App.php:440`), a white page.
-  So `app.svg` gained `fill="#fff"` and `app-dark.svg` keeps none, and each file now carries a
-  comment saying which surface it serves.
+  (`Theming\Util::getAppIcon()`). All three paint it on the primary colour. The only caller of
+  `getAppIcon()` asking with `dark: true` is the apps list in Settings
+  (`lib/private/legacy/OC_App.php:440`), a white page — and this app asks for `app-dark.svg` by name
+  itself, in `AdminSection::getIcon()` (`lib/Settings/AdminSection.php:32`), for its own Settings
+  section, which is white too. So `app.svg` gained `fill="#fff"` and `app-dark.svg` keeps none, and
+  each file now carries a comment saying which surface it serves and, for the black one, which two
+  consumers break if it is deleted.
 
   The convention is cited from the server's source rather than from the manual because the manual
   does not contain it: the `info.xml` page says the navigation icon "defaults to app.svg" and the

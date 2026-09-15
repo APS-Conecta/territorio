@@ -25,8 +25,11 @@ use PHPUnit\Framework\TestCase;
  * `core/src/components/AppItem.vue` — "App icons are bright by default; flip
  * them to dark when the primary color is bright" — and does the flipping with
  * `filter: var(--primary-invert-if-bright)`. Only `OC_App::listAllApps()`
- * (`lib/private/legacy/OC_App.php:440`) asks with `dark: true`, for the apps
- * list, which is a light page and wants the black glyph.
+ * (`lib/private/legacy/OC_App.php:440`) asks `getAppIcon()` with `dark: true`,
+ * for the apps list, which is a light page and wants the black glyph — and this
+ * app asks for `app-dark.svg` by name, outside `getAppIcon()` entirely, in
+ * `AdminSection::getIcon()` (`lib/Settings/AdminSection.php:32`) for its own
+ * Settings section, which is light as well.
  *
  * None of that is in the developer manual: it documents the navigation `icon`
  * key as "defaults to app.svg" and says nothing about `app-dark.svg` or about
@@ -107,6 +110,45 @@ final class AppIconTest extends TestCase {
 				. 'costs the app its favicon and its touch icon, silently.',
 			);
 		}
+	}
+
+	public function testTheDarkIconNamesItsInTreeCallers(): void {
+		$callers = $this->inTreeCallersOf('app-dark.svg');
+
+		self::assertNotEmpty(
+			$callers,
+			'No file under lib/ asks for app-dark.svg any more. Either this app stopped using it '
+			. '— in which case the comment in the file is now wrong — or the search below broke.',
+		);
+
+		foreach ($callers as $caller) {
+			self::assertStringContainsString(
+				$caller,
+				file_get_contents(self::DARK),
+				'img/app-dark.svg does not name ' . $caller . ', which asks for it from inside '
+				. 'this repo. The comment exists to stop a future deleter, and a deleter greps '
+				. 'this repo, not the server. A caller it does not list is a caller that breaks '
+				. 'silently.',
+			);
+		}
+	}
+
+	/** The classes under lib/ that name an image file — the callers a grep of this repo finds. */
+	private function inTreeCallersOf(string $image): array {
+		$callers = [];
+
+		$files = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator(__DIR__ . '/../../lib'),
+		);
+
+		foreach ($files as $file) {
+			if ($file->getExtension() === 'php'
+				&& str_contains(file_get_contents($file->getPathname()), $image)) {
+				$callers[] = $file->getBasename('.php');
+			}
+		}
+
+		return $callers;
 	}
 
 	/** The drawing alone: no comments, no fill attribute, no incidental whitespace. */

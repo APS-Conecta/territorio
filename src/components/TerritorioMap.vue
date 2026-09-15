@@ -771,8 +771,10 @@ export default {
 					+ '</span>',
 				// 36, where a pin is 26: a bubble has to read as more than one
 				// record before the count inside it is read at all. Written here
-				// and in the stylesheet exactly as the pin's size is, and measured
-				// in the browser gate rather than kept in step by hand.
+				// and in the stylesheet, so the gate measures what was drawn
+				// against `CLUSTER_DISC` and derives this anchor from that same
+				// measurement — #37's lesson, that a mark resized without its
+				// anchor draws every marker off its coordinate in silence.
 				iconSize: [36, 36],
 				iconAnchor: [18, 18],
 			})
@@ -951,7 +953,9 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	 * 36px against the pin's 26px: a bubble has to read as more than one record
 	 * before anybody reads the number in it. The conic gradient paints the whole
 	 * disc and the count below covers the middle, leaving a 4px band of Category
-	 * — (36 - 2·2 border - 24 count) / 2.
+	 * — (36 - 2·2 border - 24 count) / 2. The gate measures that subtraction on
+	 * the rendered bubble, so whichever of the three moves, the band going is
+	 * what goes red.
 	 */
 	width: 36px;
 	height: 36px;

@@ -1163,6 +1163,80 @@ def a_generated_polygon_is_editable(page, square, failures):
         failures.append("dragging a vertex of the generated polygon changed nothing")
 
 
+def a_gone_line_says_so_and_keeps_its_name(page, failures):
+    """#51: a Limit part whose line is gone from the cadastre says so.
+
+    The two labels are the criterion, and only a browser can see them side by
+    side: «a mano» marks a stretch nobody could have picked, «ya no está en el
+    catastro» marks one that WAS picked and whose line the cadastre no longer
+    has. Reading one for the other sends somebody looking for a street that was
+    never in any dataset.
+
+    Runs after the polygonize and Limit checks, which between them leave this
+    run's Sector with both kinds of part: the four sides of «Cuadro RUN», picked,
+    and «por detrás del colegio RUN», typed.
+
+    Retired through the app's own DELETE — ADR-0005 retires rather than destroys,
+    and that is what «gone» means here — because a Boundary feature is in no list
+    to click. A re-import does NOT retire what a newer file stopped publishing,
+    so there is no import path to drive this from.
+    """
+    sector = registry_feature(page, f"Sector Navegador {RUN}")
+    cited = [part["featureId"] for part in (sector or {}).get("limit") or [] if "featureId" in part]
+    if not cited:
+        skip("this run's Sector cites no boundary feature; the gone-from-cadastre label is unchecked")
+        return
+
+    retired = page.evaluate(
+        """async (id) => {
+            const response = await fetch(
+                `/index.php/apps/territorio/features/${id}`,
+                { method: 'DELETE', headers: { requesttoken: window.OC.requestToken } },
+            )
+            return response.status
+        }""",
+        cited[0],
+    )
+    if retired != 200:
+        failures.append(f"could not retire a cited boundary feature: HTTP {retired}")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1200)
+    if not open_the_runs_sector(page, failures):
+        return
+
+    # The Registry first: the part must still be there, with its name, because
+    # the sentence a team says out loud does not change because a cadastre
+    # release did. Nothing swept the Sector when the line was retired.
+    after = registry_feature(page, f"Sector Navegador {RUN}")
+    still = [part for part in (after or {}).get("limit") or [] if part.get("featureId") == cited[0]]
+    if len(still) != 1 or not still[0].get("name"):
+        failures.append(f"retiring a cited line changed the Sector's Limit: {(after or {}).get('limit')}")
+
+    name = still[0]["name"] if still else None
+    rows = page.locator('[data-testid="boundary-picker"] .territorio-picker__parts li')
+    said = [rows.nth(index).inner_text() for index in range(rows.count())]
+
+    gone = [text for text in said if "ya no está en el catastro" in text]
+    if len(gone) != 1:
+        failures.append(f"a Limit part whose line is gone did not say so: {said}")
+    elif name is not None and name not in gone[0]:
+        failures.append(f"the gone part lost its name on screen: {gone[0]!r}, expected {name!r}")
+
+    # And the two answers stay different things. A typed tramo cites nothing, so
+    # nothing can make it gone; a picked line that went away is not «a mano».
+    if [text for text in said if "a mano" in text and "ya no está en el catastro" in text]:
+        failures.append(f"one row reads as both typed by hand and gone from the cadastre: {said}")
+    if not [text for text in said if "a mano" in text]:
+        failures.append(f"the hand-typed tramo stopped saying «a mano»: {said}")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def retire_the_runs_record(page, name):
     """Take one of the run's own records off the map again (ADR-0005: retire,
     not delete).
@@ -2197,6 +2271,9 @@ def main():
         # Which has just dragged a vertex and saved, so the line is now newer
         # than the Limit — #50's third case, the one a person would ask about.
         a_sector_says_how_its_boundary_came_to_be(page, "adjusted", failures)
+        # After both: this one retires a line the Sector's Limit cites, and every
+        # check above needs those lines live to pick and generate from.
+        a_gone_line_says_so_and_keeps_its_name(page, failures)
         # The third origin, which this run has to create for itself: neither
         # Sector above came from a Dataset, and an imported one's history is
         # indistinguishable from the hand-drawn one's.

@@ -44,6 +44,12 @@ A territorial division renders as a division.
   layer is now told what the drafted record is **filed as**, so a Unidad Vecinal keeps its hairline
   while it is open and only a brand-new drawing, filed as nothing yet, reads as figure.
 
+  **An open division keeps its label.** The draft layer replaces the opened record on screen —
+  `drawShapes` skips it — so anything `drawShapes` says about a record the draft layer has to say
+  too. The style was carried across and the name was not, which made a clicked Sector the one
+  Sector on the map with no name on it. It is bound from a `draft-name` prop, taken from the draft
+  rather than looked up in the filtered set, for the reason the Subcategory is.
+
   **A side effect worth knowing:** with no fill, a Unidad Vecinal stops answering clicks across its
   whole area. Once a comuna's cadastre is loaded it tiles the entire view, so a click meant for the
   map beneath it now reaches the map. It is still selected from the list, and its outline is still
@@ -63,6 +69,14 @@ A territorial division renders as a division.
   for a Unidad Vecinal, solid for a Sector — and follows the **theme** rather than a data colour,
   which is what makes it legible in both. The glyph inside is dropped: a division has no pictogram,
   so it fell back to `circle-stroked` — an outlined circle inside an outlined ring.
+
+  **Found and not fixed here: a Unidad Vecinal can still be reshaped and saved** (#109). Opening
+  one hands its geometry to the draft layer, which enables geoman on whatever is on it, so a
+  cadastre boundary the clinic only reads gets draggable vertices. It predates this work — the
+  draft has always copied any opened shape's geometry — and it is a write-permission question
+  rather than a figure-and-ground one, so it is its own issue and the code points at it. Half
+  fixing it here, by hiding the handles while `save()` still accepts the reshape, would have
+  removed the only thing currently disclosing that the write path exists.
 
   `#334155` stays in the seed as **inert data** and now says so in a comment. `colourOf` answers
   with the Sector neutral for a division with no colour of its own, `divisionsOf` stops carrying a

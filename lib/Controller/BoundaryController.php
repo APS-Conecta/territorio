@@ -27,9 +27,21 @@ class BoundaryController extends Controller {
 	}
 
 	/**
-	 * Everything a Sector's Limit could follow, within the box asked for.
+	 * How much of a Limit a re-import may not hold any more.
+	 *
+	 * The same cap as `FeatureService::LIMIT_PARTS`, for the same reason: a Limit
+	 * cannot hold more parts than that, so no honest client asks about more ids.
+	 */
+	private const ASKED_ABOUT = 500;
+
+	/**
+	 * Everything a Sector's Limit could follow, within the box asked for — and,
+	 * of the ids the open draft already cites, which are no longer there.
 	 *
 	 * Open to every user who can open the app, like every other read (ADR-0005).
+	 *
+	 * `ids` is a comma-separated list, the same string shape as the ordinates,
+	 * because the editor sends it on the query string of a GET it already makes.
 	 */
 	#[NoAdminRequired]
 	public function inView(
@@ -37,6 +49,7 @@ class BoundaryController extends Controller {
 		string $west = '',
 		string $north = '',
 		string $east = '',
+		string $ids = '',
 	): JSONResponse {
 		foreach ([$south, $west, $north, $east] as $ordinate) {
 			if (!is_numeric($ordinate)) {
@@ -52,6 +65,29 @@ class BoundaryController extends Controller {
 			(float)$west,
 			(float)$north,
 			(float)$east,
+			$this->cited($ids),
 		));
+	}
+
+	/**
+	 * The ids a draft says it cites, as ids.
+	 *
+	 * Whole numbers only, the same rule `FeatureService::limit()` applies when it
+	 * stores one: `is_numeric()` would take "12.9", " 41" and "1e3" and cast them
+	 * to 12, 41 and 1000 — and here that would answer a question about a
+	 * different feature from the one asked about. Anything else is dropped rather
+	 * than refused: this is one extra fact on a read the editor makes constantly,
+	 * and failing the whole view because one id was malformed would black out the
+	 * picker over a detail.
+	 *
+	 * @return list<int>
+	 */
+	private function cited(string $ids): array {
+		$whole = array_filter(
+			explode(',', $ids),
+			static fn (string $id): bool => ctype_digit($id),
+		);
+
+		return array_map('intval', array_slice(array_values($whole), 0, self::ASKED_ABOUT));
 	}
 }

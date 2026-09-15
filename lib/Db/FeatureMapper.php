@@ -272,6 +272,44 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
+	 * Which of these ids are still live Boundary features (issue #51).
+	 *
+	 * The same filter as `findBoundariesIn()` without the box and without the
+	 * cap, because the question is about a handful of named ids rather than a
+	 * view: a Limit holds at most `FeatureService::LIMIT_PARTS` parts and the
+	 * controller cuts the list there. Asking it this way — live ones back, rather
+	 * than gone ones — is what makes retired, merged-away and never-existed one
+	 * answer instead of three.
+	 *
+	 * @param int[] $ids
+	 * @return list<int>
+	 */
+	public function findLiveAmong(array $ids): array {
+		$boundaries = $this->datasets->boundaryIds();
+		if ($ids === [] || $boundaries === []) {
+			return [];
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')
+			->from($this->getTableName())
+			->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->andWhere($qb->expr()->in('dataset_id', $qb->createNamedParameter(
+				$boundaries, IQueryBuilder::PARAM_INT_ARRAY,
+			)));
+
+		$live = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$live[] = (int)$row['id'];
+		}
+		$result->closeCursor();
+
+		return $live;
+	}
+
+	/**
 	 * Leave out everything belonging to a Boundary-feature Dataset.
 	 *
 	 * Applied to the ordinary reads and to no others. `findByDataset()` must see

@@ -2444,6 +2444,170 @@ def the_app_icon_is_legible_in_both_themes(page, failures):
              "prefers-color-scheme does not switch it")
 
 
+def _a_boundary_box(south, west):
+    """A small square, a tenth of a degree on a side, sited where nothing is.
+
+    An imported division claims every Place it covers (ADR-0008), so a check
+    that needs one has to put it somewhere it can claim nothing.
+    """
+    north, east = south + 0.01, west + 0.01
+    return {
+        "type": "Polygon",
+        "coordinates": [[[west, south], [east, south], [east, north],
+                         [west, north], [west, south]]],
+    }
+
+
+def _imported(name, category, subcategory, geometry):
+    """One record under a given Subcategory, through the import occ already offers.
+
+    Through an import rather than a POST because `ImportService::classify()`
+    files a row under any Subcategory by name, so this needs no id out of the
+    taxonomy and no second way of writing a Feature. A Route and a Unidad
+    Vecinal are two of the four shapes the sidebar has to handle and neither
+    exists on this instance for a check to open.
+    """
+    return import_dataset(json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {"id": f"{subcategory}-{RUN}", "name": name,
+                           "category": category, "subcategory": subcategory},
+            "geometry": geometry,
+        }],
+    }), f"{subcategory}-{RUN}", boundary=False)
+
+
+def the_retire_control_is_reachable_without_scrolling(page, failures):
+    """#35: «Retirar del mapa» is inside the viewport, whatever the sidebar holds.
+
+    Reported as "there is no button that allows deletion". The button was there
+    the whole time, 721px below the bottom of a 620px screen — which is the one
+    kind of failure nothing in this file could see, because every other check
+    asks whether a thing EXISTS and Playwright happily clicks what a person
+    would have to scroll to find.
+
+    So this one measures. `bounding_box()` against the viewport height, at the
+    two sizes the issue names, for one record of each shape the sidebar draws: a
+    Sector (the Limit editor, the tall one), a Place, a Route and a Unidad
+    Vecinal.
+
+    The Sector is this run's own, given 30 tramos first rather than a second
+    Sector drawn beside it. 30 is the length the issue measured reordering alone
+    failing at, and the Limit is the only thing here that can quietly invalidate
+    this check by getting longer — so the check states the length it was proven
+    at instead of inheriting whatever the run happened to leave.
+    """
+    sector = registry_feature(page, f"Sector Navegador {RUN}")
+    if sector is None:
+        skip("this run has no Sector to lengthen; the above-the-fold measurement is unchecked")
+        return
+
+    lengthened = page.evaluate(
+        """async ({ id, body }) => {
+            const response = await fetch(
+                `/index.php/apps/territorio/features/${id}`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        requesttoken: window.OC.requestToken,
+                        'content-type': 'application/json',
+                    },
+                    body: JSON.stringify(body),
+                },
+            )
+            return response.status
+        }""",
+        {
+            "id": sector["id"],
+            "body": {
+                "name": sector["name"],
+                "subcategoryId": sector["subcategoryId"],
+                # Added to what is already recorded, never instead of it: the
+                # picked parts are what the Limit checks above left behind.
+                "limit": [*(sector.get("limit") or []),
+                          *({"name": f"tramo {n} del cerro"} for n in range(30))],
+            },
+        },
+    )
+    if lengthened != 200:
+        failures.append(f"could not give the Sector 30 tramos to grow the sidebar: HTTP {lengthened}")
+        return
+
+    route, unidad = f"Ciclovía Navegador {RUN}", f"UV Navegador {RUN}"
+    made = {
+        route: _imported(route, "movilidad_transporte", "ciclovia", {
+            "type": "LineString",
+            "coordinates": [[-70.43, -33.73], [-70.42, -33.73], [-70.42, -33.72]],
+        }),
+        unidad: _imported(unidad, "division_territorial", "unidad_vecinal",
+                          _a_boundary_box(-33.73, -70.43)),
+    }
+    for name, ok in made.items():
+        if not ok:
+            skip(f"could not import {name!r}; that shape's above-the-fold measurement is unchecked")
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1200)
+    # The Unidad Vecinal is only in the list while its division is shown, and
+    # main() turns that toggle off before anything draws.
+    show_divisions(page, ["Sector", "Unidad Vecinal"])
+
+    opened = [f"Sector Navegador {RUN}", f"Plaza del Navegador {RUN}",
+              *(name for name, ok in made.items() if ok)]
+
+    # 1366x768 is the smallest desktop this app is used on; 1362x620 is the
+    # viewport the issue was measured in.
+    for width, height in ((1366, 768), (1362, 620)):
+        page.set_viewport_size({"width": width, "height": height})
+        page.wait_for_timeout(400)
+
+        for name in opened:
+            page.locator(SEARCH).fill(name)
+            page.wait_for_timeout(800)
+            if page.locator(ROWS).count() == 0:
+                failures.append(f"{name!r} is not in the list to open at {width}x{height} (#35)")
+                continue
+
+            page.locator(ROWS).first.click()
+            page.wait_for_timeout(1200)
+
+            control = page.get_by_role("button", name="Retirar del mapa")
+            if not settles(page, lambda: control.count() > 0, timeout=5_000):
+                failures.append(f"{name!r} offers no way to retire it at {width}x{height} (#35)")
+                page.keyboard.press("Escape")
+                continue
+
+            box = control.first.bounding_box()
+            if box is None:
+                failures.append(f"«Retirar del mapa» is not rendered for {name!r} (#35)")
+            elif box["y"] + box["height"] > height:
+                failures.append(
+                    f"«Retirar del mapa» ends {round(box['y'] + box['height'])}px down a "
+                    f"{height}px screen for {name!r} — below the fold (#35)",
+                )
+
+            # The picture the criterion is judged on, taken where it is hardest:
+            # the tall sidebar, on the smallest screen, with the control in it.
+            # Saved for whoever lands this to look at, per SKILL.md § 5.
+            if (width, height) == (1362, 620) and name.startswith("Sector "):
+                page.screenshot(path=str(SHOTS / "retire-above-the-fold.png"), full_page=False)
+
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+
+    page.locator(SEARCH).fill("")
+    page.set_viewport_size({"width": 1400, "height": 900})
+    page.wait_for_timeout(400)
+
+    # A Unidad Vecinal is a boundary: left behind it claims every Place inside it
+    # on the instance the integration suite reads, exactly as the imported Sector
+    # does. The Ciclovía is not a boundary and is left like every other Place.
+    if made[unidad]:
+        retire_the_runs_record(page, unidad)
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -2526,6 +2690,11 @@ def main():
 
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
+
+        # After every check that reads this run's Limit, because it adds 30
+        # tramos to it, and before the retires below, because it needs the
+        # Sector open one last time.
+        the_retire_control_is_reachable_without_scrolling(page, failures)
 
         # Last, and after every check that needs this run's Sector: it is left
         # four kilometres across by the polygonize check above.

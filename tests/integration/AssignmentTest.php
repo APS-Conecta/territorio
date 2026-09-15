@@ -68,8 +68,9 @@ final class AssignmentTest extends IntegrationTestCase {
 	 * It used to assert "assigned to nothing", which is a claim about every
 	 * boundary the install holds — and this suite runs against an instance the
 	 * browser gate and every other suite also write to (#117, #121). The null
-	 * half is proven where the Registry is a set the test owns entirely:
-	 * `Tests\Unit\Service\AssignmentBoundary::testOnlyABoundaryThatContainsTheRecordClaimsIt`.
+	 * half is proven where the Registry is a set the test owns entirely, in
+	 * `tests/unit/Service/AssignmentBoundaryTest.php`:
+	 * `testOnlyABoundaryThatContainsTheRecordClaimsIt`.
 	 */
 	public function testAPlaceOutsideABoundaryIsNotClaimedByIt(): void {
 		$sector = $this->sector('Sector Poniente', ['geometry' => self::WEST]);

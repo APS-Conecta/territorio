@@ -160,7 +160,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	/**
 	 * Which boundary claims a record, and what happens when none does.
 	 *
-	 * Here rather than in `Tests\Integration\Assignment` because "no boundary
+	 * Here rather than in `tests/integration/AssignmentTest.php` because "no boundary
 	 * covers this point" is a claim about the whole Registry, and that suite runs
 	 * against a shared instance the browser gate and every other suite also write
 	 * to: the claim went red when somebody else's Sector drifted over the fixture

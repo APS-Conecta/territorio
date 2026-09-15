@@ -24,12 +24,12 @@
 			<section v-for="category in shown" :key="category.id" class="territorio-analisis__category">
 				<div class="territorio-analisis__row">
 					<span class="territorio-analisis__label">
-						<span class="territorio-analisis__swatch" :style="{ background: colourOf(category) }" />
+						<span class="territorio-analisis__swatch" :style="{ background: swatchColour(category) }" />
 						{{ category.label }}
 					</span>
 					<span class="territorio-analisis__track">
 						<span class="territorio-analisis__fill"
-							:style="{ width: width(category.total), background: colourOf(category) }" />
+							:style="{ width: width(category.total), background: swatchColour(category) }" />
 					</span>
 					<span class="territorio-analisis__value">{{ category.total }}</span>
 				</div>
@@ -87,7 +87,7 @@ export default {
 		 * have reached, and it is held to the same bar as a dot: it measures
 		 * 1.73:1 against the dark theme (#29).
 		 */
-		colourOf(category) {
+		swatchColour(category) {
 			return categoryColour(category)
 		},
 

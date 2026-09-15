@@ -68,6 +68,8 @@ final class RoutesTest extends TestCase {
 			'category#rename',
 			'category#addSubcategory',
 			'category#renameSubcategory',
+			'category#destroy',
+			'category#destroySubcategory',
 			'adminSettings#save',
 			'adminSettings#saveComuna',
 		], $names);

@@ -150,6 +150,50 @@ class FeatureMapper extends QBMapper {
 		$feature->setOfficial($official);
 	}
 
+	/**
+	 * How many records are filed under any of these Subcategories — everything,
+	 * with no filter of any kind (#47, ADR-0016).
+	 *
+	 * Deliberately NOT `findAll()` with a count over it, and this is the whole
+	 * point of the method existing: that one drops retired records and boundary
+	 * Datasets, because it answers "what is a person looking at". This one
+	 * answers "what would be orphaned", and the two are different questions. A
+	 * retired record can be restored, and the schema carries no foreign key from
+	 * a Feature to its Subcategory that would catch the orphan afterwards — so
+	 * conflating the two numbers is exactly how the orphan gets through.
+	 *
+	 * Boundary Datasets are in for the same reason: an imported Unidad Vecinal is
+	 * a Feature carrying a Subcategory id like any other, and a count that left it
+	 * out would be the display count wearing a different name.
+	 *
+	 * One question for a whole list of ids, because a Category is refused on the
+	 * total across every Subcategory under it and a Subcategory on its own —
+	 * there is one rule and it takes a list.
+	 *
+	 * @param int[] $subcategoryIds
+	 */
+	public function countBySubcategory(array $subcategoryIds): int {
+		if ($subcategoryIds === []) {
+			// `IN ()` is not valid SQL, and a Category with no Subcategory is a
+			// real state the seed's «Otro» merely makes rare — nothing can be
+			// filed under one, so the honest answer is zero rather than an error.
+			return 0;
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->count('*'))
+			->from($this->getTableName())
+			->where($qb->expr()->in(
+				'subcategory_id',
+				$qb->createNamedParameter($subcategoryIds, IQueryBuilder::PARAM_INT_ARRAY),
+			));
+		$result = $qb->executeQuery();
+		$count = (int)$result->fetchOne();
+		$result->closeCursor();
+
+		return $count;
+	}
+
 	/** @return Feature[] */
 	public function findRetired(): array {
 		$qb = $this->db->getQueryBuilder();

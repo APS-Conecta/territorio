@@ -29,7 +29,9 @@ The Capas panel is the clinic's vocabulary now, not the seed's.
   An empty or whitespace-only name is refused with a message saying so, and the message appears in
   the panel where the person typed rather than in `error`, which renders in the map column and only
   while no record is open. An over-long one is refused the same way instead of arriving as the
-  database's own error through a 500: the column is `VARCHAR(128)` and the field says so.
+  database's own error through a 500: the column is `VARCHAR(128)` and the field says so. The
+  message goes away again when a rename is opened or abandoned: the note card names no row, so one
+  left over from a rename nobody is doing any more would read as a refusal of the one being typed.
 
   Renaming does **not** advance the Revision cursor, which contradicts ADR-0002 as written; the
   reasoning is a dated correction appended to that ADR rather than a new one. The browser that made

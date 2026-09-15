@@ -193,6 +193,13 @@ def gate_failures(name, colour, others):
     return failures
 
 
+# ponytail: nothing exercises `derive_spares()` / `spare_failures()` on a schedule —
+# their correctness was proven once by hand, by seeding each violation and watching
+# `make lint` go red (see PR #43). The repo has no Python harness, and one is not worth
+# standing up for two functions. The ceiling: if a later edit makes `spare_failures()`
+# return nothing — the exact shape already caught once in this slice, where
+# `'const SPARES' in source` was satisfied by `const SPARES_RENAMED` — lint stays green
+# and nobody learns. Re-seed a violation by hand after touching either function.
 def derive_spares(taken):
     """Every colour a Category added by a clinic could take (ADR-0017).
 
@@ -322,9 +329,14 @@ def spare_failures(spares, taken):
         if chroma > SPARE_CHROMA + SPARE_CHROMA_TOLERANCE:
             failures.append(f'{name} {spare}: chroma {chroma:.3f} is above {SPARE_CHROMA} — '
                             'ADR-0013 forbids raising it to make room')
+        # What this asserts is narrower than the count check above: the spare sits AT a
+        # family hue, within the rounding allowance. A repaint that moves a family by a
+        # degree fails here without any seventh family existing, and the remedy is then
+        # to re-derive SPARES — so the message says that rather than naming ADR-0013,
+        # which only the count check is entitled to name.
         if min(abs(hue - family) for family in families) > SPARE_HUE_TOLERANCE:
-            failures.append(f'{name} {spare}: hue {hue:.0f} is not one of the {len(families)} '
-                            f'families {families} — ADR-0013 opens no seventh')
+            failures.append(f'{name} {spare}: hue {hue:.0f} is not at a family hue '
+                            f'(families {families}) — re-derive SPARES from the current ramp')
     return failures
 
 
@@ -338,6 +350,12 @@ def main():
     if len(ramp) < 2:
         failures.append(f'parsed {len(ramp)} Categories out of the seed — the regex has drifted')
 
+    # The two loops below are a deliberate duplicate of `gate_failures()`: they keep
+    # per-case wording that reads better for the eleven and the two neutrals. The cost
+    # is that they are a second shape for "check a colour" — a rule added to one MUST be
+    # added to the other, or spares and Categories quietly stop clearing the same gates,
+    # which is the drift this whole check exists to prevent.
+    #
     # White-glyph-on-fill and fill-on-white-page are the SAME inequality,
     # 1.05/(Y+0.05), so one lightness decision settles both and checking them
     # separately would report one broken colour as two findings.

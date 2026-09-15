@@ -3,6 +3,40 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.60.0] — unreleased
+
+The Capas panel is the clinic's vocabulary now, not the seed's.
+
+### Added
+
+- **A Category and a Subcategory can be renamed from the Capas panel** (#41). CONTEXT.md has always
+  said a Category is "editable data, not code"; it was not. The eleven Categories and their
+  Subcategories were written once by the seed and there was no route, no screen and no `occ` command
+  that could change a word of them — so a panel full of somebody else's names was something a clinic
+  had to live with.
+
+  Only the label moves. The slug stays exactly as it was, which is the whole point of doing this
+  first: every Feature is filed under a Subcategory id, and every glyph and colour lookup keys on a
+  slug, so a rename cannot put a record anywhere it was not already. An integration test renames
+  both and reads them back through the served tree to prove the slugs and the ids did not move with
+  the label.
+
+  A rename also survives an upgrade. `EnsureSeedData` already promised that — it seeds the taxonomy
+  only into an empty table and ensures «División territorial» slug by slug — but nothing had ever
+  run the promise, so the repair step is now driven in-process by a test that renames first,
+  including the structural Category the seed touches on every single upgrade.
+
+  An empty or whitespace-only name is refused with a message saying so, and the message appears in
+  the panel where the person typed rather than in `error`, which renders in the map column and only
+  while no record is open. An over-long one is refused the same way instead of arriving as the
+  database's own error through a 500: the column is `VARCHAR(128)` and the field says so.
+
+  Renaming does **not** advance the Revision cursor, which contradicts ADR-0002 as written; the
+  reasoning is a dated correction appended to that ADR rather than a new one. The browser that made
+  the change swaps in the tree the server answers with — one property that the Capas panel, the
+  Subcategoría picker, Análisis and the map's colours all read, which is what makes the new name
+  appear everywhere without a reload — and another browser reads it on its next load.
+
 ## [0.59.0] — unreleased
 
 A Category a clinic adds has a colour waiting for it, and lint holds the palette to the

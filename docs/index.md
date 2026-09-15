@@ -35,6 +35,8 @@ model — live in [`APS-Conecta/gestion`](https://github.com/APS-Conecta/gestion
 | Document | It is the authority for |
 |---|---|
 | [`../.claude/skills/slice/SKILL.md`](../.claude/skills/slice/SKILL.md) | How one issue is built and landed, end to end |
+| [`../.claude/skills/sprint/SKILL.md`](../.claude/skills/sprint/SKILL.md) | Which issues an epic holds, in which order, and what must not happen between them |
+| [`../.claude/workflows/decidir.js`](../.claude/workflows/decidir.js) | The three-agent decision protocol — when a design question is genuinely open |
 | [`agents/issue-tracker.md`](agents/issue-tracker.md) | That issues and PRDs are GitHub issues, and the `gh` commands for them |
 | [`agents/triage-labels.md`](agents/triage-labels.md) | The five triage roles and this tracker's label strings |
 | [`agents/domain.md`](agents/domain.md) | Which domain docs to read before exploring the code |

@@ -1866,6 +1866,88 @@ def search_narrows_everything(page, failures):
         failures.append(f"clearing did not restore the list ({rows.count()} vs {before_rows})")
 
 
+def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
+    """#101: a spreadsheet goes in through the dialog, and the records are there.
+
+    The file is the one a Chilean clinic actually sends — saved by Excel in
+    es-CL, so `;` between the cells and a decimal comma inside the coordinates,
+    with accents in the names. Nothing below the browser exercises that path
+    end to end: the unit tests read the bytes, the integration test calls the
+    service, and this is the only check that goes through the upload the person
+    actually uses.
+
+    Asserted on the REGISTRY, not on the dialog's own success line. That line is
+    the response to the POST and would read "1 creados" even if nothing had been
+    written; `registry_feature` is the read a second browser would do.
+
+    The notice is checked the way the KML one is, including the two negatives —
+    not before a file is chosen, and not for a GeoJSON — because a notice that is
+    always on the screen says nothing about the file in the box.
+    """
+    name = f"CESFAM Ñuñoa {RUN}"
+    # Away from the cadastre and from the other checks' coordinates, nudged per
+    # run: every record this gate makes stays (ADR-0005), and a fixed spot would
+    # put this run's import on top of the last one's.
+    lat, lon = round(-33.46 - NUDGE / 200, 4), round(-70.46 - NUDGE / 200, 4)
+    # `;` between the cells and a comma inside the coordinates: in es-CL the
+    # comma is the decimal separator, so Excel uses the semicolon to separate.
+    # The address cell carries a comma too, which is the other half of the same
+    # file — a reader that split on commas would shift every column after it.
+    csv = (
+        "Nombre;Categoría;Subcategoría;Latitud;Longitud;Dirección;Teléfono\n"
+        f"{name};salud;cesfam;{lat};{lon};Avenida Uno 123, local 4;229112233\n"
+    ).replace(".", ",")
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.wait_for_timeout(600)
+
+    notice = page.get_by_text("no vuelve a entrar")
+    if notice.count() != 0:
+        failures.append("the CSV notice is shown before a file is even chosen")
+
+    page.locator('input[type="file"]').set_input_files({
+        "name": "algo.geojson",
+        "mimeType": "application/geo+json",
+        "buffer": b'{"type":"FeatureCollection","features":[]}',
+    })
+    page.wait_for_timeout(400)
+    if notice.count() != 0:
+        failures.append("the CSV notice is shown for a GeoJSON file")
+
+    page.get_by_label("Conjunto de datos").fill(f"planilla-{RUN}")
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"planilla-{RUN}.csv",
+        "mimeType": "text/csv",
+        # UTF-8, as a spreadsheet saving for a Spanish locale writes it.
+        "buffer": csv.encode("utf-8"),
+    })
+    page.wait_for_timeout(500)
+    if notice.count() == 0:
+        failures.append("choosing a CSV said nothing about the export not coming back in")
+
+    page.get_by_role("button", name="Importar", exact=True).click()
+    page.wait_for_timeout(2500)
+    page.screenshot(path=str(SHOTS / "csv-import.png"), full_page=False)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(800)
+
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} is not in the Registry, so the CSV imported nothing (#101)")
+        return
+
+    if stored.get("datasetId") is None:
+        failures.append(f"{name!r} carries no datasetId, so it is not an imported record (#101)")
+
+    # The decimal comma survived as a coordinate rather than as a shifted column:
+    # geometry here is what the Registry stores, not what the file said.
+    position = (stored.get("geometry") or {}).get("coordinates")
+    if not position or abs(position[1] - lat) > 1e-6 or abs(position[0] - lon) > 1e-6:
+        failures.append(
+            f"the imported record sits at {position!r}, not at the [{lon}, {lat}] "
+            "the decimal-comma cells described (#101)",
+        )
+
 def kml_says_what_it_cannot_carry(page, failures):
     """#8: "The import preview states plainly which fields KML cannot carry."
 
@@ -5608,6 +5690,7 @@ def main():
 
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
+        a_csv_imports_and_says_what_does_not_come_back_in(page, failures)
         browser.close()
 
     if errors:

@@ -88,6 +88,38 @@ An update that omitted the geometry destroyed it.
   into `js/` and 18 are named**, and the file's documented update method — read the two webpack
   banner files — structurally cannot see the rest. Filed as #87.
 
+### Added
+
+- **Exports of OpenStreetMap-derived records name the ODbL licence** (#28). `GeoJsonWriter`,
+  `CsvWriter` and `KmlWriter` carried no licence statement of any kind. Nothing was wrong while
+  the files stayed inside a clinic — ODbL's share-alike triggers on public use — but handing a
+  Sector file to the municipality is a normal thing for a CESFAM to do, and the app offers three
+  export formats to make it easy. Attribution has to name the licence, not only the source, so the
+  line is `© OpenStreetMap contributors, licencia ODbL` with the copyright URL.
+
+  Keyed on the row's `sourceRef`, which is the only thing an exported row knows about where it
+  came from: an OSM-derived Dataset arrives stamped `source_es: OpenStreetMap` with a `source_url`
+  (ADR-0004), and `GeoJsonReader` joins those into that field. Matched loosely — a source somebody
+  typed that merely mentions OSM makes a file carry a line it did not strictly owe, while a
+  stricter match that misses one makes the file a licence breach, and those two costs are not
+  comparable.
+
+  **Where it goes is decided by the fourth criterion, that it must not break whoever opens the
+  file.** GeoJSON gets a top-level `license` foreign member, which RFC 7946 §6.1 allows and
+  `GeoJsonReader` ignores, so the export that goes back in still goes back in — pinned by the
+  round trip in `ExportTest`, now run on an OSM-stamped fixture. KML appends it to the
+  `<Document><description>` that already says what the format cannot carry; an `<atom:author>`
+  would have cost a namespace declaration for a line shown in the same panel. CSV gets **a
+  column**, because RFC 4180 has no comment syntax: a line above the header breaks header
+  detection and a trailing line of a different width breaks a strict parser, so a cell is the only
+  place a spreadsheet can hold it. The column appears only when the set needs it, and is filled
+  only on the rows it is about — a notice repeated over a mixed set would say the municipality's
+  own catastro belongs to OpenStreetMap.
+
+  An export holding none of OSM's data carries nothing, in all three formats. That half is not
+  tidiness: an attribution printed on every file is read as boilerplate, which is how the real one
+  stops being seen.
+
 ### Fixed
 
 - **Reclassifying a record into or out of a boundary Subcategory reassigned nothing** (#84).

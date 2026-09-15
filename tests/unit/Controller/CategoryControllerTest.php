@@ -34,11 +34,27 @@ final class CategoryControllerTest extends TestCase {
 	private CategoryController $controller;
 
 	protected function setUp(): void {
+		$this->body();
+	}
+
+	/**
+	 * Rebuild the controller over a body holding exactly these keys.
+	 *
+	 * A map and not a fixed return, because the PUT now carries two keys that are
+	 * never sent together (#46): a name is typed into the row's field and a mark
+	 * is clicked out of a grid. Which key is ABSENT is the whole of the routing
+	 * decision, so a stub that answered every `getParam()` with the same string
+	 * could not express the cases being asserted — and a key this controller has
+	 * no business reading comes back null, which is how a body key renamed away
+	 * from `label` or `glyph` is caught here rather than in the browser.
+	 *
+	 * @param array<string, string> $params
+	 */
+	private function body(array $params = ['label' => 'Salud comunitaria']): void {
 		$request = $this->createStub(IRequest::class);
-		// Pinned to 'label': asking the body for any other key is the failure
-		// this stub exists to catch, since the panel sends `label` and nothing
-		// else in the suite reads the body.
-		$request->method('getParam')->with('label')->willReturn('Salud comunitaria');
+		$request->method('getParam')->willReturnCallback(
+			static fn (string $key, $default = null) => $params[$key] ?? $default,
+		);
 
 		$this->taxonomy = $this->createMock(TaxonomyService::class);
 		$this->controller = new CategoryController($request, $this->taxonomy);
@@ -52,7 +68,7 @@ final class CategoryControllerTest extends TestCase {
 			->with('salud', 'Salud comunitaria')
 			->willReturn($tree);
 
-		$response = $this->controller->rename('salud');
+		$response = $this->controller->update('salud');
 
 		self::assertSame(Http::STATUS_OK, $response->getStatus());
 		self::assertSame($tree, $response->getData());
@@ -165,7 +181,7 @@ final class CategoryControllerTest extends TestCase {
 		$this->taxonomy->method('renameCategory')
 			->willThrowException(new InvalidTaxonomyException('El nombre no puede quedar vacío.'));
 
-		$response = $this->controller->rename('salud');
+		$response = $this->controller->update('salud');
 
 		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 		self::assertSame('El nombre no puede quedar vacío.', $response->getData()['message']);
@@ -259,7 +275,7 @@ final class CategoryControllerTest extends TestCase {
 
 		self::assertSame(
 			Http::STATUS_NOT_FOUND,
-			$this->controller->rename('no-existe')->getStatus(),
+			$this->controller->update('no-existe')->getStatus(),
 		);
 	}
 
@@ -271,5 +287,97 @@ final class CategoryControllerTest extends TestCase {
 			Http::STATUS_NOT_FOUND,
 			$this->controller->renameSubcategory('salud', 'no-existe')->getStatus(),
 		);
+	}
+
+	/**
+	 * Issue #46: the pictogram goes up on the same PUT the rename uses, and the
+	 * controller acts on the key that is actually in the body.
+	 *
+	 * The `->with()` is the pin that matters. A body carrying `glyph` and no
+	 * `label` used to read the missing label as '' and refuse the whole request
+	 * for being blank — so choosing a mark would have answered «El nombre no
+	 * puede quedar vacío.» about a name nobody was typing.
+	 */
+	public function testChoosingAPictogramSetsItAndComesBackAsTheWholeTree(): void {
+		$this->body(['glyph' => 'bakery']);
+		$tree = [['id' => 12, 'slug' => 'comite_de_vivienda', 'label' => 'Comité de vivienda',
+			'color' => '#c27b72', 'glyph' => 'bakery', 'subcategories' => []]];
+		$this->taxonomy->expects(self::once())
+			->method('setCategoryGlyph')
+			->with('comite_de_vivienda', 'bakery')
+			->willReturn($tree);
+		$this->taxonomy->expects(self::never())->method('renameCategory');
+
+		$response = $this->controller->update('comite_de_vivienda');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($tree, $response->getData());
+	}
+
+	/**
+	 * Clearing the choice is an empty `glyph`, and it must still reach
+	 * `setCategoryGlyph()` — read as "no glyph key", it would fall through to the
+	 * rename and refuse a blank label instead of putting the mark back.
+	 */
+	public function testClearingThePictogramIsStillAPictogramWrite(): void {
+		$this->body(['glyph' => '']);
+		$this->taxonomy->expects(self::once())
+			->method('setCategoryGlyph')
+			->with('comite_de_vivienda', '')
+			->willReturn([]);
+
+		self::assertSame(
+			Http::STATUS_OK,
+			$this->controller->update('comite_de_vivienda')->getStatus(),
+		);
+	}
+
+	/** A body with only a label is still a rename, exactly as #41 left it. */
+	public function testABodyWithOnlyALabelIsStillARename(): void {
+		$this->taxonomy->expects(self::once())
+			->method('renameCategory')
+			->with('salud', 'Salud comunitaria')
+			->willReturn([]);
+		$this->taxonomy->expects(self::never())->method('setCategoryGlyph');
+
+		self::assertSame(Http::STATUS_OK, $this->controller->update('salud')->getStatus());
+	}
+
+	/**
+	 * A mark is picked when the Category is created too, so it goes up on the
+	 * POST beside the label — in the order `addCategory(string $label, string
+	 * $glyph)` declares them. Swapping the two would file «Comité de vivienda» as
+	 * a pictogram name and be refused for a shape nobody typed.
+	 */
+	public function testAnAddedCategoryCarriesTheMarkPickedWithIt(): void {
+		$this->body(['label' => 'Comité de vivienda', 'glyph' => 'town']);
+		$this->taxonomy->expects(self::once())
+			->method('addCategory')
+			->with('Comité de vivienda', 'town')
+			->willReturn([]);
+
+		self::assertSame(Http::STATUS_OK, $this->controller->create()->getStatus());
+	}
+
+	/** Nothing picked is not a refusal: the Category draws the neutral (ADR-0017). */
+	public function testACategoryCanStillBeAddedWithNoMarkAtAll(): void {
+		$this->taxonomy->expects(self::once())
+			->method('addCategory')
+			->with('Salud comunitaria', '')
+			->willReturn([]);
+
+		self::assertSame(Http::STATUS_OK, $this->controller->create()->getStatus());
+	}
+
+	/** A shape this app will not store is a 422 with a sentence, like every other refusal. */
+	public function testAPictogramThisAppWillNotStoreIsUnprocessable(): void {
+		$this->body(['glyph' => 'Park']);
+		$this->taxonomy->method('setCategoryGlyph')
+			->willThrowException(new InvalidTaxonomyException('Ese pictograma no existe en esta aplicación.'));
+
+		$response = $this->controller->update('salud');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertStringContainsString('pictograma', $response->getData()['message']);
 	}
 }

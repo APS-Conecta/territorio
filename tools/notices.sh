@@ -98,6 +98,21 @@ mapped_count=$(wc -l < "$work/mapped")
 	exit 1
 }
 
+# The same rule for the breadcrumb scan, which is the source with no second opinion: the
+# 16 packages inside geoman's published dist are named by nothing else here — not by
+# `.sources[]`, not by a manifest, not by the probe — so if it returns nothing the count
+# silently falls back to the mapped set and the run prints a confident, wrong census. Its
+# precondition is exactly that the bundling parent ships, so that is the floor: geoman in
+# the bundle and no breadcrumbs found means blind, not empty.
+if grep -qxF '@geoman-io/leaflet-geoman-free' "$work/mapped" && [ ! -s "$work/inlined" ]; then
+	echo "notices: @geoman-io/leaflet-geoman-free ships, but the esbuild breadcrumb scan found" >&2
+	echo "         nothing inside its dist. That dist arrives with its own dependencies already" >&2
+	echo "         concatenated in, and nothing else here can see them, so this is the scan going" >&2
+	echo "         blind — not a bundle that stopped inlining. Check whether the published dist is" >&2
+	echo "         now minified, ships no sourcesContent, or changed its boundary comment." >&2
+	exit 1
+fi
+
 licence() {
 	dir="node_modules/$1"
 	[ -d "$dir" ] || {

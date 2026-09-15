@@ -126,6 +126,13 @@ Four copies of one fixture, now one.
   exits non-zero listing every shipped package with no row in the file, and CI now runs it: the
   way this file went stale was that keeping it current was a procedure nobody was made to run.
 
+  All three sources have a floor, because the failure worth fearing here is a census that goes
+  blind quietly rather than one that goes wrong loudly. Too few packages in the maps is not a
+  bundle that shrank; a probe whose bytes are absent is not a pass; and geoman in the bundle with
+  no breadcrumbs found inside it is the scan having lost its footing, not a `dist` that stopped
+  inlining — without that last one a minified republish upstream would drop the count back to 51
+  and print, confidently and wrongly, that the file named all of them.
+
   Two things the file used to say were wrong, and both were wrong in the same direction — a real
   string mistaken for a path anyone could look up. The `node_modules/.pnpm/splaytree-ts@1.0.2/…`
   path it cited is not a path in this repository (we install with npm; there is no

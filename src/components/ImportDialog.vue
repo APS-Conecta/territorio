@@ -13,7 +13,7 @@
 			</NcNoteCard>
 
 			<p v-else class="territorio-import__hint">
-				GeoJSON (un FeatureCollection) o KML. Se revisa entero antes de escribir
+				GeoJSON (un FeatureCollection), KML o CSV. Se revisa entero antes de escribir
 				nada: si una fila es inválida, no se importa ninguna.
 			</p>
 
@@ -30,6 +30,25 @@
 				esos campos quedan vacíos y se pueden completar después, registro a registro.
 			</NcNoteCard>
 
+			<!--
+				Said before the import runs, for the same reason the KML notice is:
+				a CSV is for a spreadsheet somebody else sent, and this app's own CSV
+				export is "lossy on purpose and in one direction only" (issue #17) —
+				it has no id column, its «Clasificación» is one label rather than the
+				two slugs, and its contact cells carry the apostrophe that stops a
+				spreadsheet evaluating them. Somebody who exports and edits in Excel
+				needs to read that here, not discover it from a Dataset full of
+				duplicates.
+			-->
+			<NcNoteCard v-if="isCsv" type="warning" class="territorio-import__field">
+				De un CSV se leen las columnas Nombre, Categoría, Subcategoría, Latitud,
+				Longitud, Dirección, Teléfono, Correo, Persona de contacto, Cargo, Horario,
+				Notas, Fuente y Ubicación; las demás se ignoran.
+				<strong>El CSV que exporta esta aplicación no vuelve a entrar</strong>: es
+				para leer, ordenar e imprimir. Para volver a importar lo que salió de aquí,
+				exporte GeoJSON.
+			</NcNoteCard>
+
 			<NcTextField v-model="dataset"
 				class="territorio-import__field"
 				label="Conjunto de datos"
@@ -39,7 +58,7 @@
 			<label class="territorio-import__field territorio-import__file">
 				<span>Archivo</span>
 				<input type="file"
-					accept=".geojson,.json,.kml,application/geo+json,application/json,application/vnd.google-earth.kml+xml"
+					accept=".geojson,.json,.kml,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,text/csv"
 					:disabled="working"
 					@change="pick">
 			</label>
@@ -132,6 +151,11 @@ export default {
 		 */
 		isKml() {
 			return (this.file?.name ?? '').toLowerCase().trim().endsWith('.kml')
+		},
+
+		/** The same, for the spreadsheet a clinic sends (#101). */
+		isCsv() {
+			return (this.file?.name ?? '').toLowerCase().trim().endsWith('.csv')
 		},
 
 		/**

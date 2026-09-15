@@ -13,7 +13,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * occ territorio:import <archivo.geojson> --dataset=<slug>
+ * occ territorio:import <archivo.geojson|.kml|.csv> --dataset=<slug>
  *
  * The headless half of importing. The browser upload goes through the same
  * service, so the two cannot drift.
@@ -30,8 +30,8 @@ class Import extends Command {
 
 	protected function configure(): void {
 		$this->setName('territorio:import')
-			->setDescription('Importa un GeoJSON o KML a un conjunto de datos')
-			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson o .kml')
+			->setDescription('Importa un GeoJSON, KML o CSV a un conjunto de datos')
+			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson, .kml o .csv')
 			->addOption('dataset', null, InputOption::VALUE_REQUIRED, 'Slug del conjunto de datos')
 			->addOption('label', null, InputOption::VALUE_REQUIRED, 'Nombre visible del conjunto, si es nuevo')
 			// There is no logged-in user on the command line, so the batch would

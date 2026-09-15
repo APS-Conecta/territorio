@@ -82,12 +82,6 @@ describe('glyphFor', () => {
 		expect(new Set(glyphs).size).toBe(SEEDED.length)
 	})
 
-	/**
-	 * A Category a clinic added, and a Feature pointing at a Subcategory that no
-	 * longer exists, both arrive here. Neither may render blank: an empty dot
-	 * reads as a rendering failure, and the row beside it already says which case
-	 * it is.
-	 */
 	it('draws each Category with the icon #37 re-picked for it', () => {
 		for (const [slug, icon] of Object.entries(CHOSEN)) {
 			const drawn = makiIdOf(glyphFor(slug))
@@ -99,6 +93,12 @@ describe('glyphFor', () => {
 		}
 	})
 
+	/**
+	 * A Category a clinic added, and a Feature pointing at a Subcategory that no
+	 * longer exists, both arrive here. Neither may render blank: an empty dot
+	 * reads as a rendering failure, and the row beside it already says which case
+	 * it is.
+	 */
 	it('falls back rather than rendering nothing', () => {
 		for (const unknown of ['una_categoria_nueva', '', null, undefined]) {
 			expect(glyphFor(unknown), `${unknown} rendered nothing`).toBeTruthy()

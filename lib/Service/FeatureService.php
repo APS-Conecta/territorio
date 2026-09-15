@@ -417,6 +417,31 @@ class FeatureService {
 
 		$this->applyGeometry($feature, $input, $whole);
 
+		// Location quality's own door (issue #83). It is a judgement about a shape
+		// that is already stored, so `applyGeometry` — which owns it whenever a
+		// geometry IS submitted, along with the three other columns it measures —
+		// left no way to correct it without re-sending the shape byte-for-byte.
+		//
+		// Both conditions carry their weight. `!array_key_exists('geometry')` keeps
+		// the with-geometry case in one place instead of two that can disagree; and
+		// reading `locationQuality` with `array_key_exists` rather than applying it
+		// unconditionally is the rule stated above for every optional field, which
+		// matters most here: `locationQuality()` reads an absent value as `exacta`,
+		// so an unconditional write would reset a stored `aproximada` on every
+		// update that never mentioned the field — issue #63 again, by another name.
+		//
+		// Refused rather than ignored when nothing is stored: `Absent` is derived
+		// from having no geometry and never chosen, so a quality for a coordinate
+		// that does not exist has to be a 4xx the caller can read, not a silent 200.
+		if (array_key_exists('locationQuality', $input) && !array_key_exists('geometry', $input)) {
+			if ($feature->getGeometry() === null) {
+				throw new InvalidFeatureException(
+					'La Exactitud describe una coordenada: el registro no tiene ninguna.',
+				);
+			}
+			$feature->setLocationQuality($this->locationQuality($input));
+		}
+
 		// Derived here, at the one door every write comes through, so no caller can
 		// save a record whose stored Sector disagrees with where it now is
 		// (ADR-0008). It lands in this save's Revision and history entry rather

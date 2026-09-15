@@ -404,6 +404,78 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	/**
+	 * Location quality had no door of its own: it was read only inside
+	 * `applyGeometry`'s with-geometry branch, so correcting a judgement about a
+	 * shape that is already stored meant re-sending that shape byte-for-byte
+	 * (issue #83). It is a judgement about the coordinate, not part of it.
+	 */
+	public function testAQualitySentWithoutAGeometryIsAppliedToTheStoredShape(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Sede');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, [
+			'name' => 'Sede',
+			'subcategoryId' => 7,
+			'locationQuality' => 'aproximada',
+		]);
+
+		self::assertSame(LocationQuality::Approximate->value, $updated->getLocationQuality());
+		self::assertSame(self::PLAZA, $updated->getGeometry());
+	}
+
+	/**
+	 * Absent is derived from having no geometry, never chosen — so the new door
+	 * refuses rather than letting a record claim a quality for a coordinate it
+	 * does not have. Refusing, not ignoring: the message names the field so the
+	 * caller learns which one it was.
+	 */
+	public function testAQualitySentForARecordWithNoStoredGeometryIsRefused(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Sede sin coordenada');
+		$existing->setSubcategoryId(7);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Absent->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessageMatches('/Exactitud/');
+
+		$this->service->update(3, [
+			'name' => 'Sede sin coordenada',
+			'subcategoryId' => 7,
+			'locationQuality' => 'aproximada',
+		]);
+	}
+
+	/**
+	 * The new door must not become the #63 overwrite by another name:
+	 * `locationQuality()` reads an absent value as `exacta`, so applying it
+	 * unconditionally would reset every stored `aproximada` on any update that
+	 * never mentioned the field.
+	 */
+	public function testAnUpdateThatOmitsTheQualityLeavesItAlone(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Sede');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Approximate->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$updated = $this->service->update(3, ['name' => 'Sede nueva', 'subcategoryId' => 7]);
+
+		self::assertSame(LocationQuality::Approximate->value, $updated->getLocationQuality());
+	}
+
+	/**
 	 * A request that does not mention a field must leave it alone. History is
 	 * what would make such a loss recoverable, and it does not exist until issue
 	 * #4 — so until then an omission silently blanking an address would be

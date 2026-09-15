@@ -172,6 +172,24 @@ class EnsureSeedData implements IRepairStep {
 		'#419eaf', '#7c8cc7', '#a072a3', '#b282b4',
 	];
 
+	/**
+	 * What a Category is given once the spares above are gone (ADR-0017).
+	 *
+	 * The same grey `src/taxonomy.js` exports as `DEFAULT_SECTOR_COLOUR`, and
+	 * the same one `categoryColour()` there already answers with for a whole
+	 * Category — this is a Category nobody could give a hue to, which is what
+	 * that constant has always meant. Not `UNKNOWN_COLOUR`, which this repo
+	 * spent a slice separating from it because it means a BROKEN reference, and
+	 * a Category on the neutral is not broken: hue only groups Categories and
+	 * the glyph identifies them (ADR-0013).
+	 *
+	 * It is a second copy of a hex the frontend also holds, in a language that
+	 * cannot read the other — so `tools/ramp-check.py` compares the two on every
+	 * `make lint`. The panel's whole message rests on `color === the neutral`,
+	 * and two values drifting apart would silence it with every suite green.
+	 */
+	public const NEUTRAL = '#949494';
+
 
 	public function __construct(
 		private IDBConnection $db,

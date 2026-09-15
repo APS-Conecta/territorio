@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use OCA\Territorio\Db\Category;
 use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidTaxonomyException;
+use OCA\Territorio\Migration\EnsureSeedData;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\DB\Exception as DbException;
 
@@ -122,6 +124,121 @@ class TaxonomyService {
 		$this->subcategories->update($subcategory);
 
 		return $this->tree();
+	}
+
+	/**
+	 * The Subcategory every Category is born with.
+	 *
+	 * All eleven the seed ships carry an «Otro», and a Category with none is a
+	 * Category nothing can be filed under: a Feature travels as a Subcategory id,
+	 * the picker is a flat list of «Categoría · Subcategoría», and Análisis counts
+	 * records. So an empty one would appear in the Capas panel as a branch with
+	 * nothing in it and reach neither of the other two surfaces #45 names — the
+	 * clinic would have added a name it cannot yet use. The clinic narrows it with
+	 * #44's «+» whenever it wants to.
+	 */
+	private const FIRST_SUBCATEGORY = ['slug' => 'otro', 'label' => 'Otro'];
+
+	/**
+	 * Add a Category the seed does not have (#45).
+	 *
+	 * The clinic types a label and nothing else. The slug is derived, globally
+	 * unique, and never typed (#40) — it is what every Feature, the glyph lookup
+	 * and the colour lookup key on, and what a later rename leaves alone. The
+	 * colour is ASSIGNED, because no person can satisfy its constraints by eye
+	 * (ADR-0017): 3:1 against white and against the dark theme, dE-OK 0.05 from
+	 * every other Category and both neutrals, and 0.015 from each of them under
+	 * three dichromacies.
+	 *
+	 * No pictogram either. It draws the neutral fallback `glyphFor()` already
+	 * returns for a slug it does not know, which reads as «unclassified» where a
+	 * blank reads as a rendering failure. Choosing one is #46.
+	 *
+	 * Uniqueness is `terr_cat_slug_idx`'s, not this method's, for the reason
+	 * `addSubcategory()` gives: a check-then-insert here would be a second
+	 * statement of the same rule that two people adding «Comité de vivienda» at
+	 * once would both pass.
+	 *
+	 * Answers with the whole served tree, like every other write here, because it
+	 * is the one property the Capas panel, the Subcategoría picker, Análisis and
+	 * the map's colours all read. The Revision cursor is not advanced — see
+	 * `renameCategory()`, and the `addSubcategory()` docblock in `src/App.vue`
+	 * for what that costs a colleague's open browser on a create.
+	 *
+	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws InvalidTaxonomyException when the label is not one this app will store
+	 */
+	public function addCategory(string $label): array {
+		$clean = $this->cleanLabel($label);
+		$slug = self::slugFor($clean);
+		if ($slug === '') {
+			throw new InvalidTaxonomyException('El nombre necesita alguna letra o algún número.');
+		}
+
+		$category = new Category();
+		$category->setSlug($slug);
+		$category->setLabel($clean);
+		$category->setColor($this->nextColour());
+
+		try {
+			$category = $this->categories->insert($category);
+		} catch (DbException $e) {
+			if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+				throw $e;
+			}
+			// Of the name, not of the slug: the slug is derived, so «Comité de
+			// Vivienda» collides with «comité de vivienda» and naming the slug
+			// would describe something the person never typed.
+			throw new InvalidTaxonomyException('Ya existe una categoría con ese nombre.');
+		}
+
+		$subcategory = new Subcategory();
+		$subcategory->setCategoryId((int)$category->getId());
+		$subcategory->setSlug(self::FIRST_SUBCATEGORY['slug']);
+		$subcategory->setLabel(self::FIRST_SUBCATEGORY['label']);
+		$this->subcategories->insert($subcategory);
+
+		return $this->tree();
+	}
+
+	/**
+	 * The colour a new Category is given: the first spare no Category holds.
+	 *
+	 * "Assigning a colour becomes taking the next unused spare" (ADR-0017). No
+	 * counter and no new state — the answer is derived from the Categories that
+	 * exist, so a Category removed (#47) hands its spare back, and two adds in a
+	 * row cannot take the same one because the first is a row by the time the
+	 * second looks.
+	 *
+	 * No colour arithmetic here on purpose. The OKLab separation, the WCAG
+	 * contrast and the three dichromacy transforms live in `tools/ramp-check.py`,
+	 * which derives `EnsureSeedData::SPARES` and re-checks every one of them on
+	 * `make lint`; a second implementation in PHP is exactly the drift that check
+	 * exists to prevent.
+	 *
+	 * Compared case-insensitively because a stored colour is a hex somebody may
+	 * have typed — `RampRepaintTest` writes one directly, and `#C27B72` is the
+	 * same colour as `#c27b72`.
+	 *
+	 * With the spares gone it answers the neutral, and that is not an error: hue
+	 * only groups Categories into families and the glyph identifies them
+	 * (ADR-0013), so a Category without a distinct hue is doing what that ADR says
+	 * every Category does anyway. The panel says so, on `color === the neutral`,
+	 * which is why nothing extra is returned to flag it.
+	 */
+	private function nextColour(): string {
+		$taken = array_map(
+			static fn (Category $category): string => strtolower($category->getColor()),
+			$this->categories->findAll(),
+		);
+
+		foreach (EnsureSeedData::SPARES as $spare) {
+			if (!in_array(strtolower($spare), $taken, true)) {
+				return $spare;
+			}
+		}
+
+		return EnsureSeedData::NEUTRAL;
 	}
 
 	/**

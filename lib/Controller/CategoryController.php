@@ -34,6 +34,18 @@ class CategoryController extends Controller {
 		parent::__construct(Application::APP_ID, $request);
 	}
 
+	/**
+	 * Add a Category (#45). The label is all that goes up: the app derives the
+	 * slug and assigns the colour (ADR-0017), so there is no body key by which
+	 * either could be chosen.
+	 */
+	#[NoAdminRequired]
+	public function create(): JSONResponse {
+		return $this->attempt(fn (): array => $this->taxonomy->addCategory(
+			(string)($this->request->getParam('label') ?? ''),
+		));
+	}
+
 	#[NoAdminRequired]
 	public function rename(string $slug): JSONResponse {
 		return $this->attempt(fn (): array => $this->taxonomy->renameCategory(

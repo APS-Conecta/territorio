@@ -102,6 +102,46 @@ final class CategoryControllerTest extends TestCase {
 	}
 
 	/**
+	 * Adding a Category takes the label out of the body and nothing else (#45).
+	 *
+	 * No slug and no colour go up: the app derives the one and assigns the other
+	 * (ADR-0017), so a body key for either is a path by which a person could
+	 * choose a colour no gate ever measured. The `->with()` below is what says
+	 * that only `label` is read.
+	 *
+	 * 200 and the whole served tree, like every other write on this controller —
+	 * it is what the browser swaps in.
+	 */
+	public function testAnAddedCategoryComesBackAsTheWholeTree(): void {
+		$tree = [['id' => 12, 'slug' => 'salud_comunitaria', 'label' => 'Salud comunitaria',
+			'color' => '#c27b72', 'subcategories' => []]];
+		$this->taxonomy->expects(self::once())
+			->method('addCategory')
+			->with('Salud comunitaria')
+			->willReturn($tree);
+
+		$response = $this->controller->create();
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($tree, $response->getData());
+	}
+
+	/**
+	 * A Category whose name is already taken is refused with a sentence, not a
+	 * 500. The rule itself is `terr_cat_slug_idx` and only the integration suite
+	 * can exercise it; this pins that its refusal reaches the panel as a 422.
+	 */
+	public function testARefusalFromTheCreatePathIsUnprocessableNotAServerError(): void {
+		$this->taxonomy->method('addCategory')
+			->willThrowException(new InvalidTaxonomyException('Ya existe una categoría con ese nombre.'));
+
+		$response = $this->controller->create();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertStringContainsString('Ya existe', $response->getData()['message']);
+	}
+
+	/**
 	 * The add path has to go through the same `attempt()` as the renames: a
 	 * refusal is something a person can act on, and a 500 says nothing.
 	 *

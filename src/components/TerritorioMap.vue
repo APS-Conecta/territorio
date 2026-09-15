@@ -751,13 +751,12 @@ export default {
 		 * string, not a DOM node.
 		 */
 		clusterIconFor(cluster) {
-			// A marker with nothing hung on it cannot happen — drawMarkers is the
-			// only thing that adds one — but the fallback is the colour that
-			// already means "we cannot say what this is" rather than `undefined`,
-			// which would compose an invalid `conic-gradient()` and be dropped in
-			// silence.
-			const members = cluster.getAllChildMarkers()
-				.map((marker) => marker.options.territorio ?? { colour: UNKNOWN_COLOUR, approximate: false })
+			// Read straight off the marker, with no fallback: `drawMarkers` is the
+			// only thing that adds a marker to this group and it hangs `territorio`
+			// on every one, so a marker without it is a state this component owns
+			// outright. A `??` here would have stood in for a bug it cannot happen
+			// without, and would have drawn a plausible bubble over it.
+			const members = cluster.getAllChildMarkers().map((marker) => marker.options.territorio)
 			const { stops, approximate } = clusterRing(members)
 			const ring = stops
 				.map((stop) => `${escapeHtml(stop.colour)} ${stop.from}% ${stop.to}%`)

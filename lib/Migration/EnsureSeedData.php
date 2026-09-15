@@ -144,6 +144,34 @@ class EnsureSeedData implements IRepairStep {
 
 	public const DIVISIONS_SLUG = 'division_territorial';
 
+	/**
+	 * The colours a Category added by a clinic can be given, in the order they are
+	 * handed out. The app assigns one; nobody is asked to pick a colour by eye,
+	 * because the constraints cannot be satisfied that way (ADR-0017).
+	 *
+	 * Derived by `tools/ramp-check.py`, which owns the arithmetic — OKLab
+	 * separation, WCAG contrast and the three dichromacy transforms — and which
+	 * re-checks every value here on `make lint`. They are deliberately NOT
+	 * recomputed in PHP: two implementations of one rule drift apart silently, and
+	 * preventing exactly that drift is why the ramp check exists.
+	 *
+	 * Eight is a real ceiling rather than a round number. At the chroma ADR-0013
+	 * fixes and inside the six hue families it allows, nothing else clears every
+	 * gate against the eleven, against both neutrals, and against the other spares.
+	 * A clinic that exhausts them still gets its Category: it takes the neutral, and
+	 * that is not an error — hue only groups Categories, the glyph identifies them.
+	 *
+	 * This sits after DIVISIONS_SLUG rather than beside TAXONOMY because the ramp
+	 * check reads the Categories out of the slice that ends at that line, and a
+	 * bare `'#rrggbb'` inside it would be parsed as a Category.
+	 *
+	 * @var list<string>
+	 */
+	public const SPARES = [
+		'#c27b72', '#78621d', '#9a8442', '#65a175',
+		'#419eaf', '#7c8cc7', '#a072a3', '#b282b4',
+	];
+
 
 	public function __construct(
 		private IDBConnection $db,

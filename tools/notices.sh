@@ -14,8 +14,9 @@
 #      an esbuild bundle (`@geoman-io/leaflet-geoman-free`) arrives with its own
 #      dependencies already concatenated into one file, so they are modules of ours
 #      that no resolution of ours ever performed and no source of ours names. esbuild
-#      leaves a `// node_modules/.pnpm/<pkg>@<version>/…` comment at each boundary it
-#      merged, and that comment is the literal string that finds them.
+#      leaves a `// node_modules/…` comment at each boundary it merged — carrying the
+#      version too, `.pnpm/<pkg>@<version>/`, when the parent was bundled under pnpm as
+#      this one was — and that comment is the literal string that finds them.
 #   3. A literal-byte probe, for a package with no JavaScript at all: `@mapbox/maki`
 #      reaches the bundle as SVG markup, inlined by webpack as an asset. An asset
 #      module carries no source-map entry whichever loader emits it, so nothing above
@@ -42,9 +43,12 @@ PROBES='@mapbox/maki node_modules/@mapbox/maki/icons/circle-stroked.svg'
 # `asset/source` leaves, which is what `webpack.config.js` asks for), and the base64 of
 # the whole file (what `asset/inline` leaves as a data URI). Checking both means the
 # probe survives a loader change instead of going quiet or crying wolf at one.
+# An EMPTY line here would be a pattern `grep -f` matches against everything, which is a
+# probe that passes without looking: neither form is printed unless it has content, and a
+# file that yields neither fails the probe rather than sailing through it.
 probe_forms() {
-	grep -o "[^<>\"'\\\\]\{40,\}" "$1" | awk '{ if (length($0) > length(b)) b = $0 } END { print b }'
-	base64 -w0 "$1"
+	grep -o "[^<>\"'\\\\]\{40,\}" "$1" | awk '{ if (length($0) > length(b)) b = $0 } END { if (length(b)) print b }'
+	base64 -w0 "$1" | grep . || true
 }
 
 maps=$(ls js/*.js.map 2>/dev/null || true)

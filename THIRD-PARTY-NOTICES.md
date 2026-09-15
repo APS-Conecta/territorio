@@ -159,9 +159,10 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 | Unlicense | `robust-predicates` |
 
 `css-loader`, `style-loader`, `vue-loader` and `process` are build-time packages whose *emitted
-runtime helpers* genuinely ship — the style injector that puts a component's CSS into the page is
-`style-loader`'s code, running in the browser, and it is in the bundle. A build tool that leaves
-nothing behind is not listed; these are listed because they leave something behind.
+runtime helpers* genuinely ship: the source maps name `style-loader/dist/runtime/injectStylesIntoStyleTag.js`,
+`css-loader/dist/runtime/api.js`, `vue-loader/dist/exportHelper.js` and `process/browser.js`, all of
+which run in the browser. A build tool that leaves nothing behind is not listed; these are listed
+because they leave something behind.
 
 ## Inlined into `@geoman-io/leaflet-geoman-free`'s published `dist`
 

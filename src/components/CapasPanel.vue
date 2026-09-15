@@ -67,6 +67,22 @@
 					@update:model-value="$emit('toggle-subcategory', division.id)">
 					{{ division.label }}
 				</NcCheckboxRadioSwitch>
+				<!--
+					Where the «quitar» control would otherwise be, and said here rather
+					than at save time (ADR-0016): every other row in this panel has one,
+					so without a sentence a person spends their time trying and then
+					wonders whether they did it wrong. The server refuses these too — but
+					that refusal is the backstop for a request the panel did not make,
+					not the way anybody is meant to find out.
+
+					Static, not derived from a flag on the row: this block IS the
+					territorial division (CONTEXT.md puts one toggle per division beside
+					the tree rather than inside it), so there is nothing here to test.
+				-->
+				<p class="territorio-capas__hint">
+					La división territorial no se puede quitar: todo sector y toda unidad
+					vecinal se guarda en ella.
+				</p>
 			</div>
 
 			<!--
@@ -142,6 +158,34 @@
 								<path fill="currentColor" :d="PLUS" />
 							</svg>
 						</button>
+						<!--
+							Removing is offered on every Category the tree draws (#47).
+							«División territorial» is not one of them — `treeOf` leaves it
+							out, and the hint above the tree says why in the block where it
+							IS drawn.
+
+							Asking happens in the row itself, the two-step inline shape
+							`FeatureDetail` uses for retiring a record and never a
+							`confirm()`, which blocks the page (ADR-0016).
+						-->
+						<button v-if="confirming !== keyOf(category)"
+							class="territorio-capas__remove"
+							type="button"
+							:title="`Quitar «${category.label}»`"
+							:aria-label="`Quitar «${category.label}»`"
+							@click.stop.prevent="startRemove(category)">
+							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+								<path fill="currentColor" :d="TRASH" />
+							</svg>
+						</button>
+						<span v-else class="territorio-capas__confirm" @click.stop>
+							<NcButton variant="error" @click.stop.prevent="commitRemove(category)">
+								Quitar
+							</NcButton>
+							<NcButton variant="tertiary" @click.stop.prevent="cancelRemove">
+								Cancelar
+							</NcButton>
+						</span>
 					</template>
 				</summary>
 
@@ -187,6 +231,25 @@
 									<path fill="currentColor" :d="PENCIL" />
 								</svg>
 							</button>
+							<button v-if="confirming !== keyOf(category, subcategory)"
+								class="territorio-capas__remove"
+								type="button"
+								:title="`Quitar «${subcategory.label}»`"
+								:aria-label="`Quitar «${subcategory.label}»`"
+								@click.stop.prevent="startRemove(category, subcategory)">
+								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+									<path fill="currentColor" :d="TRASH" />
+								</svg>
+							</button>
+							<span v-else class="territorio-capas__confirm">
+								<NcButton variant="error"
+									@click.stop.prevent="commitRemove(category, subcategory)">
+									Quitar
+								</NcButton>
+								<NcButton variant="tertiary" @click.stop.prevent="cancelRemove">
+									Cancelar
+								</NcButton>
+							</span>
 						</template>
 					</div>
 				</div>
@@ -240,6 +303,9 @@ const PENCIL = 'M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1
 /** mdi-plus, inlined beside PENCIL for the same reason. */
 const PLUS = 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z'
 
+/** mdi-trash-can-outline, inlined beside the other two for the same reason. */
+const TRASH = 'M9 3v1H4v2h1v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6h1V4h-5V3H9m0 5h2v9H9V8m4 0h2v9h-2V8z'
+
 export default {
 	name: 'CapasPanel',
 
@@ -261,6 +327,7 @@ export default {
 		'rename',
 		'add-category',
 		'add-subcategory',
+		'remove',
 		'clear-taxonomy-message',
 	],
 
@@ -273,6 +340,17 @@ export default {
 			 * that can stop agreeing.
 			 */
 			editing: null,
+			/**
+			 * Which row is asking before it removes, as `keyOf()` names it, or
+			 * null (#47). Its own key rather than a mode on `editing`, because
+			 * the two render different things in the same row and one variable
+			 * holding both would be read in two ways by two `v-if`s.
+			 *
+			 * They are kept mutually exclusive by hand — `open()` closes this and
+			 * `startRemove()` closes that — so a row cannot be a field and a
+			 * question at the same time.
+			 */
+			confirming: null,
 			draftLabel: '',
 			/*
 			 * The key for the new-Category field. A constant and not `keyOf()`,
@@ -283,6 +361,7 @@ export default {
 			NEW_CATEGORY: 'new-category',
 			PENCIL,
 			PLUS,
+			TRASH,
 			// The column is VARCHAR(128) and the server refuses more (TaxonomyService).
 			// Capping the field here means the usual way of hitting that limit — a
 			// pasted paragraph — never becomes a round trip that ends in a refusal.
@@ -363,6 +442,7 @@ export default {
 		 */
 		open(key, label) {
 			this.$emit('clear-taxonomy-message')
+			this.confirming = null
 			this.editing = key
 			this.draftLabel = label
 			// v-if means the input does not exist until Vue has patched the DOM.
@@ -409,6 +489,34 @@ export default {
 			const label = this.draftLabel
 			this.editing = null
 			this.$emit('add-subcategory', { categorySlug: category.slug, label })
+		},
+
+		/**
+		 * Ask before removing, in the row itself (#47).
+		 *
+		 * The same two-step inline shape retiring a record uses, and never a
+		 * `confirm()`: ADR-0016 says so in as many words, and a browser dialog
+		 * blocks the page. The last refusal is cleared on the way, for the reason
+		 * `open()` gives — the note card names no row, so one left over from
+		 * something else reads as a refusal of this.
+		 */
+		startRemove(category, subcategory = null) {
+			this.$emit('clear-taxonomy-message')
+			this.editing = null
+			this.confirming = this.keyOf(category, subcategory)
+		},
+
+		commitRemove(category, subcategory = null) {
+			this.confirming = null
+			this.$emit('remove', {
+				categorySlug: category.slug,
+				subcategorySlug: subcategory?.slug ?? null,
+			})
+		},
+
+		cancelRemove() {
+			this.$emit('clear-taxonomy-message')
+			this.confirming = null
 		},
 
 		cancel() {
@@ -533,7 +641,8 @@ export default {
    the same treatment, under its own name: `__rename` still means the pencil, and
    the browser gate picks a pencil by that class. */
 .territorio-capas__rename,
-.territorio-capas__add {
+.territorio-capas__add,
+.territorio-capas__remove {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -551,8 +660,39 @@ export default {
 .territorio-capas__rename:hover,
 .territorio-capas__rename:focus-visible,
 .territorio-capas__add:hover,
-.territorio-capas__add:focus-visible {
+.territorio-capas__add:focus-visible,
+.territorio-capas__remove:hover,
+.territorio-capas__remove:focus-visible {
 	background: var(--color-background-hover);
 	color: var(--color-main-text);
+}
+
+/* The theme's readable foreground red, which flips with the theme — the same
+   one FeatureDetail's «Retirar del mapa» wears, because it is the same step in
+   the same two-step shape. Only on hover and focus: eleven red bins down the
+   panel would read as eleven warnings. */
+.territorio-capas__remove:hover,
+.territorio-capas__remove:focus-visible {
+	color: var(--color-error-text);
+}
+
+/* The pair of buttons that replaces the bin while the row is asking. Shrinks
+   rather than pushing the Category name out of the row, which is what makes the
+   thing being removed still readable while it is being confirmed. */
+.territorio-capas__confirm {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+/* Tertiary ink and small, like the hint text in the sidebar: it explains the
+   absence of a control rather than announcing anything, so it must not read as
+   a warning. */
+.territorio-capas__hint {
+	color: var(--color-text-maxcontrast);
+	font-size: 0.85em;
+	margin: 4px 0 0;
 }
 </style>

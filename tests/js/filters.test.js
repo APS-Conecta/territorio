@@ -12,7 +12,7 @@ import {
 	toggleCategory,
 	toggleSubcategory,
 } from '../../src/filters.js'
-import { indexSubcategories } from '../../src/taxonomy.js'
+import { DEFAULT_SECTOR_COLOUR, indexSubcategories } from '../../src/taxonomy.js'
 
 /**
  * The Capas panel is the Category tree itself — there is no Layer object
@@ -322,13 +322,29 @@ describe('counts for Análisis', () => {
 	})
 
 	/**
-	 * The slug, not just the label: the chart colours a division with the
-	 * neutral rather than its inert `#334155` (#29), and slug is the stable
-	 * identifier — a clinic may rename a label and ids differ per install.
+	 * The colour a bar is drawn in, resolved here rather than in the template.
+	 *
+	 * #29 asks that the division Category's seeded `#334155` — 1.73:1 against
+	 * the dark theme, and ADR-0013 found no room for a fourth grey to move it
+	 * to — render nowhere. Resolving it in the caller left the chart with two
+	 * bindings to keep in step, and only one of them was changed: the Category
+	 * row read `categoryColour()` while the Subcategory rows under it still
+	 * read the raw seed. So the resolved colour is what `countsFor` hands out,
+	 * and the seed never leaves taxonomy.js for a template to reach.
 	 */
-	it('reports each Category by slug, so the chart can tell a division apart', () => {
-		expect(countsFor(FEATURES, TAXONOMY).categories.map((category) => category.slug))
-			.toEqual(TAXONOMY.map((category) => category.slug))
+	it('hands the chart the neutral for a division, never its inert seed colour', () => {
+		const divisions = [{
+			id: 3,
+			slug: 'division_territorial',
+			label: 'División territorial',
+			color: '#334155',
+			subcategories: [{ id: 31, slug: 'unidad_vecinal', label: 'Unidad Vecinal' }],
+		}]
+
+		const counts = countsFor([feature(8, 31)], divisions)
+
+		expect(counts.categories[0].color).toBe(DEFAULT_SECTOR_COLOUR)
+		expect(JSON.stringify(counts)).not.toContain('#334155')
 	})
 
 	it('keeps a category with nothing in it, so the legend stays stable', () => {

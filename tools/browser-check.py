@@ -2394,6 +2394,8 @@ def a_division_renders_as_a_division(page, failures):
     _the_ground_label_waits_for_its_zoom(page, uv, failures)
     _figure_is_drawn_as_figure(page, sector, neutral, failures)
     _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures)
+    _ground_stays_ground_while_it_is_open(page, uv, failures)
+    _the_chart_draws_a_division_neutral(page, neutral, failures)
 
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -2607,6 +2609,101 @@ def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failur
 
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
+
+def _ground_stays_ground_while_it_is_open(page, uv, failures):
+    """The same Unidad Vecinal, measured AFTER its row is opened.
+
+    A different code path entirely, and the reason this function exists rather
+    than one more assertion above. Opening any shape record copies its geometry
+    onto the draft (`draftFrom`, App.vue), so `drawShapes` stops drawing the
+    Unidad Vecinal and the draft layer starts — and the draft layer used to
+    style everything on it as figure, reasoning that a draft is something the
+    clinic is drawing right now. True of a new polygon; false of a cadastre
+    boundary somebody merely clicked. The checks above measure the path before
+    any row is clicked, so they cannot see this.
+    """
+    shapes = _only_shape(page, uv)
+    if shapes.count() == 0:
+        failures.append(f"{uv!r} drew no shape to open (#21)")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+
+    reopened = page.locator(".leaflet-overlay-pane path")
+    if reopened.count() == 0:
+        failures.append(f"opening {uv!r} left nothing drawn on the map at all (#21)")
+    else:
+        drawn = reopened.first.evaluate(
+            """(path) => {
+                const style = getComputedStyle(path)
+                return { fill: style.fill, dashes: style.strokeDasharray }
+            }""",
+        )
+        if drawn["fill"] != "none":
+            failures.append(
+                f"an OPEN Unidad Vecinal is filled {drawn['fill']!r} — it is read from the "
+                f"cadastre and never drawn by the clinic, and being looked at does not turn "
+                f"ground into figure (#21)",
+            )
+        if re.findall(r"\d+", drawn["dashes"] or "")[:2] != ["2", "3"]:
+            failures.append(
+                f"an OPEN Unidad Vecinal's outline is {drawn['dashes']!r}, not the '2 3' "
+                f"dashed hairline it is drawn with when nothing is open (#21)",
+            )
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def _the_chart_draws_a_division_neutral(page, neutral, failures):
+    """Análisis: the last surface the division Category's `#334155` can reach.
+
+    Both rows of the section, not just the top one. The Category row and the
+    Subcategory rows under it are separate bindings, and the first fix moved
+    only the first — so a install with Sectores or Unidades Vecinales drew its
+    `Sector` and `Unidad Vecinal` bars in the inert seed while the section
+    header above them was correctly neutral.
+    """
+    switch = page.locator(".territorio-main__switch")
+    switch.get_by_role("button", name="Análisis").click()
+    page.wait_for_timeout(600)
+
+    section = page.locator(".territorio-analisis__category").filter(
+        has_text="División territorial",
+    ).first
+    if section.count() == 0:
+        skip("Análisis shows no División territorial section, so its bars are unchecked (#29)")
+        switch.get_by_role("button", name="Mapa").click()
+        page.wait_for_timeout(400)
+        return
+
+    painted = section.locator(
+        ".territorio-analisis__fill, .territorio-analisis__swatch",
+    ).evaluate_all(
+        "(nodes) => nodes.map((node) => getComputedStyle(node).backgroundColor)",
+    )
+
+    if len(painted) < 2:
+        failures.append(
+            "the División territorial section drew fewer than two bars, so the Subcategory "
+            "rows — the ones that kept the seed colour — were not measured (#29)",
+        )
+
+    for colour in painted:
+        if _hex_of(colour) != neutral:
+            failures.append(
+                f"a División territorial bar is painted {colour!r}, not the neutral "
+                f"{neutral} — the seeded `#334155` measures 1.73:1 against the dark theme "
+                f"and ADR-0013 leaves nowhere legible to move it to, so it renders "
+                f"nowhere (#29)",
+            )
+
+    switch.get_by_role("button", name="Mapa").click()
+    page.wait_for_timeout(400)
+
 
 def _ramp_check():
     """tools/ramp-check.py as a module, for its seed reader and its arithmetic.

@@ -73,6 +73,7 @@
 					:selected-id="selectedId"
 					:draft-geometry="draftGeometry"
 					:draft-colour="draft?.colour ?? null"
+					:draft-subcategory-id="draft?.subcategoryId ?? null"
 					:placing="placing"
 					:boundaries="editingLimit ? boundaryFeatures : []"
 					:picked-ids="draft?.picked ?? []"

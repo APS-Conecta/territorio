@@ -39,6 +39,13 @@ describe('how a shape is drawn', () => {
 	 * A cadastre boundary the clinic may never touch must not answer a click the
 	 * same way a Sector does — but a person who opened one from the list still
 	 * has to see which one they opened.
+	 *
+	 * This is the branch the app takes for an OPEN Unidad Vecinal, and it was not
+	 * always: `drawDraft` hardcoded `shapeStyle(null, …)`, so opening one from the
+	 * Datos list drew it as figure while this case went on passing. What the app
+	 * passes is now checked in imports.test.js, and the drawn result in
+	 * tools/browser-check.py::_ground_stays_ground_while_it_is_open — a style
+	 * function nobody calls with the right slug proves nothing on its own.
 	 */
 	it('keeps a Unidad Vecinal ground even while it is selected', () => {
 		const style = shapeStyle(UNIDAD_VECINAL_SLUG, '#334155', true)

@@ -78,6 +78,15 @@ export default {
 		// user's edits back, so there is one geometry and not two.
 		draftGeometry: { type: Object, default: null },
 		draftColour: { type: String, default: null },
+		// What the drafted record is FILED as, so the draft layer draws it the way
+		// drawShapes would have. `draftFrom` copies the geometry of any opened
+		// shape record onto the draft (App.vue), so this is a Unidad Vecinal
+		// whenever one is opened from the list — and a cadastre boundary does not
+		// become figure by being looked at (#21). Null for a brand-new drawing,
+		// which nothing has filed yet. Taken from the draft rather than looked up
+		// in `features`, for the reason `draftColour` is: `features` is the
+		// FILTERED set, and a Capas toggle must not change how a shape is drawn.
+		draftSubcategoryId: { type: Number, default: null },
 		// The Boundary features on screen while a Sector is being built, and which
 		// of them are picked. Empty at every other moment: a comuna is around
 		// eleven thousand lines and they are not the map (issue #12).
@@ -160,6 +169,11 @@ export default {
 			return indexSubcategories(this.taxonomy)
 		},
 
+		/** The drafted record's Subcategory slug; null for a new drawing. */
+		draftSlug() {
+			return this.subcategories.get(this.draftSubcategoryId)?.slug ?? null
+		},
+
 		/** Only Features with a geometry can be drawn; the rest are Datos-only. */
 		mappable() {
 			return this.features.filter((feature) => feature.geometry !== null)
@@ -203,7 +217,7 @@ export default {
 			this.drawShapes()
 		},
 		draftColour() {
-			this.draftLayer?.setStyle(shapeStyle(null, this.draftColour ?? UNKNOWN_COLOUR, true))
+			this.draftLayer?.setStyle(shapeStyle(this.draftSlug, this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
 		// Not deep: this array is replaced wholesale by a fetch, never edited in
 		// place, and walking a few thousand geometries on every change to notice
@@ -597,9 +611,11 @@ export default {
 			}
 
 			const layer = L.GeoJSON.geometryToLayer(this.draftGeometry).addTo(this.map)
-			// Figure, whatever it will be filed as: a draft is a shape the clinic is
-			// drawing right now, which is the definition of curated (CONTEXT.md).
-			layer.setStyle(shapeStyle(null, this.draftColour ?? UNKNOWN_COLOUR, true))
+			// Drawn as what it IS, not as what is being done to it. A new polygon is
+			// filed as nothing yet and reads as figure — the definition of curated
+			// (CONTEXT.md) — but an opened Unidad Vecinal is on this layer too, and
+			// it stays ground (#21).
+			layer.setStyle(shapeStyle(this.draftSlug, this.draftColour ?? UNKNOWN_COLOUR, true))
 			layer.pm.enable({ allowSelfIntersection: false })
 			// pm:edit covers a dragged vertex, pm:update the end of a move.
 			layer.on('pm:edit pm:update', () => this.report(layer))

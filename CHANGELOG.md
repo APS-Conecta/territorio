@@ -37,6 +37,13 @@ A territorial division renders as a division.
   Leaflet plugin that does label collision — monkey-patches `L.LayerGroup.prototype`, which is the
   exact invariant the layer swapping in `TerritorioMap.vue` protects.
 
+  **Opening one from the list does not turn it into figure.** Opening any shape record copies its
+  geometry onto the draft, which moves it from the shapes layer to the draft layer — and the draft
+  layer styled everything on it as figure, reasoning that a draft is a shape the clinic is drawing
+  right now. True of a new polygon, false of a cadastre boundary somebody merely clicked. The draft
+  layer is now told what the drafted record is **filed as**, so a Unidad Vecinal keeps its hairline
+  while it is open and only a brand-new drawing, filed as nothing yet, reads as figure.
+
   **A side effect worth knowing:** with no fill, a Unidad Vecinal stops answering clicks across its
   whole area. Once a comuna's cadastre is loaded it tiles the entire view, so a click meant for the
   map beneath it now reaches the map. It is still selected from the list, and its outline is still
@@ -59,8 +66,10 @@ A territorial division renders as a division.
 
   `#334155` stays in the seed as **inert data** and now says so in a comment. `colourOf` answers
   with the Sector neutral for a division with no colour of its own, `divisionsOf` stops carrying a
-  copy nobody painted, and the Análisis chart — the last surface it could still reach — draws a
-  division neutral through `categoryColour`. `tools/ramp-check.py` drops its `KNOWN, issue #29`
+  copy nobody painted, and in the Análisis chart — the last surface it could still reach — the
+  counts themselves carry the **resolved** colour rather than the stored one. Resolving it in the
+  chart instead left two bindings to keep in step, and only the Category row was changed: the
+  `Sector` and `Unidad Vecinal` bars under it went on painting the seed at opacity 0.55. `tools/ramp-check.py` drops its `KNOWN, issue #29`
   block and the helper that fed it: a division is not a dot, so its colour is out of that check's
   scope.
 

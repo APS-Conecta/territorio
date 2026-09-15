@@ -116,3 +116,31 @@ describe('map tooltips', () => {
 		})
 	})
 })
+
+/**
+ * What a shape IS decides how it is drawn, and no component may answer that by
+ * hand.
+ *
+ * `shapeStyle(null, …)` is the figure branch: solid outline, weight 4, a fill,
+ * and geoman handles on top. TerritorioMap passed a literal `null` for the
+ * draft layer, reasoning that a draft is a shape the clinic is drawing right
+ * now — true of a new polygon, false of an opened Unidad Vecinal, because
+ * `draftFrom` copies the geometry of ANY opened shape record onto the draft
+ * (App.vue). So opening a cadastre boundary from the Datos list gave it the
+ * fill #21 exists to remove, while marks.test.js asserted the ground branch the
+ * app was no longer taking — the criterion read as covered and the real path
+ * was untested.
+ *
+ * Static, for the same reason as the checks above: nothing in this repo loads a
+ * component, so a slug the app never passes reaches no suite.
+ */
+describe('what a shape is drawn as', () => {
+	it.each(componentFiles)('%s never tells shapeStyle a shape is figure by hand', (file) => {
+		const slugs = [...readFileSync(file, 'utf8').matchAll(/shapeStyle\(([^,]*),/g)]
+			.map((match) => match[1].trim())
+
+		slugs.forEach((slug) => {
+			expect(slug, `shapeStyle(${slug}, …) in ${file}`).not.toBe('null')
+		})
+	})
+})

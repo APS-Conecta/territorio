@@ -24,12 +24,19 @@
 			<section v-for="category in shown" :key="category.id" class="territorio-analisis__category">
 				<div class="territorio-analisis__row">
 					<span class="territorio-analisis__label">
-						<span class="territorio-analisis__swatch" :style="{ background: swatchColour(category) }" />
+						<!--
+							`category.color` is what countsFor RESOLVED, never the stored
+							seed: a territorial division answers with the neutral, because
+							its `#334155` measures 1.73:1 against the dark theme (#29). The
+							Subcategory rows below read the same field for that reason —
+							the chart has no second opinion about a Category's colour.
+						-->
+						<span class="territorio-analisis__swatch" :style="{ background: category.color }" />
 						{{ category.label }}
 					</span>
 					<span class="territorio-analisis__track">
 						<span class="territorio-analisis__fill"
-							:style="{ width: width(category.total), background: swatchColour(category) }" />
+							:style="{ width: width(category.total), background: category.color }" />
 					</span>
 					<span class="territorio-analisis__value">{{ category.total }}</span>
 				</div>
@@ -55,7 +62,6 @@
 
 <script>
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
-import { categoryColour } from '../taxonomy.js'
 
 export default {
 	name: 'AnalisisView',
@@ -82,15 +88,6 @@ export default {
 	},
 
 	methods: {
-		/**
-		 * The chart is the last surface the division Category's `#334155` could
-		 * have reached, and it is held to the same bar as a dot: it measures
-		 * 1.73:1 against the dark theme (#29).
-		 */
-		swatchColour(category) {
-			return categoryColour(category)
-		},
-
 		withAny(category) {
 			return category.subcategories.filter((subcategory) => subcategory.total > 0)
 		},

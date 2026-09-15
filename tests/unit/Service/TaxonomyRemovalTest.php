@@ -361,6 +361,137 @@ final class TaxonomyRemovalTest extends TestCase {
 		$this->taxonomy->removeSubcategory(EnsureSeedData::DIVISIONS_SLUG, 'inventado');
 	}
 
+	/**
+	 * The whole seeded shape the fallback tests need: «Sin clasificar» with the
+	 * single «Otro» the seed gives it, an ordinary Category beside it, and the
+	 * division.
+	 */
+	private function seedWholeTaxonomy(): void {
+		$unclassified = self::category(1, EnsureSeedData::FALLBACK['category'], 'Sin clasificar');
+		$salud = self::category(2, 'salud', 'Salud');
+		$divisions = self::category(3, EnsureSeedData::DIVISIONS_SLUG, 'División territorial');
+		$categories = [$unclassified, $salud, $divisions];
+		$this->categories->method('findAll')->willReturn($categories);
+		$this->categories->method('findBySlug')->willReturnCallback(
+			static function (string $slug) use ($categories): Category {
+				foreach ($categories as $category) {
+					if ($category->getSlug() === $slug) {
+						return $category;
+					}
+				}
+
+				throw new \OCP\AppFramework\Db\DoesNotExistException('no');
+			},
+		);
+		$this->subcategories->method('findAll')->willReturn([
+			self::subcategory(11, 1, EnsureSeedData::FALLBACK['subcategory'], 'Otro'),
+			self::subcategory(21, 2, 'cesfam', 'CESFAM'),
+			self::subcategory(22, 2, 'otro', 'Otro'),
+			self::subcategory(31, 3, 'sector', 'Sector'),
+			self::subcategory(32, 3, 'unidad_vecinal', 'Unidad Vecinal'),
+		]);
+		$this->subcategories->method('findBySlug')->willReturnCallback(
+			function (int $categoryId, string $slug): Subcategory {
+				foreach ($this->subcategories->findAll() as $subcategory) {
+					if ((int)$subcategory->getCategoryId() === $categoryId && $subcategory->getSlug() === $slug) {
+						return $subcategory;
+					}
+				}
+
+				throw new \OCP\AppFramework\Db\DoesNotExistException('no');
+			},
+		);
+	}
+
+	/**
+	 * «Sin clasificar» is refused before anything is counted, exactly like the
+	 * division — and for a harder reason than the division has.
+	 *
+	 * Being empty is the NORMAL state of this Category on a clinic that imports
+	 * clean files, so the in-use guard would wave it through on the very installs
+	 * where it matters most. Three places then break at once: an import refuses
+	 * every file («Falta la subcategoría "Sin clasificar · Otro"»,
+	 * `ImportService::prepare()`), a new record silently files itself under the
+	 * first Category in the tree instead — «Comercio y economía · Feria», the
+	 * exact misfiling `defaultSubcategoryId()` exists to prevent — and
+	 * `tools/boundary-features.php` writes a category nothing holds.
+	 *
+	 * And the seed puts it back on the next `occ upgrade`, so the symptom appears
+	 * and vanishes with nothing said anywhere: the same reason the division is
+	 * structural.
+	 */
+	public function testTheImportFallbackCategoryIsRefusedWithoutEvenCounting(): void {
+		$this->seedWholeTaxonomy();
+		$this->features->expects(self::never())->method('countBySubcategory');
+		$this->categories->expects(self::never())->method('delete');
+		$this->subcategories->expects(self::never())->method('delete');
+
+		$this->expectException(InvalidTaxonomyException::class);
+		$this->expectExceptionMessageMatches('/importar/iu');
+
+		$this->taxonomy->removeCategory(EnsureSeedData::FALLBACK['category']);
+	}
+
+	/**
+	 * Whatever a person is allowed to remove, «Sin clasificar · Otro» is still
+	 * there afterwards.
+	 *
+	 * The reason is a dependency rather than a seed rule, so it is asserted as
+	 * one: `ImportService` resolves that exact pair on every run and refuses the
+	 * whole file if it is missing. Guarding only the Category would leave the
+	 * Subcategory reachable — the last-Subcategory guard covers it only for as
+	 * long as the seed's single «Otro» is the only row under it, and
+	 * `addSubcategory()` accepts a second one deliberately.
+	 *
+	 * Everything is empty here on purpose: that is the most permissive state
+	 * there is, so anything refused is refused by a rule and not by a count.
+	 */
+	public function testTheImportFallbackPairSurvivesEveryPermittedRemoval(): void {
+		$this->seedWholeTaxonomy();
+		$this->features->method('countBySubcategory')->willReturn(0);
+
+		$deleted = [];
+		$this->categories->method('delete')
+			->willReturnCallback(function (Category $category) use (&$deleted): Category {
+				$deleted[] = $category->getSlug();
+
+				return $category;
+			});
+		$this->subcategories->method('delete')
+			->willReturnCallback(function (Subcategory $subcategory) use (&$deleted): Subcategory {
+				$deleted[] = $subcategory->getCategoryId() . '/' . $subcategory->getSlug();
+
+				return $subcategory;
+			});
+
+		foreach ($this->categories->findAll() as $category) {
+			foreach ($this->subcategories->findAll() as $subcategory) {
+				if ((int)$subcategory->getCategoryId() !== (int)$category->getId()) {
+					continue;
+				}
+				try {
+					$this->taxonomy->removeSubcategory($category->getSlug(), $subcategory->getSlug());
+				} catch (InvalidTaxonomyException) {
+					// Refused is the outcome this test is looking for; it is the
+					// removals that GO THROUGH that have to leave the pair behind.
+				}
+			}
+			try {
+				$this->taxonomy->removeCategory($category->getSlug());
+			} catch (InvalidTaxonomyException) {
+			}
+		}
+
+		self::assertNotEmpty($deleted,
+			'nothing was removed at all, so this proves nothing: the fixture has to reach the delete');
+		self::assertNotContains(EnsureSeedData::FALLBACK['category'], $deleted,
+			'«Sin clasificar» was removed, so every import now refuses the whole file and a new '
+			. 'record files itself under whatever Category sorts first');
+		self::assertNotContains('1/' . EnsureSeedData::FALLBACK['subcategory'], $deleted,
+			'«Sin clasificar · Otro» was removed: the pair ImportService resolves on every run '
+			. 'is gone even though its Category is still there');
+	}
+
 	/** The whole served tree comes back, because that is what the browser swaps in. */
 	public function testARemovalAnswersWithTheWholeServedTree(): void {
 		$this->seedMappers();

@@ -145,6 +145,25 @@ class EnsureSeedData implements IRepairStep {
 	public const DIVISIONS_SLUG = 'division_territorial';
 
 	/**
+	 * Where anything the app cannot classify ends up — seeded above, named here
+	 * because three things depend on this exact pair being present and none of
+	 * them creates it.
+	 *
+	 * `ImportService::prepare()` resolves it on every run and refuses the whole
+	 * file without it; `defaultSubcategoryId()` in `src/taxonomy.js` starts every
+	 * new record there rather than at the first Category in the tree; and
+	 * `tools/boundary-features.php` writes it into every Limit it fetches.
+	 *
+	 * Which is what makes it structural for `TaxonomyService::removeCategory()`
+	 * (#47): being EMPTY is its ordinary state, so the in-use guard would let it
+	 * go on exactly the installs that depend on it, and this file would put it
+	 * back on the next upgrade with nothing said anywhere.
+	 *
+	 * @var array{category: string, subcategory: string}
+	 */
+	public const FALLBACK = ['category' => 'sin_clasificar', 'subcategory' => 'otro'];
+
+	/**
 	 * The Subcategories of the territorial division this file puts back on every
 	 * upgrade — which is exactly why they cannot be removed (ADR-0016, #47).
 	 *

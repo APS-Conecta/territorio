@@ -76,7 +76,7 @@ const FORMATS = [
 	{ value: 'geojson', label: 'GeoJSON — completo, se puede volver a importar' },
 	{ value: 'csv', label: 'CSV — para planilla de cálculo' },
 	{ value: 'kml', label: 'KML — solo nombre y ubicación, para Google Earth' },
-	{ value: 'kmz', label: 'KMZ — el mismo archivo comprimido, pesa menos' },
+	{ value: 'kmz', label: 'KMZ — el KML comprimido, pesa menos' },
 ]
 
 export default {

@@ -3886,7 +3886,7 @@ def _rename_in_capas(page, row, label, what, failures):
     return True
 
 
-def a_layer_can_be_renamed_without_a_reload(page, failures):
+def a_category_can_be_renamed_without_a_reload(page, failures):
     """#41: rename a Category and a Subcategory, and see it everywhere at once.
 
     "Without a reload" is the criterion, and it is the one thing no other suite
@@ -4230,7 +4230,7 @@ def main():
         # After the cluster records above, because it renames the Category they
         # are filed under and Análisis draws no section for a Category holding
         # nothing. It puts both names back when it is done.
-        a_layer_can_be_renamed_without_a_reload(page, failures)
+        a_category_can_be_renamed_without_a_reload(page, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

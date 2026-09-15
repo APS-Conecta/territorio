@@ -75,19 +75,20 @@
 						<NcIconSvgWrapper :svg="glyphFor(category.slug)" :size="11" />
 					</span>
 					<!--
-						Renaming happens in place, in the row itself: this panel IS the
-						Category tree, and it is where a person already goes to think
-						about layers (#36). A click is stopped like the checkbox above
-						stops one, and so is a space: this input sits inside a
-						<summary>, where both default to toggling the branch — typing
-						a two-word name would otherwise fold the row being renamed.
+						Renaming happens in place, in the row itself: there is no separate
+						"layer" object (CONTEXT.md), this panel IS the Category tree, and
+						it is already where a person goes to switch Categories on and off
+						(#36). A click is stopped like the checkbox above stops one, and so
+						is a space: this input sits inside a <summary>, where both default
+						to toggling the branch — typing a two-word name would otherwise
+						fold the row being renamed.
 					-->
 					<input v-if="renaming === keyOf(category)"
 						ref="rename"
 						v-model="draftLabel"
 						class="territorio-capas__input"
 						:maxlength="LABEL_LENGTH"
-						aria-label="Nuevo nombre de la capa"
+						aria-label="Nuevo nombre de la categoría"
 						@click.stop
 						@keydown.stop.enter.prevent="commit(category)"
 						@keydown.esc="cancel"

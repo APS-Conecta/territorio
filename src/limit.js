@@ -266,8 +266,11 @@ export function provenance(history, imported = false) {
 		const since = `Línea fijada junto con el límite${said(together.changedAt)} y guardada de nuevo${said(line.changedAt)}`
 
 		// Two dates in order already say the line was written after the Limit, so
-		// only the other order still needs a clause of its own.
-		return line.revision > limit.revision ? `${since}.` : `${since}; el límite se anotó después.`
+		// only the other order still needs a clause of its own — and there the
+		// Limit was EDITED rather than first noted, because `together` proves one
+		// already stood. That is why the branches below, where none ever did, say
+		// «se anotó» and this one does not.
+		return line.revision > limit.revision ? `${since}.` : `${since}; el límite se editó después.`
 	}
 
 	// Nothing here ever wrote the two together, so there is no origin to name — a

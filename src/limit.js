@@ -145,9 +145,17 @@ function wrote(entry, field) {
 	return change !== undefined && change.to !== null
 }
 
-/** A stored timestamp as a date is said out loud here: 12-08-2026. */
+/**
+ * A stored timestamp as a date is said out loud here: 12-08-2026.
+ *
+ * Split on either separator, and nothing said at all when the shape is not the
+ * one expected. History hands this over exactly as the database returned it —
+ * `RevisionLog` reads the raw column — so the separator is the driver's choice,
+ * and a date rendered as «el 12T09:30:00+00:00-08-2026» is worse than a sentence
+ * with no date in it.
+ */
 function said(changedAt) {
-	const [date] = String(changedAt ?? '').split(' ')
+	const [date] = String(changedAt ?? '').split(/[ T]/)
 	const parts = date.split('-')
 
 	return parts.length === 3 ? ` el ${parts[2]}-${parts[1]}-${parts[0]}` : ''

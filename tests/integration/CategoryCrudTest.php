@@ -37,6 +37,18 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	/** Labels to put back, keyed "categorySlug" or "categorySlug/subSlug". */
 	private array $restore = [];
 
+	/**
+	 * Pictograms to put back, keyed by Category slug (#46).
+	 *
+	 * Separate from `$restore` because null is a value here — "the mark the app
+	 * ships for this slug" — and a null in that array would read as "no label
+	 * was remembered". A seeded Category left wearing this test's mark would
+	 * change what every later run, and the browser gate, sees on the map.
+	 *
+	 * @var array<string, ?string>
+	 */
+	private array $restoreGlyphs = [];
+
 	/** @var int[] Subcategories this test added, to be removed afterwards. */
 	private array $added = [];
 
@@ -52,6 +64,11 @@ final class CategoryCrudTest extends IntegrationTestCase {
 				: $taxonomy->renameSubcategory($parts[0], $parts[1], $label);
 		}
 		$this->restore = [];
+
+		foreach ($this->restoreGlyphs as $slug => $glyph) {
+			$taxonomy->setCategoryGlyph($slug, $glyph ?? '');
+		}
+		$this->restoreGlyphs = [];
 
 		// The Features first, which is what the parent does: one of them may be
 		// filed under a Subcategory removed just below, and nothing in the schema
@@ -131,8 +148,8 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 *
 	 * @return array{0: list<array<string, mixed>>, 1: array<string, mixed>} the served tree and the new Category
 	 */
-	private function addCategory(string $label): array {
-		$tree = $this->taxonomy()->addCategory($label);
+	private function addCategory(string $label, string $glyph = ''): array {
+		$tree = $this->taxonomy()->addCategory($label, $glyph);
 		$slug = TaxonomyService::slugFor($label);
 		$category = $this->served($slug);
 		self::assertNotNull($category, "«$label» was added but is not served as \"$slug\"");
@@ -198,6 +215,21 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			: $this->servedSub($parts[0], $parts[1]);
 		self::assertNotNull($node, "the seed should have created \"$path\"");
 		$this->restore[$path] = $node['label'];
+	}
+
+	/**
+	 * Remember a Category's pictogram so tearDown puts it back (#46).
+	 *
+	 * Its own helper rather than a flag on `remember()`: that one reads a label
+	 * out of a node that may be a Subcategory, and a Subcategory has no mark of
+	 * its own — it is drawn with its Category's (ADR-0013).
+	 */
+	private function rememberGlyph(string $slug): void {
+		$category = $this->served($slug);
+		self::assertNotNull($category, "the seed should have created \"$slug\"");
+		self::assertArrayHasKey('glyph', $category,
+			'the served tree carries no `glyph` at all, so nothing below asserts anything');
+		$this->restoreGlyphs[$slug] = $category['glyph'];
 	}
 
 	/** Swallows the repair step's chatter, as RampRepaintTest does. */
@@ -924,5 +956,148 @@ final class CategoryCrudTest extends IntegrationTestCase {
 
 		self::assertSame($this->taxonomy()->tree(), $tree);
 		self::assertContains('Medioambiente y aseo', array_column($tree, 'label'));
+	}
+
+	/**
+	 * Issue #46: the mark a clinic picks is stored against the Category and comes
+	 * back through the tree every surface reads.
+	 *
+	 * Read back through `tree()` and not off the row, like everything else here:
+	 * a test that asserts against what it just wrote proves the database works,
+	 * not that the app does. The map pin, the Datos list and the Capas legend all
+	 * draw from that tree, so a mark that does not reach it reaches none of them.
+	 */
+	public function testAPictogramPickedWhileNamingACategoryIsServedWithIt(): void {
+		[$tree, $category] = $this->addCategory('Comité de vivienda', 'town');
+
+		self::assertSame('town', $category['glyph']);
+		self::assertSame($this->taxonomy()->tree(), $tree,
+			'the add answered with something other than the tree the browser swaps in');
+	}
+
+	/**
+	 * «A Category with no chosen mark still draws the neutral fallback rather
+	 * than a blank» — which is a promise about NULL reaching the browser. The
+	 * eleven the seed ships are all in that state: their pictograms are keyed by
+	 * slug in `src/glyphs.js` and no row carries a copy.
+	 */
+	public function testACategoryNobodyHasPickedForIsServedWithNoMarkAtAll(): void {
+		[, $category] = $this->addCategory('Comité sin pictograma');
+
+		self::assertNull($category['glyph'],
+			'a Category added without a mark came back carrying one');
+		// Every Category, not only the new one: the key has to be in the served
+		// tree for the browser to fall back deliberately rather than by accident.
+		// Asserted as presence and not as null, because a seeded Category the
+		// clinic re-pointed is a real state on a long-lived instance.
+		foreach ($this->taxonomy()->tree() as $served) {
+			self::assertArrayHasKey('glyph', $served,
+				"the served tree carries no `glyph` key for \"{$served['slug']}\"");
+		}
+		self::assertNull($this->served(EnsureSeedData::DIVISIONS_SLUG)['glyph'],
+			'a seeded Category is carrying a stored mark, so the slug-keyed map is being bypassed');
+	}
+
+	/** «And changed afterwards» — including back to nothing. */
+	public function testTheMarkCanBeChangedAfterwardsAndPutBackToNone(): void {
+		[, $category] = $this->addCategory('Comité de cultura', 'town');
+
+		$this->taxonomy()->setCategoryGlyph($category['slug'], 'theatre');
+		self::assertSame('theatre', $this->served($category['slug'])['glyph']);
+
+		// The way back from a mark picked in a hurry: the Category returns to the
+		// neutral fallback, which is what it drew before anybody picked (ADR-0017).
+		$this->taxonomy()->setCategoryGlyph($category['slug'], '');
+		self::assertNull($this->served($category['slug'])['glyph'],
+			'clearing the mark left something in the column, so the Category still asserts one');
+	}
+
+	/**
+	 * A seeded Category can be re-pointed too, and the seed must not undo it.
+	 *
+	 * The same promise `testARenameSurvivesAnUpgrade` makes about a label, and it
+	 * is worth making separately: `ensureRamp()` walks the seeded eleven row by
+	 * row on an upgrade, and it is the one step that writes to a Category nobody
+	 * touched.
+	 */
+	public function testAMarkChosenForASeededCategorySurvivesAnUpgrade(): void {
+		$this->rememberGlyph(self::CATEGORY);
+
+		$this->taxonomy()->setCategoryGlyph(self::CATEGORY, 'recycling');
+		Server::get(EnsureSeedData::class)->run($this->silentOutput());
+
+		self::assertSame('recycling', $this->served(self::CATEGORY)['glyph'],
+			'the upgrade threw away the pictogram the clinic chose');
+	}
+
+	/**
+	 * «It survives an upgrade», for the case the criterion is really about: a
+	 * Category the clinic added, with the mark it was created with, after the
+	 * repair step has run. An upgrade is the one moment nobody is watching.
+	 */
+	public function testAnAddedCategoryKeepsItsMarkThroughAnUpgrade(): void {
+		[, $category] = $this->addCategory('Comité de seguridad vecinal', 'police');
+
+		Server::get(EnsureSeedData::class)->run($this->silentOutput());
+
+		$after = $this->served($category['slug']);
+		self::assertNotNull($after, 'the upgrade removed a Category the clinic added');
+		self::assertSame($category, $after,
+			'the added Category came back repainted, renamed, re-marked or with a new id');
+	}
+
+	/**
+	 * `glyph` is VARCHAR(64) and the route is open to every user (ADR-0005), so
+	 * what arrives is not what the picker sent. A shape this app will not store is
+	 * refused with a sentence rather than arriving as the database's own error
+	 * through a 500 — the same treatment an over-long label gets.
+	 */
+	public function testAMarkThisAppWillNotStoreIsRefusedAndNothingIsWritten(): void {
+		[, $category] = $this->addCategory('Comité de deportes', 'pitch');
+
+		try {
+			$this->taxonomy()->setCategoryGlyph($category['slug'], str_repeat('a', 65));
+			self::fail('a 65-character name was accepted into a 64-character column');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('pictograma', $e->getMessage());
+		}
+
+		self::assertSame('pitch', $this->served($category['slug'])['glyph'],
+			'the refusal still wrote, so the Category lost the mark it had');
+	}
+
+	/**
+	 * And on the add path, before the row exists: the refusal must not leave a
+	 * Category behind that nothing asked for — it would hold a spare colour
+	 * (ADR-0017) that nothing hands back until #47.
+	 */
+	public function testACategoryIsNotCreatedAtAllWhenItsMarkIsRefused(): void {
+		$before = count($this->taxonomy()->tree());
+
+		try {
+			$this->taxonomy()->addCategory('Comité imposible', '../../etc/passwd');
+			self::fail('a name shaped like a path was accepted as a pictogram');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('pictograma', $e->getMessage());
+		}
+
+		self::assertCount($before, $this->taxonomy()->tree(),
+			'the refusal created the Category anyway, and it is holding a spare colour');
+		self::assertNull($this->served('comite_imposible'));
+	}
+
+	public function testChoosingAMarkForACategoryNobodyHasIsNotFound(): void {
+		$this->expectException(DoesNotExistException::class);
+
+		$this->taxonomy()->setCategoryGlyph('no-existe', 'park');
+	}
+
+	/** The whole tree comes back, because that is what the browser swaps in. */
+	public function testChoosingAMarkAnswersWithTheWholeServedTree(): void {
+		[, $category] = $this->addCategory('Comité de adelanto local');
+
+		$tree = $this->taxonomy()->setCategoryGlyph($category['slug'], 'town-hall');
+
+		self::assertSame($this->taxonomy()->tree(), $tree);
 	}
 }

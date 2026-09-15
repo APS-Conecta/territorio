@@ -3,6 +3,50 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.57.0] — unreleased
+
+A cluster's colour means a Category again, and the map finally says how well it knows where a
+record is.
+
+### Changed
+
+- **A cluster is coloured by the Categories under it, never by how many records it holds** (#22).
+  `leaflet.markercluster` buckets purely on `getChildCount()` — green under 10, yellow under 100,
+  orange at 100+ — so on the same map green meant «Deporte y recreación» at one zoom and "more than
+  100 records" at the next. One visual channel carrying two unrelated meanings, switching as you
+  scroll, and the one channel that groups Categories (ADR-0013) was the one being spent. The count
+  was already written inside the bubble, so hue was not carrying it — it was duplicating it badly.
+
+  The bubble is now a ring segmented by the Categories present, sized by how many records each
+  holds, with the count in the middle in the theme's own ink. A cluster of one Category is one solid
+  band, which is what a majority glyph could never have shown — that criterion is why the obvious
+  design was ruled out. `MarkerCluster.Default.css` is no longer imported: it is, in its entirety,
+  the three count buckets, so not importing it is what makes "no hue in the cluster means a number"
+  true of the shipped bundle rather than of an intention. ~40 lines through `iconCreateFunction`,
+  which markercluster was already offering and this app was already passing an options object to;
+  `@kalisio/leaflet.donutcluster` was 459 lines and an undeclared `window._`, and was rejected.
+
+- **An approximate coordinate draws a dashed ring** (#23). `locationQuality` was stored, validated,
+  imported, exported and shown in the history — and drawn nowhere, so an `aproximada` record was
+  pixel-identical to an `exacta` one and the map asserted a precision the Registry never claimed.
+  For a team deciding where to visit, that is the difference between a street and a guess.
+
+  The white ring already round every pin simply goes dashed, which is why this treatment won: it
+  costs no footprint at all, and #37 was simultaneously arguing the pin is too small while La
+  Florida holds ~865 places, so a halo or an edge badge spends space at exactly the wrong moment.
+  Both were drawn and rejected. It is a dash and not an opacity because opacity is hue and alpha —
+  the channel a dichromacy takes away and the one this map already overloads — and because dashed
+  now means one thing across the whole app: *the app is not asserting this precisely*, exactly as a
+  cadastre boundary the clinic did not draw does (ADR-0015). A cluster holding any approximate
+  record inherits the same dashed ring.
+
+  `sin_coordenada` gets no mark, because a record with no coordinate is not drawn at all and the
+  Datos list already says «· sin coordenada». The `draftFrom()` coercion of `sin_coordenada` to
+  `exacta` was revisited as #23 asked and **kept**, now with a comment saying why: the picker offers
+  two options because Absent is derived and never chosen, `payload()` posts the whole draft, and a
+  draft left holding `sin_coordenada` would post it alongside the first coordinate someone typed —
+  which the server refuses outright — while the sidebar was showing «Exacta».
+
 ## [0.56.0] — unreleased
 
 A territorial division renders as a division.
@@ -89,47 +133,9 @@ A territorial division renders as a division.
 
 ## [0.55.0] — unreleased
 
-The map pin is big enough to read, the glyphs beside a label are white at last, and the map finally
-says how well it knows where a record is.
+The map pin is big enough to read, and the glyphs beside a label are white at last.
 
 ### Changed
-
-- **A cluster is coloured by the Categories under it, never by how many records it holds** (#22).
-  `leaflet.markercluster` buckets purely on `getChildCount()` — green under 10, yellow under 100,
-  orange at 100+ — so on the same map green meant «Deporte y recreación» at one zoom and "more than
-  100 records" at the next. One visual channel carrying two unrelated meanings, switching as you
-  scroll, and the one channel that groups Categories (ADR-0013) was the one being spent. The count
-  was already written inside the bubble, so hue was not carrying it — it was duplicating it badly.
-
-  The bubble is now a ring segmented by the Categories present, sized by how many records each
-  holds, with the count in the middle in the theme's own ink. A cluster of one Category is one solid
-  band, which is what a majority glyph could never have shown — that criterion is why the obvious
-  design was ruled out. `MarkerCluster.Default.css` is no longer imported: it is, in its entirety,
-  the three count buckets, so not importing it is what makes "no hue in the cluster means a number"
-  true of the shipped bundle rather than of an intention. ~40 lines through `iconCreateFunction`,
-  which markercluster was already offering and this app was already passing an options object to;
-  `@kalisio/leaflet.donutcluster` was 459 lines and an undeclared `window._`, and was rejected.
-
-- **An approximate coordinate draws a dashed ring** (#23). `locationQuality` was stored, validated,
-  imported, exported and shown in the history — and drawn nowhere, so an `aproximada` record was
-  pixel-identical to an `exacta` one and the map asserted a precision the Registry never claimed.
-  For a team deciding where to visit, that is the difference between a street and a guess.
-
-  The white ring already round every pin simply goes dashed, which is why this treatment won: it
-  costs no footprint at all, and #37 was simultaneously arguing the pin is too small while La
-  Florida holds ~865 places, so a halo or an edge badge spends space at exactly the wrong moment.
-  Both were drawn and rejected. It is a dash and not an opacity because opacity is hue and alpha —
-  the channel a dichromacy takes away and the one this map already overloads — and because dashed
-  now means one thing across the whole app: *the app is not asserting this precisely*, exactly as a
-  cadastre boundary the clinic did not draw does (ADR-0015). A cluster holding any approximate
-  record inherits the same dashed ring.
-
-  `sin_coordenada` gets no mark, because a record with no coordinate is not drawn at all and the
-  Datos list already says «· sin coordenada». The `draftFrom()` coercion of `sin_coordenada` to
-  `exacta` was revisited as #23 asked and **kept**, now with a comment saying why: the picker offers
-  two options because Absent is derived and never chosen, `payload()` posts the whole draft, and a
-  draft left holding `sin_coordenada` would post it alongside the first coordinate someone typed —
-  which the server refuses outright — while the sidebar was showing «Exacta».
 
 - **The map pin is 26px with a 19px glyph** (#37). It was 22/14, and 12px of mark was derived by
   rendering the eleven pictograms side by side at a desk — which says nothing about reading a pin

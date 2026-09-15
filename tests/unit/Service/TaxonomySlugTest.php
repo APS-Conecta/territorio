@@ -41,12 +41,18 @@ final class TaxonomySlugTest extends TestCase {
 	/**
 	 * `slug` is VARCHAR(64). A label can be 128, so the cap is real and not
 	 * theoretical — and cutting at 64 must not leave the underscore that was the
-	 * 64th character, because that is a different slug from the one the same
-	 * label would make a second time.
+	 * 64th character, because a slug ending in a separator is not what the same
+	 * label reads as anywhere else.
+	 *
+	 * Words of four, on purpose: «abc » lands a separator exactly on the 64th
+	 * character. A first version of this test used words of three, where the cut
+	 * falls mid-word, and it passed with the trim taken back out — a fixture that
+	 * cannot reach the case is not a check.
 	 */
 	public function testTheSlugFitsTheColumnAndDoesNotEndInASeparator(): void {
-		$slug = TaxonomyService::slugFor(str_repeat('ab ', 40));
+		$slug = TaxonomyService::slugFor(str_repeat('abc ', 20));
 
+		self::assertSame(str_repeat('abc_', 15) . 'abc', $slug);
 		self::assertLessThanOrEqual(64, strlen($slug));
 		self::assertStringEndsNotWith('_', $slug);
 	}

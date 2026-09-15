@@ -50,6 +50,17 @@ class CsvWriter {
 		// only when they need them.
 		$headings = [...array_keys($columns), 'Latitud', 'Longitud'];
 
+		// A COLUMN, because RFC 4180 has no comment syntax (#28): a line above the
+		// header breaks header detection and a trailing line of a different width
+		// breaks a strict parser, so a cell is the only place a CSV can hold the
+		// licence without breaking whoever reads the file. Present only when the
+		// set needs it, so a file of the clinic's own records does not grow an
+		// empty column nobody can explain.
+		$licence = OsmAttribution::required($rows);
+		if ($licence) {
+			$headings[] = 'Licencia';
+		}
+
 		// fputcsv rather than implode: a Chilean address has commas in it and a
 		// note can have quotes in it, and one unquoted comma shifts every column
 		// after it for the rest of the file — silently, and only for the rows a
@@ -59,14 +70,21 @@ class CsvWriter {
 
 		foreach ($rows as $row) {
 			[$lat, $lon] = self::coordinate($row['geometry'] ?? null);
-			fputcsv($handle, [
+			$cells = [
 				...array_map(
 					static fn (string $key): string => self::text($row[$key] ?? ''),
 					array_values($columns),
 				),
 				$lat,
 				$lon,
-			], ',', '"', '');
+			];
+			if ($licence) {
+				// Only on the rows it is about: a mixed set is the normal case, and
+				// the same line on every row would say the municipality's own
+				// catastro belongs to OpenStreetMap.
+				$cells[] = OsmAttribution::isFromOsm($row) ? OsmAttribution::NOTICE : '';
+			}
+			fputcsv($handle, $cells, ',', '"', '');
 		}
 
 		rewind($handle);

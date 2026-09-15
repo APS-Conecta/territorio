@@ -34,10 +34,17 @@ class KmlWriter {
 			$placemarks .= $this->placemark($row);
 		}
 
+		// Appended to the description this Document already has (#28). It is the
+		// one place KML lets a file say a sentence to whoever opens it, and an
+		// <atom:author> of its own would cost a namespace declaration for
+		// something Google Earth shows in the same panel anyway.
+		$description = self::CANNOT_CARRY
+			. (OsmAttribution::required($rows) ? ' ' . OsmAttribution::NOTICE : '');
+
 		return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
 			. '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>' . "\n"
 			. '<name>Territorio</name>' . "\n"
-			. '<description>' . self::escape(self::CANNOT_CARRY) . '</description>' . "\n"
+			. '<description>' . self::escape($description) . '</description>' . "\n"
 			. $placemarks
 			. '</Document></kml>' . "\n";
 	}

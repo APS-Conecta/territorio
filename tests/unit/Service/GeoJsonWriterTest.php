@@ -38,6 +38,23 @@ final class GeoJsonWriterTest extends TestCase {
 		'sourceRef' => 'Catastro municipal',
 	];
 
+	/**
+	 * The same record as it reaches an export from an OSM-derived Dataset.
+	 *
+	 * `tools/boundary-features.php` stamps `source_es: OpenStreetMap` and a
+	 * `source_url` on everything it produces (ADR-0004), and `GeoJsonReader`
+	 * joins the two into `sourceRef` — which is the only thing an exported row
+	 * knows about where it came from.
+	 */
+	private const FROM_OSM = 'OpenStreetMap — https://www.openstreetmap.org/way/101';
+
+	/** @return array<string, mixed> */
+	private static function osmRow(): array {
+		// array_merge, not `+`: it keeps FULL's key ORDER, which the round-trip
+		// assertions below compare with assertSame.
+		return array_merge(self::FULL, ['sourceRef' => self::FROM_OSM]);
+	}
+
 	/** @param list<array<string, mixed>> $rows */
 	private function roundTrip(array $rows, bool $contacts = true): array {
 		$json = (new GeoJsonWriter())->write($rows, $contacts);
@@ -148,6 +165,51 @@ final class GeoJsonWriterTest extends TestCase {
 			['type' => 'Point', 'coordinates' => [-70.5811, -33.5211]],
 			$written['features'][0]['geometry'],
 		);
+	}
+
+	/**
+	 * ODbL asks for the LICENCE to be named, not only the source (#28).
+	 *
+	 * At the top level rather than on each feature: RFC 7946 §6.1 allows foreign
+	 * members on a FeatureCollection, the licence asks for one attribution and
+	 * not one per row, and a property repeated on every feature would come back
+	 * in on the next import as though somebody had typed it.
+	 */
+	public function testAnExportHoldingOsmDataNamesTheLicence(): void {
+		$written = json_decode((new GeoJsonWriter())->write([self::osmRow()], true), true);
+
+		self::assertArrayHasKey('license', $written);
+		self::assertStringContainsString('OpenStreetMap', $written['license']);
+		self::assertStringContainsString('ODbL', $written['license']);
+		self::assertStringContainsString('https://www.openstreetmap.org/copyright', $written['license']);
+	}
+
+	/**
+	 * And an export with nothing of OSM's in it does not say it has.
+	 *
+	 * A notice on every file would be a lie about the municipal catastro, and a
+	 * standing lie is read as boilerplate — which is how the real one stops
+	 * being noticed.
+	 */
+	public function testAnExportOfLocalRecordsCarriesNoLicence(): void {
+		$written = json_decode((new GeoJsonWriter())->write([self::FULL], true), true);
+
+		self::assertArrayNotHasKey('license', $written);
+	}
+
+	/**
+	 * The notice must not cost the round trip (#28: it must not break a consumer).
+	 *
+	 * `GeoJsonReader` ignores top-level members it does not know — but "ignores"
+	 * is exactly the kind of claim that stops being true the day somebody
+	 * tightens the reader, and this is the export that goes back in.
+	 */
+	public function testTheLicenceDoesNotDisturbTheReImport(): void {
+		$back = $this->roundTrip([self::osmRow()]);
+
+		self::assertCount(1, $back);
+		unset($back[0]['comuna']);
+		self::assertSame(self::osmRow(), $back[0]);
 	}
 
 	/** Exporting nothing is an empty collection, not a broken file. */

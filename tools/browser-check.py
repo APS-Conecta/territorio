@@ -3886,6 +3886,113 @@ def _rename_in_capas(page, row, label, what, failures):
     return True
 
 
+SEEDED_CATEGORY, SEEDED_SUB = "Salud", "CESFAM"
+
+
+def _open_capas_branch(page, row):
+    """Open one Category branch of the Capas panel, and only if it is closed.
+
+    Clicking a `<summary>` toggles it, so a branch another check left open would
+    be folded shut here, and every locator below would then wait for a row that
+    is in the DOM and not on the screen.
+    """
+    if not row.evaluate("node => node.open"):
+        row.locator(".territorio-capas__name").click()
+        page.wait_for_timeout(400)
+
+
+def _seeded_pair(page):
+    """What the Registry calls «salud» and its «cesfam» right now, or None.
+
+    By slug, because the label is the thing in doubt: a run that stopped part
+    way through the rename below left this instance under a name no variable
+    here remembers, and the slug is the one thing a rename does not move (#40).
+    """
+    served = served_taxonomy(page)
+    if served is None:
+        return None
+
+    category = next((entry for entry in served if entry["slug"] == "salud"), None)
+    if category is None:
+        return None
+
+    sub = next(
+        (entry for entry in category["subcategories"] if entry["slug"] == "cesfam"),
+        None,
+    )
+
+    return category["label"], None if sub is None else sub["label"]
+
+
+def _the_seeded_names_are_put_back(page, failures):
+    """Rename «salud» and «cesfam» back to the labels the seed gave them.
+
+    Nothing on the instance does this by itself — `testARenameSurvivesAnUpgrade`
+    proves exactly that an upgrade leaves a renamed Category renamed — so a name
+    left changed here stays changed for every later run: the check below would
+    find no «Salud» to press the pencil on, for ever, and every other check that
+    picks "Salud · CESFAM" out of the picker by name would lose its option.
+
+    So this runs at both ends of the rename. On the way out it runs from a
+    `finally`, and addresses the rows by what the Registry calls the slugs NOW
+    rather than by a name a path that returned early never set. On the way in it
+    heals what an earlier run left behind — a slow patch, a flaky `settles`, a
+    Ctrl-C — instead of the check failing identically for ever.
+    """
+    names = _seeded_pair(page)
+    if names is None:
+        failures.append(
+            "the app served no taxonomy for «salud», so nothing could tell whether the seeded "
+            "names need putting back",
+        )
+        return
+
+    category_label, sub_label = names
+    # A missing «cesfam» is not something a rename can cause — it is reported
+    # against the Registry — and here it only means there is no name to put back.
+    wanted = (SEEDED_CATEGORY, None if sub_label is None else SEEDED_SUB)
+    if names == wanted:
+        return
+
+    # The Subcategory first: it is addressed inside its Category's branch, and
+    # renaming the Category would move the branch out from under this locator.
+    if sub_label is not None and sub_label != SEEDED_SUB:
+        row = _capas_category(page, category_label)
+        if row.count() == 0:
+            failures.append(
+                f"the Capas panel shows no «{category_label}» Category, so «{sub_label}» cannot "
+                f"be renamed back",
+            )
+        else:
+            _open_capas_branch(page, row)
+            child = row.locator(".territorio-capas__child").filter(has_text=sub_label)
+            if child.count() == 0:
+                failures.append(
+                    f"«{sub_label}» is not in the Capas panel to be renamed back",
+                )
+            else:
+                _rename_in_capas(
+                    page, child.first, SEEDED_SUB, "the Subcategory back", failures
+                )
+
+    if category_label != SEEDED_CATEGORY:
+        row = _capas_category(page, category_label)
+        if row.count() == 0:
+            failures.append(
+                f"the Capas panel shows no «{category_label}» Category to rename back",
+            )
+        else:
+            _rename_in_capas(page, row, SEEDED_CATEGORY, "the Category back", failures)
+
+    if not settles(page, lambda: _seeded_pair(page) == wanted, timeout=6_000):
+        failures.append(
+            f"the seeded taxonomy is left changed on this shared instance: the Registry calls "
+            f"«salud» and «cesfam» {_seeded_pair(page)}, not «{SEEDED_CATEGORY}» and "
+            f"«{SEEDED_SUB}», and no seed or upgrade puts them back — every later run will find "
+            f"no «{SEEDED_CATEGORY}» Category to rename",
+        )
+
+
 def a_category_can_be_renamed_without_a_reload(page, failures):
     """#41: rename a Category and a Subcategory, and see it everywhere at once.
 
@@ -3903,106 +4010,88 @@ def a_category_can_be_renamed_without_a_reload(page, failures):
 
     Renames «Salud» and its «CESFAM», because this run's clustered records are
     filed there, and Análisis draws no section for a Category holding nothing.
-    Both names are put back at the end: this instance is shared, and several
-    checks here pick "Salud · CESFAM" out of the picker by name.
+    This instance is shared and several checks here pick "Salud · CESFAM" out of
+    the picker by name, so the names are put back by
+    `_the_seeded_names_are_put_back` — from a `finally`, because a rename that
+    fails halfway has changed the instance just as much as one that succeeds.
     """
-    original_category, original_sub = "Salud", "CESFAM"
-    renamed_category = f"Salud {RUN}"
-    renamed_sub = f"CESFAM {RUN}"
+    renamed_category = f"{SEEDED_CATEGORY} {RUN}"
+    renamed_sub = f"{SEEDED_SUB} {RUN}"
 
     # Análisis counts the filtered set, and an earlier check may have left a
     # query in the box.
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
-    row = _capas_category(page, original_category)
-    if row.count() == 0:
-        failures.append(
-            f"the Capas panel shows no «{original_category}» Category to rename"
+    # Before anything looks for «Salud» by name: an earlier run that died mid
+    # rename left it called something else, and only this puts it back.
+    _the_seeded_names_are_put_back(page, failures)
+
+    try:
+        row = _capas_category(page, SEEDED_CATEGORY)
+        if not settles(page, lambda: row.count() > 0, timeout=4_000):
+            failures.append(
+                f"the Capas panel shows no «{SEEDED_CATEGORY}» Category to rename"
+            )
+            return
+        if not _rename_in_capas(
+            page, row, renamed_category, f"«{SEEDED_CATEGORY}»", failures
+        ):
+            return
+
+        renamed_row = _capas_category(page, renamed_category)
+        if not settles(page, lambda: renamed_row.count() > 0, timeout=6_000):
+            failures.append(
+                f"the Capas panel still reads «{SEEDED_CATEGORY}» after a rename — it did not "
+                f"update without a reload",
+            )
+            return
+
+        # Open the branch, so the Subcategory rows are on screen to rename.
+        _open_capas_branch(page, renamed_row)
+        child = renamed_row.locator(".territorio-capas__child").filter(
+            has_text=SEEDED_SUB
         )
-        return
-    if not _rename_in_capas(
-        page, row, renamed_category, f"«{original_category}»", failures
-    ):
-        return
+        if child.count() == 0:
+            failures.append(
+                f"«{SEEDED_SUB}» is not under «{renamed_category}» in the Capas panel"
+            )
+            return
+        if not _rename_in_capas(
+            page, child.first, renamed_sub, f"«{SEEDED_SUB}»", failures
+        ):
+            return
 
-    renamed_row = _capas_category(page, renamed_category)
-    if not settles(page, lambda: renamed_row.count() > 0, timeout=6_000):
-        failures.append(
-            f"the Capas panel still reads «{original_category}» after a rename — it did not "
-            f"update without a reload",
+        if not settles(
+            page,
+            lambda: (
+                _capas_category(page, renamed_category)
+                .locator(".territorio-capas__child")
+                .filter(has_text=renamed_sub)
+                .count()
+                > 0
+            ),
+            timeout=6_000,
+        ):
+            failures.append(
+                f"the Capas panel still reads «{SEEDED_SUB}» after a rename — it did not update "
+                f"without a reload",
+            )
+
+        _the_picker_offers_the_new_name(
+            page, f"{renamed_category} · {renamed_sub}", failures
         )
-        return
+        _analisis_reads_the_new_name(page, renamed_category, renamed_sub, failures)
 
-    # Open the branch, so the Subcategory rows are on screen to rename — and only
-    # if it is closed. Clicking a <summary> toggles it, so a branch another check
-    # left open would be folded shut here, and every locator below would then
-    # wait for a row that is in the DOM and not on the screen.
-    if not renamed_row.evaluate("node => node.open"):
-        renamed_row.locator(".territorio-capas__name").click()
-        page.wait_for_timeout(400)
-    child = renamed_row.locator(".territorio-capas__child").filter(
-        has_text=original_sub
-    )
-    if child.count() == 0:
-        failures.append(
-            f"«{original_sub}» is not under «{renamed_category}» in the Capas panel"
-        )
-        return
-    if not _rename_in_capas(
-        page, child.first, renamed_sub, f"«{original_sub}»", failures
-    ):
-        return
+        served = served_taxonomy(page)
+        _the_registry_kept_the_slugs(served, renamed_category, renamed_sub, failures)
 
-    if not settles(
-        page,
-        lambda: (
-            _capas_category(page, renamed_category)
-            .locator(".territorio-capas__child")
-            .filter(has_text=renamed_sub)
-            .count()
-            > 0
-        ),
-        timeout=6_000,
-    ):
-        failures.append(
-            f"the Capas panel still reads «{original_sub}» after a rename — it did not update "
-            f"without a reload",
-        )
-
-    _the_picker_offers_the_new_name(
-        page, f"{renamed_category} · {renamed_sub}", failures
-    )
-    _analisis_reads_the_new_name(page, renamed_category, renamed_sub, failures)
-
-    served = served_taxonomy(page)
-    _the_registry_kept_the_slugs(served, renamed_category, renamed_sub, failures)
-
-    _a_blank_name_is_refused_in_the_panel(page, renamed_category, failures)
-
-    # Put the seeded names back, through the app, and check they went back.
-    restored = _capas_category(page, renamed_category)
-    back = restored.locator(".territorio-capas__child").filter(has_text=renamed_sub)
-    if back.count() > 0:
-        _rename_in_capas(
-            page, back.first, original_sub, "the Subcategory back", failures
-        )
-    _rename_in_capas(
-        page,
-        _capas_category(page, renamed_category),
-        original_category,
-        "the Category back",
-        failures,
-    )
-    if not settles(
-        page,
-        lambda: _capas_category(page, original_category).count() > 0,
-        timeout=6_000,
-    ):
-        failures.append(
-            f"«{renamed_category}» could not be renamed back, so this run has left the seeded "
-            f"taxonomy changed on a shared instance",
-        )
+        _a_blank_name_is_refused_in_the_panel(page, renamed_category, failures)
+    finally:
+        # Every exit above has already renamed something, or may have: the write
+        # can land and the panel still not settle. So the restore runs on all of
+        # them, and reports if a name would not go back.
+        _the_seeded_names_are_put_back(page, failures)
 
 
 def _the_picker_offers_the_new_name(page, expected, failures):
@@ -4139,6 +4228,12 @@ def main():
             "Unidad Vecinal", exact=True,
         ).count() > 0:
             toggle_division(page, "Unidad Vecinal")
+
+        # Before any check that names «Salud» or «Salud · CESFAM»: a run killed
+        # between the rename below and its restore left those names changed, and
+        # no seed or upgrade puts them back. Healing here rather than only inside
+        # the rename check means one poisoned run costs one run, not every run.
+        _the_seeded_names_are_put_back(page, failures)
 
         every_category_reaches_the_browser_with_its_colour(page, failures)
         the_app_icon_is_legible_in_both_themes(page, failures)

@@ -47,6 +47,13 @@ class TaxonomyService {
 	 */
 	private const SLUG_LENGTH = 64;
 
+	/**
+	 * `territorio_category.glyph` is `VARCHAR(64)`. Nobody types one — it is
+	 * picked out of a grid of the marks the app vendors — so this is about what
+	 * arrives on an open route (ADR-0005), not about what somebody meant.
+	 */
+	private const GLYPH_LENGTH = 64;
+
 	public function __construct(
 		private CategoryMapper $categories,
 		private SubcategoryMapper $subcategories,
@@ -54,7 +61,7 @@ class TaxonomyService {
 	) {
 	}
 
-	/** @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}> */
+	/** @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}> */
 	public function tree(): array {
 		$byCategory = [];
 		foreach ($this->subcategories->findAll() as $subcategory) {
@@ -72,6 +79,10 @@ class TaxonomyService {
 				'slug' => $category->getSlug(),
 				'label' => $category->getLabel(),
 				'color' => $category->getColor(),
+				// Null for every Category nobody has picked a mark for, which is
+				// all eleven the seed ships: their pictograms are keyed by slug in
+				// `src/glyphs.js` and a stored name OVERRIDES that map (#46).
+				'glyph' => $category->getGlyph(),
 				'subcategories' => $byCategory[(int)$category->getId()] ?? [],
 			];
 		}
@@ -100,7 +111,7 @@ class TaxonomyService {
 	 * on ADR-0002: the counter hangs on a Feature id and a Category is not a
 	 * Feature, so another browser reads the new label on its next load.
 	 *
-	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the label is not one this app will store
 	 */
@@ -113,9 +124,78 @@ class TaxonomyService {
 	}
 
 	/**
+	 * Choose the pictogram a Category is drawn with, or clear the choice (#46).
+	 *
+	 * Its own method rather than a second argument to `renameCategory()`, because
+	 * the two are never done at the same moment: a name is typed into the row's
+	 * field and a mark is clicked out of a grid, and one write path carrying both
+	 * would have to invent what "the label was not sent" means.
+	 *
+	 * Stored against the Category and not against the Subcategory, for ADR-0013's
+	 * reason: hue groups Categories and the glyph identifies them, and everything
+	 * filed under a Category is drawn with its mark.
+	 *
+	 * Clearing is `''`, which stores null and puts the Category back to drawing
+	 * what `src/glyphs.js` ships for its slug — the neutral, for one the clinic
+	 * added. That is a real thing to want: a mark picked in a hurry that turns out
+	 * to mean something else is worse than no mark, because it asserts.
+	 *
+	 * Answers with the whole served tree, like every other write here, and does
+	 * not advance the Revision cursor — see `renameCategory()` for both.
+	 *
+	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws DoesNotExistException when no Category carries that slug
+	 * @throws InvalidTaxonomyException when the mark is not one this app will store
+	 */
+	public function setCategoryGlyph(string $slug, string $glyph): array {
+		$category = $this->categories->findBySlug($slug);
+		$category->setGlyph(self::glyphName($glyph));
+		$this->categories->update($category);
+
+		return $this->tree();
+	}
+
+	/**
+	 * The Maki name to store, or null when nothing was picked.
+	 *
+	 * Checks the SHAPE of the name and not whether the app can draw it: the
+	 * inventory belongs to `@mapbox/maki` and lives in `src/glyphs.js`, and a
+	 * second copy of 215 names in PHP is exactly the drift `nextColour()` refuses
+	 * to introduce for colours. `glyphFor()` draws the neutral for a name it does
+	 * not know, which is the same fallback ADR-0017 already requires for a
+	 * Category nobody has picked for — so an unknown name degrades to the state
+	 * the Category was already in rather than to a blank.
+	 *
+	 * ponytail: the shape check is the ceiling. A name shaped like a Maki icon
+	 * that Maki does not have is stored and silently falls back; the upgrade is to
+	 * ship the inventory as seeded data the way `SPARES` is shipped, which is
+	 * worth its weight when something other than the picker can write here.
+	 *
+	 * Public and static because it is pure, like `slugFor()` — the taxonomy's
+	 * rules with no database in them are the ones with no screen to notice them
+	 * going wrong (`TaxonomyGlyphTest`).
+	 *
+	 * @throws InvalidTaxonomyException when the name is not shaped like one
+	 */
+	public static function glyphName(string $glyph): ?string {
+		$clean = trim($glyph);
+		if ($clean === '') {
+			return null;
+		}
+		// Lower case, digits and hyphens: every Maki name, and nothing that could
+		// be a path, an underscore-separated slug, or markup — this string is
+		// inlined into the map pin unescaped, as a bundled asset would be.
+		if (preg_match('/^[a-z0-9-]{1,' . self::GLYPH_LENGTH . '}$/', $clean) !== 1) {
+			throw new InvalidTaxonomyException('Ese pictograma no existe en esta aplicación.');
+		}
+
+		return $clean;
+	}
+
+	/**
 	 * Rename a Subcategory, addressed within its Category.
 	 *
-	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no such Category, or no such Subcategory under it
 	 * @throws InvalidTaxonomyException when the label is not one this app will store
 	 */
@@ -152,9 +232,12 @@ class TaxonomyService {
 	 * every other Category and both neutrals, and 0.015 from each of them under
 	 * three dichromacies.
 	 *
-	 * No pictogram either. It draws the neutral fallback `glyphFor()` already
-	 * returns for a slug it does not know, which reads as «unclassified» where a
-	 * blank reads as a rendering failure. Choosing one is #46.
+	 * The pictogram IS chosen, and it is the one thing here a person can answer
+	 * that the app cannot (ADR-0017): no software guesses which mark means
+	 * «comité de vivienda». Optional all the same — a Category added without one
+	 * draws the neutral fallback `glyphFor()` already returns for a slug it does
+	 * not know, which reads as «unclassified» where a blank reads as a rendering
+	 * failure.
 	 *
 	 * Uniqueness is `terr_cat_slug_idx`'s, not this method's, for the reason
 	 * `addSubcategory()` gives: a check-then-insert here would be a second
@@ -167,11 +250,14 @@ class TaxonomyService {
 	 * `renameCategory()`, and the `addSubcategory()` docblock in `src/App.vue`
 	 * for what that costs a colleague's open browser on a create.
 	 *
-	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
-	 * @throws InvalidTaxonomyException when the label is not one this app will store
+	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws InvalidTaxonomyException when the label or the mark is not one this app will store
 	 */
-	public function addCategory(string $label): array {
+	public function addCategory(string $label, string $glyph = ''): array {
 		$clean = $this->cleanLabel($label);
+		// Before the insert, so a name this app will not store refuses the whole
+		// add rather than leaving a Category behind with no mark on it.
+		$mark = self::glyphName($glyph);
 		$slug = self::slugFor($clean);
 		if ($slug === '') {
 			throw new InvalidTaxonomyException('El nombre necesita alguna letra o algún número.');
@@ -181,6 +267,7 @@ class TaxonomyService {
 		$category->setSlug($slug);
 		$category->setLabel($clean);
 		$category->setColor($this->nextColour());
+		$category->setGlyph($mark);
 
 		try {
 			$category = $this->categories->insert($category);
@@ -285,7 +372,7 @@ class TaxonomyService {
 	 * rename, and what it costs is written on `addSubcategory()` in `src/App.vue`,
 	 * where the browser that would have to notice lives.
 	 *
-	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the label is not one this app will store
 	 */

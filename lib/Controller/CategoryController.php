@@ -35,22 +35,38 @@ class CategoryController extends Controller {
 	}
 
 	/**
-	 * Add a Category (#45). The label is all that goes up: the app derives the
-	 * slug and assigns the colour (ADR-0017), so there is no body key by which
-	 * either could be chosen.
+	 * Add a Category (#45), with the pictogram picked for it (#46).
+	 *
+	 * The label and the mark, and nothing else: the app derives the slug and
+	 * ASSIGNS the colour (ADR-0017), so there is no body key by which either
+	 * could be chosen. An empty `glyph` is the ordinary case — a Category added
+	 * without one draws the neutral fallback.
 	 */
 	#[NoAdminRequired]
 	public function create(): JSONResponse {
 		return $this->attempt(fn (): array => $this->taxonomy->addCategory(
 			(string)($this->request->getParam('label') ?? ''),
+			(string)($this->request->getParam('glyph') ?? ''),
 		));
 	}
 
+	/**
+	 * Rename a Category (#41), or choose the pictogram it is drawn with (#46).
+	 *
+	 * One route, because both edit the same Category, and the body says which:
+	 * a name is typed into the row's field and a mark is clicked out of a grid,
+	 * and neither screen sends the other's key. Branching on PRESENCE and not on
+	 * emptiness — an empty `glyph` is how the choice is cleared, and reading it
+	 * as "no glyph sent" would fall through to the rename and refuse a blank
+	 * label about a name nobody was typing.
+	 */
 	#[NoAdminRequired]
-	public function rename(string $slug): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->renameCategory(
-			$slug, (string)($this->request->getParam('label') ?? ''),
-		));
+	public function update(string $slug): JSONResponse {
+		$glyph = $this->request->getParam('glyph');
+
+		return $this->attempt(fn (): array => $glyph === null
+			? $this->taxonomy->renameCategory($slug, (string)($this->request->getParam('label') ?? ''))
+			: $this->taxonomy->setCategoryGlyph($slug, (string)$glyph));
 	}
 
 	#[NoAdminRequired]

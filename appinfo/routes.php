@@ -57,7 +57,10 @@ return [
 		// Subcategory add below gives: the slug is derived from the label, so
 		// there is nothing to address the new row by until it exists.
 		['name' => 'category#create', 'url' => '/categories', 'verb' => 'POST'],
-		['name' => 'category#rename', 'url' => '/categories/{slug}', 'verb' => 'PUT'],
+		// One PUT edits a Category: its name (#41) or its pictogram (#46). The
+		// body says which — the two are never typed and clicked at the same
+		// moment, and a second route would be a second way to say "this Category".
+		['name' => 'category#update', 'url' => '/categories/{slug}', 'verb' => 'PUT'],
 		// Adding one (#44) posts to the collection under its parent: the slug is
 		// derived from the label the clinic types, so there is nothing to put it
 		// at a URL of its own.

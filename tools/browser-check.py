@@ -83,6 +83,7 @@ SEARCH = ".territorio-list__search input"
 # The Capas panel's own rename affordance (#41): the pencil per row, and the
 # field it turns the label into.
 CAPAS_RENAME = ".territorio-capas__rename"
+CAPAS_REMOVE = ".territorio-capas__remove"
 CAPAS_INPUT = ".territorio-capas__input"
 
 
@@ -4174,16 +4175,17 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
     checked there, since no screen shows one and the slug is the thing every
     record filed under this Subcategory will be keyed on.
 
-    Named per run, because nothing can take it away again: the app has no removal
-    path until #47, so a fixed name would be added by the first run and refused
-    as a duplicate by every run after it — and a check that only works once is
-    not a check. The cost is one extra Subcategory under «Salud» per run on the
-    dev instance, which `make instance-clean` resets and which is the smaller of
-    the two bad options.
+    Named per run, because this one cannot take itself away again: it files a
+    record and retires it at the end, and #47 counts retired records, so the
+    removal path is correctly refused for it. A fixed name would be added by the
+    first run and refused as a duplicate by every run after it — and a check that
+    only works once is not a check. The cost is one extra Subcategory under
+    «Salud» per run on the dev instance, which `make instance-clean` resets.
     """
     # ponytail: the Subcategory this adds is left behind — one per run on the dev
-    # instance. Retire it here once #47 gives the app a way to remove one; until
-    # then there is no path to call, and `make instance-clean` is the reset.
+    # instance. #47 gave the app a removal path, but not one this check can use:
+    # the retired record it files below still counts (ADR-0016), so emptying it
+    # would mean reclassifying that record through the sidebar first.
     added = f"Prueba {RUN}"
     slug = f"prueba_{RUN}"
     filed = f"Registro {RUN} en Prueba"
@@ -4269,8 +4271,9 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
                                      shot="44-analisis.png")
         _the_same_name_twice_is_refused(page, added, errors, failures)
     finally:
-        # The record, not the Subcategory: nothing in the app removes one of
-        # those until #47, and the docstring above says why this one stays.
+        # The record, not the Subcategory: removing it would be refused while
+        # this record is filed under it, retired or not (ADR-0016), and the
+        # docstring above says why this one stays.
         retire_the_runs_record(page, filed)
 
 
@@ -4304,9 +4307,10 @@ def _colour_owed_to_a_new_category(page):
 
     The first spare the seed ships that no Category already holds, and the
     neutral once they are gone. Derived here rather than hard-coded to a spare,
-    because this check adds a Category per run and cannot remove one until #47 —
-    so the instance walks down the list over time, and a fixed expectation would
-    go red on an install doing exactly what it should. Deriving it also means the
+    because this check adds a Category per run it cannot take away again (the
+    ponytail note below says why) — so the instance walks down the list over
+    time, and a fixed expectation would go red on an install doing exactly what
+    it should. Deriving it also means the
     exhaustion branch below starts being exercised for real on a long-lived
     instance rather than only in the integration suite.
 
@@ -4341,15 +4345,17 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
     assertion that merely checked "some spare" would pass against an
     implementation that hands out the first one every time.
 
-    Named per run for the reason #44's check gives: nothing can take a Category
-    away until #47, so a fixed name would be added by the first run and refused
-    as a duplicate by every run after it.
+    Named per run for the reason #44's check gives: this Category cannot take
+    itself away, so a fixed name would be added by the first run and refused as a
+    duplicate by every run after it.
     """
     # ponytail: the Category this adds is left behind, one per run, and each one
     # spends a spare colour — so this instance walks toward the neutral branch
-    # below, which is a real ADR-0017 case rather than a broken check. Retire it
-    # here once #47 gives the app a way to remove one; `make instance-clean` is
-    # the reset until then.
+    # below, which is a real ADR-0017 case rather than a broken check. #47's
+    # removal cannot be used on it: the record it files below is retired at the
+    # end, and a retired record still counts (ADR-0016). `make instance-clean` is
+    # the reset. `a_category_can_be_removed_without_a_reload` adds one with
+    # nothing under it and does take that one away.
     added = f"Comité {RUN}"
     slug = f"comite_{RUN}"
     filed = f"Registro {RUN} en Comité"
@@ -4459,8 +4465,9 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
         _analisis_reads_the_new_name(page, added, "Otro", failures, shot="45-analisis.png")
         _the_same_category_name_twice_is_refused(page, added, slug, errors, failures)
     finally:
-        # The record, not the Category: nothing in the app removes one of those
-        # until #47, and the ponytail note above says why this one stays.
+        # The record, not the Category: removing that would be refused while this
+        # record is filed under it, retired or not, and the ponytail note above
+        # says why this one stays.
         retire_the_runs_record(page, filed)
 
 
@@ -4689,6 +4696,305 @@ def _a_blank_name_is_refused_in_the_panel(page, label, errors, failures):
         )
 
 
+def _remove_in_capas(page, row, what, failures, confirm=True):
+    """Press the bin on one Capas row, then answer the question it asks (#47).
+
+    `.first` is the row's own control, for the reason `_rename_in_capas()` gives:
+    a Category's bin sits in its `<summary>`, before the Subcategory rows an open
+    branch adds below it.
+
+    The two-step is not incidental here — it IS a criterion. ADR-0016 says
+    removing asks first, in the same inline shape retiring a record uses and
+    never a `confirm()`, so a panel that acted on the first click is a failure
+    even when it removes the right thing. `confirm=False` answers «Cancelar»
+    instead, which is how the other half of that criterion gets proved: asking
+    and then doing it anyway is not asking.
+
+    Returns False when a control is missing, so the caller stops rather than
+    asserting against a panel that never did anything.
+    """
+    bin_ = row.locator(CAPAS_REMOVE).first
+    if bin_.count() == 0:
+        failures.append(f"the Capas panel offers no way to remove {what}")
+        return False
+
+    bin_.click()
+    question = row.locator(".territorio-capas__confirm").first
+    if not settles(page, lambda: question.count() > 0, timeout=4_000):
+        failures.append(
+            f"the remove control on {what} acted on the first click without asking — ADR-0016 "
+            f"says removing asks first, in the two-step inline shape retiring a record uses",
+        )
+        return False
+
+    question.get_by_role(
+        "button", name="Quitar" if confirm else "Cancelar", exact=True,
+    ).click()
+    page.wait_for_timeout(900)
+
+    return True
+
+
+def _served_category(page, slug):
+    """One Category as a browser opening the app fresh would receive it, or None."""
+    return next(
+        (entry for entry in served_taxonomy(page) or [] if entry["slug"] == slug), None,
+    )
+
+
+def _the_picker_no_longer_offers(page, gone, failures):
+    """The Subcategoría picker, the second surface a removal has to leave (#47).
+
+    The mirror of `_the_picker_offers_the_new_name()` and it opens a draft the
+    same way — the picker exists only inside a record's form. Not a vacuous
+    assertion: a Category with no records still appears here, because the picker
+    is a flat list of «Categoría · Subcategoría» read straight off the taxonomy,
+    which is exactly what Análisis is not (see the check below).
+    """
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.wait_for_timeout(400)
+    page.get_by_label("Subcategoría", exact=True).click()
+    page.get_by_label("Subcategoría", exact=True).fill(gone)
+    page.wait_for_timeout(700)
+
+    offered = page.locator(".vs__dropdown-option").all_text_contents()
+    if any(gone in text for text in offered):
+        failures.append(
+            f"the Subcategoría picker still offers {gone!r} after the Category was removed — a "
+            f"record could be filed under a Subcategory id nothing answers to (offered: "
+            f"{offered[:5]})",
+        )
+
+    # Twice: the first closes the open dropdown, the second the draft itself.
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(200)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
+def the_territorial_division_says_it_cannot_be_removed(page, failures):
+    """#47: «División territorial» is visibly unremovable, and says why.
+
+    The criterion is worded as an experience — "I do not spend time trying and
+    then wonder whether I did it wrong" — so the assertion is about the panel,
+    not about the server. The server refuses these too, and the integration suite
+    proves that; a refusal at save time is the backstop for a request the panel
+    did not make, and it is exactly what this criterion says must not be how a
+    person finds out.
+
+    "Where the control would otherwise be" is the toggles block: `treeOf` leaves
+    the division out of the Category tree, because CONTEXT.md puts one toggle per
+    territorial division BESIDE the tree rather than inside it. So there is no
+    Category row for it — which this also checks, because a division drawn as a
+    branch would be #15's regression and would carry a bin like every other row.
+
+    The label is read out of the Registry rather than typed here: a clinic may
+    rename it, and a hard-coded «División territorial» would silently look for a
+    row nobody has and pass.
+    """
+    division = _served_category(page, "division_territorial")
+    if division is None:
+        failures.append(
+            "the app serves no «division_territorial» Category: the seed did not run, and this "
+            "check would assert nothing",
+        )
+        return
+
+    divisions = page.locator(".territorio-capas__divisions")
+    if divisions.count() == 0:
+        failures.append("the Capas panel draws no territorial-division block at all")
+        return
+
+    hint = divisions.locator(".territorio-capas__hint").first
+    if hint.count() == 0 or not hint.is_visible():
+        failures.append(
+            "the territorial-division block says nothing about why it has no «quitar»: every "
+            "other row in the panel has one, so a person tries and then wonders whether they "
+            "did it wrong (#47)",
+        )
+    elif "no se puede quitar" not in (hint.text_content() or "").lower():
+        failures.append(
+            f"the territorial-division block shows {hint.text_content()!r}, which does not say "
+            f"it cannot be removed",
+        )
+
+    if divisions.locator(CAPAS_REMOVE).count() > 0:
+        failures.append(
+            "the territorial-division block offers a remove control: a Sector and a Unidad "
+            "Vecinal cannot be saved without these Subcategories and the seed restores them on "
+            "every upgrade (ADR-0016)",
+        )
+
+    if _capas_category(page, division["label"]).count() > 0:
+        failures.append(
+            f"«{division['label']}» is drawn as a Category branch in the Capas panel — it is the "
+            f"territorial division and belongs beside the tree (ADR-0015, CONTEXT.md), and as a "
+            f"branch it carries a «quitar» like every other row",
+        )
+
+    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "47-divisiones.png"))
+
+
+def a_category_can_be_removed_without_a_reload(page, errors, failures):
+    """#47: a Category the clinic does not use leaves, and it asks first.
+
+    Adds its own Category and takes it away again, so this check leaves the
+    instance as it found it — the first of the taxonomy checks that can.
+
+    Three things only a browser can show: that the panel ASKS before acting and
+    that «Cancelar» really cancels; that the row leaves the Capas panel without a
+    reload; and that it leaves the Subcategoría picker with it, which is the
+    surface that would otherwise let somebody file a record under a Subcategory
+    id nothing answers to. Each is also checked against the Registry through
+    `served_taxonomy()` per SKILL.md § 5, because a row that merely left the
+    screen looks identical to one that was never written.
+
+    **Análisis is deliberately not asserted here, and the criterion naming it is
+    only half covered.** Análisis draws a section per Category that HOLDS
+    RECORDS, and a Category that can be removed at all is by definition holding
+    none — so "it is gone from Análisis" is true before the removal too, and an
+    assertion on it would pass against an implementation that did nothing. The
+    honest statement is that Análisis reads the same `taxonomy` prop the panel
+    and the picker do, and those two are proved here.
+    """
+    added = f"Efímera {RUN}"
+    slug = f"efimera_{RUN}"
+
+    if not _add_a_category_in_capas(page, added, failures):
+        return
+
+    row = _capas_category(page, added)
+    if not settles(page, lambda: row.count() > 0, timeout=6_000):
+        failures.append(f"«{added}» was added but is not in the Capas panel, so nothing can "
+                        f"be removed from it")
+        return
+
+    # Asking and then doing it anyway is not asking.
+    if not _remove_in_capas(page, row, f"«{added}»", failures, confirm=False):
+        return
+    if _capas_category(page, added).count() == 0 or _served_category(page, slug) is None:
+        failures.append(
+            f"«{added}» was removed after «Cancelar»: the question the panel asks is decoration, "
+            f"and a click meant as tidying takes a Category away",
+        )
+        return
+
+    if not _remove_in_capas(page, _capas_category(page, added), f"«{added}»", failures):
+        return
+
+    if not settles(page, lambda: _capas_category(page, added).count() == 0, timeout=6_000):
+        failures.append(
+            f"«{added}» is still in the Capas panel after being removed — it did not leave "
+            f"without a reload",
+        )
+    if page.locator(".territorio-capas .notecard--error").count() > 0:
+        said = page.locator(".territorio-capas .notecard--error").first.text_content()
+        failures.append(
+            f"removing «{added}» was refused although nothing is filed under it: {said!r}",
+        )
+        return
+    if _served_category(page, slug) is not None:
+        failures.append(
+            f"the Capas panel dropped «{added}» but the Registry still serves {slug!r}: the "
+            f"panel repainted and nothing was written",
+        )
+        return
+
+    _the_picker_no_longer_offers(page, f"{added} · Otro", failures)
+    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "47-capas-panel.png"))
+
+
+def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
+    """#47 and ADR-0016: refused while records are filed under it, retired ones
+    included — and the refusal is a next step rather than a dead end.
+
+    Run twice against the same Category, with the record live and then retired.
+    The second half is the criterion the issue calls out and the obvious way to
+    get it wrong: a retired record is not in the count Análisis shows, it is not
+    in the Datos list, and it can be restored — so an implementation that reused
+    the display count destroys it here while every screen looks right. The
+    integration suite proves the same thing against the real schema; this proves
+    a person is told.
+
+    What the refusal SAYS is asserted, not merely that there was one: the number,
+    and the pointer to where those records can be seen. "84 records" without
+    saying where they are leaves a person stuck with a number, which is the half
+    of ADR-0016 that is easiest to drop.
+    """
+    # ponytail: the Category this adds is left behind, one per run, and it spends
+    # a spare colour. It cannot clean up after itself and that is the behaviour
+    # under test — the record it files is retired at the end, and ADR-0016 counts
+    # retired records, so the removal is correctly refused. Emptying it would mean
+    # reclassifying the record through the sidebar first; worth doing the day this
+    # instance runs out of spares, which is a real ADR-0017 case rather than a
+    # broken check. `make instance-clean` is the reset until then.
+    added = f"En uso {RUN}"
+    filed = f"Registro {RUN} en uso"
+
+    if not _add_a_category_in_capas(page, added, failures):
+        return
+    if not settles(page, lambda: _capas_category(page, added).count() > 0, timeout=6_000):
+        failures.append(f"«{added}» was added but is not in the Capas panel")
+        return
+
+    _a_clustered_place(page, filed, f"{added} · Otro", 8, failures)
+    if registry_feature(page, filed) is None:
+        failures.append(
+            f"{filed!r} is not in the Registry, so nothing is filed under «{added}» and this "
+            f"check would prove that an EMPTY Category is refused",
+        )
+        return
+
+    for state in ("live", "retired"):
+        if state == "retired":
+            retire_the_runs_record(page, filed)
+
+        if not _remove_in_capas(page, _capas_category(page, added), f"«{added}»", failures):
+            return
+
+        said = page.locator(".territorio-capas .notecard--error")
+        if said.count() == 0 or not said.first.is_visible():
+            failures.append(
+                f"removing «{added}» with a {state} record filed under it said nothing: either "
+                f"it was allowed and the record is orphaned, or the refusal never reached the "
+                f"panel",
+            )
+            return
+
+        text = said.first.text_content() or ""
+        if "1 registro" not in text:
+            failures.append(
+                f"the refusal for «{added}» ({state} record) does not say how many records are "
+                f"filed under it: {text!r}",
+            )
+        if "Capas" not in text:
+            failures.append(
+                f"the refusal for «{added}» ({state} record) says a number and not where to go "
+                f"and see them, so it is a dead end (ADR-0016): {text!r}",
+            )
+        if _capas_category(page, added).count() == 0 or _served_category(
+            page, f"en_uso_{RUN}",
+        ) is None:
+            failures.append(
+                f"«{added}» was removed anyway with a {state} record filed under it — the "
+                f"record now points at a Subcategory nothing answers to, and no foreign key "
+                f"would have caught it",
+            )
+            return
+
+        if state == "live":
+            page.locator(".territorio-capas").screenshot(
+                path=str(SHOTS / "47-refusal.png"),
+            )
+
+    record = registry_feature(page, filed)
+    if record is not None and not record.get("retired"):
+        failures.append(
+            f"{filed!r} is not retired, so the second half of this check measured a LIVE record "
+            f"and proved nothing about retired ones",
+        )
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -4811,12 +5117,19 @@ def main():
         # After it, and not before: that check renames «Salud» and puts it back,
         # and this one addresses the Category by that name throughout.
         a_subcategory_can_be_added_without_a_reload(page, errors, failures)
-        # After both, and last of the taxonomy checks: this one adds a Category
-        # that nothing can take away again (#47), and every check above that
+        # After both: this one adds a Category it cannot take away again, and
+        # every check above that
         # addresses «Salud» by name would otherwise have one more branch in the
         # panel to scroll past. It files its own record, so Análisis has a
         # section to read.
         a_category_can_be_added_without_a_reload(page, errors, failures)
+        # #47, after every check that ADDS to the taxonomy: this one reads the
+        # panel with the divisions block on screen, and the two below add
+        # Categories of their own — the first takes its own away again, which
+        # makes it the only taxonomy check here that leaves nothing behind.
+        the_territorial_division_says_it_cannot_be_removed(page, failures)
+        a_category_can_be_removed_without_a_reload(page, errors, failures)
+        a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

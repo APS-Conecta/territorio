@@ -18,12 +18,18 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
+// `MarkerCluster.Default.css` deliberately NOT imported (#22). It is, in its
+// entirety, the `marker-cluster-small|medium|large` count buckets — green under
+// 10, yellow under 100, orange at 100+ — plus the geometry of the markup that
+// carries them. `iconCreateFunction` below emits none of those classes, so the
+// file is the only way a hue that means a COUNT could still reach the page.
+// `MarkerCluster.css` stays: it is the zoom animation, which is not a colour.
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
 import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { clusterRing, isApproximate } from '../pins.js'
 import {
 	boundsOf,
 	colourOf,
@@ -353,7 +359,13 @@ export default {
 			//
 			// ponytail: still a full rebuild, now of a throwaway group. Diff the
 			// markers if a real catastro makes this stutter — it no longer breaks.
-			const next = L.markerClusterGroup({ showCoverageOnHover: false, animate: false })
+			const next = L.markerClusterGroup({
+				showCoverageOnHover: false,
+				animate: false,
+				// An arrow rather than the method itself: markercluster calls this
+				// with the cluster as its only argument and no `this` of ours.
+				iconCreateFunction: (cluster) => this.clusterIconFor(cluster),
+			})
 
 			this.points.forEach((feature) => {
 				const [lon, lat] = feature.geometry.coordinates
@@ -361,7 +373,19 @@ export default {
 				// limit runs along boundaries — a street, a river, another Sector —
 				// never through the middle of a school, and without this a vertex
 				// dropped near one jumps onto it.
-				L.marker([lat, lon], { icon: this.iconFor(feature), snapIgnore: true })
+				//
+				// `territorio` rides along because a cluster is handed its markers
+				// and never their Features: `getAllChildMarkers()` returns
+				// `L.Marker`s, so what the bubble has to say about the records
+				// under it has to be on the marker by the time it is clustered.
+				L.marker([lat, lon], {
+					icon: this.iconFor(feature),
+					snapIgnore: true,
+					territorio: {
+						colour: colourOf(feature, this.subcategories),
+						approximate: isApproximate(feature),
+					},
+				})
 					.on('click', () => this.$emit('select', feature.id))
 					.addTo(next)
 			})
@@ -681,12 +705,76 @@ export default {
 			// one goes through escapeHtml.
 			const glyph = glyphFor(this.subcategories.get(feature.subcategoryId)?.categorySlug)
 
+			// The ring the pin already wears goes dashed when the Registry only
+			// knows the coordinate approximately (#23). A modifier and a
+			// `border-style`, because the ring is already there and costs no
+			// footprint — which is what settled it against a halo and an edge
+			// badge, with #37 simultaneously arguing the pin is too small and La
+			// Florida holding ~865 places. Dashed means one thing across this app:
+			// the app is not asserting this precisely (ADR-0015).
+			const classes = ['territorio-pin__dot']
+			if (selected) {
+				classes.push('territorio-pin__dot--selected')
+			}
+			if (isApproximate(feature)) {
+				classes.push('territorio-pin__dot--approximate')
+			}
+
 			return L.divIcon({
 				className: 'territorio-pin',
-				html: `<span class="territorio-pin__dot${selected ? ' territorio-pin__dot--selected' : ''}"`
+				html: `<span class="${classes.join(' ')}"`
 					+ ` style="background:${escapeHtml(colour)}">${glyph}</span>`,
 				iconSize: [26, 26],
 				iconAnchor: [13, 13],
+			})
+		},
+
+		/**
+		 * What a cluster bubble says: the Categories under it, and the count.
+		 *
+		 * Not the size. markercluster's own icon buckets on `getChildCount()`
+		 * into three hues, so green meant «Deporte y recreación» at one zoom and
+		 * "more than 100 records" at the next — one channel carrying two
+		 * unrelated meanings, on a map where hue is the channel that groups
+		 * Categories (ADR-0013). The count is written in the middle in the
+		 * theme's own ink, which is where it always was and the reason hue never
+		 * needed to carry it.
+		 *
+		 * A ring segmented by Category rather than the majority glyph: a majority
+		 * glyph cannot tell a cluster of one Category from a mixed one, which is
+		 * the criterion #22 is judged on. `@kalisio/leaflet.donutcluster` does
+		 * this in 459 lines and an undeclared `window._`; this is the hook
+		 * markercluster already offered.
+		 *
+		 * The colours are escaped for the same reason the pin's is: a Category
+		 * colour is something a person typed into a picker, and this is an HTML
+		 * string, not a DOM node.
+		 */
+		clusterIconFor(cluster) {
+			// A marker with nothing hung on it cannot happen — drawMarkers is the
+			// only thing that adds one — but the fallback is the colour that
+			// already means "we cannot say what this is" rather than `undefined`,
+			// which would compose an invalid `conic-gradient()` and be dropped in
+			// silence.
+			const members = cluster.getAllChildMarkers()
+				.map((marker) => marker.options.territorio ?? { colour: UNKNOWN_COLOUR, approximate: false })
+			const { stops, approximate } = clusterRing(members)
+			const ring = stops
+				.map((stop) => `${escapeHtml(stop.colour)} ${stop.from}% ${stop.to}%`)
+				.join(', ')
+
+			return L.divIcon({
+				className: 'territorio-cluster',
+				html: `<span class="territorio-cluster__ring${approximate ? ' territorio-cluster__ring--approximate' : ''}"`
+					+ ` style="background-image:conic-gradient(${ring})">`
+					+ `<span class="territorio-cluster__count">${cluster.getChildCount()}</span>`
+					+ '</span>',
+				// 36, where a pin is 26: a bubble has to read as more than one
+				// record before the count inside it is read at all. Written here
+				// and in the stylesheet exactly as the pin's size is, and measured
+				// in the browser gate rather than kept in step by hand.
+				iconSize: [36, 36],
+				iconAnchor: [18, 18],
 			})
 		},
 	},
@@ -828,5 +916,74 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 		outline: $focus-ring;
 		outline-offset: 1px;
 	}
+
+	/*
+	 * «Roughly here» (#23). The ring is already round every pin, so this costs
+	 * no footprint at all — which is what settled it against a halo and an edge
+	 * badge, with #37 simultaneously raising the pin to 26px and La Florida
+	 * holding ~865 places.
+	 *
+	 * A dash and not an opacity: opacity is hue and alpha, which is the one
+	 * channel a dichromacy takes away and the one this map already overloads
+	 * (ADR-0013). A dash is a pattern, it survives both themes because the ring
+	 * is `--color-main-background` in both, and it already means exactly this
+	 * across the app — the app is not asserting this precisely (ADR-0015), as a
+	 * Unidad Vecinal's hairline does.
+	 */
+	&--approximate {
+		border-style: dashed;
+	}
+}
+
+/*
+ * A cluster says which Categories are under it, never how many (#22).
+ *
+ * markercluster's own icon buckets on `getChildCount()` into three hues, so
+ * green meant «Deporte y recreación» at one zoom and "over 100 records" at the
+ * next. `MarkerCluster.Default.css` — which is nothing but those buckets — is
+ * therefore not imported, and `iconCreateFunction` builds this instead.
+ */
+.territorio-cluster__ring {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/*
+	 * 36px against the pin's 26px: a bubble has to read as more than one record
+	 * before anybody reads the number in it. The conic gradient paints the whole
+	 * disc and the count below covers the middle, leaving a 4px band of Category
+	 * — (36 - 2·2 border - 24 count) / 2.
+	 */
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	border: 2px solid var(--color-main-background, #fff);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+	/* The same dash, for the same reason, when any record under it is approximate. */
+	&--approximate {
+		border-style: dashed;
+	}
+}
+
+.territorio-cluster__count {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	/*
+	 * The theme's own ink on the theme's own paper, which is the pair that is
+	 * guaranteed readable in both themes — and is not a hue that could be read
+	 * as a Category. This is where the count always was; hue never needed to
+	 * carry it, which is the whole of the defect.
+	 */
+	background: var(--color-main-background, #fff);
+	color: var(--color-main-text, #222);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	/* Lining, tabular figures: 8 and 88 must not jump in a 24px disc. */
+	font-variant-numeric: tabular-nums lining-nums;
 }
 </style>

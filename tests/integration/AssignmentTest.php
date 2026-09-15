@@ -124,52 +124,60 @@ final class AssignmentTest extends IntegrationTestCase {
 		// arranged here rather than waited for, and the awkward case is measured
 		// on every run instead of on the unlucky one.
 		$rival = $this->sector('Sector de otra persona');
-		$sector = $this->sector('Sector que se mueve', ['geometry' => self::WEST]);
-		$inside = $this->place('Queda fuera', ['geometry' => self::at(-70.58, -33.52)]);
-		$outside = $this->place('Queda dentro', ['geometry' => self::at(-70.53, -33.52)]);
+		try {
+			$sector = $this->sector('Sector que se mueve', ['geometry' => self::WEST]);
+			$inside = $this->place('Queda fuera', ['geometry' => self::at(-70.58, -33.52)]);
+			$outside = $this->place('Queda dentro', ['geometry' => self::at(-70.53, -33.52)]);
 
-		self::assertSame($sector, $this->stored($inside)->getSectorId(), 'the newest boundary over it answers');
-		self::assertNotSame($sector, $this->stored($outside)->getSectorId());
+			self::assertSame($sector, $this->stored($inside)->getSectorId(), 'the newest boundary over it answers');
+			self::assertNotSame($sector, $this->stored($outside)->getSectorId());
 
-		// Drag the whole boundary east.
-		Server::get(FeatureService::class)->update($sector, [
-			'name' => 'Sector que se mueve',
-			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'geometry' => self::EAST,
-		]);
+			// Drag the whole boundary east.
+			Server::get(FeatureService::class)->update($sector, [
+				'name' => 'Sector que se mueve',
+				'subcategoryId' => $this->subcategoryIdBySlug('sector'),
+				'geometry' => self::EAST,
+			]);
 
-		// Not null — NOT THIS ONE. This runs against an instance other things have
-		// written to, including the browser gate, and any Sector somebody else
-		// drew may legitimately contain this coordinate. What the redraw promises
-		// is that the record let go of the boundary that moved away from it, and
-		// asserting null asserts something about the whole instance instead.
-		self::assertNotSame($sector, $this->stored($inside)->getSectorId(), 'the one it left');
-		self::assertSame($sector, $this->stored($outside)->getSectorId(), 'the one it reached');
+			// Not null — NOT THIS ONE. This runs against an instance other things have
+			// written to, including the browser gate, and any Sector somebody else
+			// drew may legitimately contain this coordinate. What the redraw promises
+			// is that the record let go of the boundary that moved away from it, and
+			// asserting null asserts something about the whole instance instead.
+			self::assertNotSame($sector, $this->stored($inside)->getSectorId(), 'the one it left');
+			self::assertSame($sector, $this->stored($outside)->getSectorId(), 'the one it reached');
 
-		// Visible, not silent: the reassignment is its own entry, and it says what
-		// changed. Found by action rather than by index — `?? ` on an array that is
-		// always set never falls through, which is an assertion that cannot fail.
-		$history = Server::get(FeatureService::class)->history($inside);
-		self::assertCount(2, $history, 'created, then reassigned');
+			// Visible, not silent: the reassignment is its own entry, and it says what
+			// changed. Found by action rather than by index — `?? ` on an array that is
+			// always set never falls through, which is an assertion that cannot fail.
+			$history = Server::get(FeatureService::class)->history($inside);
+			self::assertCount(2, $history, 'created, then reassigned');
 
-		$updates = array_values(array_filter(
-			$history,
-			static fn (array $entry): bool => $entry['action'] === 'updated',
-		));
-		self::assertCount(1, $updates, 'the reassignment is an ordinary edit');
-		self::assertArrayHasKey('sectorId', $updates[0]['changes']);
-		self::assertSame($sector, $updates[0]['changes']['sectorId']['from']);
-		// And not null here either, which is the same claim about the whole
-		// instance the comment fifteen lines above forbids: `to` is null only
-		// while nothing else covers the coordinate. What the redraw promises is
-		// that the record left the boundary that moved away from it; which
-		// boundary picked it up is a fact about the Registry, not about the redraw.
-		self::assertNotSame($sector, $updates[0]['changes']['sectorId']['to'], 'recorded as leaving it');
-
-		// Retired through the app rather than left to the raw-SQL teardown:
-		// retiring a boundary releases what it claimed (#30), and deleting one
-		// leaves every record it covered pointing at an id no read resolves.
-		Server::get(FeatureService::class)->retire($rival);
+			$updates = array_values(array_filter(
+				$history,
+				static fn (array $entry): bool => $entry['action'] === 'updated',
+			));
+			self::assertCount(1, $updates, 'the reassignment is an ordinary edit');
+			self::assertArrayHasKey('sectorId', $updates[0]['changes']);
+			self::assertSame($sector, $updates[0]['changes']['sectorId']['from']);
+			// And not null here either, which is the same whole-instance claim the
+			// `NOT THIS ONE` comment above forbids: `to` is null only while nothing
+			// else covers the coordinate. What the redraw promises is that the record
+			// left the boundary that moved away from it; which boundary picked it up
+			// is a fact about the Registry, not about the redraw.
+			//
+			// Note this line restates the one above rather than guarding it —
+			// `FeatureMapper::diff()` records a field only when its value actually
+			// changed, so a recorded sectorId change has from !== to by construction.
+			// The assertion that catches a regression is `the one it left`.
+			self::assertNotSame($sector, $updates[0]['changes']['sectorId']['to'], 'recorded as leaving it');
+		} finally {
+			// Retired through the app rather than left to the raw-SQL teardown, and in
+			// `finally` because a failing assertion above is exactly the run where it
+			// matters: retiring a boundary releases what it claimed (#30), while deleting
+			// one leaves every record it covered pointing at an id no read resolves.
+			Server::get(FeatureService::class)->retire($rival);
+		}
 	}
 
 	/** Renaming a boundary moves nobody, and must not spend a Revision saying so. */

@@ -27,6 +27,10 @@ use PHPUnit\Framework\TestCase;
  * instead.
  *
  * Two paths ask, and the first version of this change covered only one of them.
+ *
+ * And, below, which boundary claims a record — a different property, kept here
+ * because deciding it needs a Registry the test owns outright, which is exactly
+ * what this file already builds (#117, #121).
  */
 final class AssignmentBoundaryTest extends TestCase {
 	private const TREE = [[
@@ -65,9 +69,14 @@ final class AssignmentBoundaryTest extends TestCase {
 
 	/** A Sector big enough to hold the Place above, with the box a real one carries. */
 	private function sectorAround(float $lat, float $lon): Feature {
+		return $this->boundaryAround($lat, $lon, 11, 1);
+	}
+
+	/** The same shape in whichever division: a Sector is subcategory 11, a Unidad Vecinal 12. */
+	private function boundaryAround(float $lat, float $lon, int $subcategoryId, int $id): Feature {
 		$ring = [[$lon - 1, $lat - 1], [$lon + 1, $lat - 1], [$lon + 1, $lat + 1], [$lon - 1, $lat + 1], [$lon - 1, $lat - 1]];
-		$feature = $this->feature(11);
-		$feature->setId(1);
+		$feature = $this->feature($subcategoryId);
+		$feature->setId($id);
 		$feature->setKind(Kind::Zone->value);
 		$feature->setGeometry(json_encode(['type' => 'Polygon', 'coordinates' => [$ring]]));
 		$feature->setBoundingBox(BoundingBox::around($ring));
@@ -175,7 +184,14 @@ final class AssignmentBoundaryTest extends TestCase {
 		$taxonomy->method('tree')->willReturn(self::TREE);
 
 		$features = $this->createMock(FeatureMapper::class);
-		$features->method('findAll')->willReturn([$this->sectorAround(-33.5, -70.6)]);
+		$features->method('findAll')->willReturn([
+			$this->sectorAround(-33.5, -70.6),
+			// A Unidad Vecinal ten degrees east, holding neither point. Without it the
+			// Unidad Vecinal assertion below would hold because the Registry has no
+			// Unidad Vecinal to hold anything — true of the fixture, and nothing to do
+			// with where the point is.
+			$this->boundaryAround(-33.5, -60.0, 12, 2),
+		]);
 
 		$assignment = new AssignmentService($features, $taxonomy);
 
@@ -183,10 +199,16 @@ final class AssignmentBoundaryTest extends TestCase {
 		$assignment->assign($inside);
 		self::assertSame(1, $inside->getSectorId(), 'the boundary it is inside');
 
+		// The Unidad Vecinal answers for a point inside it, so its silence below is
+		// about that point and not about a division nothing could ever have claimed.
+		$inTheOtherDivision = $this->placeAt(-33.5, -60.0);
+		$assignment->assign($inTheOtherDivision);
+		self::assertSame(2, $inTheOtherDivision->getUnidadVecinalId(), 'the other division is live');
+
 		$outside = $this->placeAt(-33.5, -68.0);
 		$assignment->assign($outside);
 		self::assertNull($outside->getSectorId(), 'outside every boundary there is, which here is one');
-		self::assertNull($outside->getUnidadVecinalId(), 'and there is no Unidad Vecinal at all');
+		self::assertNull($outside->getUnidadVecinalId(), 'and outside the Unidad Vecinal there is too');
 	}
 
 	/** And the answer stays the answer — a cache that changes it is worse than none. */

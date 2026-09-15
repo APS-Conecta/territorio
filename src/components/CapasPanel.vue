@@ -287,7 +287,9 @@
 
 						`@mousedown.prevent` keeps the focus in the field beside it, whose
 						`@blur` cancels the whole add: without it, reaching for the
-						pictogram would throw away the name already typed.
+						pictogram would throw away the name already typed. Its own copy,
+						because this button is a SIBLING of the field — the grid below carries
+						the same guard on its root, and neither covers the other.
 					-->
 					<button class="territorio-capas__swatch"
 						type="button"
@@ -332,8 +334,23 @@
 				are Maki's and they are in English, so a box to type «cancha» into
 				would need a vocabulary this repo does not have. Render on scroll, or
 				give the marks Spanish keywords, when either is actually in the way.
+
+				`@mousedown.prevent` on the CONTAINER, not on the cells. The grid can be
+				open beside the field a new Category is being named in, and that field
+				cancels the whole add on blur (#45) — so a mousedown that reaches the page
+				throws the typed name and the picked mark away with no message. Guarding
+				only the 26px cells leaves the title, this element's own padding and the
+				4px gaps between the wrapped circles unguarded, and a wrapped row of 215
+				circles is mostly gap. Preventing the default at the root covers all of
+				it — mousedown's default IS the focus move, and a bubbled preventDefault
+				stops it wherever it is called. The grid still scrolls: Chrome dispatches
+				no mousedown to the page for a native scrollbar drag, and the wheel is
+				untouched.
 			-->
-			<div v-if="picking !== null" ref="picker" class="territorio-capas__picker">
+			<div v-if="picking !== null"
+				ref="picker"
+				class="territorio-capas__picker"
+				@mousedown.prevent>
 				<p class="territorio-capas__picker-title">
 					Pictograma de «{{ picking.label }}»
 				</p>
@@ -348,7 +365,6 @@
 						:style="{ background: NEUTRAL }"
 						title="Sin pictograma"
 						aria-label="Sin pictograma"
-						@mousedown.prevent
 						@click="choose('')">
 						<NcIconSvgWrapper :svg="glyphFor(null, null)" :size="PIN_GLYPH_SIZE" />
 					</button>
@@ -359,7 +375,6 @@
 						:style="{ background: picking.color }"
 						:title="mark"
 						:aria-label="mark"
-						@mousedown.prevent
 						@click="choose(mark)">
 						<NcIconSvgWrapper :svg="glyphFor(null, mark)" :size="PIN_GLYPH_SIZE" />
 					</button>

@@ -4520,6 +4520,12 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
     close the add and discard what was typed. Nothing but a browser has a focus
     to lose.
 
+    It clicks the picker's TITLE as well as a cell, because the guard is about
+    the whole picker and not about the cells: the title, the picker's padding
+    and the gaps between the wrapped 26px circles are most of what a hand lands
+    on, and a check that only clicks a cell dead centre cannot tell a root guard
+    from a per-cell one.
+
     It stops short of committing, and that is deliberate rather than an omission:
     a Category cannot be removed until #47, so a second one per run would spend a
     second vetted spare (ADR-0017) that nothing hands back. That the picked mark
@@ -4555,6 +4561,24 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
         failures.append(
             f"the pictogram control beside the new Category's name opened no grid holding "
             f"{PICKED_MARK!r}",
+        )
+        page.keyboard.press("Escape")
+        return
+
+    # The title first, and the gap between two cells after it: the hazard is
+    # not the cell, it is everything around it. A cell click is the one path a
+    # per-cell `@mousedown.prevent` protects, so a check that only clicks a cell
+    # passes over the cell-only version of this guard — which is how the first
+    # cut of #46 shipped with the title, the padding and the 4px gaps live.
+    # Clicking the title is the seeded violation SKILL.md § 6 asks for.
+    page.locator(".territorio-capas__picker-title").click()
+    page.wait_for_timeout(200)
+    surviving = page.locator(CAPAS_INPUT)
+    if surviving.count() == 0 or surviving.first.input_value() != typed:
+        failures.append(
+            "a mousedown on the picker's own title threw the new Category away — the guard "
+            "has to sit on the picker root, where it also covers the padding and the gaps "
+            "between the cells",
         )
         page.keyboard.press("Escape")
         return

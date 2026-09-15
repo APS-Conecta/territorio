@@ -47,6 +47,13 @@ for a crisper mark that means the wrong thing.
 denomination. `circle-stroked` reads as *nobody has decided yet*, which is what "Sin clasificar"
 means — not as an error.
 
+The eleven above are the **seeded** map, keyed by slug in `src/glyphs.js`. Since #36 a Category a
+clinic adds chooses its own mark, from the same Maki catalogue — all 215 layouts, previewed at the
+19px the pin actually draws rather than at legend size. The stored name overrides the seeded map and
+never replaces it, so an install where nobody chose anything still draws what #37 re-picked;
+`glyphFor()` answers with the stored name, then the slug's mark, then `circle-stroked`. Never a
+blank — a blank reads as a rendering failure, the neutral mark reads as unclassified (ADR-0017).
+
 Maki icons are a single `<path>` with **no `fill` attribute** on a `viewBox="0 0 15 15"`, so they
 take their colour from CSS. Two render paths, because there are two rendering contexts:
 
@@ -123,11 +130,29 @@ nudges a hue.
 The colours stay **data**, seeded in `EnsureSeedData.php` — a Category is editable per
 CONTEXT.md. This document specifies the seed, not a constant.
 
+**The eleven are no longer all there is.** #36 made the taxonomy editable, so the table above is the
+palette a clinic *starts* from rather than the palette it keeps. Eight vetted spares ship beside the
+eleven as `EnsureSeedData::SPARES`, and a Category somebody adds takes the next unused one — the app
+assigns it, nobody picks it, because nothing above can be satisfied by eye (ADR-0017). The spares
+were derived by `ramp-check.py`'s own functions, holding chroma at 0.090 and staying inside the six
+families above rather than opening a seventh, and the check re-gates all eight on every `make lint`:
+against the eleven, against both neutrals, and against each other. That is the point of deriving them
+where the arithmetic already lives. Editing a Category's colour is now also a statement about colours
+no Category holds yet, and the build goes red at the moment the statement is made rather than the
+first time a clinic adds a Category on some other install.
+
+Eight is a real ceiling, and the twelfth added Category reaches it. It is still created and still
+works: it takes the neutral, and the panel says it will not be told apart by colour. That is not an
+error — a Category without a distinct hue is doing what this section says every Category does anyway.
+
 Three neutrals have to coexist inside the narrow lightness band where a colour clears 3:1 against
 both a white page and the dark theme: `sin_clasificar` `#71777c`, the Sector default `#949494`, and
 `UNKNOWN_COLOUR` `#62676c` for a Feature whose Subcategory no longer exists. The tightest gap is
 ΔE 0.055 against a 0.05 floor. **There is no room for a fourth neutral** — anything else needing a
-"quiet grey" has to reuse one of these or earn a hue.
+"quiet grey" has to reuse one of these or earn a hue. A Category added after the spares run out is
+the case that tests this and does not break it: it reuses the Sector default `#949494`, which is
+already what a whole Category nobody could give a hue to is painted. Deliberately not
+`UNKNOWN_COLOUR`, which means a *broken* reference.
 
 > This document is a design reference, not a decision record. `.claude/skills/slice/SKILL.md` says
 > the issue and the CHANGELOG are the record and that binding decisions belong in an ADR.
@@ -237,23 +262,28 @@ causes them — a legend for state you created one second ago explains what you 
 remaining three, two want the encoding fixed rather than explained (D1, D4). Capas carries the
 residue, gaining a glyph and a live count.
 
-## 5. Two things the glossary claims that the code does not do
+## 5. One thing the glossary claims that the code does not do
 
-Neither is a defect in this work, and neither belongs in `CONTEXT.md` — it is a glossary, not a
-status report. Recorded here so the next person does not rediscover them.
-
-**The taxonomy is not editable.** CONTEXT.md calls a Category "editable data, not code: a clinic
-adds its own and it appears in the panel and in reports at once". There is no taxonomy route in
-`appinfo/routes.php` and no UI — the eleven Categories are seeded and, in practice, fixed. That is
-why this document could specify a palette at all and expect it to survive. If taxonomy editing is
-ever built, the ramp needs a rule for what colour a new Category gets, and ADR-0013 says the honest
-answer is that it groups with an existing family and its glyph tells it apart.
+It is not a defect in this work, and it does not belong in `CONTEXT.md` — that is a glossary, not a
+status report. Recorded here so the next person does not rediscover it.
 
 **A Sector has no team.** CONTEXT.md says "each Sector has one fixed team, so the same families
 are seen by the same people over time, which is the whole point of drawing one" — but no Feature
 carries one. A Sector today is a name, a
 boundary and a colour. Not needed for anything here; worth knowing before someone designs a
 "who covers this address" feature and finds the answer is not stored.
+
+> **This section held a second item until 2026-09-15: "the taxonomy is not editable".** It recorded
+> that there was no taxonomy route in `appinfo/routes.php` and no UI, that the eleven Categories were
+> seeded and in practice fixed, and that this was why a palette could be specified at all and
+> expected to survive. #36 built the thing it described as missing: six taxonomy routes, and a Capas
+> panel that adds, renames and removes both a Category and a Subcategory. Its closing sentence —
+> that taxonomy editing would need a rule for what colour a new Category gets, and that ADR-0013's
+> honest answer is an existing family plus a glyph that tells it apart — is now #43 and ADR-0017.
+> The note is gone because the code caught up with the glossary, not because it was ever wrong, and
+> what survives of it is in §1.2. This is a design reference rather than a dated record, so a claim
+> that stopped being true is removed rather than annotated in place; the removal is dated here
+> because the reasoning it carried is still load-bearing.
 
 ## 6. Verification
 
@@ -269,4 +299,5 @@ defect is reintroduced.
 - a cluster's icon reflects the categories of `getAllChildMarkers()`, not its count
 - an `aproximada` record renders its distinct treatment, an `exacta` one does not
 - a Sector path is reachable by keyboard
-- `tools/ramp-check.py` passes: 0/55 collapsed pairs, no contrast failure
+- `tools/ramp-check.py` passes: 0/55 collapsed pairs, no contrast failure, and all eight spares
+  still clear every gate the eleven clear

@@ -7,8 +7,12 @@
  * families and the glyph carries the identity. A dichromacy touches the hue and
  * never the shape, which is the whole point.
  *
- * Keyed by Category **slug**, which is the stable identifier — a clinic may
- * rename a label, and ids differ per install (see taxonomy.js).
+ * The seeded eleven are keyed by Category **slug**, which is the stable
+ * identifier — a clinic may rename a label, and ids differ per install (see
+ * taxonomy.js). A Category the clinic added has no seeded mark and chooses one
+ * from `CATALOGUE` instead (#46); that choice is stored and OVERRIDES this map,
+ * so an install where nobody has chosen anything still draws exactly what #37
+ * re-picked.
  *
  * All eleven were re-picked at pin size for #37, against the vocabulary a
  * person already has from a phone map, and judged as rendered pixels at 19px
@@ -33,51 +37,66 @@
  *
  * Maki icons are a single `<path>` with no `fill` attribute on a
  * `viewBox="0 0 15 15"`, so they take their colour from CSS wherever they land.
- * `webpack.config.js` loads this package as `asset/source` rather than the
- * Nextcloud default of `asset/inline`: a data URI cannot be recoloured and
- * cannot be inlined into the Leaflet divIcon's HTML string, and both are needed.
  */
-import bus from '@mapbox/maki/icons/bus.svg'
-import circleStroked from '@mapbox/maki/icons/circle-stroked.svg'
-import college from '@mapbox/maki/icons/college.svg'
-import hospital from '@mapbox/maki/icons/hospital.svg'
-import park from '@mapbox/maki/icons/park.svg'
-import pitch from '@mapbox/maki/icons/pitch.svg'
-import placeOfWorship from '@mapbox/maki/icons/place-of-worship.svg'
-import police from '@mapbox/maki/icons/police.svg'
-import shop from '@mapbox/maki/icons/shop.svg'
-import town from '@mapbox/maki/icons/town.svg'
-import townHall from '@mapbox/maki/icons/town-hall.svg'
+import { layouts, svgArray } from '@mapbox/maki/browser.esm.js'
 
+/**
+ * Every mark this app can draw, by Maki name.
+ *
+ * Read out of the package's own browser bundle, which ships the names and the
+ * markup as two parallel arrays. Not `require.context()` over `icons/`, and not
+ * a hand-written list of imports: the context helper is webpack's alone, so the
+ * catalogue would be empty under vitest and every assertion about a chosen mark
+ * would pass while proving nothing — and a hand-written list is a second copy of
+ * an inventory Maki owns.
+ *
+ * `@mapbox/maki/browser.esm.js` and not `@mapbox/maki`: the package's `main` is
+ * a Node script that globs the filesystem, which is what a bare specifier
+ * resolves to outside a browser target, and it throws on import under vitest.
+ *
+ * This replaced eleven `.svg` imports resolved by a webpack rule of their own.
+ * The markup is the same bytes — Maki's build writes the files and this bundle
+ * from one source — so `webpack.config.js` no longer needs to know about this
+ * package at all.
+ */
+const MARKS = Object.fromEntries(layouts.map((name, index) => [name, svgArray[index]]))
+
+/** Every mark's name, in Maki's own order — what the picker offers (#46). */
+export const CATALOGUE = layouts
+
+/** The mark each seeded Category is drawn with, until somebody chooses another. */
 const GLYPHS = {
-	salud: hospital,
-	educacion: college,
-	deporte_recreacion: pitch,
-	seguridad: police,
-	medioambiente: park,
-	organizacion_social: town,
-	servicio_publico: townHall,
-	movilidad_transporte: bus,
-	religion: placeOfWorship,
-	comercio_economia: shop,
-	sin_clasificar: circleStroked,
+	salud: 'hospital',
+	educacion: 'college',
+	deporte_recreacion: 'pitch',
+	seguridad: 'police',
+	medioambiente: 'park',
+	organizacion_social: 'town',
+	servicio_publico: 'town-hall',
+	movilidad_transporte: 'bus',
+	religion: 'place-of-worship',
+	comercio_economia: 'shop',
+	sin_clasificar: 'circle-stroked',
 }
 
 /**
- * The glyph a Category is drawn with.
+ * The glyph a Category is drawn with: the one it was given, then the one its
+ * slug ships with, then the neutral.
  *
- * Falls back rather than returning nothing, for two cases that are both real: a
- * Category a clinic added, which has no glyph and cannot have one until somebody
- * chooses it; and a Feature pointing at a Subcategory the taxonomy no longer
- * has, which `colourOf` already handles the same way. A blank dot is worse than
- * a neutral one — it reads as a rendering failure rather than as "unclassified",
- * and the row beside it already says which it is.
+ * Falls back rather than returning nothing, for three cases that are all real: a
+ * Category a clinic added and has not chosen a mark for; a Feature pointing at a
+ * Subcategory the taxonomy no longer has, which `colourOf` already handles the
+ * same way; and a stored name this app cannot draw — the column is a VARCHAR and
+ * a restored dump or a retired Maki icon can put one there. A blank dot is worse
+ * than a neutral one — it reads as a rendering failure rather than as
+ * "unclassified", and the row beside it already says which it is (ADR-0017).
  *
  * @param {?string} categorySlug the Category's slug, from indexSubcategories()
+ * @param {?string} chosen the Maki name stored against the Category, if any
  * @return {string} SVG markup, never empty
  */
-export function glyphFor(categorySlug) {
-	return GLYPHS[categorySlug] ?? GLYPHS.sin_clasificar
+export function glyphFor(categorySlug, chosen = null) {
+	return MARKS[chosen] ?? MARKS[GLYPHS[categorySlug]] ?? MARKS[GLYPHS.sin_clasificar]
 }
 
 /** Every Category slug that has a glyph of its own. Read by the tests. */

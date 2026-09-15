@@ -48,6 +48,18 @@ return [
 		// Polled by every open map every few seconds (ADR-0002) — keep it cheap.
 		['name' => 'changes#since', 'url' => '/changes', 'verb' => 'GET'],
 
+		// The clinic owns its vocabulary (#36): a Category and a Subcategory are
+		// editable data, renamed from the Capas panel. Addressed by slug, not by
+		// id — the slug is what a rename leaves alone, and ids differ per
+		// install. A Subcategory's slug is unique only within its Category
+		// ("otro" is in nearly all of them), so its URL carries both.
+		['name' => 'category#rename', 'url' => '/categories/{slug}', 'verb' => 'PUT'],
+		[
+			'name' => 'category#renameSubcategory',
+			'url' => '/categories/{slug}/subcategories/{subSlug}',
+			'verb' => 'PUT',
+		],
+
 		// Admin-only by default: it is #[NoAdminRequired] that opens a route up,
 		// and this one deliberately carries no such attribute.
 		['name' => 'adminSettings#save', 'url' => '/settings/basemap', 'verb' => 'PUT'],

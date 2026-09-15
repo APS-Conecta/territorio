@@ -64,6 +64,8 @@ final class RoutesTest extends TestCase {
 			'export#withContacts',
 			'export#history',
 			'changes#since',
+			'category#rename',
+			'category#renameSubcategory',
 			'adminSettings#save',
 			'adminSettings#saveComuna',
 		], $names);

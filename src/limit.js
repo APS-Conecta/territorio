@@ -165,11 +165,16 @@ function said(changedAt) {
  * How this Sector's current line came to be, as one sentence (issue #50).
  *
  * It costs no column, because the revision history already holds it: every write
- * records which fields it changed, a Sector generated from picked lines writes
- * `geometry` and `limit` in the same revision, and a dragged vertex writes
- * `geometry` alone. A column would be no better anyway — `faceAround()` runs in
- * this browser and the server never witnesses "generated", so a stored flag would
- * be the client's word for the same thing.
+ * records which fields it changed, and a Sector generated from picked lines writes
+ * `geometry` and `limit` in the same revision. A column would be no better anyway
+ * — `faceAround()` runs in this browser and the server never witnesses
+ * "generated", so a stored flag would be the client's word for the same thing.
+ *
+ * What history CANNOT say is by which act a later line was written. `geometry`
+ * alone is what a dragged vertex writes, and also what «Generar» writes on a
+ * reopened Sector whose Limit did not change — a flow #49 exists to support. So
+ * where the two are indistinguishable this says WHEN the line was last written and
+ * never that a hand moved it.
  *
  * It states provenance and never a defect. The Limit records intent and the
  * geometry records the agreed line; they stop matching the moment somebody drags
@@ -200,11 +205,19 @@ export function provenance(history) {
 	if (wrote(line, 'limit')) {
 		return `Línea fijada junto con el límite${said(line.changedAt)}.`
 	}
+	// Generating needs picked lines, so a Limit, and «Generar» saves the two in one
+	// revision. A line last written while no Limit had ever been recorded can
+	// therefore only have been drawn by hand — whatever somebody typed afterwards.
+	// Without this, a hand-drawn Sector stopped saying so the moment its Limit was
+	// written down, and read exactly like a generated one that was later moved.
+	if (!entries.some((entry) => wrote(entry, 'limit') && entry.revision <= line.revision)) {
+		return 'Línea dibujada a mano; el límite se anotó después.'
+	}
 
-	// Both orders happen and only one of them is an adjustment: a Limit written
-	// down long after the line was settled is ordinary, and saying "después del
-	// límite" about it would be false.
+	// Both orders happen and neither names an act: a Limit written down long after
+	// the line was settled is ordinary, so saying "después del límite" about it
+	// would be false, and the other order is a drag or a regenerate indifferently.
 	return line.revision > limit.revision
-		? `Línea ajustada${said(line.changedAt)}, después del límite.`
-		: `Línea fijada${said(line.changedAt)}; el límite se anotó después.`
+		? `Línea guardada${said(line.changedAt)}, después del límite.`
+		: `Línea guardada${said(line.changedAt)}; el límite se anotó después.`
 }

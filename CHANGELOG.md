@@ -55,7 +55,7 @@ boundary came to be.
 
 - **A Sector says whether its line was generated or drawn, and when it last moved** (#50). One
   sentence in the sidebar, at Sector level: «Línea dibujada a mano.», «Línea fijada junto con el
-  límite el 05-08-2026.» or «Línea ajustada el 12-08-2026, después del límite.» The per-row «a
+  límite el 05-08-2026.» or «Línea guardada el 12-08-2026, después del límite.» The per-row «a
   mano» chip was the only signal there was, and it answers a different question — it marks a typed
   stretch *within* a Limit, so a fully hand-drawn Sector whose Limit is all picked streets shows
   none of them.
@@ -74,12 +74,24 @@ boundary came to be.
   (CONTEXT.md). So there is no warning colour, no icon, and a unit test fails the build on the
   words that would read as one.
 
-  Two things are worth knowing before trusting a sentence. A revision is one save, so a Sector
-  generated and then dragged **before** its first save, and one drawn by hand with streets picked
-  in the same save, both read as «junto con el límite» — telling those apart needs the app to
-  record the act rather than the fields it changed, which is a product question and not a column.
-  And a Limit *removed* is not a Limit recorded: the service stores an emptied Limit as null, so
-  the revision that cleared it is skipped rather than read as one the line was fixed against.
+  **It names an act only where history establishes one, which is why a later line is «guardada»
+  and not «ajustada».** Writing `geometry` alone in a later revision is what a dragged vertex
+  does — and equally what «Generar» does on a reopened Sector whose Limit did not change, the flow
+  #49 exists to support. So that sentence states the order and the date and stops there: an
+  earlier wording announced a hand adjustment over polygons the app had itself just generated,
+  which of the three shapes is the one somebody is likeliest to hit. The two it *can* establish it
+  still says outright — generating needs picked lines, so a Limit, and saves the two together, so
+  a line last written while no Limit had ever been recorded was drawn by hand however late the
+  Limit was typed. Without that last reading a hand-drawn Sector stopped saying so the moment
+  somebody wrote its limit down, and read exactly like a generated one that was later moved.
+
+  Two more things are worth knowing before trusting a sentence. A revision is one save, so a
+  Sector generated and then dragged **before** its first save, and one drawn by hand with streets
+  picked in the same save, both read as «junto con el límite» — telling those apart needs the app
+  to record the act rather than the fields it changed, which is a product question and not a
+  column. And a Limit *removed* is not a Limit recorded: the service stores an emptied Limit as
+  null, so the revision that cleared it is skipped rather than read as one the line was fixed
+  against.
 
 ### Fixed
 

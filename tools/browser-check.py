@@ -1394,16 +1394,21 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
     page.wait_for_timeout(400)
 
 
-def _last_wrote(history, field):
-    """The newest revision that wrote a value into one field, as the sidebar reads it.
+def _wrote(entry, field):
+    """A revision that wrote a value into one field — not one that CLEARED it.
 
-    A revision that CLEARED the field does not count: an emptied Limit is stored
-    as null (`FeatureService::limit`), and a Sector whose Limit was removed was
-    not built against one.
+    An emptied Limit is stored as null (`FeatureService::limit`), and a Sector
+    whose Limit was removed was not built against one.
     """
+    change = (entry.get("changes") or {}).get(field)
+
+    return change is not None and change.get("to") is not None
+
+
+def _last_wrote(history, field):
+    """The newest revision that wrote a value into one field, as the sidebar reads it."""
     for entry in history:
-        change = (entry.get("changes") or {}).get(field)
-        if change is not None and change.get("to") is not None:
+        if _wrote(entry, field):
             return entry
 
     return None
@@ -1467,8 +1472,14 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
 
         if line is None:
             failures.append("the stored history records no geometry, so the sentence is derived from nothing (#50)")
-        elif state == "drawn" and limit is not None:
-            failures.append("the sidebar said hand-drawn while the stored history holds a Limit (#50)")
+        elif state == "drawn" and any(
+            _wrote(entry, "limit") and entry["revision"] <= line["revision"] for entry in history
+        ):
+            # A Limit written down AFTER the line still reads «dibujada a mano»,
+            # and rightly: generating needs picked lines and saves the two
+            # together, so a line written while no Limit stood was drawn. What
+            # would make the sentence false is a Limit that already stood.
+            failures.append("the sidebar said hand-drawn while a Limit already stood (#50)")
         elif state == "together" and (limit is None or limit["revision"] != line["revision"]):
             failures.append("the sidebar said generated while no stored revision wrote both (#50)")
         elif state == "adjusted" and (limit is None or line["revision"] <= limit["revision"]):

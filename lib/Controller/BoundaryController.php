@@ -27,10 +27,11 @@ class BoundaryController extends Controller {
 	}
 
 	/**
-	 * How much of a Limit a re-import may not hold any more.
+	 * How many ids one request may ask about.
 	 *
-	 * The same cap as `FeatureService::LIMIT_PARTS`, for the same reason: a Limit
-	 * cannot hold more parts than that, so no honest client asks about more ids.
+	 * The same number as `FeatureService::LIMIT_PARTS`, because that is how many
+	 * parts a Limit can hold: no honest client cites more, so nothing is lost by
+	 * refusing to look up more.
 	 */
 	private const ASKED_ABOUT = 500;
 

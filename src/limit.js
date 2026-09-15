@@ -6,8 +6,9 @@
  * than derived from the shape: **the Limit records intent and the geometry
  * records the agreed line.** They match when a Sector is generated and stop
  * matching the moment anybody drags a vertex, which is expected and is not drift
- * to be corrected. Nothing here compares one against the other or tries to keep
- * them in step.
+ * to be corrected. Nothing here compares one VALUE against the other or tries to
+ * keep them in step — `provenance()` reads only WHEN each was last written, which
+ * is a different question and the only one history can answer.
  *
  * A part is either a picked Boundary feature or a stretch somebody described in
  * words, because a real limit runs along a canal, the edge of a park, or a line
@@ -135,4 +136,67 @@ export function sectorFields(limit = []) {
 			.map((part) => part.featureId),
 		pickedGeometry: {},
 	}
+}
+
+/** A revision that wrote a value into this field — not one that cleared it. */
+function wrote(entry, field) {
+	const change = (entry?.changes ?? {})[field]
+
+	return change !== undefined && change.to !== null
+}
+
+/** A stored timestamp as a date is said out loud here: 12-08-2026. */
+function said(changedAt) {
+	const [date] = String(changedAt ?? '').split(' ')
+	const parts = date.split('-')
+
+	return parts.length === 3 ? ` el ${parts[2]}-${parts[1]}-${parts[0]}` : ''
+}
+
+/**
+ * How this Sector's current line came to be, as one sentence (issue #50).
+ *
+ * It costs no column, because the revision history already holds it: every write
+ * records which fields it changed, a Sector generated from picked lines writes
+ * `geometry` and `limit` in the same revision, and a dragged vertex writes
+ * `geometry` alone. A column would be no better anyway — `faceAround()` runs in
+ * this browser and the server never witnesses "generated", so a stored flag would
+ * be the client's word for the same thing.
+ *
+ * It states provenance and never a defect. The Limit records intent and the
+ * geometry records the agreed line; they stop matching the moment somebody drags
+ * a vertex, and that is expected rather than drift to be corrected (CONTEXT.md).
+ * So no wording here calls it a mismatch and nothing renders it as a warning.
+ *
+ * Known limitation, worth knowing before trusting a sentence: everything one save
+ * does lands in one revision, so a Sector generated and then dragged BEFORE its
+ * first save, and one drawn by hand with streets picked in the same save, both
+ * read as "fijada junto con el límite". Telling those apart needs the app to
+ * record the act rather than the fields it changed, which is a product question
+ * and not this function's.
+ *
+ * @param {Array} history the record's revisions, newest first, as the API returns them
+ * @return {string} the sentence, or '' when history says nothing about a line
+ */
+export function provenance(history) {
+	const entries = history ?? []
+	const line = entries.find((entry) => wrote(entry, 'geometry'))
+	const limit = entries.find((entry) => wrote(entry, 'limit'))
+
+	if (line === undefined) {
+		return ''
+	}
+	if (limit === undefined) {
+		return 'Línea dibujada a mano.'
+	}
+	if (wrote(line, 'limit')) {
+		return `Línea fijada junto con el límite${said(line.changedAt)}.`
+	}
+
+	// Both orders happen and only one of them is an adjustment: a Limit written
+	// down long after the line was settled is ordinary, and saying "después del
+	// límite" about it would be false.
+	return line.revision > limit.revision
+		? `Línea ajustada${said(line.changedAt)}, después del límite.`
+		: `Línea fijada${said(line.changedAt)}; el límite se anotó después.`
 }

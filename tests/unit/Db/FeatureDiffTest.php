@@ -27,6 +27,16 @@ final class FeatureDiffTest extends TestCase {
 	}
 
 	/**
+	 * @param array<string, mixed> $fields
+	 * @return array<string, array{from: null, to: mixed}>
+	 */
+	private static function asChanges(array $fields): array {
+		$class = new ReflectionClass(FeatureMapper::class);
+
+		return $class->getMethod('asChanges')->invoke($class->newInstanceWithoutConstructor(), $fields);
+	}
+
+	/**
 	 * The one field whose client key is not its property name: history is keyed `limit`, the
 	 * entity property is `boundaryLimit`, and `Feature::PROPERTY_OF` is the bridge. Drop that
 	 * lookup and `getUpdatedFields()` — keyed by property — never matches the `limit` coming out
@@ -44,6 +54,33 @@ final class FeatureDiffTest extends TestCase {
 
 		self::assertArrayHasKey('limit', $changes, 'a change to the Sector limit left no history');
 		self::assertSame(['from' => 'la línea vieja', 'to' => 'la línea nueva'], $changes['limit']);
+	}
+
+	/**
+	 * What a creation records, and — the half issue #50 leans on — what it does not.
+	 *
+	 * A Sector drawn freehand has no Limit at all, and `FeatureService::limit()` stores that as
+	 * null rather than `[]`. `asChanges()` drops the nulls, so its Created entry carries a
+	 * `geometry` key and no `limit` key, while one generated from picked lines carries both. That
+	 * absence is the whole signal `provenance()` reads in the browser: start recording null
+	 * fields here and every hand-drawn Sector would announce that its line was fixed together
+	 * with a Limit it never had.
+	 */
+	public function testACreationRecordsOnlyTheFieldsItArrivedWith(): void {
+		$drawn = new Feature();
+		$drawn->setGeometry('{"type":"Polygon","coordinates":[]}');
+
+		$changes = self::asChanges($drawn->comparable());
+
+		self::assertArrayHasKey('geometry', $changes);
+		self::assertSame(['from' => null, 'to' => '{"type":"Polygon","coordinates":[]}'], $changes['geometry']);
+		self::assertArrayNotHasKey('limit', $changes, 'a Sector with no Limit recorded one anyway');
+
+		$generated = new Feature();
+		$generated->setGeometry('{"type":"Polygon","coordinates":[]}');
+		$generated->setBoundaryLimit('[{"featureId":7,"name":"Vicuña Mackenna"}]');
+
+		self::assertArrayHasKey('limit', self::asChanges($generated->comparable()));
 	}
 
 	/**

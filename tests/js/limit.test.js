@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groups, partsFrom, readable, sectorFields, withNote, without } from '../../src/limit.js'
+import { groups, partsFrom, provenance, readable, sectorFields, withNote, without } from '../../src/limit.js'
 
 /**
  * A Sector's Limit — what somebody says out loud when asked where the sector
@@ -207,5 +207,121 @@ describe('the fields a Sector draft carries', () => {
 	it('starts with no shapes even for a Limit full of picks', () => {
 		expect(sectorFields([{ name: 'Uno', featureId: 1, parts: 1, picked: true }]).pickedGeometry)
 			.toEqual({})
+	})
+})
+
+/**
+ * How the current line came to be, read off the revision history (issue #50).
+ *
+ * No column records it, and none is needed: every write already stamps which
+ * fields it changed, and a Sector generated from picked lines changes `geometry`
+ * and `limit` in the same revision while a dragged vertex changes `geometry`
+ * alone. Nothing here compares the two VALUES or asks whether they still agree —
+ * they stop agreeing the moment somebody drags a vertex, which is expected
+ * (CONTEXT.md). It reads only WHEN each was last written.
+ *
+ * History arrives newest first, as `GET /features/{id}/history` returns it.
+ */
+const revision = (number, changes, action = 'updated', changedAt = '2026-08-12 09:30:00') => ({
+	revision: number,
+	action,
+	actor: 'ana',
+	changedAt,
+	changes,
+})
+
+const SHAPE = '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}'
+const STREETS = '[{"featureId":7,"name":"Avenida Vicuña Mackenna"}]'
+
+/** Drawn freehand: a creation carrying a geometry, and no Limit ever recorded. */
+const DRAWN = [
+	revision(1, {
+		name: { from: null, to: 'Sector 3' },
+		geometry: { from: null, to: SHAPE },
+	}, 'created', '2026-08-05 11:00:00'),
+]
+
+/** Generated from picked lines: one revision carries both. */
+const GENERATED = [
+	revision(1, {
+		name: { from: null, to: 'Sector 3' },
+		geometry: { from: null, to: SHAPE },
+		limit: { from: null, to: STREETS },
+	}, 'created', '2026-08-05 11:00:00'),
+]
+
+/** Generated, then a vertex dragged: a later revision touches the geometry alone. */
+const DRAGGED = [
+	revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 16:45:00'),
+	...GENERATED,
+]
+
+describe('provenance', () => {
+	it('says a Sector was drawn by hand when no revision ever recorded a Limit', () => {
+		expect(provenance(DRAWN)).toBe('Línea dibujada a mano.')
+	})
+
+	it('says the line was fixed together with the Limit when one revision wrote both', () => {
+		expect(provenance(GENERATED)).toBe('Línea fijada junto con el límite el 05-08-2026.')
+	})
+
+	/**
+	 * Issue #50's third criterion: when the geometry was last edited, relative to
+	 * the Limit, without reading raw history. The date is the geometry's own.
+	 */
+	it('dates the adjustment when the line moved after the Limit', () => {
+		expect(provenance(DRAGGED)).toBe('Línea ajustada el 12-08-2026, después del límite.')
+	})
+
+	/**
+	 * The other order, which is just as ordinary: somebody writes down what the
+	 * sector runs along long after the line was settled. Saying "después del
+	 * límite" here would be false, so it says the true thing instead.
+	 */
+	it('says so when the Limit was written down after the line', () => {
+		const history = [
+			revision(3, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20 08:00:00'),
+			...DRAWN,
+		]
+
+		expect(provenance(history)).toBe('Línea fijada el 05-08-2026; el límite se anotó después.')
+	})
+
+	/**
+	 * A Limit emptied is not a Limit recorded. The service stores an empty Limit
+	 * as null rather than `[]` ("a Sector drawn by hand has no Limit at all",
+	 * FeatureService::limit), so the revision that cleared it carries
+	 * `to: null` — counting that as a Limit would tell somebody their hand-drawn
+	 * Sector was fixed against a Limit that no longer exists.
+	 */
+	it('does not count a Limit that was removed', () => {
+		const history = [
+			revision(2, { limit: { from: STREETS, to: null } }, 'updated', '2026-08-20 08:00:00'),
+			...DRAWN,
+		]
+
+		expect(provenance(history)).toBe('Línea dibujada a mano.')
+	})
+
+	/** Nothing to say rather than a guess: a record whose history never arrived. */
+	it('says nothing when no revision recorded a geometry', () => {
+		expect(provenance([])).toBe('')
+		expect(provenance([revision(1, { name: { from: null, to: 'Sector 3' } }, 'created')])).toBe('')
+		expect(provenance(undefined)).toBe('')
+	})
+
+	/**
+	 * Issue #50's second criterion, asserted as a rule rather than trusted to the
+	 * wordings above: the Limit records intent and the geometry records the agreed
+	 * line, they are EXPECTED to differ, and nothing here may read as a defect to
+	 * be corrected (CONTEXT.md). A future wording that calls it a mismatch fails
+	 * here rather than reaching a screen.
+	 */
+	it('never words it as a mismatch to be corrected', () => {
+		const said = [DRAWN, GENERATED, DRAGGED].map(provenance).join(' ').toLowerCase()
+
+		for (const wrong of ['desfase', 'no coinciden', 'desajust', 'corregir', 'error', 'inconsist']) {
+			expect(said).not.toContain(wrong)
+		}
 	})
 })

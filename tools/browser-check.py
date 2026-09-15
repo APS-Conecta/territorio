@@ -2682,8 +2682,8 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
 
 # The neutral a Sector with no colour of its own is washed in, and the grey the
 # Unidad Vecinal hairline is drawn in. Read from src/ rather than copied, for
-# the reason the Category colours are read from the seed: a copy here would
-# agree with itself while the app disagreed with both.
+# the reason the Category colours are read from the taxonomy the app serves
+# (#42): a copy here would agree with itself while the app disagreed with both.
 def _frontend_colour(name):
     source = (Path(__file__).resolve().parent.parent / "src" / "taxonomy.js").read_text("utf-8")
     match = re.search(name + r"\s*=\s*'(#[0-9a-fA-F]{6})'", source)
@@ -3165,6 +3165,10 @@ def _ramp_check():
 
 
 # The Category holding the territorial divisions, as src/taxonomy.js names it.
+# Copied rather than read out of src/ the way _frontend_colour() reads a colour,
+# because a divergence here cannot pass quietly: rename the slug in the app and
+# its inert #334155 stays in the expected set while nothing paints it, so the
+# "served but never painted" half goes red naming the colour.
 DIVISIONS_SLUG = "division_territorial"
 
 

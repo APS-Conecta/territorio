@@ -10,7 +10,7 @@ DOCKER := docker run --rm -v "$(CURDIR)":/app -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js clean instance-up instance-occ instance-down instance-clean
+.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -60,6 +60,18 @@ lint: test-image
 
 build:
 	npm run build
+
+# What is actually inside js/, and whether THIRD-PARTY-NOTICES.md names it. Fails naming
+# every package that ships without a row there.
+#
+# It depends on `build` because it reads the bundles' source maps, which are gitignored and
+# exist only after a build — and because a stale bundle would answer for last week's
+# dependencies. It runs on the host, not in $(DOCKER): that image is PHP, and this is jq.
+#
+# Not part of `lint`: linting is cheap and runs constantly, and this rebuilds the bundles.
+# CI runs it in the js job, right after the drift check that has already built them.
+notices: build
+	tools/notices.sh
 
 watch:
 	npm run watch

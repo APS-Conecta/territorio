@@ -34,8 +34,12 @@ class FeatureService {
 	 * the browser sends as a structure, into a column with no length of its own,
 	 * and a runaway client should not be able to put a megabyte of names in a
 	 * sentence somebody has to read.
+	 *
+	 * Public because `BoundaryController` caps the ids one read may ask about at
+	 * the same number and there is no honest way for the two to differ: the
+	 * question is "which of my parts are gone", and a Limit cannot hold more.
 	 */
-	private const LIMIT_PARTS = 500;
+	public const LIMIT_PARTS = 500;
 	private const LIMIT_NAME = 200;
 
 	/** Optional free-text columns, all handled identically: trim, blank becomes null. */

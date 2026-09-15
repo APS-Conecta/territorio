@@ -6,6 +6,7 @@ namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Service\BoundaryService;
+use OCA\Territorio\Service\FeatureService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -25,15 +26,6 @@ class BoundaryController extends Controller {
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
-
-	/**
-	 * How many ids one request may ask about.
-	 *
-	 * The same number as `FeatureService::LIMIT_PARTS`, because that is how many
-	 * parts a Limit can hold: no honest client cites more, so nothing is lost by
-	 * refusing to look up more.
-	 */
-	private const ASKED_ABOUT = 500;
 
 	/**
 	 * Everything a Sector's Limit could follow, within the box asked for — and,
@@ -81,6 +73,9 @@ class BoundaryController extends Controller {
 	 * and failing the whole view because one id was malformed would black out the
 	 * picker over a detail.
 	 *
+	 * Cut at `FeatureService::LIMIT_PARTS`, which is how many parts a Limit can
+	 * hold: no honest client cites more, so nothing is lost by looking up no more.
+	 *
 	 * @return list<int>
 	 */
 	private function cited(string $ids): array {
@@ -89,6 +84,6 @@ class BoundaryController extends Controller {
 			static fn (string $id): bool => ctype_digit($id),
 		);
 
-		return array_map('intval', array_slice(array_values($whole), 0, self::ASKED_ABOUT));
+		return array_map('intval', array_slice(array_values($whole), 0, FeatureService::LIMIT_PARTS));
 	}
 }

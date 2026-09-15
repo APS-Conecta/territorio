@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Unit\Controller;
 
 use OCA\Territorio\Controller\BoundaryController;
 use OCA\Territorio\Service\BoundaryService;
+use OCA\Territorio\Service\FeatureService;
 use OCP\AppFramework\Http;
 use OCP\IRequest;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -46,19 +47,30 @@ final class BoundaryControllerTest extends TestCase {
 		self::assertSame(Http::STATUS_OK, $response->getStatus());
 	}
 
-	/** A Limit holds at most LIMIT_PARTS parts, so no honest client sends more. */
-	public function testMoreIdsThanALimitCanHoldAreCutOff(): void {
+	/**
+	 * A Limit holds at most LIMIT_PARTS parts, so no honest client sends more.
+	 *
+	 * The head is asserted as well as the count, because *which* ids survive the
+	 * cut is the part that matters: a draft cites its parts in order, so cutting
+	 * from the wrong end would answer about the last 500 of a list whose first
+	 * 500 are the ones the Limit actually reads from.
+	 */
+	public function testMoreIdsThanALimitCanHoldAreCutOffFromTheEnd(): void {
+		$cap = FeatureService::LIMIT_PARTS;
+
 		$this->boundaries->expects(self::once())
 			->method('inView')
 			->with(
 				self::anything(), self::anything(), self::anything(), self::anything(),
-				self::callback(static fn (array $ids): bool => count($ids) === 500),
+				self::callback(static fn (array $ids): bool => count($ids) === $cap
+					&& $ids[0] === 1
+					&& $ids[$cap - 1] === $cap),
 			)
 			->willReturn(['features' => [], 'gone' => []]);
 
 		$this->controller->inView(
 			'-33.54', '-70.61', '-33.51', '-70.57',
-			implode(',', range(1, 600)),
+			implode(',', range(1, $cap + 100)),
 		);
 	}
 

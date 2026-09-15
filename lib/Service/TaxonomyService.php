@@ -375,10 +375,12 @@ class TaxonomyService {
 	/**
 	 * Remove one Subcategory, addressed within its Category.
 	 *
-	 * Same three refusals in the same order as `removeCategory()`, which is why
-	 * both guards take a label and a list of ids rather than a Category or a
-	 * Subcategory: there is one rule, and what changes between the two callers is
-	 * only what is being counted.
+	 * The same two refusals in the same order as `removeCategory()` — structural,
+	 * then what is filed under it — which is why both guards take a label and a
+	 * list of ids rather than a Category or a Subcategory: there is one rule, and
+	 * what changes between the two callers is only what is being counted. A third
+	 * refusal follows them, belonging to this path alone; the comment on it says
+	 * why it is last.
 	 *
 	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no such Category, or no such Subcategory under it
@@ -388,6 +390,7 @@ class TaxonomyService {
 		$category = $this->categories->findBySlug($categorySlug);
 		$subcategory = $this->subcategories->findBySlug((int)$category->getId(), $slug);
 		$this->refuseIfStructural($category, $subcategory);
+		$this->refuseIfInUse([(int)$subcategory->getId()], $subcategory->getLabel());
 
 		// Not one of #47's criteria, and here because this is the only path that
 		// can reach a state CONTEXT.md says does not exist: "A Category always
@@ -401,6 +404,15 @@ class TaxonomyService {
 		// own reason about the retire-alongside option: «quitar esta subcategoría»
 		// and «quitar toda la categoría» are not the same sentence and must not be
 		// the same button.
+		//
+		// LAST of the three, and the order carries weight: every Category a clinic
+		// adds arrives with exactly its «Otro» (`addCategory()`), so a Category
+		// with one Subcategory holding records is the ordinary case rather than a
+		// corner. Refused here first it would answer with no count and no pointer,
+		// and the way out it names — remove the whole Category — is itself refused
+		// for those same records: two refusals to reach the sentence ADR-0016 asks
+		// for, which is the dead end that ADR is written to prevent. So what is
+		// filed under the row is always reported first.
 		if (count($this->subcategoriesOf((int)$category->getId())) === 1) {
 			throw new InvalidTaxonomyException(sprintf(
 				'No se puede quitar «%s»: es la única subcategoría de «%s», y una categoría '
@@ -410,8 +422,6 @@ class TaxonomyService {
 				$category->getLabel(),
 			));
 		}
-
-		$this->refuseIfInUse([(int)$subcategory->getId()], $subcategory->getLabel());
 
 		$this->subcategories->delete($subcategory);
 

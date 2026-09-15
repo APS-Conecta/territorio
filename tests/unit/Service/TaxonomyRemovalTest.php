@@ -286,6 +286,44 @@ final class TaxonomyRemovalTest extends TestCase {
 	}
 
 	/**
+	 * A Category holding exactly one Subcategory with records under it is refused
+	 * for the RECORDS, with the count and the pointer — not for being the last one.
+	 *
+	 * The reachable case, not a contrived one: every Category a clinic adds
+	 * arrives with exactly its «Otro» (`addCategory()`), so «Comité» with twelve
+	 * records filed under «Otro» is this. Refusing it first for being the last
+	 * Subcategory answers with no number and no pointer, and the way out it
+	 * suggests — remove the whole Category — is itself refused, walking a person
+	 * through two refusals to reach the sentence ADR-0016 asks for. That dead end
+	 * is the thing ADR-0016 is written to prevent, so the in-use refusal goes
+	 * first and this test is what holds the order in place.
+	 */
+	public function testASoleSubcategoryHoldingRecordsIsRefusedWithTheCountAndWhereToLook(): void {
+		$comite = self::category(1, 'comite', 'Comité');
+		$this->categories->method('findBySlug')->willReturn($comite);
+		$this->categories->method('findAll')->willReturn([$comite]);
+		$only = self::subcategory(11, 1, 'otro', 'Otro');
+		$this->subcategories->method('findAll')->willReturn([$only]);
+		$this->subcategories->method('findBySlug')->willReturn($only);
+		$this->features->expects(self::once())
+			->method('countBySubcategory')
+			->with([11])
+			->willReturn(12);
+		$this->subcategories->expects(self::never())->method('delete');
+
+		try {
+			$this->taxonomy->removeSubcategory('comite', 'otro');
+			self::fail('twelve records were left pointing at a Subcategory that no longer exists');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('12', $e->getMessage(),
+				'the refusal does not say how many records are filed under it (ADR-0016)');
+			self::assertStringContainsString('Capas', $e->getMessage(),
+				'the refusal says no number and no way to go and see the records, which is the '
+				. 'dead end ADR-0016 forbids');
+		}
+	}
+
+	/**
 	 * A row somebody posted under the division by hand is NOT structural, and can
 	 * go.
 	 *

@@ -4928,6 +4928,7 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
     # reclassifying the record through the sidebar first; worth doing the day this
     # instance runs out of spares, which is a real ADR-0017 case rather than a
     # broken check. `make instance-clean` is the reset until then.
+    before = len(errors)
     added = f"En uso {RUN}"
     filed = f"Registro {RUN} en uso"
 
@@ -4986,6 +4987,11 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
             page.locator(".territorio-capas").screenshot(
                 path=str(SHOTS / "47-refusal.png"),
             )
+
+    # The refusal IS an HTTP 422 and the browser logs every failed response as a
+    # console error, which main()'s run-wide gate would then report. Exactly the
+    # entries these two refusals added are dropped, and only the 422 among them.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
 
     record = registry_feature(page, filed)
     if record is not None and not record.get("retired"):

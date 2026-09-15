@@ -113,6 +113,25 @@ export function sectorSubcategoryId(taxonomy) {
 }
 
 /**
+ * Whether a record filed under this Subcategory is a Sector — and not merely
+ * any territorial division.
+ *
+ * Asked in two places for two reasons that are the same reason: the colour
+ * input is offered to a Sector alone (#24) and so is the Limit picker, because
+ * a Unidad Vecinal is read from the national cadastre and never drawn
+ * (CONTEXT.md). It lives here rather than once in each component so that the
+ * next surface needing the distinction inherits the null guard below instead of
+ * writing a third copy of the comparison.
+ *
+ * Null is never a Sector: `sectorSubcategoryId` answers null on an install
+ * whose seed has not run, and a bare `===` between the two would then call a
+ * record filed under nothing a Sector.
+ */
+export function isSectorSubcategory(taxonomy, subcategoryId) {
+	return subcategoryId !== null && subcategoryId === sectorSubcategoryId(taxonomy)
+}
+
+/**
  * The extent of everything filed under one Subcategory, as Leaflet wants it:
  * `[[south, west], [north, east]]`, or null when there is nothing to measure.
  *

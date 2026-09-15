@@ -332,6 +332,31 @@ final class CategoryControllerTest extends TestCase {
 		);
 	}
 
+	/**
+	 * Both keys at once: the pictogram is written and the rename is discarded.
+	 *
+	 * Neither screen sends both — the field and the grid are never open at the
+	 * same moment — so this pins a rule rather than a behaviour anybody relies
+	 * on. It is pinned because `/categories/{slug}` is open to every user
+	 * (ADR-0005) and the answer is a 200: a caller that sent both would be told
+	 * the rename succeeded when nothing read `label` at all. The rule is stated
+	 * in appinfo/routes.php as well, which is where a caller looks before the
+	 * controller's branch.
+	 */
+	public function testABodyCarryingBothKeysWritesTheGlyphAndLeavesTheLabelAlone(): void {
+		$this->body(['label' => 'Nombre que se descarta', 'glyph' => 'bakery']);
+		$this->taxonomy->expects(self::once())
+			->method('setCategoryGlyph')
+			->with('comite_de_vivienda', 'bakery')
+			->willReturn([]);
+		$this->taxonomy->expects(self::never())->method('renameCategory');
+
+		self::assertSame(
+			Http::STATUS_OK,
+			$this->controller->update('comite_de_vivienda')->getStatus(),
+		);
+	}
+
 	/** A body with only a label is still a rename, exactly as #41 left it. */
 	public function testABodyWithOnlyALabelIsStillARename(): void {
 		$this->taxonomy->expects(self::once())

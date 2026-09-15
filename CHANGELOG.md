@@ -49,6 +49,15 @@ The umbrella closes: the Category tree is editable data, and the design doc stop
   catalogue, all 215 layouts, previewed at the 19px the pin draws — and § 6 records that the ramp
   check clears the spares as well as the eleven.
 
+- **A second claim in the same document, with the same premise, was false too** (#36). § 1.1 said
+  `webpack.config.js` overrides the inherited `.svg` rule with `asset/source` for
+  `node_modules/@mapbox/maki`. It has not since #46: that rule existed because eleven icons were
+  imported one file at a time, and a picker offering all 215 cannot be built that way, so
+  `src/glyphs.js` reads Maki's own browser bundle and the package needs no webpack rule at all. The
+  eleven could be enumerated as imports for exactly the reason the palette could be enumerated as a
+  table — eleven was all there would ever be — so closing the umbrella meant checking the paragraphs
+  that premise reached, not only the one that stated it. Found by opening `webpack.config.js`.
+
 ### Notes
 
 - **Nothing outside `docs/` changed.** `src/` is untouched, so `js/` is not rebuilt and no bundle

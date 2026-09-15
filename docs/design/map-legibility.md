@@ -53,10 +53,14 @@ take their colour from CSS. Two render paths, because there are two rendering co
 - **Inside Vue** (Capas panel, list swatch): `NcIconSvgWrapper` with the **`svg`** prop, which
   preserves Maki's 15-unit viewBox and gives `role="img"` plus DOMPurify sanitising for free.
   Do **not** use its `path` prop — that renders into a hardcoded `viewBox="0 0 24 24"` and would
-  scale every Maki glyph wrongly.
-- **Inside the Leaflet `divIcon`** (`TerritorioMap.vue:559`) — built as an HTML string outside
-  Vue's render tree, so `NcIconSvgWrapper` cannot be used. Inline the markup into the string and
-  set `fill` in CSS.
+  scale every Maki glyph wrongly. **Colour it by setting `color` on the container, never `fill` on
+  the svg**: the wrapper ships `.icon-vue[data-v-…] svg { fill: currentColor }` at specificity
+  (0,2,1), a scoped `:deep(svg) { fill: … }` compiles to (0,2,1) as well, and a tie is decided by
+  stylesheet load order — which the library won, so both swatches rendered in the theme's dark text
+  colour for months (#37). A third swatch surface must feed `currentColor` too.
+- **Inside the Leaflet `divIcon`** (`TerritorioMap.vue`, `iconFor`) — built as an HTML string
+  outside Vue's render tree, so `NcIconSvgWrapper` cannot be used, and nothing competes for the
+  fill. Inline the markup into the string and set `fill` in CSS.
 
 Both paths need the raw markup, so `webpack.config.js` overrides the inherited `.svg` rule
 (`asset/inline`, a data URI) with `asset/source` for `node_modules/@mapbox/maki` only.
@@ -164,7 +168,7 @@ Measured (recompute with `tools/ramp-check.py`'s own functions, not by eye):
   the dark background — visible, never loud.
 - The Sector tint at **alpha 0.10** over OSM land composites to `#e9e6e0`, leaving the worst
   dot-on-tint contrast at **3.04:1** (`deporte_recreacion`). Above 3:1, but only just — and the
-  code currently ships `fillOpacity: 0.15` (`TerritorioMap.vue:550`), where the same pair measures
+  code currently ships `fillOpacity: 0.15` (`TerritorioMap.vue`, `styleFor`), where the same pair measures
   **2.90:1**. Adopting `#949494` as the Sector wash therefore requires adopting 0.10 with it; #21
   owns both. What keeps this off the defect list today is the pin's 2px `--color-main-background`
   border, so a dot never relies on fill-vs-tint contrast alone.
@@ -203,7 +207,7 @@ Each is independently verifiable and independently shippable.
 
 | | Defect | Evidence |
 |---|---|---|
-| **D1** | Cluster hue means *count* while dot hue means *Category* — one channel, two meanings, switching on zoom | markercluster buckets on `getChildCount()` into small/medium/large. Fix: `iconCreateFunction`, already unused in the options object at `TerritorioMap.vue:316`, walking `getAllChildMarkers()` through `colourOf`. ~40 lines |
+| **D1** | Cluster hue means *count* while dot hue means *Category* — one channel, two meanings, switching on zoom | markercluster buckets on `getChildCount()` into small/medium/large. Fix: `iconCreateFunction`, already unused in the options object that `TerritorioMap.vue` hands markercluster, walking `getAllChildMarkers()` through `colourOf`. ~40 lines |
 | **D2** | Every un-recoloured Sector is drawn in exactly the colour of every school | `taxonomy.js:28` `#2563eb` is byte-identical to `EnsureSeedData.php:48` |
 | **D3** | A Unidad Vecinal is offered a colour picker, and `colourOf` honours it over the division colour | `FeatureDetail.vue:24` gated on `isDivision`, which is true for *any* division. No figure/ground rule can be guaranteed while this exists |
 | **D4** | The map asserts a precision the Registry never claimed | `locationQuality` is stored, validated, imported, exported and historicised (`LocationQuality.php`, `CsvWriter.php:31`, `FeatureHistory.vue:92`) and never drawn. `aproximada` renders identically to `exacta` |

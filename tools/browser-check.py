@@ -4548,19 +4548,29 @@ def _the_same_name_twice_is_refused(page, label, errors, failures):
     page.wait_for_timeout(500)
 
 
-def _the_picker_offers_the_new_name(page, expected, failures):
-    """The Subcategoría picker, which is the other surface #41 names.
+def _picker_options(page, typed):
+    """Open a draft, type into the Subcategoría picker, and read what it offers.
 
-    Opens a draft and throws it away: the picker exists only inside a record's
-    form, and typing into it is how a person finds an option in a list of a few
-    dozen.
+    The mechanical half of the two checks that assert on the picker — the
+    positive one after a rename (#41) and the negative one after a removal
+    (#47). Only the assertion differs, so only the assertion is at the call
+    sites; the two were a line-for-line copy of each other and could drift.
+
+    The picker exists only inside a record's form, so this opens a draft and
+    throws it away. It returns TWO lists: what is offered with `typed` in the
+    box, and what is offered with the box cleared. The second is the fixture —
+    a "no longer offers X" assertion over an empty list is true for every reason
+    including a renamed `.vs__dropdown-option` class or a picker that never
+    opened, which is this repo's own lesson about asserting over an empty
+    fixture.
     """
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.wait_for_timeout(400)
     # exact=True for the reason given in a_pin_says_what_kind_of_place_it_is():
     # #44's twelve «+» buttons are all named "Agregar subcategoría en «X»".
-    page.get_by_label("Subcategoría", exact=True).click()
-    page.get_by_label("Subcategoría", exact=True).fill(expected)
+    field = page.get_by_label("Subcategoría", exact=True)
+    field.click()
+    field.fill(typed)
     page.wait_for_timeout(700)
 
     # `all_text_contents()` and not `all_inner_texts()`: innerText is the
@@ -4568,17 +4578,27 @@ def _the_picker_offers_the_new_name(page, expected, failures):
     # the narrow dropdown, so the browser handed back "Salud X · CES\nFAM X" and
     # no comparison against the name that was typed could ever have matched.
     offered = page.locator(".vs__dropdown-option").all_text_contents()
-    if not any(expected in text for text in offered):
-        failures.append(
-            f"the Subcategoría picker does not offer {expected!r} — it is still showing the "
-            f"names from before the rename (offered: {offered[:5]})",
-        )
+
+    field.fill("")
+    page.wait_for_timeout(700)
+    everything = page.locator(".vs__dropdown-option").all_text_contents()
 
     # Twice: the first closes the open dropdown, the second the draft itself.
     page.keyboard.press("Escape")
     page.wait_for_timeout(200)
     page.keyboard.press("Escape")
     page.wait_for_timeout(400)
+    return offered, everything
+
+
+def _the_picker_offers_the_new_name(page, expected, failures):
+    """The Subcategoría picker, which is the other surface #41 names."""
+    offered, _ = _picker_options(page, expected)
+    if not any(expected in text for text in offered):
+        failures.append(
+            f"the Subcategoría picker does not offer {expected!r} — it is still showing the "
+            f"names from before the rename (offered: {offered[:5]})",
+        )
 
 
 def _analisis_reads_the_new_name(page, category, subcategory, failures, shot=None):
@@ -4745,31 +4765,32 @@ def _served_category(page, slug):
 def _the_picker_no_longer_offers(page, gone, failures):
     """The Subcategoría picker, the second surface a removal has to leave (#47).
 
-    The mirror of `_the_picker_offers_the_new_name()` and it opens a draft the
-    same way — the picker exists only inside a record's form. Not a vacuous
-    assertion: a Category with no records still appears here, because the picker
-    is a flat list of «Categoría · Subcategoría» read straight off the taxonomy,
-    which is exactly what Análisis is not (see the check below).
-    """
-    page.get_by_role("button", name="Agregar", exact=True).click()
-    page.wait_for_timeout(400)
-    page.get_by_label("Subcategoría", exact=True).click()
-    page.get_by_label("Subcategoría", exact=True).fill(gone)
-    page.wait_for_timeout(700)
+    The mirror of `_the_picker_offers_the_new_name()`, sharing its mechanics
+    through `_picker_options()`. Not a vacuous assertion: a Category with no
+    records still appears here, because the picker is a flat list of «Categoría ·
+    Subcategoría» read straight off the taxonomy, which is exactly what Análisis
+    is not (see the check below).
 
-    offered = page.locator(".vs__dropdown-option").all_text_contents()
+    The fixture is asserted before the absence is. `offered` being empty is the
+    EXPECTED shape here — nothing matches what was typed, which is the point —
+    so the non-empty assertion goes on `everything`, the same picker with the
+    box cleared. Without it, a renamed `.vs__dropdown-option` class or a picker
+    that never opened reads exactly like a successful removal.
+    """
+    offered, everything = _picker_options(page, gone)
+    if not everything:
+        failures.append(
+            f"the Subcategoría picker offered nothing at all with an empty box, so it never "
+            f"opened or its options are no longer «.vs__dropdown-option» — this check cannot "
+            f"tell that {gone!r} is absent from a list it could not read",
+        )
+        return
     if any(gone in text for text in offered):
         failures.append(
             f"the Subcategoría picker still offers {gone!r} after the Category was removed — a "
             f"record could be filed under a Subcategory id nothing answers to (offered: "
             f"{offered[:5]})",
         )
-
-    # Twice: the first closes the open dropdown, the second the draft itself.
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(200)
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(400)
 
 
 def the_territorial_division_says_it_cannot_be_removed(page, failures):
@@ -4832,7 +4853,11 @@ def the_territorial_division_says_it_cannot_be_removed(page, failures):
             f"branch it carries a «quitar» like every other row",
         )
 
-    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "47-divisiones.png"))
+    # The BLOCK and not the whole panel: this criterion is judged by a person
+    # looking at the shot, and the panel is taller than its own scroll box, so a
+    # whole-panel capture framed the Category tree and left the hint this check
+    # is about outside the image.
+    divisions.screenshot(path=str(SHOTS / "47-divisiones.png"))
 
 
 def a_category_can_be_removed_without_a_reload(page, errors, failures):
@@ -4859,6 +4884,7 @@ def a_category_can_be_removed_without_a_reload(page, errors, failures):
     """
     added = f"Efímera {RUN}"
     slug = f"efimera_{RUN}"
+    before = len(errors)
 
     if not _add_a_category_in_capas(page, added, failures):
         return
@@ -4901,6 +4927,16 @@ def a_category_can_be_removed_without_a_reload(page, errors, failures):
         return
 
     _the_picker_no_longer_offers(page, f"{added} · Otro", failures)
+
+    # Nothing here is a refused request: «Cancelar» sends none and the removal is
+    # a 200, so unlike the refusal check below this one scrubs nothing and every
+    # console error it added is a real one. An unused `errors` parameter is what
+    # hid the missing scrub in the refusal check, so this one spends it.
+    if len(errors) > before:
+        failures.append(
+            f"removing «{added}» logged console errors the panel did not show: "
+            f"{errors[before:][:3]}",
+        )
     page.locator(".territorio-capas").screenshot(path=str(SHOTS / "47-capas-panel.png"))
 
 
@@ -4984,6 +5020,12 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
             return
 
         if state == "live":
+            # Scrolled to, for the same reason as the divisions shot above: the
+            # note card is asserted visible in Playwright's sense (it has a box),
+            # which does not put it inside the panel's scroll box, and the shot
+            # is what a person reads this refusal off.
+            said.first.scroll_into_view_if_needed()
+            page.wait_for_timeout(300)
             page.locator(".territorio-capas").screenshot(
                 path=str(SHOTS / "47-refusal.png"),
             )
@@ -4993,12 +5035,35 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
     # entries these two refusals added are dropped, and only the 422 among them.
     errors[before:] = [message for message in errors[before:] if "422" not in message]
 
+    # Not `is not None and …`: the record was filed and asserted present above, so
+    # its absence now is not a reason to skip the assertion — it is the ADR-0005
+    # violation (nothing hard-deletes a record) worth shouting about, and it is
+    # also the only state in which "a retired record still counts" was measured
+    # against nothing at all.
     record = registry_feature(page, filed)
-    if record is not None and not record.get("retired"):
+    if record is None:
+        failures.append(
+            f"{filed!r} is gone from the Registry after the two refusals: it was filed and "
+            f"asserted present before them, so either the refused removal took it or something "
+            f"hard-deleted it (ADR-0005) — and this check measured nothing about retired records",
+        )
+    elif not record.get("retired"):
         failures.append(
             f"{filed!r} is not retired, so the second half of this check measured a LIVE record "
             f"and proved nothing about retired ones",
         )
+
+    # Leave the panel as it was found, the way
+    # _the_same_category_name_twice_is_refused() does: the note card names no
+    # row, so one left behind reads as a refusal of whatever the next check
+    # does. Without this the check is only safe because of where it sits in
+    # main()'s call order, which is a fact about the caller.
+    page.get_by_role(
+        "button", name=f"Agregar subcategoría en «{SEEDED_CATEGORY}»", exact=True,
+    ).first.click()
+    page.wait_for_timeout(300)
+    page.locator(CAPAS_INPUT).press("Escape")
+    page.wait_for_timeout(500)
 
 
 def main():

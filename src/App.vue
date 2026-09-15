@@ -1065,6 +1065,22 @@ export default {
 					: {}),
 				lat: lat === null ? '' : String(lat),
 				lon: lon === null ? '' : String(lon),
+				// Revisited for #23, now that the map draws the Exactitud, and kept.
+				//
+				// `sin_coordenada` is derived from having no geometry and never
+				// chosen (`LocationQuality`, `FeatureService::applyGeometry`), so the
+				// picker offers two options and NcSelect already falls back to
+				// «Exacta» when it is handed a third. The draft has to agree with
+				// what the sidebar is showing, because `payload()` spreads the whole
+				// draft: left as `sin_coordenada`, the first coordinate a person types
+				// into this record would be posted alongside a quality the server
+				// refuses outright — «Exactitud desconocida» — while the screen said
+				// «Exacta». The record that keeps no coordinate is unaffected either
+				// way: an empty geometry re-derives `sin_coordenada` on the server.
+				//
+				// #83 gave the Exactitud a door of its own, but not to this caller:
+				// it opens only when `geometry` is absent from the request, and
+				// `payload()` always sends the key.
 				locationQuality: feature.locationQuality === 'sin_coordenada'
 					? 'exacta'
 					: (feature.locationQuality ?? 'exacta'),

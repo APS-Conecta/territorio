@@ -54,10 +54,16 @@ and is never drift to be corrected (`CONTEXT.md`).
   read as "fixed together with the Limit". Telling those apart means recording the act rather than
   the fields it changed — a product question, and still not a column.
 - **The sentence names an act only where history establishes one.** «dibujada a mano» and «fijada
-  junto con el límite» are derived; a later geometry-only write is said as «Línea guardada … », with
-  the order and the date and no verb for the act, because a drag and a regenerate write the same
-  shape. Wording it «ajustada» announced a hand adjustment for polygons the app itself had
-  generated, which is the likeliest of these three cases to be hit.
+  junto con el límite» are derived; a later geometry-only write is said as «guardada … », with the
+  order and the date and no verb for the act, because a drag and a regenerate write the same shape.
+  Wording it «ajustada» announced a hand adjustment for polygons the app itself had generated,
+  which is the likeliest of these three cases to be hit.
+- **The origin outlives the act, so it is read over the whole history and not off the newest
+  write.** A revision that wrote `geometry` and `limit` together is where the boundary came from,
+  and saving the line again does not undo that — so «fijada junto con el límite el … y guardada de
+  nuevo el …» keeps both the origin and the date. Reading only the newest write of each field left
+  the generated-then-dragged Sector naming no origin at all. Where no revision ever wrote the two
+  together there is nothing to name, and the sentence stays the bare dateline.
 - **A record that came from a Dataset is never told as hand-drawn.** The unit tests assert that as
   a rule over every fixture, not only as three wordings, and `tools/browser-check.py` imports a
   Sector and reads the sentence — the only check that exercises `datasetId` travelling from

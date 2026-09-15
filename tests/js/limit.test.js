@@ -320,9 +320,16 @@ describe('provenance', () => {
 	/**
 	 * Issue #50's third criterion: when the geometry was last edited, relative to
 	 * the Limit, without reading raw history. The date is the geometry's own.
+	 *
+	 * And its FIRST criterion in the same breath, which reading only the newest
+	 * write of each field used to throw away: this Sector's creation wrote
+	 * `geometry` and `limit` together, so the boundary DID come from the Limit,
+	 * and the state a person is likeliest to open — generated, then dragged —
+	 * said only when the line was last saved and never where it came from.
 	 */
-	it('dates the line moving after the Limit', () => {
-		expect(provenance(DRAGGED)).toBe('Línea guardada el 12-08-2026, después del límite.')
+	it('names the origin, and dates the line moving after the Limit', () => {
+		expect(provenance(DRAGGED))
+			.toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo el 12-08-2026.')
 	})
 
 	/**
@@ -334,6 +341,10 @@ describe('provenance', () => {
 	 */
 	it('does not call a later line a hand adjustment, since «Generar» writes the same shape', () => {
 		expect(provenance(REGENERATED)).toBe('Línea guardada el 12-08-2026, después del límite.')
+		// And it claims no origin either: no revision here ever wrote the two
+		// together, so there is no «junto con el límite» to report — which is what
+		// keeps this apart from the generated-then-dragged Sector above.
+		expect(provenance(REGENERATED)).not.toBe(provenance(DRAGGED))
 	})
 
 	/**
@@ -353,7 +364,9 @@ describe('provenance', () => {
 	 * written while no Limit had ever been recorded can only have been drawn.
 	 */
 	it('keeps a hand-drawn Sector apart from a generated one whose Limit is the newest write', () => {
-		expect(provenance(DRAGGED_THEN_LIMIT)).toBe('Línea guardada el 12-08-2026; el límite se anotó después.')
+		expect(provenance(DRAGGED_THEN_LIMIT))
+			.toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo el 12-08-2026; '
+				+ 'el límite se anotó después.')
 		expect(provenance(DRAWN_THEN_LIMIT)).not.toBe(provenance(DRAGGED_THEN_LIMIT))
 	})
 
@@ -394,7 +407,7 @@ describe('provenance', () => {
 		expect(provenance([
 			revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', null),
 			...GENERATED,
-		])).toBe('Línea guardada, después del límite.')
+		])).toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo.')
 	})
 
 	/** Nothing to say rather than a guess: a record whose history never arrived. */

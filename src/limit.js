@@ -253,9 +253,29 @@ export function provenance(history, imported = false) {
 		return `${origin(line, imported)}; el límite se anotó después.`
 	}
 
-	// Both orders happen and neither names an act: a Limit written down long after
-	// the line was settled is ordinary, so saying "después del límite" about it
-	// would be false, and the other order is a drag or a regenerate indifferently.
+	// A revision that wrote the two together IS the boundary's origin — «Generar»
+	// saves the polygon and the Limit it came from in one revision — and it stays
+	// the origin after the line is written again. Looking only at the NEWEST write
+	// of each field threw it away, so a generated Sector with a dragged vertex said
+	// when it was last saved and never that it came from the Limit at all (#50,
+	// criterion 1). The date of the save stays, because that is criterion 3.
+	const together = entries.find((entry) =>
+		wrote(entry, 'geometry') && wrote(entry, 'limit') && entry.revision <= line.revision)
+
+	if (together !== undefined) {
+		const since = `Línea fijada junto con el límite${said(together.changedAt)} y guardada de nuevo${said(line.changedAt)}`
+
+		// Two dates in order already say the line was written after the Limit, so
+		// only the other order still needs a clause of its own.
+		return line.revision > limit.revision ? `${since}.` : `${since}; el límite se anotó después.`
+	}
+
+	// Nothing here ever wrote the two together, so there is no origin to name — a
+	// Limit typed onto a hand-drawn Sector and then «Generar» on the reopened
+	// record (#49) is exactly this shape. Both orders happen and neither names an
+	// act: a Limit written down long after the line was settled is ordinary, so
+	// saying "después del límite" about it would be false, and the other order is
+	// a drag or a regenerate indifferently.
 	return line.revision > limit.revision
 		? `Línea guardada${said(line.changedAt)}, después del límite.`
 		: `Línea guardada${said(line.changedAt)}; el límite se anotó después.`

@@ -37,6 +37,33 @@ The browser gate stops grading the app against the seed.
 A cluster's colour means a Category again, and the map finally says how well it knows where a
 record is.
 
+### Added
+
+- **The ramp check derives the colours a new Category can be given, and the seed ships them**
+  (#43). ADR-0017 has the app assign a Category's colour rather than ask a person for one: the
+  constraints are 3:1 against a white page and against the dark theme, ΔE-OK 0.05 from every
+  Category and from both neutrals, and 0.015 from each of them under all three dichromacies, and
+  nobody satisfies that by eye. `tools/ramp-check.py` already implements exactly that arithmetic,
+  so it gained `derive_spares()`: at the chroma ADR-0013 fixes (0.090), inside the six hue families
+  it allows — read off the seeded ramp rather than listed, so repainting a Category moves its
+  family with it and no seventh can arrive by editing a constant — it walks lightness and keeps
+  every value that clears all of it against the eleven, both neutrals, and the spares already
+  taken. Eight, matching the ceiling recorded in #40 and ADR-0017. They ship as
+  `EnsureSeedData::SPARES`, which is data the app can read rather than a number in a comment.
+
+  Deriving here rather than on the PHP write path is the point: computing a colour when a Category
+  is created means a second implementation of OKLab, contrast and three dichromacy transforms, in
+  another language, and two implementations of one rule drift apart silently. Assigning a colour
+  becomes taking the next unused spare, with no colour maths on the write path at all.
+
+  `make lint` re-checks every shipped spare on every run — contrast, separation, dichromacy, chroma
+  not raised, hue still inside a family — so moving a seeded colour to within ΔE 0.05 of a spare
+  turns the build red at the moment the edit is made rather than the first time a clinic adds a
+  Category. Editing a Category's colour is now also a statement about colours no Category holds
+  yet. The number eight is the search grid's as much as the palette's: lightness steps by 0.005,
+  and a finer step finds more only by packing them onto the ΔE 0.05 floor itself, which is the
+  distance at which two dots start reading as one colour rather than a place to sit a palette.
+
 ### Changed
 
 - **A cluster is coloured by the Categories under it, never by how many records it holds** (#22).

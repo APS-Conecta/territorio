@@ -85,9 +85,9 @@ describe('makeOperable', () => {
 	})
 
 	it('does nothing when the layer has no element yet', () => {
-		// `_initPath` builds the SVG only when the layer joins the map, and a
-		// GeometryCollection comes back from geometryToLayer as a FeatureGroup,
-		// which has no element at all. Neither may take the redraw down.
+		// The caller passes `layer.getElement?.()`: undefined when the layer has
+		// no such method, null for a Path whose SVG is not built yet. Neither may
+		// take the redraw down.
 		expect(() => makeOperable(null, 'Sector 3', () => {})).not.toThrow()
 		expect(() => makeOperable(undefined, 'Sector 3', () => {})).not.toThrow()
 	})

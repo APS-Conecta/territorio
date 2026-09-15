@@ -27,10 +27,10 @@
  * @param {Function} activate what a click on this layer already does
  */
 export function makeOperable(element, name, activate) {
-	// `_initPath` builds the SVG only when the layer joins the map, so this is
-	// null before `addLayer` — and a GeometryCollection comes back from
-	// `geometryToLayer` as a FeatureGroup, which has no element at any point.
-	// Neither may take the whole redraw down.
+	// Plain defence, not a case anyone has hit: the caller passes
+	// `layer.getElement?.()`, which is undefined for any layer that has no such
+	// method, and null for a Path before `_initPath` has built its SVG. One odd
+	// layer must not take the whole redraw down with it.
 	if (!element) {
 		return
 	}

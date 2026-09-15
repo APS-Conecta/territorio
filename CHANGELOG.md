@@ -106,6 +106,61 @@ have to survive is arranged by the test rather than waited for.
 
 The umbrella closes: the Category tree is editable data, and the design doc stops saying it is not.
 
+### Added
+
+- **A CSV can be imported, the way GeoJSON and KML already can** (#101). One file, one Dataset, one
+  revertible ImportBatch (ADR-0009), through the same dialog and the same `occ territorio:import`.
+  What it is for is the spreadsheet a clinic sends — a catastro somebody keeps in Excel is a real
+  file that had no way in, and asking a health team to convert it to GeoJSON first is asking them
+  not to send it.
+
+  **The reader does not build rows.** `CsvReader` turns the file into a GeoJSON FeatureCollection
+  and hands it to `GeoJsonReader`, exactly as `KmlReader` does, so a CSV import IS a GeoJSON
+  import: the same derived external ids, the same refusal of a nameless row, the same `category` /
+  `subcategory` pair `classify()` files on, the same comuna claim. A second row builder is how the
+  formats would quietly start importing differently — and it is proven where it matters rather than
+  asserted, by importing the same record twice, once as CSV and once as GeoJSON, and requiring the
+  second run to report it **unchanged**. `differs()` compares the whole official blob and then every
+  field, so one value arriving under a different key or trimmed differently would show up there.
+
+  No `TabularReader` interface came with it. There is no interface anywhere in `lib/`: the readers
+  share `read()` by convention and the third one is one more branch in `ImportService::importFile`,
+  not a hierarchy with one implementation.
+
+  **What a Chilean clinic's CSV actually looks like decides two rules.** Excel in es-CL writes `;`
+  between the cells and a decimal comma inside the coordinates — `-33,5211` — because the comma is
+  this locale's decimal separator. A comma-only, dot-decimal reader mis-parses every one of those
+  files, so the delimiter is read off the header line and a comma in a coordinate cell is a decimal
+  point. And encoding is decided rather than guessed: bytes that are not valid UTF-8 are read as
+  Windows-1252, which is what Excel writes when it is not asked for UTF-8. That is a rule and not a
+  heuristic — a 1252 file with any accent in it is invalid UTF-8, and a valid UTF-8 file is never
+  touched — where `mb_detect_encoding` would answer the same question by guessing.
+
+  **The columns are a fixed allow-list, and that is a guard rather than tidiness.** They are the
+  Spanish headings `CsvWriter` already emits, because those are the words the people using this app
+  see; a column this reader does not know is ignored, since a spreadsheet always carries a code or a
+  total or a note to whoever filled it in. Passing the unknown ones through instead would let a
+  heading that happens to slug to `uid` or `source` reach into the DERIVED external id, and the same
+  file saved with one more column would import as a second set of records rather than updating the
+  first (ADR-0003). There is no `website` field on a Feature, so a column named that is ignored like
+  any other. A row with no coordinates imports as a record with no geometry, which is a state the
+  catastro is full of; a header with no «Nombre» is refused, in Spanish, naming the columns that are
+  read.
+
+  **It does not read this app's own CSV export back in, and the dialog says so before the import
+  runs.** That export is lossy on purpose and in one direction only (issue #17): no id column, a
+  «Clasificación» that is one label rather than two slugs, and contact cells carrying the leading
+  apostrophe that stops a spreadsheet evaluating them. GeoJSON is the format that comes back in.
+  The notice appears when a `.csv` is chosen, next to the KML one and for the same reason — a person
+  who expects a round trip needs to know while they can still choose a different file.
+
+  Two lines were written for this and then deleted, because nothing could be made to fail without
+  them: a BOM strip, since headings are matched on their slug and `TaxonomyService::slugFor()` folds
+  the marker out with the spaces and the accents, and a blank-line filter, since a row with nothing
+  in the columns this reader reads is already dropped one function later. Both deletions are
+  recorded where the line stood. A guard no test can fail on is a guard nobody can trust, and this
+  repository has shipped one before.
+
 ### Documentation
 
 - **`docs/design/map-legibility.md` § 5 loses its first item** (#36, #40). It said *the taxonomy is

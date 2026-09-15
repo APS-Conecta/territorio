@@ -196,11 +196,11 @@ class TaxonomyService {
 
 		// ponytail: two inserts, no transaction — the ceiling no write path in
 		// this service has ever raised. If the «Otro» fails after the Category
-		// row lands, the Category reaches neither the picker nor Análisis,
-		// nothing can be filed under it, and it has spent a spare colour that
-		// `nextColour()` will not offer again. It needs a database failure
-		// between two statements; the recovery is #47's removal, which is also
-		// what would make wrapping this worth its weight.
+		// row lands, the Category reaches neither the picker nor Análisis and
+		// nothing can be filed under it. It needs a database failure between two
+		// statements, and the recovery is `removeCategory()` below: nothing is
+		// filed under it, so the panel lets the person take it away and its
+		// spare colour comes back with it.
 		$subcategory = new Subcategory();
 		$subcategory->setCategoryId((int)$category->getId());
 		$subcategory->setSlug(self::FIRST_SUBCATEGORY['slug']);

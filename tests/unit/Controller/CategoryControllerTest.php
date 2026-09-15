@@ -171,6 +171,88 @@ final class CategoryControllerTest extends TestCase {
 		self::assertSame('El nombre no puede quedar vacío.', $response->getData()['message']);
 	}
 
+	/**
+	 * Removing a Category is a DELETE on the row, and it answers with the whole
+	 * served tree like every other write here — it is what the browser swaps in,
+	 * and it is how the removed Category leaves the Capas panel, the Subcategoría
+	 * picker and Análisis at once with no reload (#47).
+	 *
+	 * The `->with()` is the pin: nothing else in any suite exercises this
+	 * controller, so a slug read from the wrong place would stay green everywhere
+	 * and remove the wrong Category in the browser.
+	 */
+	public function testARemovedCategoryComesBackAsTheWholeTree(): void {
+		$tree = [['id' => 1, 'slug' => 'salud', 'label' => 'Salud', 'color' => '#99564e',
+			'subcategories' => []]];
+		$this->taxonomy->expects(self::once())
+			->method('removeCategory')
+			->with('comite_de_vivienda')
+			->willReturn($tree);
+
+		$response = $this->controller->destroy('comite_de_vivienda');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($tree, $response->getData());
+	}
+
+	/**
+	 * Two path segments, the Category first — the order
+	 * `removeSubcategory(string $categorySlug, string $slug)` declares them.
+	 * Swapping them removes nothing and refuses nothing: it looks for a Category
+	 * called «cesfam», so the pin is on the order and not only on the values.
+	 */
+	public function testARemovedSubcategoryComesBackAsTheWholeTree(): void {
+		$tree = [['id' => 1, 'slug' => 'salud', 'label' => 'Salud', 'color' => '#99564e',
+			'subcategories' => []]];
+		$this->taxonomy->expects(self::once())
+			->method('removeSubcategory')
+			->with('salud', 'cesfam')
+			->willReturn($tree);
+
+		$response = $this->controller->destroySubcategory('salud', 'cesfam');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($tree, $response->getData());
+	}
+
+	/**
+	 * ADR-0016's refusal has to reach the panel as a sentence a person can act
+	 * on. 422 and not 409: no controller in this app answers 409, and the panel
+	 * reads `message` off the body of a 422 exactly as it does for a rename.
+	 */
+	public function testARefusalToRemoveIsUnprocessableNotAServerError(): void {
+		$this->taxonomy->method('removeCategory')->willThrowException(new InvalidTaxonomyException(
+			'No se puede quitar «Salud»: hay 12 registros clasificados ahí, incluidos los retirados.',
+		));
+
+		$response = $this->controller->destroy('salud');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertStringContainsString('12', $response->getData()['message']);
+	}
+
+	/** Same mapping for a Subcategory: one rule, one `attempt()`. */
+	public function testARefusalToRemoveASubcategoryIsUnprocessableToo(): void {
+		$this->taxonomy->method('removeSubcategory')->willThrowException(
+			new InvalidTaxonomyException('No se puede quitar «Sector»: la división territorial…'),
+		);
+
+		$response = $this->controller->destroySubcategory('division_territorial', 'sector');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertStringContainsString('Sector', $response->getData()['message']);
+	}
+
+	public function testRemovingSomethingThatIsGoneIsNotFound(): void {
+		$this->taxonomy->method('removeCategory')
+			->willThrowException(new DoesNotExistException('gone'));
+
+		self::assertSame(
+			Http::STATUS_NOT_FOUND,
+			$this->controller->destroy('no-existe')->getStatus(),
+		);
+	}
+
 	public function testRenamingSomethingThatIsGoneIsNotFound(): void {
 		$this->taxonomy->method('renameCategory')
 			->willThrowException(new DoesNotExistException('gone'));

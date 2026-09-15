@@ -6,6 +6,7 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Db\Category;
 use OCA\Territorio\Db\CategoryMapper;
+use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidTaxonomyException;
@@ -49,6 +50,7 @@ class TaxonomyService {
 	public function __construct(
 		private CategoryMapper $categories,
 		private SubcategoryMapper $subcategories,
+		private FeatureMapper $features,
 	) {
 	}
 
@@ -315,6 +317,159 @@ class TaxonomyService {
 		}
 
 		return $this->tree();
+	}
+
+	/**
+	 * Remove a Category the clinic does not use (#47).
+	 *
+	 * Three refusals, in this order, and the order is the decision (ADR-0016):
+	 * structural first, because «División territorial» would pass the in-use
+	 * guard on an empty install and come back on the next upgrade anyway; then
+	 * in use, which is the one the ADR is about; and only then the delete.
+	 *
+	 * There is no `?force` and there never was one. ADR-0016 weighed retiring the
+	 * records alongside and rejected it — "«remove this layer» and «retire 340
+	 * places» are not the same sentence and should not be the same button" — so a
+	 * flag that re-offered it would be that decision put back as a query
+	 * parameter.
+	 *
+	 * The Subcategories go with it. They carry the Category's id and nothing in
+	 * the schema would catch the orphan (issue #40): left behind they would leave
+	 * every screen at once, because `tree()` groups them under the Categories
+	 * `findAll()` answers with — and stay in the table forever.
+	 *
+	 * ponytail: no transaction, like `addCategory()`'s two inserts. A database
+	 * failure between two of these statements leaves a Category holding fewer
+	 * empty Subcategories than it did, which the same click completes on a
+	 * retry — nothing is filed under any of them, which is the condition that
+	 * got this far. The upgrade is an `IDBConnection` on this service and one
+	 * `beginTransaction`, worth taking the day a write path here has more than
+	 * one thing to lose.
+	 *
+	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws DoesNotExistException when no Category carries that slug
+	 * @throws InvalidTaxonomyException when it is structural, or something is filed under it
+	 */
+	public function removeCategory(string $slug): array {
+		$category = $this->categories->findBySlug($slug);
+		$this->refuseIfStructural($category, $category->getLabel());
+
+		$subcategories = $this->subcategoriesOf((int)$category->getId());
+		$this->refuseIfInUse(
+			array_map(static fn (Subcategory $s): int => (int)$s->getId(), $subcategories),
+			$category->getLabel(),
+		);
+
+		foreach ($subcategories as $subcategory) {
+			$this->subcategories->delete($subcategory);
+		}
+		$this->categories->delete($category);
+
+		return $this->tree();
+	}
+
+	/**
+	 * Remove one Subcategory, addressed within its Category.
+	 *
+	 * Same three refusals in the same order as `removeCategory()`, which is why
+	 * both guards take a label and a list of ids rather than a Category or a
+	 * Subcategory: there is one rule, and what changes between the two callers is
+	 * only what is being counted.
+	 *
+	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
+	 * @throws DoesNotExistException when no such Category, or no such Subcategory under it
+	 * @throws InvalidTaxonomyException when it is structural, or something is filed under it
+	 */
+	public function removeSubcategory(string $categorySlug, string $slug): array {
+		$category = $this->categories->findBySlug($categorySlug);
+		$subcategory = $this->subcategories->findBySlug((int)$category->getId(), $slug);
+		$this->refuseIfStructural($category, $subcategory->getLabel());
+		$this->refuseIfInUse([(int)$subcategory->getId()], $subcategory->getLabel());
+
+		$this->subcategories->delete($subcategory);
+
+		return $this->tree();
+	}
+
+	/**
+	 * The Subcategories under one Category, read out of the whole list.
+	 *
+	 * `findAll()` and a filter rather than a query of its own: the tree is eleven
+	 * Categories and a few dozen Subcategories, this service already loads all of
+	 * it on every request for `tree()`, and a `findByCategory()` would be a second
+	 * way of asking the same question.
+	 *
+	 * @return list<Subcategory>
+	 */
+	private function subcategoriesOf(int $categoryId): array {
+		return array_values(array_filter(
+			$this->subcategories->findAll(),
+			static fn (Subcategory $subcategory): bool => (int)$subcategory->getCategoryId() === $categoryId,
+		));
+	}
+
+	/**
+	 * «División territorial» and everything under it stay, always (ADR-0016).
+	 *
+	 * Asked of the CATEGORY in both cases, which covers its Subcategories with
+	 * the same line rather than with a list of the two slugs the seed ships: a
+	 * Subcategory is always addressed through its Category, and nothing filed
+	 * under the territorial division is a branch of "what this place is about"
+	 * (CONTEXT.md). That is at least as strict as the ADR asks — it also holds
+	 * for a third division somebody posts by hand, which is the case a list of
+	 * two slugs would silently let through.
+	 *
+	 * Refused here rather than at save time, and the panel says the same thing
+	 * where the control would otherwise be: this is the backstop for a request
+	 * that did not come from the panel, not the way a person is meant to find out.
+	 *
+	 * @throws InvalidTaxonomyException
+	 */
+	private function refuseIfStructural(Category $category, string $label): void {
+		if ($category->getSlug() !== EnsureSeedData::DIVISIONS_SLUG) {
+			return;
+		}
+
+		throw new InvalidTaxonomyException(sprintf(
+			'No se puede quitar «%s»: la división territorial es parte de la estructura del '
+			. 'mapa, y todo sector y toda unidad vecinal se guarda en ella.',
+			$label,
+		));
+	}
+
+	/**
+	 * Refuse while anything is filed under these Subcategories, saying how many
+	 * and where to go and see them (ADR-0016).
+	 *
+	 * The count is `countBySubcategory()` and never the one Análisis shows: that
+	 * one describes what a person is looking at, filters and all, and leaves out
+	 * retired records and boundary Datasets. This one has to describe what would
+	 * be orphaned.
+	 *
+	 * Which is why the sentence SAYS the retired ones are in it. A person who
+	 * filters Capas down to this one Category and counts nine against a refusal
+	 * that said twelve has been handed a contradiction; naming the difference and
+	 * the list it is visible in turns it back into a next step, which is the half
+	 * of ADR-0016 that is easiest to drop.
+	 *
+	 * @param int[] $subcategoryIds
+	 * @throws InvalidTaxonomyException
+	 */
+	private function refuseIfInUse(array $subcategoryIds, string $label): void {
+		$count = $this->features->countBySubcategory($subcategoryIds);
+		if ($count === 0) {
+			return;
+		}
+
+		throw new InvalidTaxonomyException(sprintf(
+			'No se puede quitar «%s»: hay %d %s ahí, incluidos los retirados. Para verlos, '
+			. 'deje visible solo «%s» en Capas y revise «Ver retirados» en Datos. '
+			. 'Reclasifíquelos y vuelva a intentarlo.',
+			$label,
+			$count,
+			$count === 1 ? 'registro clasificado' : 'registros clasificados',
+			$label,
+		));
 	}
 
 	/**

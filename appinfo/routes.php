@@ -71,6 +71,19 @@ return [
 			'url' => '/categories/{slug}/subcategories/{subSlug}',
 			'verb' => 'PUT',
 		],
+		// Removing one (#47). DELETE on the row itself, at the same URL its
+		// rename addresses — there is nothing here like `feature#destroy`, which
+		// is a DELETE that retires (ADR-0005). A Category is not a record: it
+		// holds no history, nothing points back at it once nothing is filed under
+		// it, and ADR-0016 lets it go only while that is true. The refusal when
+		// it is not is a 422 with a sentence, like every other refusal in this
+		// app — never a `?force` that would undo the ADR's own decision.
+		['name' => 'category#destroy', 'url' => '/categories/{slug}', 'verb' => 'DELETE'],
+		[
+			'name' => 'category#destroySubcategory',
+			'url' => '/categories/{slug}/subcategories/{subSlug}',
+			'verb' => 'DELETE',
+		],
 
 		// Admin-only by default: it is #[NoAdminRequired] that opens a route up,
 		// and this one deliberately carries no such attribute.

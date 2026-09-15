@@ -68,6 +68,23 @@ class CategoryController extends Controller {
 	}
 
 	/**
+	 * Remove a Category the clinic does not use (#47).
+	 *
+	 * No body and no query parameter — in particular no `?force`. ADR-0016
+	 * decided that a Category holding records is refused rather than emptied or
+	 * retired alongside, so there is nothing here for a caller to choose.
+	 */
+	#[NoAdminRequired]
+	public function destroy(string $slug): JSONResponse {
+		return $this->attempt(fn (): array => $this->taxonomy->removeCategory($slug));
+	}
+
+	#[NoAdminRequired]
+	public function destroySubcategory(string $slug, string $subSlug): JSONResponse {
+		return $this->attempt(fn (): array => $this->taxonomy->removeSubcategory($slug, $subSlug));
+	}
+
+	/**
 	 * A refusal is 422 and carries the reason; a slug nobody has is 404.
 	 *
 	 * @param callable(): array<int|string, mixed> $action

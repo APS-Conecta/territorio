@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GLYPH_SLUGS, glyphFor } from '../../src/glyphs.js'
+import { CATALOGUE, GLYPH_SLUGS, glyphFor } from '../../src/glyphs.js'
 
 /**
  * The Category → pictogram mapping (issue #20, ADR-0013).
@@ -31,7 +31,7 @@ const SEEDED = [
  * re-picked all eleven against the vocabulary a phone map uses, and a silent
  * swap afterwards would undo that without anything saying so.
  */
-const CHOSEN = {
+const CHOSEN_BY_SLUG = {
 	salud: 'hospital',
 	educacion: 'college',
 	deporte_recreacion: 'pitch',
@@ -85,12 +85,12 @@ describe('glyphFor', () => {
 	})
 
 	it('draws each Category with the icon #37 re-picked for it', () => {
-		// Before iterating CHOSEN: drop a Category from it and the loop below
+		// Before iterating CHOSEN_BY_SLUG: drop a Category from it and the loop below
 		// would stop pinning that Category's pictogram while every test here
 		// stayed green. The test above only proves a glyph exists.
-		expect(Object.keys(CHOSEN).sort()).toEqual([...SEEDED].sort())
+		expect(Object.keys(CHOSEN_BY_SLUG).sort()).toEqual([...SEEDED].sort())
 
-		for (const [slug, icon] of Object.entries(CHOSEN)) {
+		for (const [slug, icon] of Object.entries(CHOSEN_BY_SLUG)) {
 			const drawn = makiIdOf(glyphFor(slug))
 
 			// Before comparing: a null here means the id could not be read at all,
@@ -112,5 +112,56 @@ describe('glyphFor', () => {
 		}
 
 		expect(glyphFor('una_categoria_nueva')).toBe(glyphFor('sin_clasificar'))
+	})
+})
+
+/**
+ * The mark a clinic chose for a Category of its own (#46, ADR-0017).
+ *
+ * The seeded eleven keep the mapping above — it is `GLYPHS`, keyed by slug and
+ * shipped with the app — and a stored choice is an OVERRIDE of it rather than a
+ * replacement for it: an install where nobody has chosen anything must draw
+ * exactly what #37 re-picked, and a clinic that renames «Salud» must not have to
+ * re-pick a hospital.
+ */
+describe('a chosen pictogram', () => {
+	/** Not one of the eleven, so nothing here can pass by accident. */
+	const CHOSEN = 'bakery'
+
+	it('is offered the whole set the app already vendors', () => {
+		// "From the set already vendored — no new dependency" is the criterion,
+		// and eleven imports is not a catalogue: the picker has to offer marks
+		// that mean «comité de vivienda» and «cancha», which no seeded Category
+		// needed. Asserted as "more than the eleven, and every one of them in it"
+		// rather than as a count, because Maki's own inventory is Maki's to change.
+		expect(CATALOGUE.length).toBeGreaterThan(SEEDED.length)
+		expect(CATALOGUE).toContain(CHOSEN)
+		for (const icon of Object.values(CHOSEN_BY_SLUG)) {
+			expect(CATALOGUE, `${icon} is drawn by a Category but is not offered`).toContain(icon)
+		}
+	})
+
+	it('is drawn instead of the one the slug would have given', () => {
+		// The whole of the feature: a Category the clinic added draws the mark
+		// somebody picked for it, and so does a seeded one that was re-pointed.
+		expect(makiIdOf(glyphFor('salud', CHOSEN))).toBe(CHOSEN)
+		expect(makiIdOf(glyphFor('un_comite_nuevo', CHOSEN))).toBe(CHOSEN)
+	})
+
+	it('leaves a Category nobody has chosen for exactly where it was', () => {
+		for (const slug of SEEDED) {
+			expect(glyphFor(slug, null), `${slug} moved when nothing was chosen`)
+				.toBe(glyphFor(slug))
+			expect(glyphFor(slug, '')).toBe(glyphFor(slug))
+		}
+	})
+
+	it('falls back to the neutral when the stored name is not a mark this app has', () => {
+		// The column is a VARCHAR and the app is not the only thing that can
+		// write to it — a restored dump, a hand-run UPDATE, a Maki release that
+		// retires an icon. None of those may render a blank, which is the case
+		// ADR-0017 says must read as «unclassified» instead.
+		expect(glyphFor('un_comite_nuevo', 'no-such-maki-icon')).toBe(glyphFor('sin_clasificar'))
+		expect(glyphFor('salud', 'no-such-maki-icon')).toBe(glyphFor('salud'))
 	})
 })

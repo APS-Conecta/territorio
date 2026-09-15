@@ -54,6 +54,14 @@ return [
 		// install. A Subcategory's slug is unique only within its Category
 		// ("otro" is in nearly all of them), so its URL carries both.
 		['name' => 'category#rename', 'url' => '/categories/{slug}', 'verb' => 'PUT'],
+		// Adding one (#44) posts to the collection under its parent: the slug is
+		// derived from the label the clinic types, so there is nothing to put it
+		// at a URL of its own.
+		[
+			'name' => 'category#addSubcategory',
+			'url' => '/categories/{slug}/subcategories',
+			'verb' => 'POST',
+		],
 		[
 			'name' => 'category#renameSubcategory',
 			'url' => '/categories/{slug}/subcategories/{subSlug}',

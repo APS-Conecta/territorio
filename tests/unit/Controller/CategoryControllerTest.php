@@ -79,6 +79,42 @@ final class CategoryControllerTest extends TestCase {
 		self::assertSame($tree, $response->getData());
 	}
 
+	/**
+	 * One path segment and the label out of the body, in the order
+	 * `addSubcategory(string $categorySlug, string $label)` declares them.
+	 *
+	 * 200 and not 201: the answer is not the Subcategory that was created, it is
+	 * the whole served tree — the same body a rename answers with, because it is
+	 * the thing the browser swaps in.
+	 */
+	public function testAnAddedSubcategoryComesBackAsTheWholeTree(): void {
+		$tree = [['id' => 1, 'slug' => 'salud', 'label' => 'Salud', 'color' => '#99564e',
+			'subcategories' => [['id' => 9, 'slug' => 'salud_comunitaria', 'label' => 'Salud comunitaria']]]];
+		$this->taxonomy->expects(self::once())
+			->method('addSubcategory')
+			->with('salud', 'Salud comunitaria')
+			->willReturn($tree);
+
+		$response = $this->controller->addSubcategory('salud');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($tree, $response->getData());
+	}
+
+	/**
+	 * The add path has to go through the same `attempt()` as the renames: a
+	 * duplicate is a refusal a person can act on, and a 500 says nothing.
+	 */
+	public function testADuplicateSubcategoryIsUnprocessableNotAServerError(): void {
+		$this->taxonomy->method('addSubcategory')
+			->willThrowException(new InvalidTaxonomyException('Ya existe una subcategoría con ese nombre en esta categoría.'));
+
+		$response = $this->controller->addSubcategory('salud');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertStringContainsString('Ya existe', $response->getData()['message']);
+	}
+
 	public function testABlankLabelIsUnprocessableNotAServerError(): void {
 		$this->taxonomy->method('renameCategory')
 			->willThrowException(new InvalidTaxonomyException('El nombre no puede quedar vacío.'));

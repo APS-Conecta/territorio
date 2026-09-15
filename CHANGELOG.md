@@ -147,6 +147,21 @@ The umbrella closes: the Category tree is editable data, and the design doc stop
   catastro is full of; a header with no «Nombre» is refused, in Spanish, naming the columns that are
   read.
 
+  **The «Categoría» and «Subcategoría» CELLS are folded, not just the headings.** A CSV is the one
+  format where a person types the classification, and what they type is what the Capas panel shows
+  them — «Salud», «CESFAM», «Educación», «Organización social». `classify()` looks the pair up in an
+  index keyed by slug, so those cells passed through raw matched nothing and every row landed in Sin
+  clasificar silently, with no count that could explain it; only an already-lowercase, unaccented
+  slug worked, which is not what anybody types. They now go through the same
+  `TaxonomyService::slugFor()` the headings are matched on — slugified, not matched, for the reason
+  `KmlReader::folderOf()` gives about the Folder it reads: which Categories exist is the import's
+  business, not the reader's. It is a fold and nothing more, so «Deporte y recreación» still misses
+  the seed's `deporte_recreacion` and falls to Sin clasificar, which is where it fell before;
+  matching on a Category's label belongs beside `classify()`'s other two heuristics and in its own
+  issue. The fixtures were the reason nothing caught it: every one of them, the browser gate's file
+  included, was already pre-slugged, so the test that claimed to prove the pair files a record
+  proved it only for input the implementation already handled.
+
   **It does not read this app's own CSV export back in, and the dialog says so before the import
   runs.** That export is lossy on purpose and in one direction only (issue #17): no id column, a
   «Clasificación» that is one label rather than two slugs, and contact cells carrying the leading

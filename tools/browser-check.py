@@ -1893,9 +1893,13 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
     # comma is the decimal separator, so Excel uses the semicolon to separate.
     # The address cell carries a comma too, which is the other half of the same
     # file — a reader that split on commas would shift every column after it.
+    # The classification cells say what the Capas panel says — «Salud», «CESFAM»
+    # — because that is what a person copies off the screen. `classify()` matches
+    # on the SLUG, so a file typed this way is the one that used to land in Sin
+    # clasificar without a count to explain it.
     csv = (
         "Nombre;Categoría;Subcategoría;Latitud;Longitud;Dirección;Teléfono\n"
-        f"{name};salud;cesfam;{lat};{lon};Avenida Uno 123, local 4;229112233\n"
+        f"{name};Salud;CESFAM;{lat};{lon};Avenida Uno 123, local 4;229112233\n"
     ).replace(".", ",")
 
     page.get_by_role("button", name="Importar / deshacer").click()
@@ -1946,6 +1950,22 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
         failures.append(
             f"the imported record sits at {position!r}, not at the [{lon}, {lat}] "
             "the decimal-comma cells described (#101)",
+        )
+
+    # Filed where the typed cells say, not in Sin clasificar. Read off the
+    # taxonomy the app serves rather than off a number written here, because the
+    # seeded ids are the instance's and not this file's.
+    salud = next((entry for entry in served_taxonomy(page) or [] if entry["slug"] == "salud"), None)
+    cesfam = next(
+        (sub for sub in (salud or {}).get("subcategories", []) if sub["slug"] == "cesfam"), None,
+    )
+    if cesfam is None:
+        failures.append("the app served no «Salud · CESFAM», so nothing could check where the CSV filed")
+    elif stored.get("subcategoryId") != cesfam["id"]:
+        failures.append(
+            f"{name!r} was filed under Subcategory {stored.get('subcategoryId')!r} and not under "
+            f"the {cesfam['id']!r} «Salud · CESFAM» the «Salud»/«CESFAM» cells named — a person "
+            "typing what the app shows them lands in Sin clasificar (#101)",
         )
 
 def kml_says_what_it_cannot_carry(page, failures):

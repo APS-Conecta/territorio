@@ -156,6 +156,21 @@ describe('a chosen pictogram', () => {
 		}
 	})
 
+	/**
+	 * `constructor` and `toString` are shaped exactly like Maki names — lower
+	 * case letters and nothing else — so the server stores them, and a catalogue
+	 * held in an object literal answers both of them with a FUNCTION off
+	 * Object.prototype. Truthy, so every `??` fallback below is skipped, and the
+	 * pin's markup — an HTML string, interpolated unescaped — becomes
+	 * «function Object() { [native code] }» where a pictogram should be.
+	 */
+	it('answers nothing for a name that is only on Object.prototype', () => {
+		for (const inherited of ['constructor', 'toString', 'valueOf']) {
+			expect(glyphFor('salud', inherited), `${inherited} reached the catalogue`)
+				.toBe(glyphFor('salud'))
+		}
+	})
+
 	it('falls back to the neutral when the stored name is not a mark this app has', () => {
 		// The column is a VARCHAR and the app is not the only thing that can
 		// write to it — a restored dump, a hand-run UPDATE, a Maki release that

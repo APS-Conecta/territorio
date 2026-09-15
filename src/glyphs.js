@@ -58,8 +58,16 @@ import { layouts, svgArray } from '@mapbox/maki/browser.esm.js'
  * The markup is the same bytes — Maki's build writes the files and this bundle
  * from one source — so `webpack.config.js` no longer needs to know about this
  * package at all.
+ *
+ * A Map and not an object literal, because the key comes from a database column.
+ * `constructor`, `toString` and `valueOf` are shaped exactly like Maki names —
+ * lower case letters and nothing else — so the server's shape check stores them
+ * and an object would answer all three with a function off `Object.prototype`.
+ * Truthy, so the fallbacks below would be skipped, and the pin's markup is an
+ * HTML string interpolated unescaped: it would read «function Object() { [native
+ * code] }» where the pictogram belongs.
  */
-const MARKS = Object.fromEntries(layouts.map((name, index) => [name, svgArray[index]]))
+const MARKS = new Map(layouts.map((name, index) => [name, svgArray[index]]))
 
 /** Every mark's name, in Maki's own order — what the picker offers (#46). */
 export const CATALOGUE = layouts
@@ -96,7 +104,7 @@ const GLYPHS = {
  * @return {string} SVG markup, never empty
  */
 export function glyphFor(categorySlug, chosen = null) {
-	return MARKS[chosen] ?? MARKS[GLYPHS[categorySlug]] ?? MARKS[GLYPHS.sin_clasificar]
+	return MARKS.get(chosen) ?? MARKS.get(GLYPHS[categorySlug]) ?? MARKS.get(GLYPHS.sin_clasificar)
 }
 
 /** Every Category slug that has a glyph of its own. Read by the tests. */

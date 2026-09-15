@@ -699,10 +699,13 @@ export default {
 			// families; this is what tells a colegio from a farmacia, and it is the
 			// half a dichromacy cannot take away (ADR-0013).
 			//
-			// Interpolated unescaped, unlike the colour beside it: this markup is a
-			// bundled Maki asset resolved at build time, not a stored value. The
-			// colour is something a person typed into a picker, which is why that
-			// one goes through escapeHtml.
+			// Interpolated unescaped, unlike the colour beside it. What is STORED
+			// since #46 is the mark's NAME, not its markup: `glyphFor()` looks that
+			// name up in the vendored catalogue and answers a bundled asset or the
+			// neutral, so nothing that arrived from the database reaches this
+			// string. The colour is a hex a person typed into a picker and is
+			// written out as it was stored, which is why that one goes through
+			// escapeHtml.
 			const category = this.subcategories.get(feature.subcategoryId)
 			const glyph = glyphFor(category?.categorySlug, category?.categoryGlyph)
 

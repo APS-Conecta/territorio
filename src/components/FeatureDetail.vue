@@ -376,8 +376,13 @@ export default {
  * Destructive, and not the primary action: an outline in the error colour beside
  * the filled Guardar. `tertiary` is transparent with a transparent border, so
  * colouring the border is what draws the outline.
+ *
+ * Selected through the group rather than on its own: NcButton's own
+ * `.button-vue--tertiary[data-v-…]` has the same specificity as a bare scoped
+ * class, so which one won would come down to the order style-loader happened to
+ * inject them in — an outline that is there or not there depending on the build.
  */
-.territorio-detail__retire {
+.territorio-detail__actions .territorio-detail__retire {
 	border-color: var(--color-error);
 	color: var(--color-error);
 }

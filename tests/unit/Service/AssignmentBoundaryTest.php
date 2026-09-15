@@ -157,6 +157,38 @@ final class AssignmentBoundaryTest extends TestCase {
 		$assignment->affectedBy($boundary, null);
 	}
 
+	/**
+	 * Which boundary claims a record, and what happens when none does.
+	 *
+	 * Here rather than in `Tests\Integration\Assignment` because "no boundary
+	 * covers this point" is a claim about the whole Registry, and that suite runs
+	 * against a shared instance the browser gate and every other suite also write
+	 * to: the claim went red when somebody else's Sector drifted over the fixture
+	 * coordinate (#117, #121). The Registry here is the one row below, so the
+	 * claim is about a set the test holds entirely.
+	 *
+	 * Both halves on purpose: a `boundaries()` that found nothing at all would
+	 * make the null pass for a reason that has nothing to do with the point.
+	 */
+	public function testOnlyABoundaryThatContainsTheRecordClaimsIt(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('tree')->willReturn(self::TREE);
+
+		$features = $this->createMock(FeatureMapper::class);
+		$features->method('findAll')->willReturn([$this->sectorAround(-33.5, -70.6)]);
+
+		$assignment = new AssignmentService($features, $taxonomy);
+
+		$inside = $this->placeAt(-33.5, -70.6);
+		$assignment->assign($inside);
+		self::assertSame(1, $inside->getSectorId(), 'the boundary it is inside');
+
+		$outside = $this->placeAt(-33.5, -68.0);
+		$assignment->assign($outside);
+		self::assertNull($outside->getSectorId(), 'outside every boundary there is, which here is one');
+		self::assertNull($outside->getUnidadVecinalId(), 'and there is no Unidad Vecinal at all');
+	}
+
 	/** And the answer stays the answer — a cache that changes it is worse than none. */
 	public function testABoundaryIsStillRecognisedAndAPlaceIsNot(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);

@@ -30,6 +30,13 @@ A Sector can be reached from the keyboard.
   **No plugin.** The Leaflet plugin directory was swept for this (docs/design/map-legibility.md D6);
   `Leaflet.a11y` covers popup focus and non-interactive marker labelling, neither of which applies.
 
+  **Two shapes on the map still have no tab stop, both on purpose.** The record currently open in
+  the editor is drawn by the geoman draft layer — `drawShapes` skips the feature being edited so
+  nobody drags the vertices of one polygon while looking at another on top of it — and Enter on it
+  would mean "open what is already open". And the streets `drawPickable` puts up while a Limit is
+  being chosen are a different surface, present only inside the editor, and outside what #25 asks
+  for; they are worth an issue of their own.
+
 - **A focus ring on the map** (#25). `:focus-visible`, in the theme's own primary element colour and
   offset by two pixels, the same idiom the selected pin already uses — so it flips with the theme
   rather than being one fixed colour that works in one of them, and it never sits directly on a

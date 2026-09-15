@@ -48,7 +48,46 @@ A Location quality can be corrected on its own.
 
 ## [0.45.0] — unreleased
 
-Every package that ships in the bundle is named, and a command says so.
+Every package that ships in the bundle is named, and a command says so, and a Sector says how its
+boundary came to be.
+
+### Added
+
+- **A Sector says whether its line was generated or drawn, and when it last moved** (#50). One
+  sentence in the sidebar, at Sector level: «Línea dibujada a mano.», «Línea fijada junto con el
+  límite el 05-08-2026.» or «Línea ajustada el 12-08-2026, después del límite.» The per-row «a
+  mano» chip was the only signal there was, and it answers a different question — it marks a typed
+  stretch *within* a Limit, so a fully hand-drawn Sector whose Limit is all picked streets shows
+  none of them.
+
+  **It costs no column, because the revision history already holds it.** Every write records which
+  fields it changed, `Feature::comparable()` carries both `geometry` and `limit`, and the client
+  already loads the open record's history — so a Sector generated from picked lines wrote both in
+  one revision, while a dragged vertex wrote `geometry` alone. A column would also have been no
+  better: `faceAround()` runs in the browser, so the server never witnesses "generated" and
+  `Action` has no case for it, and a stored flag would be the client's word for exactly what
+  history already says.
+
+  It is worded as provenance and never as a defect, which is the constraint the whole thing turns
+  on. The Limit records intent and the geometry records the agreed line; they stop matching the
+  moment somebody drags a vertex, and that is expected rather than drift to be corrected
+  (CONTEXT.md). So there is no warning colour, no icon, and a unit test fails the build on the
+  words that would read as one.
+
+  Two things are worth knowing before trusting a sentence. A revision is one save, so a Sector
+  generated and then dragged **before** its first save, and one drawn by hand with streets picked
+  in the same save, both read as «junto con el límite» — telling those apart needs the app to
+  record the act rather than the fields it changed, which is a product question and not a column.
+  And a Limit *removed* is not a Limit recorded: the service stores an emptied Limit as null, so
+  the revision that cleared it is skipped rather than read as one the line was fixed against.
+
+### Fixed
+
+- **A record's history is reloaded after a save** (#50). The sidebar kept the revisions it fetched
+  when the record was opened, so a save left it one behind. Merely incomplete while history was a
+  list nobody reads twice; wrong once a Sector states how its line came to be from those same
+  entries, because a polygon generated a second ago went on calling itself hand-drawn until
+  somebody closed the record and opened it again.
 
 ### Documentation
 

@@ -17,6 +17,7 @@
  * change it. None of it ever leaves the browser: the View is personal
  * (CONTEXT.md), and changing it changes nothing for anyone else.
  */
+import { categoryColour } from './taxonomy.js'
 
 /** Nothing hidden and nothing typed: everything is on screen. */
 export function emptyFilter() {
@@ -230,13 +231,15 @@ export function countsFor(features, taxonomy) {
 
 		return {
 			id: category.id,
-			// The stable identifier, carried so a caller can tell WHICH Category
-			// this is without matching a label a clinic may have renamed. Análisis
-			// needs it to draw a territorial division neutral rather than in the
-			// inert `#334155` the seed gives it (#29).
-			slug: category.slug,
 			label: category.label,
-			color: category.color,
+			// What a bar is DRAWN in, already resolved — not the stored seed. A
+			// territorial division answers with the neutral, because its `#334155`
+			// measures 1.73:1 against the dark theme and ADR-0013 found no room for
+			// a fourth grey to move it to (#29). Resolved here rather than in the
+			// chart because a section has two bindings — the Category row and the
+			// Subcategory rows under it — and resolving per binding left one of
+			// them still painting the seed.
+			color: categoryColour(category),
 			total: subcategories.reduce((sum, subcategory) => sum + subcategory.total, 0),
 			subcategories,
 		}

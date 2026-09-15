@@ -66,8 +66,15 @@
 			label="label" />
 
 		<!-- Native colour input: the browser already has a picker, and it is one
-		     line against a component to configure. -->
-		<label v-if="isDivision" class="territorio-detail__field territorio-detail__colour">
+		     line against a component to configure.
+
+		     A Sector, not any division (#24). A Unidad Vecinal is read from the
+		     national cadastre and never drawn by the clinic (CONTEXT.md), so
+		     offering to recolour one is an editing affordance on a record the
+		     domain says is read-only — and a colour is not a Local override,
+		     which CONTEXT.md defines as an edit that "states what is true on the
+		     ground". -->
+		<label v-if="isSector" class="territorio-detail__field territorio-detail__colour">
 			<span>Color</span>
 			<input v-model="colour" type="color">
 		</label>
@@ -157,7 +164,13 @@ import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
 import { provenance } from '../limit.js'
-import { DEFAULT_SECTOR_COLOUR, divisionsOf, subcategoryOptions, treeOf } from '../taxonomy.js'
+import {
+	DEFAULT_SECTOR_COLOUR,
+	divisionsOf,
+	sectorSubcategoryId,
+	subcategoryOptions,
+	treeOf,
+} from '../taxonomy.js'
 
 // Mirrors LocationQuality in PHP. "Absent" is missing on purpose: it is derived
 // from having no geometry, and these options only appear when there is one.
@@ -210,10 +223,28 @@ export default {
 			return subcategoryOptions(treeOf(this.taxonomy))
 		},
 
-		/** A Sector: it is what it is, so there is no Subcategoría to choose. */
+		/**
+		 * A territorial division: it is what it is, so there is no Subcategoría to
+		 * choose, and its Sector and Unidad Vecinal are itself rather than
+		 * something derived from where it sits.
+		 */
 		isDivision() {
 			return divisionsOf(this.taxonomy)
 				.some((division) => division.id === this.draft.subcategoryId)
+		},
+
+		/**
+		 * A Sector, and not merely any division — App.vue draws the same
+		 * distinction, for the Limit picker, for the same reason (#24).
+		 *
+		 * A Unidad Vecinal that already carries a colour KEEPS it: nothing here
+		 * clears it and there is no migration. It simply has nowhere left to
+		 * render — under #21 a Unidad Vecinal draws with no fill, and under #29
+		 * the list draws it as a ring. That is the same treatment #29 gives the
+		 * seeded `#334155`: inert data, nothing destroyed.
+		 */
+		isSector() {
+			return this.draft.subcategoryId === sectorSubcategoryId(this.taxonomy)
 		},
 
 		/** What the record's Sector is called, or that it is in none. */

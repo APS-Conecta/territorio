@@ -9,6 +9,32 @@ The Capas panel is the clinic's vocabulary now, not the seed's.
 
 ### Added
 
+- **A Subcategory can be added under a Category from the Capas panel** (#44). The first thing the
+  clinic can put into its own taxonomy rather than only re-word. A «+» beside each Category's
+  pencil opens a field at the top of that branch; Enter posts the name and the new Subcategory is
+  in the panel, in the Subcategoría picker and — once something is filed under it — in Análisis,
+  without a reload. It is the thin create path on purpose: a Subcategory has no colour and no
+  pictogram of its own, because it is drawn with its parent Category's (ADR-0013), so the one thing
+  anybody types is a name.
+
+  The slug is derived from that name and never typed (#40). It is the identifier every record is
+  filed under, and a person who could type one could file records under `otro` twice over. The
+  derivation is its own pure function with a unit test, unlike everything else on this write path:
+  it is the only rule here with no database in it, and the only one that no screen would show going
+  wrong.
+
+  Uniqueness is left to `terr_subcat_slug_idx` — `(category_id, slug)` — rather than restated as a
+  check-then-insert, which is a second copy of the rule that two people adding «Taller» at the same
+  moment would both pass. What the app does is catch the violation and turn it into a sentence:
+  «Ya existe una subcategoría con ese nombre en esta categoría.» The same name under a *different*
+  Category is accepted, which is why the index is scoped that way at all — «Otro» is in nearly
+  every Category and means something different in each. A name that is blank, or that derives to no
+  slug at all («»»), is refused the same way, in the panel where it was typed.
+
+  Nothing removes a Subcategory yet (#47), which is why the browser gate names the one it adds
+  after the run: a fixed name would be added once and refused as a duplicate by every run
+  afterwards, and a check that only works the first time is not a check.
+
 - **A Category and a Subcategory can be renamed from the Capas panel** (#41). CONTEXT.md has always
   said a Category is "editable data, not code"; it was not. The eleven Categories and their
   Subcategories were written once by the seed and there was no route, no screen and no `occ` command

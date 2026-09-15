@@ -3,6 +3,51 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.48.0] — unreleased
+
+A Limit says when the cadastre lost the line it cites.
+
+### Added
+
+- **A Limit part says when the cadastre no longer has the line it cites** (#51). Picking a street
+  records `{featureId, name}` and the name is frozen on purpose, so the Limit still reads after a
+  cadastre release. The id was not maintained at all: a retired or withdrawn line went on rendering
+  as a live pick, indistinguishable from one still there. The part now shows «ya no está en el
+  catastro» beside the existing «a mano», with a count when only part of a name went away — three
+  of Vicuña Mackenna's thirty ways is three, not "Vicuña Mackenna is gone". The part keeps its name
+  and stays in the Limit either way: a sentence a team says out loud does not change because a
+  cadastre release did.
+
+  **Derived on read, never stored.** A flag on the part would have to be swept onto every Sector
+  citing the id at retire time — one Revision and one history entry apiece, on records nobody
+  edited — and swept back on restore; and `FeatureService::limit()` rebuilds every part as
+  `{featureId, name}` and drops anything else, so it would not survive the next save anyway.
+
+  **But the browser cannot work it out alone**, which is why the server answers it. `/boundaries`
+  excludes retired rows and loads only what is in view, so a cited id that does not come back means
+  "off-screen **or** gone" — deriving it in the client would label half a comuna as missing from the
+  cadastre every time somebody zoomed in. The editor now sends the ids its draft cites and the
+  answer is `{features, gone}`.
+
+  **`gone` is ids and nothing else** — never a name, a geometry, or a `retired` flag per row. The
+  features array becomes one list in the client that feeds the autocomplete, the clickable layer on
+  the map and the cache holding each picked line's shape, so a retired row arriving with a name and
+  a shape would be pickable again and would un-grey «Generar», undoing ADR-0005's "retired records
+  are never drawn".
+
+  **«Gone» means retired** — by `Retirar del mapa`, or by reverting the import batch, which retires
+  the same way. A re-import does *not* retire what a newer file stopped publishing: an import walks
+  only the rows the file contains. Making it sweep the absent ones is a cadastre policy with its own
+  consequences — a truncated Overpass download would retire the whole comuna — and it belongs to an
+  issue of its own.
+
+  **What it deliberately does not do is drop the line's shape.** `pickedGeometry` caches each picked
+  line's geometry so «Generar» survives panning away from it, and a line retired by somebody else
+  while the editor is open keeps its cached shape until the Sector is reopened. Clearing it would
+  mean «las calles no cierran» about lines that do close — the exact failure that cache exists to
+  prevent — and the part already says «ya no está en el catastro» on screen, so the person is told
+  either way. The stale shape is per-session: `pickedGeometry` starts empty on every reopen.
+
 ## [0.47.0] — unreleased
 
 A Sector says how its boundary came to be.
@@ -73,38 +118,6 @@ A Sector says how its boundary came to be.
   column. And a Limit *removed* is not a Limit recorded: the service stores an emptied Limit as
   null, so the revision that cleared it is skipped rather than read as one the line was fixed
   against.
-
-- **A Limit part says when the cadastre no longer has the line it cites** (#51). Picking a street
-  records `{featureId, name}` and the name is frozen on purpose, so the Limit still reads after a
-  cadastre release. The id was not maintained at all: a retired or withdrawn line went on rendering
-  as a live pick, indistinguishable from one still there. The part now shows «ya no está en el
-  catastro» beside the existing «a mano», with a count when only part of a name went away — three
-  of Vicuña Mackenna's thirty ways is three, not "Vicuña Mackenna is gone". The part keeps its name
-  and stays in the Limit either way: a sentence a team says out loud does not change because a
-  cadastre release did.
-
-  **Derived on read, never stored.** A flag on the part would have to be swept onto every Sector
-  citing the id at retire time — one Revision and one history entry apiece, on records nobody
-  edited — and swept back on restore; and `FeatureService::limit()` rebuilds every part as
-  `{featureId, name}` and drops anything else, so it would not survive the next save anyway.
-
-  **But the browser cannot work it out alone**, which is why the server answers it. `/boundaries`
-  excludes retired rows and loads only what is in view, so a cited id that does not come back means
-  "off-screen **or** gone" — deriving it in the client would label half a comuna as missing from the
-  cadastre every time somebody zoomed in. The editor now sends the ids its draft cites and the
-  answer is `{features, gone}`.
-
-  **`gone` is ids and nothing else** — never a name, a geometry, or a `retired` flag per row. The
-  features array becomes one list in the client that feeds the autocomplete, the clickable layer on
-  the map and the cache holding each picked line's shape, so a retired row arriving with a name and
-  a shape would be pickable again and would un-grey «Generar», undoing ADR-0005's "retired records
-  are never drawn".
-
-  **«Gone» means retired** — by `Retirar del mapa`, or by reverting the import batch, which retires
-  the same way. A re-import does *not* retire what a newer file stopped publishing: an import walks
-  only the rows the file contains. Making it sweep the absent ones is a cadastre policy with its own
-  consequences — a truncated Overpass download would retire the whole comuna — and it belongs to an
-  issue of its own.
 
 ### Fixed
 

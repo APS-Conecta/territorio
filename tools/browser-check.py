@@ -1974,6 +1974,314 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
     retire_the_runs_record(page, name)
 
 
+CLUSTER = ".territorio-cluster"
+RING = ".territorio-cluster__ring"
+
+# What markercluster's own stylesheet paints a bubble, by child count. Named
+# here so the check can say "this is a count hue" rather than "this is not the
+# colour I expected" — the whole of #22 is that these ever reached the map.
+COUNT_HUES = {"#b5e28c", "#6ecc39", "#f1d357", "#f0c20c", "#fd9c73", "#f08017"}
+
+
+def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
+    """One Place, typed, a few metres from its neighbours, with its Exactitud.
+
+    Metres apart on purpose: three records inside markercluster's 80px radius
+    are one bubble at the zoom the map opens on, which is the only way to get a
+    cluster to look at. The coordinate is typed rather than clicked for the
+    reason create_a_place() gives — what is under a given pixel is not this
+    check's subject.
+
+    «Exactitud» is only offered once there is a coordinate to describe
+    (`FeatureDetail.vue`, `v-if="hasCoordinates"`), so it is set last.
+    """
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.get_by_label("Nombre").fill(name)
+    page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE + offset}")
+    page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE + offset}")
+
+    for label, option in (("Subcategoría", subcategory), ("Exactitud", quality)):
+        if option is None:
+            continue
+        page.get_by_label(label).click()
+        page.get_by_label(label).fill(option)
+        page.wait_for_timeout(500)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(300)
+
+    save(page, failures, f"{name!r}")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
+def _only_on_the_map(page, query):
+    """Narrow the Registry to one search, which narrows the map with it."""
+    page.locator(SEARCH).fill(query)
+    page.wait_for_timeout(1200)
+
+
+def _ring_segments(gradient):
+    """The bands of a computed `conic-gradient()`, as [(hex, from%, to%)].
+
+    Read positionally rather than by splitting on commas: a colour stop IS
+    commas, and browsers disagree about whether `#99564e 0% 66.67%` comes back
+    as one double-position stop or as two single ones — and Chrome serialises
+    the position in `deg` while the stylesheet wrote `%`. Every position is
+    therefore attached to the nearest colour before it, normalised, and runs of
+    the same colour are merged into one band.
+
+    Returns None for a unit nothing here knows, so an unreadable gradient fails
+    loudly instead of measuring as zero.
+    """
+    text = gradient or ""
+    colours = [(m.start(), _as_hex(m.group(0))) for m in re.finditer(r"rgba?\([^)]*\)", text)]
+    positions = []
+    for match in re.finditer(r"(-?[\d.]+)(deg|%|turn)", text):
+        value, unit = float(match.group(1)), match.group(2)
+        positions.append((match.start(), {"%": value, "deg": value / 3.6, "turn": value * 100}[unit]))
+
+    if not colours or re.search(r"[\d.]+(grad|rad)\b", text):
+        return None
+
+    bands = []
+    for index, (at, colour) in enumerate(colours):
+        until = colours[index + 1][0] if index + 1 < len(colours) else len(text)
+        mine = [value for start, value in positions if at < start < until]
+        if not mine:
+            return None
+        if bands and bands[-1][0] == colour:
+            bands[-1] = (colour, bands[-1][1], max(mine))
+        else:
+            bands.append((colour, min(mine), max(mine)))
+
+    return bands
+
+
+def the_exactitud_is_drawn_on_the_pin(page, failures):
+    """#23: an `aproximada` coordinate wears a dashed ring, an `exacta` one does not.
+
+    `locationQuality` was stored, validated, imported, exported and historicised,
+    and drawn nowhere — so the map asserted a precision the Registry never
+    claimed, and a team deciding where to visit had no way to tell a street from
+    a guess.
+
+    Measured as computed style rather than as a screenshot, because remote OSM
+    tiles under every picture would flake this into being ignored
+    (`docs/design/map-legibility.md` § 6). Run in both themes because the ring is
+    `--color-main-background` in both and the treatment must not depend on which
+    one is on — the border COLOUR is asserted against that variable for the same
+    reason: a dash is a pattern, and if it ever became a hue it would be joining
+    the one channel this map already overloads (ADR-0013).
+
+    The quality is read back out of the Registry first. That the sidebar can
+    show «Aproximada» proves nothing about what was written, which is this
+    gate's whole reason for existing.
+    """
+    expected = {
+        f"Cúmulo {RUN} aproximado": "aproximada",
+        f"Cúmulo {RUN} exacto": "exacta",
+    }
+
+    for name, quality in expected.items():
+        stored = registry_feature(page, name)
+        if stored is None:
+            failures.append(f"{name!r} did not reach the Registry, so its ring was not checked")
+            return
+        if stored.get("locationQuality") != quality:
+            failures.append(
+                f"{name!r} is stored as {stored.get('locationQuality')!r}, not {quality!r} — "
+                f"the form did not write the Exactitud, so the ring below would prove nothing",
+            )
+            return
+
+    backgrounds = {}
+
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(300)
+        backgrounds[scheme] = _as_hex(page.evaluate(
+            "() => getComputedStyle(document.body).getPropertyValue('--color-main-background')",
+        ))
+
+        for name, quality in expected.items():
+            _only_on_the_map(page, name)
+            pin = page.locator(".territorio-pin__dot").first
+            if pin.count() == 0:
+                failures.append(f"{name!r} drew no pin in the {scheme} theme (#23)")
+                continue
+
+            ring = pin.evaluate(
+                """(dot) => {
+                    const style = getComputedStyle(dot)
+                    return { style: style.borderTopStyle, colour: style.borderTopColor }
+                }""",
+            )
+            wanted = "dashed" if quality == "aproximada" else "solid"
+
+            if ring["style"] != wanted:
+                failures.append(
+                    f"an «{quality}» pin draws a {ring['style']} ring in the {scheme} theme, "
+                    f"expected {wanted} — #23 is that the two look identical",
+                )
+            if _as_hex(ring["colour"]) != backgrounds[scheme]:
+                failures.append(
+                    f"the {scheme}-theme ring on {name!r} is {ring['colour']}, not the theme's "
+                    f"{backgrounds[scheme]} — the treatment has become a hue, which is the "
+                    f"channel ADR-0013 says it must not use",
+                )
+
+            if quality == "aproximada":
+                page.locator('[data-testid="map-canvas"]').screenshot(
+                    path=str(SHOTS / f"approximate-pin-{scheme}.png"))
+
+    page.emulate_media(color_scheme="no-override")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+    # A silent half-run, the way the app-icon check meets it: with a theme pinned
+    # on the instance, `prefers-color-scheme` switches nothing and the loop above
+    # checked one theme twice.
+    if backgrounds["light"] == backgrounds["dark"]:
+        skip("the dashed ring was only checked in one theme: this instance pins a theme, so "
+             "prefers-color-scheme does not switch it")
+
+
+def a_cluster_says_what_is_under_it(page, failures):
+    """#22: a cluster is coloured by the Categories it holds, never by its size.
+
+    markercluster buckets on `getChildCount()` alone, so green meant «Deporte y
+    recreación» at one zoom and "more than 100 records" at the next — one channel
+    carrying two unrelated meanings, on the same map.
+
+    Three records a few metres apart, two Salud and one Educación, one of the
+    Salud ones approximate. That is every criterion in one bubble: proportional
+    bands rather than a count hue, a mix that cannot be confused with a single
+    Category, a readable count, and #23's dashed ring inherited by a cluster.
+
+    `getAllChildMarkers()` itself is not reachable from the page — Leaflet under
+    webpack exports no global, and the map handle is deliberately a non-reactive
+    instance property — so the children are established twice over instead: the
+    count the bubble writes IS `getChildCount()`, and clicking the bubble expands
+    it into the very markers `getAllChildMarkers()` returns, whose fills are then
+    compared with the bands. A ring agreeing with both is a ring agreeing with
+    its children.
+    """
+    seeded = _seeded_categories()
+    salud, educacion = seeded.get("salud"), seeded.get("educacion")
+    if salud is None or educacion is None:
+        failures.append("the seed has no 'salud'/'educacion' Category, so the cluster check "
+                        "could not run")
+        return
+
+    _only_on_the_map(page, f"Cúmulo {RUN}")
+
+    bubbles = page.locator(RING)
+    if not settles(page, lambda: bubbles.count() == 1, timeout=5_000):
+        failures.append(
+            f"three records a few metres apart drew {bubbles.count()} cluster bubbles, not one — "
+            f"nothing measured the cluster icon (#22)",
+        )
+        page.locator(SEARCH).fill("")
+        return
+
+    painted = bubbles.first.evaluate(
+        """(ring) => {
+            const style = getComputedStyle(ring)
+            const count = ring.querySelector('.territorio-cluster__count')
+            const inside = count ? getComputedStyle(count) : null
+            return {
+                gradient: style.backgroundImage,
+                fill: style.backgroundColor,
+                border: style.borderTopStyle,
+                count: count ? count.textContent.trim() : null,
+                ink: inside ? inside.color : null,
+                paper: inside ? inside.backgroundColor : null,
+            }
+        }""",
+    )
+
+    if painted["count"] != "3":
+        failures.append(
+            f"the bubble over three records reads {painted['count']!r} — the count is the one "
+            f"thing hue was duplicating, and it has to stay readable (#22)",
+        )
+
+    bands = _ring_segments(painted["gradient"])
+    expected = [(salud.lower(), 0.0, 66.67), (educacion.lower(), 66.67, 100.0)]
+
+    if bands is None:
+        failures.append(
+            f"the cluster's ring is {painted['gradient']!r}, which holds no readable colour "
+            f"stops — the bubble is not segmented by Category at all (#22)",
+        )
+    elif ([band[0] for band in bands] != [colour for colour, _, _ in expected]
+            or any(abs(band[index] - want[index]) > 0.6
+                   for band, want in zip(bands, expected) for index in (1, 2))):
+        failures.append(
+            f"a cluster of two Salud and one Educación draws {bands}, expected {expected} — "
+            f"the bands are what say which Categories are under it, in what proportion",
+        )
+
+    if _as_hex(painted["fill"]) in COUNT_HUES:
+        failures.append(
+            f"the cluster is filled {painted['fill']}, which is one of markercluster's own "
+            f"count buckets — a hue that means a number is back on the map (#22)",
+        )
+    for bucket in ("marker-cluster-small", "marker-cluster-medium", "marker-cluster-large"):
+        if page.locator(f".{bucket}").count() > 0:
+            failures.append(f"the map still draws a {bucket} bubble: hue is carrying the count again")
+
+    if painted["border"] != "dashed":
+        failures.append(
+            f"a cluster holding an «aproximada» record draws a {painted['border']} ring, not a "
+            f"dashed one — #22's last criterion is that it inherits #23's treatment",
+        )
+
+    # The count in ink on the theme's own paper: the pair that is legible in both
+    # themes by construction, and that no Category colour can be mistaken for.
+    if painted["ink"] == painted["paper"]:
+        failures.append(f"the cluster's count is {painted['ink']} on {painted['paper']} — invisible")
+
+    page.locator('[data-testid="map-canvas"]').screenshot(path=str(SHOTS / "cluster-ring.png"))
+
+    # Now open it: what falls out is `getAllChildMarkers()`, drawn.
+    pins = page.locator(".territorio-pin__dot")
+    for _ in range(4):
+        if pins.count() == 3:
+            break
+        if page.locator(CLUSTER).count() == 0:
+            break
+        page.locator(CLUSTER).first.click()
+        page.wait_for_timeout(1200)
+
+    if pins.count() != 3:
+        failures.append(
+            f"expanding the cluster revealed {pins.count()} pins, not 3 — its children could "
+            f"not be compared with the ring (#22)",
+        )
+    else:
+        children = sorted(
+            _as_hex(pins.nth(index).evaluate("dot => getComputedStyle(dot).backgroundColor"))
+            for index in range(3)
+        )
+        wanted = sorted([salud.lower(), salud.lower(), educacion.lower()])
+        if children != wanted:
+            failures.append(
+                f"the cluster's own markers are filled {children}, while its ring claimed "
+                f"{wanted} — the bubble is not drawn from the records under it (#22)",
+            )
+
+    # Back to the view every later check was written against: this one zoomed in
+    # to open the cluster, and a reload is what restores the comuna fit.
+    page.locator(SEARCH).fill("")
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1000)
+
+    for name in (f"Cúmulo {RUN} aproximado", f"Cúmulo {RUN} exacto", f"Cúmulo {RUN} colegio"):
+        retire_the_runs_record(page, name)
+
+
 def _focused(page):
     """What the keyboard is on right now, and how it is drawn.
 
@@ -2815,6 +3123,26 @@ def _opaque(painted):
     return len(parts) >= 3 and (len(parts) < 4 or float(parts[3]) > 0)
 
 
+def _as_hex(painted):
+    """A colour as #rrggbb, whatever notation it was read in.
+
+    Both notations turn up: `getComputedStyle().backgroundColor` is always
+    `rgb()`, while a CSS variable read with `getPropertyValue` comes back exactly
+    as the theme wrote it, which for Nextcloud is a hex. A hex is returned as it
+    stands rather than run through the digit regex — `#0b6bcb` holds three
+    "numbers" that have nothing to do with its channels.
+    """
+    value = (painted or "").strip().lower()
+    if value.startswith("#"):
+        return value if len(value) != 4 else "#" + "".join(c * 2 for c in value[1:])
+
+    numbers = re.findall(r"[\d.]+", value)
+    if len(numbers) < 3:
+        return value
+
+    return "#" + "".join(f"{int(float(n)):02x}" for n in numbers[:3])
+
+
 def every_category_reaches_the_browser_with_its_colour(page, failures):
     """The colours in the seed are the colours on the screen.
 
@@ -2842,14 +3170,8 @@ def every_category_reaches_the_browser_with_its_colour(page, failures):
         failures.append("the Capas panel drew no Category swatches at all")
         return
 
-    def as_hex(painted):
-        numbers = re.findall(r"\d+", painted or "")
-        if len(numbers) < 3:
-            return painted
-        return "#" + "".join(f"{int(n):02x}" for n in numbers[:3])
-
     painted = {
-        as_hex(swatches.nth(i).evaluate("e => getComputedStyle(e).backgroundColor"))
+        _as_hex(swatches.nth(i).evaluate("e => getComputedStyle(e).backgroundColor"))
         for i in range(count)
     }
     expected = {colour.lower() for colour in seeded.values()}
@@ -3455,6 +3777,24 @@ def main():
 
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
+
+        # Three records a few metres apart, made once and read by both checks
+        # below: one bubble to measure the ring on, and two pins to measure the
+        # dashed treatment on their own.
+        _a_clustered_place(page, f"Cúmulo {RUN} aproximado", "Salud · CESFAM", 1,
+                           failures, quality="Aproximada")
+        _a_clustered_place(page, f"Cúmulo {RUN} exacto", "Salud · CESFAM", 2, failures)
+        _a_clustered_place(page, f"Cúmulo {RUN} colegio", "Educación · Colegio", 3,
+                           failures)
+        # Reloaded first, which is what puts the view back on the comuna the
+        # install serves: eleven metres is under a pixel there, so the three
+        # records are one bubble. Left zoomed in by an earlier check they would
+        # each draw their own pin, and the cluster check would measure nothing.
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+        page.wait_for_timeout(1000)
+        the_exactitud_is_drawn_on_the_pin(page, failures)
+        a_cluster_says_what_is_under_it(page, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

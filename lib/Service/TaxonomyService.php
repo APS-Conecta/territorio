@@ -136,6 +136,11 @@ class TaxonomyService {
 	 * map's colours all read — see `renameCategory()` for why a single row would
 	 * be a second description of the taxonomy.
 	 *
+	 * The Revision cursor is not advanced here either, for the reason
+	 * `renameCategory()` gives — but that costs more on a create than on a
+	 * rename, and what it costs is written on `addSubcategory()` in `src/App.vue`,
+	 * where the browser that would have to notice lives.
+	 *
 	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the label is not one this app will store

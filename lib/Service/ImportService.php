@@ -19,9 +19,9 @@ use OCA\Territorio\Migration\EnsureSeedData;
 /**
  * Brings a file into a Dataset, once or repeatedly.
  *
- * GeoJSON or KML — the format decides only which reader runs. Both produce the
- * same rows, so the batch, the matching, the local-override rule and the revert
- * are one implementation and cannot drift apart between the two.
+ * GeoJSON, KML or CSV — the format decides only which reader runs. All three
+ * produce the same rows, so the batch, the matching, the local-override rule and
+ * the revert are one implementation and cannot drift apart between them.
  *
  * Three rules do most of the work here, and all three are ADRs rather than
  * preferences:
@@ -51,6 +51,7 @@ class ImportService {
 	public function __construct(
 		private GeoJsonReader $reader,
 		private KmlReader $kml,
+		private CsvReader $csv,
 		private DatasetMapper $datasets,
 		private FeatureMapper $features,
 		private FeatureService $featureService,
@@ -70,10 +71,11 @@ class ImportService {
 	 * arrived in (issue #8).
 	 *
 	 * FORMAT SELECTION is by filename suffix and is deliberately not a refusal:
-	 * `.kml` in any case is KML, and EVERYTHING ELSE — including an unrecognised
-	 * suffix and an empty filename — is read as GeoJSON. A caller that cannot
-	 * name its input still gets a parse error from the reader rather than a
-	 * rejection here, which is why `occ` can pipe a file with any name.
+	 * `.kml` in any case is KML, `.csv` is a spreadsheet, and EVERYTHING ELSE —
+	 * including an unrecognised suffix and an empty filename — is read as GeoJSON.
+	 * A caller that cannot name its input still gets a parse error from the reader
+	 * rather than a rejection here, which is why `occ` can pipe a file with any
+	 * name.
 	 *
 	 * ORDER, because a failure part-way leaves different debris at each step:
 	 *   1. the comuna claim is refused first, before a single row is written
@@ -113,9 +115,11 @@ class ImportService {
 		?bool $boundary = null,
 	): ImportBatch {
 		return $this->importRows(
-			self::isKml($filename)
-				? $this->kml->read($contents, $datasetSlug)
-				: $this->reader->read($contents, $datasetSlug),
+			match (self::suffixOf($filename)) {
+				'.kml' => $this->kml->read($contents, $datasetSlug),
+				'.csv' => $this->csv->read($contents, $datasetSlug),
+				default => $this->reader->read($contents, $datasetSlug),
+			},
 			$datasetSlug,
 			$label,
 			$actor,
@@ -123,9 +127,12 @@ class ImportService {
 		);
 	}
 
-	/** Whether this filename says KML, whatever case it was typed in. */
-	private static function isKml(string $filename): bool {
-		return str_ends_with(strtolower(trim($filename)), '.kml');
+	/** The filename's extension, lowercased, or '' where it has none. */
+	private static function suffixOf(string $filename): string {
+		$name = strtolower(trim($filename));
+		$dot = strrpos($name, '.');
+
+		return $dot === false ? '' : substr($name, $dot);
 	}
 
 	/**

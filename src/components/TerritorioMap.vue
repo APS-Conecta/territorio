@@ -21,6 +21,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
+import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
 import { boundsOf, colourOf, indexSubcategories, UNKNOWN_COLOUR } from '../taxonomy.js'
 
@@ -227,7 +228,13 @@ export default {
 			// than the fourth occurrence would cost to find.
 			zoomAnimation: false,
 		})
-		L.control.zoom({ position: 'topright' }).addTo(this.map)
+		// Leaflet's own titles are English, and they are the only text on the map
+		// a screen reader reads out of a control rather than out of a record.
+		L.control.zoom({
+			position: 'topright',
+			zoomInTitle: 'Acercar',
+			zoomOutTitle: 'Alejar',
+		}).addTo(this.map)
 
 		// A pane of its own for the lines a Limit can follow, above the Sectores
 		// and below the pins. Without it they share overlayPane with the Sector
@@ -353,6 +360,11 @@ export default {
 			// Swapped whole, for the reason drawMarkers() swaps: emptying a group the
 			// map is still using leaves Leaflet holding layers whose map is gone.
 			const next = L.featureGroup()
+			// Each shape with the callback its click runs, so the keyboard can be
+			// given the same one below — after the group joins the map, because
+			// `_initPath` builds the SVG element only then and `getElement()` is
+			// null until it does.
+			const operable = []
 
 			this.shapes.forEach((feature) => {
 				if (this.draftGeometry !== null && feature.id === this.selectedId) {
@@ -369,7 +381,11 @@ export default {
 				// script and every exfiltration channel here, nothing covers navigation
 				// (issue #62). A text node cannot be parsed at all.
 				layer.bindTooltip(document.createTextNode(feature.name))
-				layer.on('click', (event) => {
+				// One function for both ways in. A keydown that emitted `select`
+				// itself would go round the `placing` guard below, which is exactly
+				// the guard that keeps a click during placement belonging to the map —
+				// and with it the protection of whatever draft is open.
+				const select = (event) => {
 					// While a draft is waiting for its coordinate, the click belongs to
 					// the map: let it through untouched. Once a comuna's Unidades
 					// Vecinales are imported they tile the whole view, so swallowing
@@ -385,7 +401,10 @@ export default {
 					// whatever record was open.
 					L.DomEvent.stopPropagation(event)
 					this.$emit('select', feature.id)
-				})
+				}
+
+				layer.on('click', select)
+				operable.push({ layer, feature, select })
 				next.addLayer(layer)
 			})
 
@@ -395,6 +414,17 @@ export default {
 			if (previous !== null) {
 				this.map.removeLayer(previous)
 			}
+
+			// Leaflet gives a Marker a tab stop and a Path nothing, so this is the
+			// only way a Sector is reachable without a mouse (issue #25).
+			//
+			// Nothing to unbind: every redraw above builds a NEW group with NEW
+			// elements and drops the old one whole, so a handler bound here dies
+			// with the element it was bound to and is never bound twice. Do not add
+			// a teardown for it — there is nothing that survives to tear down.
+			operable.forEach(({ layer, feature, select }) => {
+				makeOperable(layer.getElement?.(), feature.name, select)
+			})
 		},
 
 		/**
@@ -620,6 +650,23 @@ export default {
 </style>
 
 <style lang="scss">
+/*
+ * Where the keyboard currently is, on a map made of shapes a mouse could always
+ * find and nothing else could (issue #25).
+ *
+ * `:focus-visible` rather than `:focus`, so a shape a person clicked does not
+ * also grow a ring. The same idiom as the selected pin below — the theme's own
+ * primary element colour, three pixels, offset — which means it flips with the
+ * theme instead of being a fixed colour that only works in one. The offset is
+ * what keeps it off the shape's own stroke: a Sector is drawn in a Category
+ * colour chosen by the clinic, and a ring sitting directly on it could be the
+ * same colour as the line underneath.
+ */
+.leaflet-interactive:focus-visible {
+	outline: 3px solid var(--color-primary-element, #0b6bcb);
+	outline-offset: 2px;
+}
+
 /* Not scoped: Leaflet builds the marker element itself, outside Vue's tree. */
 .territorio-pin__dot {
 	display: flex;

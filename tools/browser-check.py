@@ -4382,7 +4382,9 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
         # «It renders a pictogram rather than a blank». The glyph lookup has no
         # mark for a slug it has never seen and falls back to the neutral one —
         # a blank would read as a rendering failure, which is the thing #45 says
-        # must not happen. Choosing a mark of its own is #46.
+        # must not happen. `a_category_can_be_given_a_pictogram` below picks a
+        # mark for this same Category, so the pair reads as one story: the
+        # fallback first, and then the choice that replaces it.
         mark = row.locator(".territorio-capas__swatch").first.evaluate(
             """(swatch) => {
                 const box = swatch.querySelector('svg path')?.getBoundingClientRect()
@@ -4468,6 +4470,251 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
         # The record, not the Category: removing that would be refused while this
         # record is filed under it, retired or not, and the ponytail note above
         # says why this one stays.
+        retire_the_runs_record(page, filed)
+
+
+# Not one of the eleven the seed ships, so nothing below can pass by accident —
+# and one whose meaning is unmistakable at 19px, which is what the preview is for.
+PICKED_MARK = "bakery"
+
+
+def _drawn_mark(locator):
+    """The Maki name of the mark inside one element, or None.
+
+    Off the rendered `<svg>`'s own id, which Maki writes into every icon. Not off
+    a class or an attribute this app sets: the question is which pictogram
+    REACHED the screen, and a name the app wrote beside a mark it failed to draw
+    would answer it wrongly in exactly the direction that matters.
+    """
+    return locator.evaluate("(node) => node.querySelector('svg')?.id ?? null")
+
+
+def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
+    """#46, the half of «chosen when adding» that only a browser can answer.
+
+    The control sits beside the field the name is typed into, and reaching for it
+    must not throw the name away: the field commits on Enter and CANCELS on blur
+    (#45), so without `@mousedown.prevent` on the picker, picking a mark would
+    close the add and discard what was typed. Nothing but a browser has a focus
+    to lose.
+
+    It stops short of committing, and that is deliberate rather than an omission:
+    a Category cannot be removed until #47, so a second one per run would spend a
+    second vetted spare (ADR-0017) that nothing hands back. That the picked mark
+    actually travels on the POST is settled in `CategoryCrudTest` against the real
+    schema, and the body key is pinned in `CategoryControllerTest`.
+    """
+    add = page.get_by_role("button", name="Agregar categoría", exact=True)
+    if add.count() == 0:
+        failures.append("the Capas panel offers no way to add a Category")
+        return
+
+    add.first.click()
+    field = page.locator(CAPAS_INPUT)
+    if not settles(page, lambda: field.count() > 0, timeout=4_000):
+        failures.append("«Agregar categoría» opened no field to type in")
+        return
+
+    typed = f"Comité en borrador {RUN}"
+    field.fill(typed)
+
+    swatch = page.locator(".territorio-capas__new .territorio-capas__swatch")
+    if swatch.count() == 0:
+        failures.append(
+            "a Category being named offers no pictogram control, so a mark can only be "
+            "chosen after the Category exists — #46 asks for both",
+        )
+        page.keyboard.press("Escape")
+        return
+
+    swatch.first.click()
+    mark = page.locator(f'.territorio-capas__glyph[title="{PICKED_MARK}"]')
+    if not settles(page, lambda: mark.count() > 0, timeout=4_000):
+        failures.append(
+            f"the pictogram control beside the new Category's name opened no grid holding "
+            f"{PICKED_MARK!r}",
+        )
+        page.keyboard.press("Escape")
+        return
+
+    mark.first.click()
+    page.wait_for_timeout(300)
+
+    still = page.locator(CAPAS_INPUT)
+    if still.count() == 0 or still.first.input_value() != typed:
+        failures.append(
+            "picking a pictogram while naming a Category threw the typed name away — the "
+            "field cancels on blur, so the picker has to keep the focus where it is",
+        )
+        page.keyboard.press("Escape")
+        return
+
+    if _drawn_mark(swatch.first) != PICKED_MARK:
+        failures.append(
+            f"the new Category's swatch still draws {_drawn_mark(swatch.first)!r} after "
+            f"{PICKED_MARK!r} was picked: nothing says what is about to be created",
+        )
+
+    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picking.png"))
+    # Escape, not Enter: nothing is created here. See the docstring.
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+    if page.locator(CAPAS_INPUT).count() > 0:
+        failures.append("Escape left the new-Category field open")
+
+
+def a_category_can_be_given_a_pictogram(page, failures):
+    """#46: the chosen mark reaches the Registry, the map, the list and the legend.
+
+    Runs on the Category `a_category_can_be_added_without_a_reload` just added,
+    which arrives with no mark of its own — so this check watches it go from the
+    neutral fallback to a pictogram somebody chose, which is the whole of the
+    slice. Reusing that Category rather than adding one is what keeps this run
+    spending one vetted spare instead of two (ADR-0017, and #47 is what would
+    give the app a way back).
+
+    What was chosen is asserted against the REGISTRY through `served_taxonomy()`,
+    per SKILL.md § 5, before anything is said about the screen: a mark that is
+    only painted looks exactly like one that was stored.
+
+    The preview is measured, not looked at. ADR-0017 asks for it «at the size the
+    map pin actually draws», amended by #37 from 12px to 19px — and the amendment
+    is the reason: three of the seeded eleven had to be re-picked because a mark
+    judged at desk size failed on a basemap. So the grid's own box is compared
+    against the same PIN_DOT/PIN_GLYPH that `a_pin_says_what_kind_of_place_it_is`
+    measures the real pin against, and the two would have to be wrong together.
+    """
+    added = f"Comité {RUN}"
+    slug = f"comite_{RUN}"
+    filed = f"Registro {RUN} con pictograma"
+
+    row = _capas_category(page, added)
+    if row.count() == 0:
+        failures.append(
+            f"«{added}» is not in the Capas panel, so #46 had no Category to pick a mark for "
+            f"— the add check above did not leave one",
+        )
+        return
+
+    before = _drawn_mark(row.locator(".territorio-capas__swatch").first)
+    if before != "circle-stroked":
+        failures.append(
+            f"«{added}» was already drawing {before!r} before anything was picked: it should "
+            f"show the neutral fallback, which is what ADR-0017 promises a Category with no "
+            f"chosen mark",
+        )
+
+    row.locator(".territorio-capas__swatch").first.click()
+    picker = page.locator(".territorio-capas__picker")
+    if not settles(page, lambda: picker.count() > 0, timeout=4_000):
+        failures.append(f"the swatch on «{added}» opened no pictogram picker")
+        return
+
+    offered = page.locator(".territorio-capas__glyph")
+    if offered.count() <= 11:
+        failures.append(
+            f"the picker offers {offered.count()} marks: eleven imports is the seeded set, not "
+            f"the catalogue #46 asks a Category to be chosen from",
+        )
+
+    mark = page.locator(f'.territorio-capas__glyph[title="{PICKED_MARK}"]')
+    if mark.count() == 0:
+        failures.append(f"the picker does not offer {PICKED_MARK!r}, so #46 could not pick one")
+        return
+
+    # The criterion in as many words: previewed at the size the map pin draws.
+    # Measured off the rendered boxes, because the size lives in a custom
+    # property the divIcon writes and a stylesheet that reads it — neither of
+    # which any unit test renders.
+    preview = mark.first.evaluate(
+        """(cell) => {
+            const box = cell.getBoundingClientRect()
+            const svg = cell.querySelector('svg')
+            const glyph = svg ? svg.getBoundingClientRect() : null
+            return {
+                dot: [Math.round(box.width), Math.round(box.height)],
+                mark: glyph ? [Math.round(glyph.width), Math.round(glyph.height)] : null,
+            }
+        }""",
+    )
+    if preview["dot"] != [PIN_DOT, PIN_DOT]:
+        failures.append(
+            f"a mark is previewed on a {preview['dot']}px dot, not the {PIN_DOT}px the map pin "
+            f"draws — ADR-0017 asks for the pin's size and #37 is what happens when a mark is "
+            f"judged at any other",
+        )
+    if preview["mark"] != [PIN_GLYPH, PIN_GLYPH]:
+        failures.append(
+            f"a mark is previewed at {preview['mark']}px, not the {PIN_GLYPH}px the map pin "
+            f"draws it at — a choice judged at list size can dissolve at the size it is used",
+        )
+
+    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picker.png"))
+
+    mark.first.click()
+    page.wait_for_timeout(900)
+
+    try:
+        written = next(
+            (entry for entry in served_taxonomy(page) or [] if entry["slug"] == slug), None,
+        )
+        if written is None:
+            failures.append(f"the Registry serves no Category under {slug!r} after a pick")
+            return
+        if written.get("glyph") != PICKED_MARK:
+            failures.append(
+                f"«{added}» was given {PICKED_MARK!r} and the Registry serves "
+                f"{written.get('glyph')!r}: the mark was painted and not written, so a colleague "
+                f"loading the app sees the neutral",
+            )
+            return
+
+        # The Capas legend, without a reload: the served tree is swapped in, and
+        # every surface reads the mark out of it.
+        drawn = _drawn_mark(_capas_category(page, added).locator(".territorio-capas__swatch").first)
+        if drawn != PICKED_MARK:
+            failures.append(
+                f"the Capas legend still draws {drawn!r} for «{added}» after {PICKED_MARK!r} was "
+                f"chosen — it did not follow without a reload",
+            )
+
+        _a_clustered_place(page, filed, f"{added} · Otro", 9, failures)
+        if registry_feature(page, filed) is None:
+            failures.append(f"{filed!r} is not in the Registry, so no pin was drawn to check")
+            return
+
+        # The map. A pin inside a cluster is not rendered, so the Registry is
+        # narrowed to this one record first — the same thing the #37 pin check does.
+        _only_on_the_map(page, filed)
+        pin = page.locator(".territorio-pin__dot").first
+        if pin.count() == 0:
+            failures.append(f"{filed!r} drew no pin, so the chosen mark did not reach the map")
+        else:
+            on_map = _drawn_mark(pin)
+            if on_map != PICKED_MARK:
+                failures.append(
+                    f"the map pin for {filed!r} draws {on_map!r}, not the {PICKED_MARK!r} its "
+                    f"Category was given — the chosen mark does not reach the map, which is the "
+                    f"one surface with no label beside it (ADR-0013)",
+                )
+            page.locator('[data-testid="map-canvas"]').screenshot(
+                path=str(SHOTS / "46-pin.png"),
+            )
+
+        # The Datos list, filtered to the same record.
+        swatch = page.locator(".territorio-list__swatch").first
+        if swatch.count() == 0:
+            failures.append(f"{filed!r} has no row in the Datos list")
+        else:
+            in_list = _drawn_mark(swatch)
+            if in_list != PICKED_MARK:
+                failures.append(
+                    f"the Datos list draws {in_list!r} for {filed!r}: the list and the map "
+                    f"disagree about what the same record is",
+                )
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(600)
+    finally:
         retire_the_runs_record(page, filed)
 
 
@@ -5194,6 +5441,15 @@ def main():
         # panel to scroll past. It files its own record, so Análisis has a
         # section to read.
         a_category_can_be_added_without_a_reload(page, errors, failures)
+        # After it, and on the Category it just added: #46 watches that Category
+        # go from the neutral fallback to a pictogram somebody chose, and reusing
+        # it is what keeps this run spending one vetted spare instead of two.
+        # Before the #47 block below rather than after it: neither of these adds
+        # a Category — the add-time one stops at Escape — so they leave the
+        # taxonomy exactly as «Agregar categoría» left it, which is what the #47
+        # comment asks for.
+        a_category_can_be_given_a_pictogram(page, failures)
+        a_pictogram_can_be_picked_while_a_category_is_named(page, failures)
         # #47, after every check that ADDS to the taxonomy: this one reads the
         # panel with the divisions block on screen, and the two below add
         # Categories of their own — the first takes its own away again, which

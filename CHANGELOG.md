@@ -133,6 +133,40 @@ An update that omitted the geometry destroyed it.
   into `js/` and 18 are named**, and the file's documented update method — read the two webpack
   banner files — structurally cannot see the rest. Filed as #87.
 
+- **`THIRD-PARTY-NOTICES.md` now names every package that ships, and a command says so** (#87).
+  Measured today: **67 packages are compiled into `js/` and 67 are named**. The previous count of
+  51 was short by sixteen for a reason worth writing down — `@geoman-io/leaflet-geoman-free`
+  publishes an esbuild bundle with **23** of its dependencies concatenated in, not the three
+  (`splaytree-ts`, `polyclip-ts`, `bignumber.js`) that #86 found. `lodash`, `rbush`,
+  `sweepline-intersections` and ten more `@turf/*` packages were in every page load, attributed
+  nowhere, resolved by nothing we install.
+
+  The method is the fix. `make notices` builds, then reads three things, because each is blind
+  where the next can see: the source maps' `.sources[]` (50 packages), the esbuild `// node_modules/
+  .pnpm/<pkg>@<version>` breadcrumbs left inside a published `dist`'s own source text (16 more),
+  and a literal-byte probe for a package that ships as bytes rather than as a module —
+  `@mapbox/maki`'s icons are inlined as assets, and an asset carries no source-map entry. It
+  exits non-zero listing every shipped package with no row in the file, and CI now runs it: the
+  way this file went stale was that keeping it current was a procedure nobody was made to run.
+
+  Two things the file used to say were wrong, and both were wrong in the same direction — a real
+  string mistaken for a path anyone could look up. The `node_modules/.pnpm/splaytree-ts@1.0.2/…`
+  path it cited is not a path in this repository (we install with npm; there is no
+  `node_modules/.pnpm`), and `jq -r '.sources[]'` does not name it: it is a string inside geoman's
+  published `dist`, so it lives in `.sourcesContent[]`. Chasing that is what turned three inlined
+  packages into sixteen. And deriving a package name from a source path needs the **last**
+  `/node_modules/`, not any — a checkout whose `node_modules` is a symlink out of the tree yields
+  paths with the repo prefix repeated inside them, and a plain `grep -o` over those invents a
+  package called `opt`.
+
+  Licences are read from each package's licence file, never from the `license` field: two
+  packages (`@nextcloud/vue`, `@nextcloud/event-bus`) publish no licence file at all and are
+  marked as the exception rather than blending into the table, and `sweepline-intersections` has
+  no copy in a development checkout at all — its MIT text was read from the published tarball.
+  The full texts of MIT, ISC, Apache-2.0 (for `dompurify`) and GPL-3.0 (for the Nextcloud
+  packages) are now in the file beside Leaflet's BSD-2 and `splaytree-ts`'s BSD-3, because those
+  licences require the text to travel with a binary redistribution and `js/` is one.
+
 ### Fixed
 
 - **Reclassifying a record into or out of a boundary Subcategory reassigned nothing** (#84).

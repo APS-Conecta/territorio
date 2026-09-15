@@ -651,19 +651,25 @@ export default {
 
 <style lang="scss">
 /*
+ * One ring, worn by the two things this map singles out: the shape the keyboard
+ * is on, and the pin that is selected. The theme's own primary element colour,
+ * so it flips with the theme instead of being a fixed colour that only works in
+ * one; the hex is the fallback for a theme that does not set the variable. Only
+ * the offsets differ, so only the offsets are written twice.
+ */
+$focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
+
+/*
  * Where the keyboard currently is, on a map made of shapes a mouse could always
  * find and nothing else could (issue #25).
  *
  * `:focus-visible` rather than `:focus`, so a shape a person clicked does not
- * also grow a ring. The same idiom as the selected pin below — the theme's own
- * primary element colour, three pixels, offset — which means it flips with the
- * theme instead of being a fixed colour that only works in one. The offset is
- * what keeps it off the shape's own stroke: a Sector is drawn in a Category
- * colour chosen by the clinic, and a ring sitting directly on it could be the
- * same colour as the line underneath.
+ * also grow a ring. The offset is what keeps it off the shape's own stroke: a
+ * Sector is drawn in a Category colour chosen by the clinic, and a ring sitting
+ * directly on it could be the same colour as the line underneath.
  */
 .leaflet-interactive:focus-visible {
-	outline: 3px solid var(--color-primary-element, #0b6bcb);
+	outline: $focus-ring;
 	outline-offset: 2px;
 }
 
@@ -700,7 +706,7 @@ export default {
 	}
 
 	&--selected {
-		outline: 3px solid var(--color-primary-element, #0b6bcb);
+		outline: $focus-ring;
 		outline-offset: 1px;
 	}
 }

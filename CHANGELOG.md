@@ -3,6 +3,74 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.62.0] — unreleased
+
+A Category is the clinic's to add, and the app is the one that picks its colour.
+
+### Added
+
+- **A Category can be added from the Capas panel** (#45). «Agregar categoría» under the tree opens
+  a field; Enter posts the name and the Category is a branch of its own, in the Subcategoría picker
+  and — once something is filed under it — in Análisis, without a reload. It is the last of the
+  three things CONTEXT.md has always claimed a clinic can do to its own taxonomy and the app could
+  not.
+
+  **The person types a name and nothing else.** The slug is derived and globally unique, like a
+  Subcategory's (#40). The colour is *assigned*: the first entry of the spare list #43 shipped that
+  no Category already holds. That is the whole of the rule — ADR-0017: «assigning a colour becomes
+  taking the next unused spare» — and it is deliberately not a computation. A colour has to clear
+  3:1 against a white page and against the dark theme, stay ΔE-OK 0.05 from every other Category
+  and both neutrals, and 0.015 from each of them under three dichromacies; that arithmetic lives
+  once, in `tools/ramp-check.py`, which derives the spares and re-checks every one of them on
+  `make lint`. A second implementation in PHP on the write path is exactly the drift the check
+  exists to prevent, so there is none — and there is no colour input for a Category, here or
+  anywhere else. Whoever wanted a particular colour gets one that works instead of one they chose.
+
+  Nothing new is stored to remember which spares are spent. The answer is derived from the
+  Categories that exist, so two adds in a row cannot collide — the first is a row by the time the
+  second looks — and a Category removed (#47) will hand its spare back without anybody writing the
+  code to do it.
+
+  **Eight spares is a real ceiling, and reaching it is not a failure.** The ninth clinic-added
+  Category is still created, still works, and takes the neutral. The panel says so, in an `info`
+  note card and never an error: ADR-0013 holds that hue only groups Categories into families and
+  the pictogram is what identifies them, so a Category without a distinct hue is doing what that
+  ADR says every Category does anyway. `color === DEFAULT_SECTOR_COLOUR` is the entire signal —
+  no flag travels on the response, because a flag is a second description of the same fact and can
+  disagree with the colour it describes.
+
+  That neutral is now written down twice, once in PHP for the write path and once in
+  `src/taxonomy.js` for the panel that compares against it, in two languages that cannot read each
+  other. `make lint` holds the two values equal. Edited apart, they would leave a Category that
+  looks neutral and is never explained, with every suite green — nothing on either side holds both
+  files open.
+
+  **A new Category arrives with an «Otro» Subcategory**, as all eleven the seed ships carry. A
+  Feature travels as a Subcategory id, the picker is a flat list of «Categoría · Subcategoría» and
+  Análisis counts records — so a Category with no Subcategory would be a branch with nothing in it
+  that reached neither of the other two surfaces, and nothing could be filed under it at all. The
+  clinic narrows it with #44's «+» whenever it wants to.
+
+  It draws a pictogram rather than a blank, because the glyph lookup already falls back to the
+  neutral mark for a slug it does not know — a blank reads as a rendering failure where the neutral
+  reads as unclassified. Choosing a mark of its own is #46.
+
+  Uniqueness is `terr_cat_slug_idx`'s job, not the app's, for the reason #44 gives about its own
+  index: a check-then-insert is a second copy of the rule that two people adding «Comité de
+  vivienda» at the same moment would both pass. The violation is caught and turned into a sentence
+  — «Ya existe una categoría con ese nombre.» — said of the name rather than of the slug, because
+  the slug is derived and naming it would describe something nobody typed. A blank name, and one
+  that derives to no slug at all, are refused the same way.
+
+  Nothing removes a Category yet (#47), so the browser gate's Category is named after the run and
+  stays behind like #44's Subcategory — but unlike a Subcategory it *spends a spare colour*, so the
+  dev instance walks down the list over time. The gate derives the colour it expects rather than
+  naming one, which keeps it honest as that happens and means the exhausted-spares branch starts
+  being exercised for real rather than only in the integration suite.
+
+  It does not tell the browsers that are already open, for the reason and at the cost `App.vue`
+  records on the Subcategory add path.
+
 ## [0.61.0] — unreleased
 
 The clinic can put a word of its own into the taxonomy, not only re-word the seed's.

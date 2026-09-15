@@ -90,6 +90,7 @@ below before you trust `occ config:app:set`.
     make test-browser     # drive the running app with Playwright (needs instance-up + build)
     npm install           # once
     make build            # webpack → js/territorio-{main,admin}.js
+    make notices          # what actually ships inside js/, checked against THIRD-PARTY-NOTICES.md
     make instance-up      # throwaway Nextcloud 34 + PG 18 on :8083 (admin / dev)
     make test-integration # mapper round-trip against that instance's real Postgres
     make instance-clean   # wipe it

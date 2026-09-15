@@ -79,3 +79,10 @@ jobs:
             echo "::error::js/ is behind src/. Run 'make build' and commit the result."
             exit 1
           fi
+
+      # THIRD-PARTY-NOTICES.md is an attribution obligation, and the way it went stale was
+      # that keeping it current was a documented procedure nobody was made to run: 51
+      # packages shipped and 18 were named (#87). This is that procedure, run by a machine.
+      # It re-runs `make build` — seconds, on a bundle the step above just built.
+      - name: Every shipped package is attributed
+        run: make notices

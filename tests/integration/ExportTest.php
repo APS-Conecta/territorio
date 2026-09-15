@@ -112,13 +112,20 @@ final class ExportTest extends IntegrationTestCase {
 	 * Through the real import, not the reader alone — matching is on (Dataset,
 	 * external id), so this is also the check that an export re-imported UPDATES
 	 * the Registry instead of duplicating it (ADR-0003).
+	 *
+	 * The fixture is stamped the way `tools/boundary-features.php` stamps what it
+	 * produces, so this run carries the ODbL notice as well (#28). Extended here
+	 * rather than given a test of its own because the criterion is that the notice
+	 * does not break a consumer, and the harshest consumer this file has is this
+	 * app's own importer — checking it anywhere else would check something easier.
 	 */
 	public function testAGeoJsonExportGoesBackInAsUpdatesRatherThanCopies(): void {
 		$dataset = 'export-round-trip-' . uniqid();
 		$original = <<<'JSON'
 			{"type":"FeatureCollection","features":[
 			  {"type":"Feature","properties":{"uid":"rt-1","name":"Sede Ida y Vuelta",
-			    "phone":"+56 9 2222 2222","address":"Los Navegantes 1234"},
+			    "phone":"+56 9 2222 2222","address":"Los Navegantes 1234",
+			    "source_es":"OpenStreetMap","source_url":"https://www.openstreetmap.org/way/101"},
 			   "geometry":{"type":"Point","coordinates":[-70.5822,-33.5222]}}
 			]}
 			JSON;
@@ -139,6 +146,10 @@ final class ExportTest extends IntegrationTestCase {
 		});
 
 		$before = Server::get(FeatureMapper::class)->find($id)->comparable();
+
+		// The licence is named, because the record came from OpenStreetMap (#28).
+		$written = json_decode($file['body'], true);
+		self::assertStringContainsString('ODbL', $written['license'] ?? '');
 
 		// Back in through the same door it came out of.
 		$batch = Server::get(ImportService::class)->importFile($file['body'], 'datos.geojson', $dataset);
@@ -267,6 +278,25 @@ final class ExportTest extends IntegrationTestCase {
 
 		$this->expectException(InvalidFeatureException::class);
 		$this->exports->export([$id], 'shapefile', false);
+	}
+
+	/**
+	 * An export of the clinic's own records claims nothing about OpenStreetMap.
+	 *
+	 * The other half of #28, and the half a notice printed on every file would
+	 * silently fail: an attribution that is always there is read as boilerplate,
+	 * and it would also be a false claim about a municipal catastro.
+	 */
+	public function testAnExportOfLocalRecordsCarriesNoLicenceNotice(): void {
+		$id = $this->place('Catastro propio');
+
+		$geojson = $this->exports->export([$id], 'geojson', false)['body'];
+		$csv = $this->exports->export([$id], 'csv', false)['body'];
+		$kml = $this->exports->export([$id], 'kml', false)['body'];
+
+		self::assertArrayNotHasKey('license', json_decode($geojson, true));
+		self::assertStringNotContainsString('Licencia', $csv);
+		self::assertStringNotContainsString('ODbL', $kml);
 	}
 
 	/** The CSV carries the classification a person reads, not an id. */

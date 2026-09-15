@@ -177,8 +177,13 @@ describe('the size a pin draws its mark at', () => {
 		const map = source('TerritorioMap.vue')
 		const pin = map.slice(map.indexOf('.territorio-pin__dot {'))
 
-		expect(map).toMatch(/PIN_DOT_SIZE/)
-		expect(map).toMatch(/PIN_GLYPH_SIZE/)
+		// The USE, not the token: `expect(map).toMatch(/PIN_DOT_SIZE/)` is
+		// satisfied by the import line at the top of the file alone, so it
+		// cannot fail while that import stands — even if nothing in the
+		// component read either name.
+		expect(map).toMatch(/iconSize: \[PIN_DOT_SIZE, PIN_DOT_SIZE\]/)
+		expect(map).toMatch(/--territorio-pin:\$\{PIN_DOT_SIZE\}px/)
+		expect(map).toMatch(/--territorio-pin-mark:\$\{PIN_GLYPH_SIZE\}px/)
 		// The dot's own geometry, in the rule that draws it. A literal here is
 		// the drift: the divIcon already declared `iconSize` in JS, so 26 was
 		// written twice in this one component before #46.

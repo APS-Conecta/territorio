@@ -59,6 +59,12 @@ class CategoryController extends Controller {
 	 * emptiness — an empty `glyph` is how the choice is cleared, and reading it
 	 * as "no glyph sent" would fall through to the rename and refuse a blank
 	 * label about a name nobody was typing.
+	 *
+	 * A body carrying both keys therefore writes the pictogram and discards the
+	 * rename. Neither screen sends both, but this route is open to every user
+	 * (ADR-0005) and a silent discard answered 200 is the worst way to say so —
+	 * `testABodyCarryingBothKeysWritesTheGlyphAndLeavesTheLabelAlone()` pins it,
+	 * and appinfo/routes.php says it where a caller looks first.
 	 */
 	#[NoAdminRequired]
 	public function update(string $slug): JSONResponse {

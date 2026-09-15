@@ -142,7 +142,8 @@ class CsvReader {
 	}
 
 	/**
-	 * Every non-empty line, parsed.
+	 * Every line of the file, parsed — blank ones included; `feature()` is what
+	 * decides that a row holds no record.
 	 *
 	 * `fgetcsv` over a stream rather than `str_getcsv` per line, because a Notas
 	 * cell somebody typed into a spreadsheet can contain a line break and only

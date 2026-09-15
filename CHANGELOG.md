@@ -62,7 +62,12 @@ A layer the clinic does not use can go — and cannot go while it holds records.
   reaches neither the Subcategoría picker nor Análisis, with nothing filable under it. The refusal
   says to remove the whole Category instead — not a cascade into doing that, for ADR-0016's own
   reason about the option it rejected: «quitar esta subcategoría» and «quitar toda la categoría»
-  are not the same sentence and must not be the same button.
+  are not the same sentence and must not be the same button. It is the *last* of the three
+  refusals, after the count: a Category added by a clinic arrives with exactly its «Otro», so one
+  Subcategory holding records is the ordinary case, and refused for being the last one it would
+  answer with no number and no pointer — and the way out it names, removing the whole Category, is
+  itself refused for those same records. Two refusals to reach the sentence ADR-0016 asks for is
+  the dead end that ADR exists to prevent.
 
   The browser's own filter is pruned on the way. It records what is HIDDEN, which is what makes a
   row added to the taxonomy appear on its own — and leaves a row removed from it as an id naming

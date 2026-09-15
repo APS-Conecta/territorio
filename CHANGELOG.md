@@ -3,6 +3,66 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.65.0] — unreleased
+
+The umbrella closes: the Category tree is editable data, and the design doc stops saying it is not.
+
+### Documentation
+
+- **`docs/design/map-legibility.md` § 5 loses its first item** (#36, #40). It said *the taxonomy is
+  not editable* — no taxonomy route in `appinfo/routes.php`, no UI, the eleven Categories seeded and
+  in practice fixed — and that this was why a palette could be specified at all and expected to
+  survive. Every sentence of it is now false: six taxonomy routes, a Capas panel that adds, renames
+  and removes both a Category and a Subcategory, and eight vetted spare colours. Its own closing
+  sentence predicted that taxonomy editing would need a rule for what colour a new Category gets;
+  that rule is #43 and ADR-0017.
+
+  This is the last of #36's eight acceptance criteria and the only one no slice of #41–#47 could
+  close on its own. CONTEXT.md has called a Category "editable data, not code: a clinic adds its own
+  and it appears in the panel and in reports at once" since the glossary was written, and the note
+  existed to say out loud that it was aspirational. With the note gone the glossary is a description
+  again, which is the point of the criterion.
+
+  **Removed rather than annotated, and dated where it stood.** `docs/index.md` says dated records —
+  the ADRs and the CHANGELOG — are not rewritten when the world moves, and that a correction is
+  added with its own date. A design reference is neither: leaving a false claim in place with a
+  correction under it makes the next reader work out which half to believe, and this document is
+  read to build from. So the claim goes, and a dated paragraph in its place says what it held, why
+  it is gone, and where what survives of it now lives.
+
+  § 5 keeps its second item and becomes *One thing…*. **A Sector still has no team** — nothing in
+  `Feature.php` or the schema carries one — so the surviving item was checked against the code
+  before it was kept rather than kept because it was already there.
+
+- **The ramp sections say what #43 and #45 changed** (#36). The palette specification's premise was
+  the claim removed above: § 1.2 could enumerate eleven colours because eleven was all there would
+  ever be. It now says the table is the palette a clinic *starts* from; that eight vetted spares
+  ship beside it as `EnsureSeedData::SPARES`, derived by `ramp-check.py`'s own functions inside the
+  six existing hue families; and that the check re-gates all eight on every `make lint` against the
+  eleven, both neutrals and each other — so editing a Category's colour is now also a statement
+  about colours no Category holds yet.
+
+  The paragraph that says **there is no room for a fourth neutral** gains the case that tests it and
+  does not break it: a Category added once the eight spares are gone reuses the Sector default
+  `#949494` rather than earning a fourth grey, and deliberately not `UNKNOWN_COLOUR`, which means a
+  broken reference. § 1.1 says where a clinic-added Category's pictogram comes from — the same Maki
+  catalogue, all 215 layouts, previewed at the 19px the pin draws — and § 6 records that the ramp
+  check clears the spares as well as the eleven.
+
+### Notes
+
+- **Nothing outside `docs/` changed.** `src/` is untouched, so `js/` is not rebuilt and no bundle
+  ships with this slice; `git diff --stat` against `main` is the check, not the assumption.
+
+- **#40 closes with #36.** It is the spec behind the umbrella rather than a build item, and it
+  carries no acceptance criteria of its own — its first lines say #36 "stays the umbrella and keeps
+  its acceptance criteria". Everything it specified now exists.
+
+- **#36's eight criteria were closed against named mechanisms.** Each one is answered by a test in
+  `tests/integration/CategoryCrudTest.php`, a check in `tools/browser-check.py`, or `tools/ramp-check.py`
+  under `make lint` — never by reading the code and finding it convincing. The verdicts are on the
+  issue.
+
 ## [0.64.0] — unreleased
 
 The pictogram that identifies a Category is the clinic's to choose.

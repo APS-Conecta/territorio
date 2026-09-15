@@ -3,6 +3,73 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.64.0] — unreleased
+
+The pictogram that identifies a Category is the clinic's to choose.
+
+### Added
+
+- **A Category's pictogram is the clinic's to choose** (#46). The other half of ADR-0017, and the
+  half a person can actually answer: no software guesses which mark means «comité de vivienda»,
+  while nobody satisfies a colour's constraints by eye. The swatch in each Capas row is now the
+  control — clicking it opens a grid of every mark the app vendors, and the mark is picked while a
+  new Category is being named as well as changed on one that already exists. The choice is stored
+  against the Category and drawn wherever the seeded eleven are: on the map pin, in the Datos list
+  and in the Capas legend.
+
+  **Previewed on the pin, not on a swatch.** Each mark in the grid is drawn as the map draws it —
+  a 19px pictogram on a 26px dot in the Category's own colour. ADR-0017 asked for that from the
+  start and #37 is why it is not a detail: the seeded eleven were first picked by rendering them
+  side by side at a desk, and three of them had to be re-picked once they were seen on a busy
+  basemap. A mark that reads at the legend's 11px can dissolve at the size it is used.
+
+  That number has therefore moved once already, so it now lives in one place. `PIN_DOT_SIZE` and
+  `PIN_GLYPH_SIZE` are in `src/marks.js` and the pin reads them through custom properties the
+  Leaflet `divIcon` writes onto its own markup; the stylesheet no longer carries a copy. The map
+  had already written 26 twice — once as `iconSize` in JavaScript and once as a `width` in CSS —
+  and the picker would have made a third copy in a third file.
+
+  **The catalogue is the package, not a list.** `src/glyphs.js` used to import eleven icons one by
+  one, which is the seeded set and not something to choose from. It now reads Maki's own browser
+  bundle, which ships every name and its markup — no new dependency, and `webpack.config.js` loses
+  the `asset/source` rule it carried for the single-file imports. Deliberately not
+  `require.context()`: that helper is webpack's alone, so under vitest the catalogue would have
+  been empty and every assertion about a chosen mark would have passed while proving nothing.
+
+  **A stored mark overrides the seeded map; it does not replace it.** The eleven stay keyed by slug
+  in `src/glyphs.js` and no row carries a copy of them, so an install where nobody has chosen
+  anything draws exactly what #37 re-picked, and a clinic that renames «Salud» does not have to
+  re-pick a hospital. `glyphFor()` answers with the stored name, then the slug's mark, then the
+  neutral — never nothing. The last of those three is not defensive: `glyph` is a VARCHAR on a
+  route open to every user (ADR-0005), and a restored dump or a retired Maki icon can put a name
+  there that this app cannot draw. It degrades to the state the Category was already in, which is
+  what ADR-0017 says must read as «unclassified», rather than to a blank that reads as a rendering
+  failure.
+
+  **The grid holds the focus, all of it and not only its cells.** The field a new Category is named
+  in cancels the whole add on blur (#45), so the picker carries `@mousedown.prevent` — on its root,
+  where it also covers the title, the padding and the gaps between the 215 wrapped circles. Guarded
+  per cell it looked right and was not: a wrapped row of 26px circles is mostly gap, and landing on
+  one threw away both the typed name and the mark already picked, silently. The browser gate now
+  clicks the grid's own title and watches the name survive, because a check that only clicks a cell
+  dead centre cannot tell the two versions apart.
+
+  The name's SHAPE is checked on the write path and its existence is not. The inventory belongs to
+  `@mapbox/maki` and lives in the frontend; a second copy of 215 names in PHP is exactly the drift
+  `nextColour()` refuses to introduce for colours. A character class is still a description of that
+  inventory, though, and the first one was narrower than the inventory it described: it refused a
+  capital, and thirteen of Maki's 215 are the `-JP` variants — `bank-JP`, `hospital-JP`,
+  `school-JP` — so the grid offered thirteen marks the write path answered «Ese pictograma no
+  existe en esta aplicación.» for, about marks the app itself had put there. `glyphs.test.js` now
+  reads the class back out of `TaxonomyService.php` and fails when the two sides disagree, which is
+  the check that would have caught it and the one a copied regex in a test could not.
+
+  Both edits travel on the PUT that already existed, which is why `category#rename` is now
+  `category#update` — a method called `rename` that also sets a pictogram is a lie. It acts on the
+  body key that is *present*, not on the one that is non-empty: an empty `glyph` is how a choice is
+  cleared, and reading that as «no glyph was sent» refused the write with «El nombre no puede
+  quedar vacío.» about a name nobody was typing.
+
 ## [0.63.0] — unreleased
 
 A layer the clinic does not use can go — and cannot go while it holds records.
@@ -94,8 +161,7 @@ A layer the clinic does not use can go — and cannot go while it holds records.
 
 ## [0.62.0] — unreleased
 
-A Category is the clinic's to add, the app is the one that picks its colour, and the clinic picks
-the pictogram that identifies it.
+A Category is the clinic's to add, and the app is the one that picks its colour.
 
 ### Added
 
@@ -160,61 +226,6 @@ the pictogram that identifies it.
 
   It does not tell the browsers that are already open, for the reason and at the cost `App.vue`
   records on the Subcategory add path.
-
-- **A Category's pictogram is the clinic's to choose** (#46). The other half of ADR-0017, and the
-  half a person can actually answer: no software guesses which mark means «comité de vivienda»,
-  while nobody satisfies a colour's constraints by eye. The swatch in each Capas row is now the
-  control — clicking it opens a grid of every mark the app vendors, and the mark is picked while a
-  new Category is being named as well as changed on one that already exists. The choice is stored
-  against the Category and drawn wherever the seeded eleven are: on the map pin, in the Datos list
-  and in the Capas legend.
-
-  **Previewed on the pin, not on a swatch.** Each mark in the grid is drawn as the map draws it —
-  a 19px pictogram on a 26px dot in the Category's own colour. ADR-0017 asked for that from the
-  start and #37 is why it is not a detail: the seeded eleven were first picked by rendering them
-  side by side at a desk, and three of them had to be re-picked once they were seen on a busy
-  basemap. A mark that reads at the legend's 11px can dissolve at the size it is used.
-
-  That number has therefore moved once already, so it now lives in one place. `PIN_DOT_SIZE` and
-  `PIN_GLYPH_SIZE` are in `src/marks.js` and the pin reads them through custom properties the
-  Leaflet `divIcon` writes onto its own markup; the stylesheet no longer carries a copy. The map
-  had already written 26 twice — once as `iconSize` in JavaScript and once as a `width` in CSS —
-  and the picker would have made a third copy in a third file.
-
-  **The catalogue is the package, not a list.** `src/glyphs.js` used to import eleven icons one by
-  one, which is the seeded set and not something to choose from. It now reads Maki's own browser
-  bundle, which ships every name and its markup — no new dependency, and `webpack.config.js` loses
-  the `asset/source` rule it carried for the single-file imports. Deliberately not
-  `require.context()`: that helper is webpack's alone, so under vitest the catalogue would have
-  been empty and every assertion about a chosen mark would have passed while proving nothing.
-
-  **A stored mark overrides the seeded map; it does not replace it.** The eleven stay keyed by slug
-  in `src/glyphs.js` and no row carries a copy of them, so an install where nobody has chosen
-  anything draws exactly what #37 re-picked, and a clinic that renames «Salud» does not have to
-  re-pick a hospital. `glyphFor()` answers with the stored name, then the slug's mark, then the
-  neutral — never nothing. The last of those three is not defensive: `glyph` is a VARCHAR on a
-  route open to every user (ADR-0005), and a restored dump or a retired Maki icon can put a name
-  there that this app cannot draw. It degrades to the state the Category was already in, which is
-  what ADR-0017 says must read as «unclassified», rather than to a blank that reads as a rendering
-  failure.
-
-  **The grid holds the focus, all of it and not only its cells.** The field a new Category is named
-  in cancels the whole add on blur (#45), so the picker carries `@mousedown.prevent` — on its root,
-  where it also covers the title, the padding and the gaps between the 215 wrapped circles. Guarded
-  per cell it looked right and was not: a wrapped row of 26px circles is mostly gap, and landing on
-  one threw away both the typed name and the mark already picked, silently. The browser gate now
-  clicks the grid's own title and watches the name survive, because a check that only clicks a cell
-  dead centre cannot tell the two versions apart.
-
-  The name's SHAPE is checked on the write path and its existence is not. The inventory belongs to
-  `@mapbox/maki` and lives in the frontend; a second copy of 215 names in PHP is exactly the drift
-  `nextColour()` refuses to introduce for colours.
-
-  Both edits travel on the PUT that already existed, which is why `category#rename` is now
-  `category#update` — a method called `rename` that also sets a pictogram is a lie. It acts on the
-  body key that is *present*, not on the one that is non-empty: an empty `glyph` is how a choice is
-  cleared, and reading that as «no glyph was sent» refused the write with «El nombre no puede
-  quedar vacío.» about a name nobody was typing.
 
 ## [0.61.0] — unreleased
 

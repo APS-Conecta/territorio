@@ -3,7 +3,7 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.50.0] — unreleased
+## [0.54.0] — unreleased
 
 «Retirar del mapa» is where the hand reaches for it.
 
@@ -33,7 +33,22 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
   The browser gate now **measures** rather than clicks: `bounding_box()` against the viewport
   height, at 1366×768 and at the 1362×620 the issue was measured in, for a Sector carrying 30
-  tramos, a Place, a Route and a Unidad Vecinal.
+  tramos, a Place, a Route and a Unidad Vecinal. It found two things the suites could not.
+
+  **`position: sticky` is bounded by its containing block, and the containing block is the
+  `<form>`.** The Limit editor was rendered beside `FeatureDetail`, not inside it, so the bar stuck
+  only until the form's own height had scrolled past — and then left with it, measured at y=-420px
+  on a 620px screen. The editor is slotted inside the form now, which is also where it belongs: the
+  Limit it edits is part of the draft Guardar saves. Its search box gained
+  `@keydown.enter.prevent`, because inside a form with a submit button Enter would otherwise save
+  the record instead of doing what it did before, which is nothing.
+
+  **`--color-error` is a background colour.** In this Nextcloud it is `#FFE7E7`, the pale tint an
+  error banner is filled with; the readable foreground red is `--color-error-text` (`#8A0000`). The
+  destructive outline was therefore painted at a contrast of 1.18:1 — near-white on white, invisible
+  — and every assertion in the gate passed, because they all asked where the button was and none
+  what it looked like. The gate now measures the WCAG contrast of the retire button's text and
+  border against the bar, and that Guardar is filled while the retire button is not.
 
 ## [0.49.0] — unreleased
 

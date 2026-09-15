@@ -55,6 +55,27 @@ final class GeoJsonWriterTest extends TestCase {
 		return array_merge(self::FULL, ['sourceRef' => self::FROM_OSM]);
 	}
 
+	/**
+	 * The same imported record after somebody rewrote the Fuente box.
+	 *
+	 * `sourceRef` IS that box (`src/components/FeatureDetail.vue`) and anybody may
+	 * retype it. `official` is the row as the authority published it, written only
+	 * by an import — `FeatureService::applyProvenance()` runs for a Provenance and
+	 * a person's edit passes none (ADR-0003) — so it still names OpenStreetMap
+	 * after the edit, and the geometry in the file is still OpenStreetMap's.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function editedOsmRow(): array {
+		return array_merge(self::FULL, [
+			'sourceRef' => 'Municipalidad',
+			'official' => json_encode(
+				array_merge(self::FULL, ['sourceRef' => self::FROM_OSM]),
+				JSON_UNESCAPED_UNICODE,
+			),
+		]);
+	}
+
 	/** @param list<array<string, mixed>> $rows */
 	private function roundTrip(array $rows, bool $contacts = true): array {
 		$json = (new GeoJsonWriter())->write($rows, $contacts);
@@ -218,5 +239,34 @@ final class GeoJsonWriterTest extends TestCase {
 
 		self::assertSame('FeatureCollection', $written['type']);
 		self::assertSame([], $written['features']);
+	}
+
+	/**
+	 * Rewriting Fuente must not drop the licence (#28).
+	 *
+	 * This is the failure the notice exists to prevent, and it would be invisible:
+	 * the file is still full of OpenStreetMap's geometry and the line saying so
+	 * has simply gone. `official` is the half of the signal a person cannot edit.
+	 */
+	public function testAnEditedFuenteDoesNotStripTheLicence(): void {
+		$written = json_decode((new GeoJsonWriter())->write([self::editedOsmRow()], true), true);
+
+		self::assertArrayHasKey('license', $written);
+		self::assertStringContainsString('ODbL', $written['license']);
+	}
+
+	/**
+	 * And the copy it reads that from never reaches the file.
+	 *
+	 * `official` is the whole published row, contact fields included. It rides in
+	 * the export row only so the licence can be decided, and an export that
+	 * withheld the telephone number in `properties` while carrying it inside a
+	 * JSON blob would break exactly the promise ADR-0006 makes.
+	 */
+	public function testTheOfficialCopyNeverReachesTheFile(): void {
+		$json = (new GeoJsonWriter())->write([self::editedOsmRow()], false);
+
+		self::assertStringNotContainsString('official', $json);
+		self::assertStringNotContainsString('contacto@ejemplo.cl', $json);
 	}
 }

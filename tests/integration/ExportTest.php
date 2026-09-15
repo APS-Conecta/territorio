@@ -299,6 +299,58 @@ final class ExportTest extends IntegrationTestCase {
 		self::assertStringNotContainsString('ODbL', $kml);
 	}
 
+	/**
+	 * Rewriting Fuente on an imported street does not take the licence off the
+	 * file (#28).
+	 *
+	 * `sourceRef` is the Fuente box in the form and anybody may retype it, so a
+	 * notice keyed on it alone would disappear from exactly the record it is
+	 * about, and disappear invisibly — the geometry in the file is still
+	 * OpenStreetMap's. `official` is the row as the authority published it and
+	 * only an import writes it (ADR-0003), which is why this survives.
+	 *
+	 * Here rather than in a unit test because the unit tests are handed a row:
+	 * what needs the database is that `ExportService::row()` actually carries
+	 * `official` out of the Registry, through the real edit path, into all three
+	 * writers.
+	 */
+	public function testRewritingFuenteDoesNotStripTheLicenceFromAnImportedRecord(): void {
+		$dataset = 'export-edited-fuente-' . uniqid();
+		$file = <<<'JSON'
+			{"type":"FeatureCollection","features":[
+			  {"type":"Feature","properties":{"uid":"ef-1","name":"Calle Vicuña Mackenna",
+			    "source_es":"OpenStreetMap","source_url":"https://www.openstreetmap.org/way/101"},
+			   "geometry":{"type":"Point","coordinates":[-70.5833,-33.5233]}}
+			]}
+			JSON;
+
+		Server::get(ImportService::class)->importFile($file, 'datos.geojson', $dataset);
+		$imported = Server::get(FeatureMapper::class)->findByDataset(
+			(int)Server::get(DatasetMapper::class)->findOrCreate($dataset, $dataset)->getId(),
+		);
+		$id = (int)$imported['ef-1']->getId();
+		$this->created[] = $id;
+
+		// What a person does in the Fuente box. No Provenance, so this is a local
+		// override and `official` is left exactly as the import wrote it.
+		$edited = Server::get(FeatureService::class)->update($id, ['sourceRef' => 'Municipalidad']);
+		self::assertSame('Municipalidad', $edited->getSourceRef(), 'the edit must have landed');
+
+		$geojson = $this->exports->export([$id], 'geojson', false)['body'];
+		$csv = $this->exports->export([$id], 'csv', false)['body'];
+		$kml = $this->exports->export([$id], 'kml', false)['body'];
+
+		self::assertStringContainsString('ODbL', json_decode($geojson, true)['license'] ?? '');
+		self::assertStringContainsString('ODbL', $csv);
+		self::assertStringContainsString('ODbL', $kml);
+
+		// And the copy the notice was read from stayed out of the files. It is the
+		// whole published row, so leaking it would carry fields ADR-0006 withholds.
+		self::assertStringNotContainsString('official', $geojson);
+		self::assertStringNotContainsString('official', $csv);
+		self::assertStringNotContainsString('official', $kml);
+	}
+
 	/** The CSV carries the classification a person reads, not an id. */
 	public function testTheCsvCarriesTheReadableClassification(): void {
 		$id = $this->place('Con clasificación');

@@ -51,11 +51,16 @@ final class OsmAttribution {
 	}
 
 	/**
-	 * Keyed on the row's own source, which is all an exported row knows about
-	 * where it came from: OSM-derived Datasets arrive as GeoJSON stamped
-	 * `source_es: OpenStreetMap` with a `source_url` (ADR-0004,
-	 * `tools/boundary-features.php:160`), and `GeoJsonReader::sourceRef()` joins
-	 * the two into this field.
+	 * Read from TWO places, and the second is the one that matters.
+	 *
+	 * OSM-derived Datasets arrive as GeoJSON stamped `source_es: OpenStreetMap`
+	 * with a `source_url` (ADR-0004, `tools/boundary-features.php:160`), and
+	 * `GeoJsonReader::sourceRef()` joins the two. That lands in `sourceRef` — the
+	 * Fuente box in the form, which anybody may retype — and in `official`, the
+	 * row exactly as the authority published it, which only an import writes:
+	 * `FeatureService::applyProvenance()` runs for a Provenance and a person's
+	 * edit passes none (ADR-0003). So clearing Fuente on an imported street
+	 * cannot take the ODbL line off a file that is still full of OSM's geometry.
 	 *
 	 * Matched loosely and on purpose. A hand-typed source that happens to mention
 	 * OSM makes an export carry one line it did not strictly owe; a stricter
@@ -65,6 +70,23 @@ final class OsmAttribution {
 	 * @param array<string, mixed> $row
 	 */
 	public static function isFromOsm(array $row): bool {
-		return stripos((string)($row['sourceRef'] ?? ''), 'OpenStreetMap') !== false;
+		return self::names($row['sourceRef'] ?? null)
+			|| self::names(self::publishedSource($row['official'] ?? null));
+	}
+
+	/**
+	 * What the file itself said the source was, out of the stored copy.
+	 *
+	 * A record never imported has no copy, and a copy that is not JSON is not a
+	 * claim about anything — both say "no", which leaves `sourceRef` to answer.
+	 */
+	private static function publishedSource(mixed $official): mixed {
+		$decoded = json_decode(is_string($official) ? $official : '', true);
+
+		return is_array($decoded) ? ($decoded['sourceRef'] ?? null) : null;
+	}
+
+	private static function names(mixed $value): bool {
+		return stripos((string)($value ?? ''), 'OpenStreetMap') !== false;
 	}
 }

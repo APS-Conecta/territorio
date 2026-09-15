@@ -1219,6 +1219,13 @@ def a_gone_line_says_so_and_keeps_its_name(page, failures):
     rows = page.locator('[data-testid="boundary-picker"] .territorio-picker__parts li')
     said = [rows.nth(index).inner_text() for index in range(rows.count())]
 
+    # The criterion is what the two labels look like next to each other, which is
+    # a judgement no assertion makes for you. Saved so whoever lands this can look
+    # at it and say what they saw, per the slice contract.
+    page.locator('[data-testid="boundary-picker"]').screenshot(
+        path=str(SHOTS / "gone-from-cadastre.png"),
+    )
+
     gone = [text for text in said if "ya no está en el catastro" in text]
     if len(gone) != 1:
         failures.append(f"a Limit part whose line is gone did not say so: {said}")

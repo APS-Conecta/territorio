@@ -356,7 +356,7 @@ class TaxonomyService {
 	 */
 	public function removeCategory(string $slug): array {
 		$category = $this->categories->findBySlug($slug);
-		$this->refuseIfStructural($category, $category->getLabel());
+		$this->refuseIfStructural($category);
 
 		$subcategories = $this->subcategoriesOf((int)$category->getId());
 		$this->refuseIfInUse(
@@ -387,7 +387,7 @@ class TaxonomyService {
 	public function removeSubcategory(string $categorySlug, string $slug): array {
 		$category = $this->categories->findBySlug($categorySlug);
 		$subcategory = $this->subcategories->findBySlug((int)$category->getId(), $slug);
-		$this->refuseIfStructural($category, $subcategory->getLabel());
+		$this->refuseIfStructural($category, $subcategory);
 
 		// Not one of #47's criteria, and here because this is the only path that
 		// can reach a state CONTEXT.md says does not exist: "A Category always
@@ -438,13 +438,13 @@ class TaxonomyService {
 	/**
 	 * «División territorial» and everything under it stay, always (ADR-0016).
 	 *
-	 * Asked of the CATEGORY in both cases, which covers its Subcategories with
-	 * the same line rather than with a list of the two slugs the seed ships: a
-	 * Subcategory is always addressed through its Category, and nothing filed
-	 * under the territorial division is a branch of "what this place is about"
-	 * (CONTEXT.md). That is at least as strict as the ADR asks — it also holds
-	 * for a third division somebody posts by hand, which is the case a list of
-	 * two slugs would silently let through.
+	 * The Category by slug, and a Subcategory by BOTH its Category's slug and its
+	 * own. The reason those two Subcategories cannot go is that the seed restores
+	 * them on every upgrade, so the rule is asked of the list the seed actually
+	 * ships rather than of "anything under the division". A third row posted
+	 * under it by hand — which `addSubcategory()` still accepts, deliberately,
+	 * for the reason `App.vue` gives — is restored by nothing and nothing depends
+	 * on it, so refusing that too would only make a mistake permanent.
 	 *
 	 * Refused here rather than at save time, and the panel says the same thing
 	 * where the control would otherwise be: this is the backstop for a request
@@ -452,15 +452,20 @@ class TaxonomyService {
 	 *
 	 * @throws InvalidTaxonomyException
 	 */
-	private function refuseIfStructural(Category $category, string $label): void {
+	private function refuseIfStructural(Category $category, ?Subcategory $subcategory = null): void {
 		if ($category->getSlug() !== EnsureSeedData::DIVISIONS_SLUG) {
+			return;
+		}
+		if ($subcategory !== null && !in_array(
+			$subcategory->getSlug(), EnsureSeedData::divisionSubcategorySlugs(), true,
+		)) {
 			return;
 		}
 
 		throw new InvalidTaxonomyException(sprintf(
 			'No se puede quitar «%s»: la división territorial es parte de la estructura del '
 			. 'mapa, y todo sector y toda unidad vecinal se guarda en ella.',
-			$label,
+			$subcategory?->getLabel() ?? $category->getLabel(),
 		));
 	}
 

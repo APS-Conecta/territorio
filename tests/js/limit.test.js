@@ -284,6 +284,30 @@ const REGENERATED = [
 	...DRAWN,
 ]
 
+/**
+ * A third origin, and the one history cannot see: imported from a Dataset.
+ * `ImportService::classify()` files a row under any Subcategory, Sector
+ * included — CHANGELOG 0.33.0 talks about undoing exactly that — and an import
+ * writes no Limit, so the Created revision carries `geometry` alone. That is
+ * DRAWN byte for byte, which is why these fixtures ARE DRAWN: what tells the
+ * two apart is not in the history at all but on the record, as `datasetId`
+ * (`FeatureService::applyProvenance` sets it on import and nowhere else).
+ */
+const IMPORTED = DRAWN
+
+/** Imported, and somebody wrote down afterwards what it runs along. */
+const IMPORTED_THEN_LIMIT = DRAWN_THEN_LIMIT
+
+/**
+ * Imported, and the line written again later — a re-import publishing a new
+ * official shape, or somebody dragging a vertex. Indistinguishable, so the
+ * sentence names neither.
+ */
+const IMPORTED_THEN_REDRAWN = [
+	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 09:30:00'),
+	...DRAWN,
+]
+
 describe('provenance', () => {
 	it('says a Sector was drawn by hand when no revision ever recorded a Limit', () => {
 		expect(provenance(DRAWN)).toBe('Línea dibujada a mano.')
@@ -381,6 +405,46 @@ describe('provenance', () => {
 	})
 
 	/**
+	 * The one claim this feature could not support, and the reviewer of this
+	 * slice caught it: a boundary the municipality published was being told to
+	 * the user as drawn by hand. The two histories are the same list — the fix
+	 * cannot come from history, and it does not: `datasetId` is the record's own
+	 * answer to "did this come from a Dataset", `Feature::toClient()` already
+	 * ships it, and `draftFrom()` now carries it onto the draft.
+	 */
+	it('says an imported Sector came from the catastro rather than naming a hand', () => {
+		expect(provenance(IMPORTED, true)).toBe('Línea importada del catastro.')
+		expect(provenance(IMPORTED)).toBe('Línea dibujada a mano.')
+	})
+
+	/** Writing down what it runs along does not make an imported line hand-drawn. */
+	it('keeps an imported line imported when the Limit is typed afterwards', () => {
+		expect(provenance(IMPORTED_THEN_LIMIT, true))
+			.toBe('Línea importada del catastro; el límite se anotó después.')
+	})
+
+	/**
+	 * Once the newest write of the line is not the import's own creation, the
+	 * catastro is no longer what the line shows: a re-import and a dragged vertex
+	 * both write `geometry` on an `updated` revision. So it says WHEN, as it does
+	 * everywhere else it cannot name the act.
+	 */
+	it('stops crediting the catastro once the line was written again', () => {
+		expect(provenance(IMPORTED_THEN_REDRAWN, true)).toBe('Línea guardada el 12-08-2026.')
+	})
+
+	/**
+	 * The rule behind the three above, so a future wording cannot reintroduce the
+	 * defect: nothing said about a record that came from a Dataset names a hand.
+	 */
+	it('never names a hand for a record that came from a Dataset', () => {
+		for (const history of [IMPORTED, IMPORTED_THEN_LIMIT, IMPORTED_THEN_REDRAWN,
+			GENERATED, DRAGGED, DRAGGED_THEN_LIMIT, REGENERATED]) {
+			expect(provenance(history, true)).not.toContain('a mano')
+		}
+	})
+
+	/**
 	 * Issue #50's second criterion, asserted as a rule rather than trusted to the
 	 * wordings above: the Limit records intent and the geometry records the agreed
 	 * line, they are EXPECTED to differ, and nothing here may read as a defect to
@@ -388,8 +452,12 @@ describe('provenance', () => {
 	 * here rather than reaching a screen.
 	 */
 	it('never words it as a mismatch to be corrected', () => {
-		const said = [DRAWN, GENERATED, DRAGGED, DRAWN_THEN_LIMIT, DRAGGED_THEN_LIMIT, REGENERATED]
-			.map(provenance).join(' ').toLowerCase()
+		const histories = [DRAWN, GENERATED, DRAGGED, DRAWN_THEN_LIMIT, DRAGGED_THEN_LIMIT, REGENERATED]
+		const said = [
+			...histories.map((history) => provenance(history)),
+			...histories.map((history) => provenance(history, true)),
+			provenance(IMPORTED_THEN_REDRAWN, true),
+		].join(' ').toLowerCase()
 
 		for (const wrong of ['desfase', 'no coinciden', 'desajust', 'corregir', 'error', 'inconsist']) {
 			expect(said).not.toContain(wrong)

@@ -210,9 +210,18 @@ export default {
 		 * the app's own test for it (`editingLimit`, `payload()`). A Place's
 		 * history carries geometry edits too, and reading them the same way would
 		 * tell somebody a clinic was drawn by hand.
+		 *
+		 * `datasetId` decides the one thing history cannot: an imported Sector's
+		 * creation records `geometry` and no Limit, byte for byte a hand-drawn
+		 * one's, so without it a boundary the municipality published was told to
+		 * the user as drawn by hand (issue #50, ADR-0018). A record being made has
+		 * no Dataset and no `datasetId` on its draft at all, hence the truthiness
+		 * test rather than a comparison against null.
 		 */
 		boundaryProvenance() {
-			return this.draft.limit === undefined ? '' : provenance(this.history)
+			return this.draft.limit === undefined
+				? ''
+				: provenance(this.history, Boolean(this.draft.datasetId))
 		},
 
 		/** Drawn on the map rather than typed as a coordinate. */

@@ -2,8 +2,11 @@
 
 - **Status:** accepted (2026-09-15)
 
-A Sector arrives two ways — polygonized from picked boundary features (ADR-0007) or drawn freehand
-— and issue #50 asked it to say which. The obvious answer is a column: `boundary_source`, written
+A Sector arrives three ways — polygonized from picked boundary features (ADR-0007), drawn freehand,
+or imported from a Dataset — and issue #50 asked it to say which. The issue names the first two;
+the third is real and was found in review of this slice: `ImportService::classify()` files a row
+under any Subcategory, Sector included, and CHANGELOG 0.33.0 is about undoing an import that
+created one. The obvious answer is a column: `boundary_source`, written
 where the shape is made. It was not taken, because the revision history already answers the
 question and because the column would be worse than what it replaced.
 
@@ -18,8 +21,19 @@ dragged vertex leaves behind, and equally what «Generar» leaves behind on a re
 Limit did not change — the flow `keepPickedGeometry()` and issue #49 exist to make possible. So
 the sentence for that shape states the order and the date, never a hand. What history does
 establish is the other way round: generating needs picked lines, so a Limit, and saves the two
-together, so a line last written while no Limit had ever been recorded can only have been drawn
-by hand.
+together, so a line last written while no Limit had ever been recorded was **not generated**.
+
+It does not follow that it was drawn by hand, and that is the third origin's whole consequence: an
+import writes a `geometry` and no Limit, which is a hand-drawn Sector's Created entry byte for
+byte. History cannot separate them and no reading of it ever will. The record can — `datasetId` is
+set by `FeatureService::applyProvenance()` on import and nowhere else, and `Feature::toClient()`
+already ships it — so `provenance()` takes that one fact as an argument and says «Línea importada
+del catastro» where history would have said a hand. Only the import's own creation is credited to
+the catastro: a later `geometry` write is a re-import publishing a new official shape or somebody
+dragging a vertex, indistinguishable as ever, so it falls to the dateline that names no act.
+
+This is still not a column. `datasetId` was already there, already read by the client, and is the
+answer to a different question — which Dataset owns this record — that provenance merely consults.
 
 A column would also not have been the truth. `faceAround()` runs in the browser, so the server
 never witnesses "generated" — `Action` has created, updated, retired, restored and merged and
@@ -44,6 +58,10 @@ and is never drift to be corrected (`CONTEXT.md`).
   the order and the date and no verb for the act, because a drag and a regenerate write the same
   shape. Wording it «ajustada» announced a hand adjustment for polygons the app itself had
   generated, which is the likeliest of these three cases to be hit.
+- **A record that came from a Dataset is never told as hand-drawn.** The unit tests assert that as
+  a rule over every fixture, not only as three wordings, and `tools/browser-check.py` imports a
+  Sector and reads the sentence — the only check that exercises `datasetId` travelling from
+  `toClient()` through `draftFrom()` into the sidebar, which no unit test can see.
 - **A Limit removed is not a Limit recorded.** The revision that cleared one is skipped, because a
   Sector whose Limit was deleted was not built against it.
 - The sidebar reloads a record's history after every save, since the sentence is derived from it.

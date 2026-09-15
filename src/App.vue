@@ -1015,6 +1015,12 @@ export default {
 				// so the sidebar can name them without asking the server again.
 				sectorId: feature.sectorId ?? null,
 				unidadVecinalId: feature.unidadVecinalId ?? null,
+				// Which Dataset this record came from, or null for one made here.
+				// Read-only too, and carried for one reason: a Sector's provenance
+				// sentence must not call an imported boundary hand-drawn, and the
+				// two look identical in history (issue #50, ADR-0018). Only an
+				// import sets it, so it is the record's own answer.
+				datasetId: feature.datasetId ?? null,
 				// A Sector opened for editing gets the picker too, not only one being
 				// drawn — and it comes back with what it was built from (issue #15).
 				//

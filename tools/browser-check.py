@@ -1491,6 +1491,91 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
         page.wait_for_timeout(400)
 
 
+def an_imported_sector_says_it_came_from_the_catastro(page, failures):
+    """#50's third origin: a boundary the municipality published is not a hand.
+
+    Driven through a real import, because the defect lives precisely between the
+    server and the sidebar and nothing else reaches it. `ImportService::classify()`
+    files a row under any Subcategory, Sector included, and an import writes no
+    Limit — so an imported Sector's history is a hand-drawn one's byte for byte,
+    and the only thing that tells them apart is `datasetId`, shipped by
+    `Feature::toClient()` and carried onto the draft by `draftFrom()`. A unit test
+    cannot see that wiring: `provenance()` is handed the flag. This is the check
+    that would fail if the flag stopped arriving.
+
+    The polygon is small and deliberately nowhere near this instance's data. An
+    imported Sector claims every Place it covers (ADR-0008), and a check that
+    reassigns half the Registry to itself to read one sentence has done more
+    damage than the sentence is worth.
+    """
+    name = f"Sector Catastro {RUN}"
+    south, west, north, east = -33.71, -70.41, -33.70, -70.40
+    geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {
+                "id": f"catastro-{RUN}",
+                "name": name,
+                # The taxonomy an import files a Sector under — the same pair an
+                # export writes for one, so this is a round trip of real data.
+                "category": "division_territorial",
+                "subcategory": "sector",
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[west, south], [east, south], [east, north],
+                                 [west, north], [west, south]]],
+            },
+        }],
+    })
+
+    if not import_dataset(geojson, f"catastro-{RUN}", boundary=False):
+        skip("could not import a Sector through occ; the imported-boundary wording is unchecked")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1500)
+
+    # The Registry first, and it is not decoration: a sentence that says the right
+    # thing about a record which never came from a Dataset proves nothing at all.
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} is not in the Registry, so nothing was imported to read (#50)")
+        return
+    if stored.get("datasetId") is None:
+        failures.append(
+            f"{name!r} carries no datasetId, so the record is not imported and the wording "
+            "below would be checked against the wrong thing (#50)",
+        )
+        return
+
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is in the Registry but not in the list to open (#50)")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1500)
+
+    said = page.locator('[data-testid="boundary-provenance"]')
+    if not settles(page, lambda: said.count() > 0, timeout=10_000):
+        failures.append("the imported Sector says nothing about how its boundary came to be (#50)")
+    else:
+        text = said.inner_text().strip()
+        if "a mano" in text:
+            failures.append(f"an imported boundary is told as hand-drawn: {text!r} (#50)")
+        elif "importada" not in text:
+            failures.append(f"the imported Sector says {text!r}, which does not name the import (#50)")
+
+    page.keyboard.press("Escape")
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def the_map_survives_churn(page, errors, failures):
     """Zoom and pan with the Limit picker open, which is when groups get swapped.
 
@@ -2091,6 +2176,10 @@ def main():
         # Which has just dragged a vertex and saved, so the line is now newer
         # than the Limit — #50's third case, the one a person would ask about.
         a_sector_says_how_its_boundary_came_to_be(page, "adjusted", failures)
+        # The third origin, which this run has to create for itself: neither
+        # Sector above came from a Dataset, and an imported one's history is
+        # indistinguishable from the hand-drawn one's.
+        an_imported_sector_says_it_came_from_the_catastro(page, failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         a_tramo_typed_before_the_first_save_is_kept(page, failures)

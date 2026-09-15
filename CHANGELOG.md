@@ -81,9 +81,20 @@ boundary came to be.
   earlier wording announced a hand adjustment over polygons the app had itself just generated,
   which of the three shapes is the one somebody is likeliest to hit. The two it *can* establish it
   still says outright — generating needs picked lines, so a Limit, and saves the two together, so
-  a line last written while no Limit had ever been recorded was drawn by hand however late the
+  a line last written while no Limit had ever been recorded was not generated, however late the
   Limit was typed. Without that last reading a hand-drawn Sector stopped saying so the moment
   somebody wrote its limit down, and read exactly like a generated one that was later moved.
+
+  **A Sector arrives a third way the ticket did not name: imported.** `ImportService` files a row
+  under any Subcategory, Sector included — the one CHANGELOG 0.33.0 is about undoing — and an
+  import writes no Limit, so a boundary the municipality published has the same Created entry as a
+  hand-drawn one, `geometry` and nothing else. Read from history alone it was told to the user as
+  «Línea dibujada a mano», which is the one confident claim this feature could not support. The
+  record answers what history cannot: `datasetId` is set on import and nowhere else, the client
+  already receives it, and a Sector that has one now reads «Línea importada del catastro.» Only the
+  import's own creation is credited — a later shape is a re-import or a dragged vertex,
+  indistinguishable, so it falls back to the dateline that names no act. No column, no endpoint:
+  one field carried onto the draft.
 
   Two more things are worth knowing before trusting a sentence. A revision is one save, so a
   Sector generated and then dragged **before** its first save, and one drawn by hand with streets

@@ -162,6 +162,37 @@ function said(changedAt) {
 }
 
 /**
+ * How the current line got there, for the case where no Limit stood when it was
+ * written — the only branch that can name an act at all.
+ *
+ * Three origins, not the two the ticket names. A Sector can also be IMPORTED:
+ * `ImportService::classify()` files a row under any Subcategory, Sector
+ * included (CHANGELOG 0.33.0 undoes exactly that), and an import writes no
+ * Limit — so a boundary the municipality published has the same Created entry
+ * as a hand-drawn one, `geometry` and nothing else. History cannot tell them
+ * apart and never will; the record can. `datasetId` is set on import and
+ * nowhere else (`FeatureService::applyProvenance`), so a record that has one
+ * came from a Dataset, and nothing here names a hand for it.
+ *
+ * Only the import's own creation is credited to the catastro. A later
+ * `geometry` write is a re-import publishing a new official shape OR somebody
+ * dragging a vertex, indistinguishable as always, so that one says WHEN.
+ *
+ * @param {object} line the newest revision that wrote a geometry
+ * @param {boolean} imported whether the record came from a Dataset
+ * @return {string} the clause, without its closing punctuation
+ */
+function origin(line, imported) {
+	if (!imported) {
+		return 'Línea dibujada a mano'
+	}
+
+	return line.action === 'created'
+		? 'Línea importada del catastro'
+		: `Línea guardada${said(line.changedAt)}`
+}
+
+/**
  * How this Sector's current line came to be, as one sentence (issue #50).
  *
  * It costs no column, because the revision history already holds it: every write
@@ -176,6 +207,11 @@ function said(changedAt) {
  * where the two are indistinguishable this says WHEN the line was last written and
  * never that a hand moved it.
  *
+ * Nor can history say a line was IMPORTED: an imported Sector's Created entry is
+ * `geometry` and nothing else, exactly a hand-drawn one's. That is what `imported`
+ * is for, and it is why this takes an argument history cannot supply — see
+ * `origin()` above.
+ *
  * It states provenance and never a defect. The Limit records intent and the
  * geometry records the agreed line; they stop matching the moment somebody drags
  * a vertex, and that is expected rather than drift to be corrected (CONTEXT.md).
@@ -189,9 +225,11 @@ function said(changedAt) {
  * and not this function's.
  *
  * @param {Array} history the record's revisions, newest first, as the API returns them
+ * @param {boolean} imported whether the record came from a Dataset — `datasetId`
+ *   on the record, which only an import sets
  * @return {string} the sentence, or '' when history says nothing about a line
  */
-export function provenance(history) {
+export function provenance(history, imported = false) {
 	const entries = history ?? []
 	const line = entries.find((entry) => wrote(entry, 'geometry'))
 	const limit = entries.find((entry) => wrote(entry, 'limit'))
@@ -200,18 +238,19 @@ export function provenance(history) {
 		return ''
 	}
 	if (limit === undefined) {
-		return 'Línea dibujada a mano.'
+		return `${origin(line, imported)}.`
 	}
 	if (wrote(line, 'limit')) {
 		return `Línea fijada junto con el límite${said(line.changedAt)}.`
 	}
 	// Generating needs picked lines, so a Limit, and «Generar» saves the two in one
-	// revision. A line last written while no Limit had ever been recorded can
-	// therefore only have been drawn by hand — whatever somebody typed afterwards.
+	// revision. A line last written while no Limit had ever been recorded was
+	// therefore drawn by hand or imported — never generated — whatever somebody
+	// typed afterwards; `origin()` is what tells those two apart.
 	// Without this, a hand-drawn Sector stopped saying so the moment its Limit was
 	// written down, and read exactly like a generated one that was later moved.
 	if (!entries.some((entry) => wrote(entry, 'limit') && entry.revision <= line.revision)) {
-		return 'Línea dibujada a mano; el límite se anotó después.'
+		return `${origin(line, imported)}; el límite se anotó después.`
 	}
 
 	// Both orders happen and neither names an act: a Limit written down long after

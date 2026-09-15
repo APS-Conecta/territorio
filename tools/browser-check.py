@@ -1734,6 +1734,117 @@ def every_category_reaches_the_browser_with_its_colour(page, failures):
     # trip; that check proves the colour.
 
 
+# The one file the header, the app menu and the favicon all draw (#26). Named
+# here so a fallback to core's generic icon, or a slip to the dark variant, is a
+# failure with a name rather than a picture nobody looks at. Matched as a suffix:
+# the served path starts with `/custom_apps/` on this instance and `/apps/` on one
+# where the app was installed from the store, and neither is the point.
+APP_ICON = "/territorio/img/app.svg"
+
+
+def _the_icon_paints_the_right_colour(page, selector, contrast_var, where, failures):
+    """One icon surface: the right file, the white bytes, the right painted colour.
+
+    The painted colour is derived rather than sampled. Core draws the app icon
+    through `filter: var(--primary-invert-if-bright)` (AppItem) or
+    `var(--background-image-invert-if-bright)` (AppMenu), and both resolve to
+    `invert(100%)` exactly when the theme's own text colour for that surface is
+    black — `Util::getTextColor()` and `Util::invertTextColor()` are the same
+    predicate. So: the source glyph is white, the computed filter says whether it
+    is flipped, and the result has to equal the colour the theme says foreground
+    is on that surface. A sampled pixel would say the same thing less reliably,
+    through a mask that fades the glyph's alpha to 45%.
+    """
+    icon = page.locator(selector).first
+    if icon.count() == 0:
+        failures.append(f"{where}: no app icon is rendered at all ({selector})")
+        return
+
+    source = icon.get_attribute("src") or ""
+    if APP_ICON not in source:
+        failures.append(
+            f"{where}: the icon served is {source!r}, not {APP_ICON} — either the app ships no "
+            f"icon and core substituted its own, or the dark variant reached a surface that "
+            f"asks for the light one",
+        )
+        return
+
+    served = page.evaluate("async url => (await fetch(url)).text()", source)
+    if 'fill="#fff"' not in served:
+        failures.append(
+            f"{where}: the server served {source} without a white fill, so the glyph is black "
+            f"on a coloured surface. The file in img/ is not what the app is serving.",
+        )
+
+    painted, expected = icon.evaluate(
+        """(element, variable) => {
+            const style = getComputedStyle(element)
+            const inverted = style.filter.includes('invert')
+            return [inverted ? '#000000' : '#ffffff',
+                    style.getPropertyValue(variable).trim().toLowerCase()]
+        }""",
+        contrast_var,
+    )
+
+    if expected not in ("#ffffff", "#000000"):
+        failures.append(f"{where}: {contrast_var} is {expected!r}, which is neither black nor white")
+    elif painted != expected:
+        failures.append(
+            f"{where}: the glyph paints {painted} while the theme puts {expected} text on that "
+            f"surface — the icon is the colour of its own background",
+        )
+
+
+def the_app_icon_is_legible_in_both_themes(page, failures):
+    """#26: the app's own icon, on the two surfaces that draw it, in both themes.
+
+    Both files existed and were byte-identical, which meant one of them was
+    always wrong and nothing said which. `img/app.svg` is the white one — the
+    header's current-app button and the waffle grid both ask
+    `AppManager::getAppIcon()` without `$dark` — and this is the half no unit
+    test can reach: that those bytes are what the running server serves and what
+    core actually paints.
+
+    The theme is flipped with `prefers-color-scheme` rather than with
+    `occ user:setting … enabled-themes`, because the default theme ships its dark
+    half under exactly that media query (`DarkTheme::getMediaQuery()`) and the
+    emulation leaves no state behind on the instance to restore.
+    """
+    backgrounds = {}
+
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(300)
+        backgrounds[scheme] = page.evaluate(
+            "() => getComputedStyle(document.body).getPropertyValue('--color-main-background')",
+        )
+
+        _the_icon_paints_the_right_colour(
+            page, ".app-menu__current-app-icon", "--color-background-plain-text",
+            f"the header's current-app button ({scheme} theme)", failures,
+        )
+
+        page.locator(".app-menu__waffle").click()
+        page.wait_for_selector(".app-menu__popover", timeout=10_000)
+        _the_icon_paints_the_right_colour(
+            page, '.app-item[href*="/apps/territorio"] .app-item__icon',
+            "--color-primary-element-text",
+            f"the app menu's Territorio tile ({scheme} theme)", failures,
+        )
+        page.screenshot(path=str(SHOTS / f"app-icon-{scheme}.png"), full_page=False)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+
+    page.emulate_media(color_scheme="no-override")
+
+    # A silent half-run is the failure this project keeps meeting: if the admin
+    # has pinned a theme, the dark CSS is served unconditionally and emulating
+    # the media query changes nothing, so the loop above checked one theme twice.
+    if backgrounds["light"] == backgrounds["dark"]:
+        skip("the app icon was only checked in one theme: this instance pins a theme, so "
+             "prefers-color-scheme does not switch it")
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -1757,6 +1868,7 @@ def main():
             toggle_division(page, "Unidad Vecinal")
 
         every_category_reaches_the_browser_with_its_colour(page, failures)
+        the_app_icon_is_legible_in_both_themes(page, failures)
 
         create_a_place(page, f"Plaza del Navegador {RUN}", failures)
         draw_a_sector(page, f"Sector Navegador {RUN}", failures)

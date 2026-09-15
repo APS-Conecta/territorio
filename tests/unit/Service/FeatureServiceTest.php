@@ -455,6 +455,27 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	/**
+	 * The door is in `apply()`, which creates share with updates, so a create
+	 * that omits the `geometry` key entirely while naming a quality is refused
+	 * too — where it used to store `sin_coordenada` in silence. That is the
+	 * deliberate half of the change and the only behaviour it altered, so it
+	 * gets a test rather than a paragraph: a create states the WHOLE record, and
+	 * "there is no shape" plus "the shape is approximate" contradict each other.
+	 * Creates that send `geometry` explicitly as `null` or `[]` are unchanged
+	 * (see the two tests above), and the client always sends the key.
+	 */
+	public function testACreateWithNoGeometryKeyAtAllCannotNameAQuality(): void {
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessageMatches('/Exactitud/');
+
+		$this->service->create([
+			'name' => 'Sede sin coordenada',
+			'subcategoryId' => 7,
+			'locationQuality' => 'aproximada',
+		]);
+	}
+
+	/**
 	 * The new door must not become the #63 overwrite by another name:
 	 * `locationQuality()` reads an absent value as `exacta`, so applying it
 	 * unconditionally would reset every stored `aproximada` on any update that

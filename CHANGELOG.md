@@ -3,10 +3,9 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.45.0] — unreleased
+## [0.46.0] — unreleased
 
-Every package that ships in the bundle is named, and a command says so, and a Location quality can
-be corrected on its own.
+A Location quality can be corrected on its own.
 
 ### Fixed
 
@@ -36,6 +35,20 @@ be corrected on its own.
   Nothing in the browser changes. `App.vue`'s `payload()` always sends `geometry`, as a shape or as
   `null`, so the client never takes the new door; it exists for a caller that sends only what
   changed, and for #23, which has to decide what the client may send for this same field.
+
+  One behaviour changed on the create path, deliberately, because `apply()` is shared: a create that
+  omits the `geometry` key **entirely** while naming a quality is now refused instead of storing
+  `sin_coordenada` in silence. A create states the whole record, so "there is no shape" and "the
+  shape is approximate" contradict each other and refusing is the honest answer. Creates that send
+  `geometry` explicitly as `null` or `[]` are unchanged, and the browser always sends the key.
+
+  Submitted empty (`""`) through the new door means `exacta`, not cleared — unlike the optional text
+  fields, which clear when sent empty. A record that has a coordinate has no null state for how well
+  that coordinate is known, and the default belongs to the helper `applyGeometry` shares.
+
+## [0.45.0] — unreleased
+
+Every package that ships in the bundle is named, and a command says so.
 
 ### Documentation
 

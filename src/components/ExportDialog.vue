@@ -24,14 +24,14 @@
 			expecting their phone numbers can still choose a different format. Same
 			rule as the import dialog's KML notice, for the same reason.
 		-->
-		<NcNoteCard v-if="format === 'kml'" type="warning">
-			Un archivo KML lleva solamente el nombre y la ubicación. No lleva
-			teléfono, correo, persona de contacto, cargo, dirección, horario, notas,
-			fuente, categoría ni el límite de un sector. Para un archivo completo,
-			use GeoJSON.
+		<NcNoteCard v-if="kmlFamily" type="warning">
+			Un archivo {{ format.toUpperCase() }} lleva solamente el nombre y la
+			ubicación. No lleva teléfono, correo, persona de contacto, cargo,
+			dirección, horario, notas, fuente, categoría ni el límite de un sector.
+			Para un archivo completo, use GeoJSON.
 		</NcNoteCard>
 
-		<NcCheckboxRadioSwitch v-if="format !== 'kml'"
+		<NcCheckboxRadioSwitch v-if="!kmlFamily"
 			:model-value="contacts"
 			type="switch"
 			@update:model-value="contacts = $event">
@@ -44,7 +44,7 @@
 			coordination tool becomes a portable contact list. So the prompt is
 			Nextcloud's own, it is asked for THIS export, and the export is recorded.
 		-->
-		<NcNoteCard v-if="contacts && format !== 'kml'" type="info">
+		<NcNoteCard v-if="contacts && !kmlFamily" type="info">
 			Este archivo lleva nombres, teléfonos y correos de personas. Se le pedirá
 			su contraseña y quedará registrado quién exportó, cuándo y cuántos
 			registros.
@@ -76,6 +76,7 @@ const FORMATS = [
 	{ value: 'geojson', label: 'GeoJSON — completo, se puede volver a importar' },
 	{ value: 'csv', label: 'CSV — para planilla de cálculo' },
 	{ value: 'kml', label: 'KML — solo nombre y ubicación, para Google Earth' },
+	{ value: 'kmz', label: 'KMZ — el mismo archivo comprimido, pesa menos' },
 ]
 
 export default {
@@ -117,11 +118,23 @@ export default {
 		},
 
 		/**
+		 * A KMZ is a KML in a ZIP (#102), so everything that is true of a KML
+		 * because of what the FORMAT can hold is true of both. Asked once here
+		 * rather than compared against 'kml' at each of the four places that care:
+		 * a fifth place, or a fourth format, is where those drift apart, and a
+		 * dialog that offers the contacts switch for a file that cannot carry them
+		 * asks for a password over nothing (ADR-0006).
+		 */
+		kmlFamily() {
+			return this.format === 'kml' || this.format === 'kmz'
+		},
+
+		/**
 		 * A KML carries no contact details whatever is asked for, so it never needs
 		 * the confirmation and never goes to the confirmed route.
 		 */
 		carriesContacts() {
-			return this.contacts && this.format !== 'kml'
+			return this.contacts && !this.kmlFamily
 		},
 	},
 

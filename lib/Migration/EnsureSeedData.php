@@ -116,6 +116,22 @@ class EnsureSeedData implements IRepairStep {
 	 */
 	private const DIVISIONS = [
 		'label' => 'División territorial',
+		/*
+		 * Inert, and left alone on purpose (issue #29).
+		 *
+		 * Nothing renders it. A territorial division is not drawn as a dot
+		 * anywhere: on the map a Unidad Vecinal is a dashed hairline with no fill
+		 * and a Sector is a wash of its own colour, and in the Datos list and the
+		 * Análisis chart a division is a ring or the neutral `#949494` (#21,
+		 * src/marks.js, src/taxonomy.js `categoryColour`).
+		 *
+		 * It measures 1.73:1 against the dark theme where WCAG 1.4.11 asks 3:1,
+		 * and there was no legible grey to move it to — ADR-0013 measures the
+		 * neutral band as full at ΔE 0.055 against a 0.05 floor, and every
+		 * candidate outside it reads wrong for a boundary. So the division stopped
+		 * being a coloured mark instead. Changing this value would migrate every
+		 * install's data to repaint nothing.
+		 */
 		'color' => '#334155',
 		'subcategories' => [
 			'sector' => 'Sector',

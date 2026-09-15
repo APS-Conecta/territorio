@@ -27,6 +27,11 @@ The rules it enforces, and where they come from — docs/design/map-legibility.m
     Identity is carried by the Maki glyph, which no dichromacy touches. See
     docs/design/map-legibility.md section 1.2.
 
+A territorial division is deliberately out of scope. It is not drawn as a dot
+anywhere any more — a hairline or a wash on the map, a ring in the list (#21,
+#29) — so the seeded `#334155` reaches no surface and there is nothing here to
+measure it against. It stays in the seed as inert data.
+
 Usage:  python3 tools/ramp-check.py        (exit 0 = pass, 1 = fail)
 """
 import math
@@ -111,32 +116,15 @@ def seeded_categories():
     The slice stops before `DIVISIONS_SLUG` so `RAMP_WAS`, which holds the OLD
     colours, is never mistaken for current ones. DIVISIONS itself falls inside
     that slice but does not match the regex, which wants a `'slug' => ['label'
-    => …]` row — so it is excluded by shape rather than by position. That is
-    accidental, not a decision, which is why `divisions_colour()` below exists to
-    look at it deliberately.
+    => …]` row — so it is excluded by shape. That exclusion is now deliberate:
+    a territorial division is not a dot (#21), so its colour is not this check's
+    business — see the module docstring.
     """
     source = SEED.read_text(encoding='utf-8')
     taxonomy = source.split('private const TAXONOMY')[1].split('public const DIVISIONS_SLUG')[0]
     found = re.findall(r"'(\w+)'\s*=>\s*\['label'\s*=>\s*'[^']*',\s*'color'\s*=>\s*'(#[0-9a-fA-F]{6})'",
                        taxonomy)
     return dict(found)
-
-
-def divisions_colour():
-    """The colour a Unidad Vecinal — or a Sector with none of its own — is drawn.
-
-    Not a Category, but `colourOf()` in src/taxonomy.js falls back to it and
-    `FeatureList.vue` paints the result as the same 18px dot, so it is held to
-    the same contrast bar as one. It was left out of this check entirely until a
-    review pointed out that the exemption was hiding a real failure.
-    """
-    source = SEED.read_text(encoding='utf-8')
-    divisions = source.split('private const DIVISIONS')[1]
-    match = re.search(r"'color'\s*=>\s*'(#[0-9a-fA-F]{6})'", divisions)
-    if match is None:
-        raise SystemExit('could not find the DIVISIONS colour in the seed')
-
-    return match.group(1)
 
 
 def javascript_colours():
@@ -190,21 +178,6 @@ def main():
                 failures.append(f'{name} {colour} is indistinguishable from {other} '
                                 f'{other_colour}: dE {distance:.3f} < {MIN_SEPARATION}')
         everything[name] = colour
-
-    # Reported every run, never gated. It fails today at 1.73:1 against the dark
-    # theme, and picking a colour that clears both themes AND stays 0.05 from
-    # eleven Categories and three neutrals is a design decision this check cannot
-    # make — the blue-violet band a slate wants is already occupied by
-    # `educacion` and `sin_clasificar`. Issue #29 owns it. Gating would paint
-    # `make lint` red for something no slice is currently fixing, and a red that
-    # nobody can clear is a red everybody learns to ignore.
-    divisions = divisions_colour()
-    on_light, on_dark = contrast(divisions, WHITE), contrast(divisions, DARK_BG)
-    if min(on_light, on_dark) < MIN_CONTRAST:
-        print(f'  KNOWN, issue #29: the territorial-division colour {divisions} is '
-              f'{min(on_light, on_dark):.2f}:1 against '
-              f'{"the dark theme" if on_dark < on_light else "a white page"} — a Unidad Vecinal\'s '
-              f'swatch is close to invisible there.')
 
     pairs = [(a, b) for i, a in enumerate(sorted(ramp)) for b in sorted(ramp)[i + 1:]]
 

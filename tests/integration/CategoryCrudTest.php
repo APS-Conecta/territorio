@@ -870,6 +870,31 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			. 'colour from the Categories that exist, so a counter has crept in somewhere');
 	}
 
+	/**
+	 * CONTEXT.md: "A Category always carries at least an «Otro» Subcategory… a
+	 * Category with none is one nothing can be filed under and one neither the
+	 * picker nor Análisis shows."
+	 *
+	 * Removal is the only path that can reach that state, so the guard belongs
+	 * with it. Proved against a Category added here rather than a seeded one,
+	 * which all carry an «Otro» plus at least one more.
+	 */
+	public function testACategoryCannotBeEmptiedOfItsLastSubcategory(): void {
+		[, $category] = $this->addCategory('Comité de una sola');
+		self::assertCount(1, $category['subcategories'],
+			'a new Category should arrive with exactly its «Otro»');
+
+		try {
+			$this->taxonomy()->removeSubcategory($category['slug'], 'otro');
+			self::fail('the Category was left with no Subcategory: nothing can be filed under '
+				. 'it, and it reaches neither the Subcategoría picker nor Análisis');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertStringContainsString('única subcategoría', $e->getMessage());
+		}
+
+		self::assertCount(1, $this->served($category['slug'])['subcategories']);
+	}
+
 	public function testRemovingACategoryNobodyHasIsNotFound(): void {
 		$this->expectException(DoesNotExistException::class);
 

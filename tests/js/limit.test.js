@@ -366,7 +366,7 @@ describe('provenance', () => {
 	it('keeps a hand-drawn Sector apart from a generated one whose Limit is the newest write', () => {
 		expect(provenance(DRAGGED_THEN_LIMIT))
 			.toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo el 12-08-2026; '
-				+ 'el límite se anotó después.')
+				+ 'el límite se editó después.')
 		expect(provenance(DRAWN_THEN_LIMIT)).not.toBe(provenance(DRAGGED_THEN_LIMIT))
 	})
 

@@ -134,7 +134,7 @@
 					:query="boundaryQuery"
 					:seeding="seeding"
 					:can-generate="canGenerate"
-					:limit="groups(draft.limit)"
+					:limit="groups(draft.limit, goneIds)"
 					:limit-said="readable(draft.limit)"
 					@add-note="addLimitNote"
 					@remove-part="removeLimitPart"
@@ -268,6 +268,11 @@ export default {
 			// Loaded only while a Sector's Limit is being built, and thrown away
 			// when it is not: a comuna is around eleven thousand lines (issue #12).
 			boundaryFeatures: [],
+			// Which of the Limit's cited ids are no longer live Boundary features
+			// (issue #51). It has to come from the server: this list only ever holds
+			// what is in view and never a retired row, so "not here" means
+			// "off-screen OR gone" and the browser cannot tell those apart.
+			goneIds: [],
 			boundaryQuery: '',
 			view: null,
 			viewTimer: null,
@@ -569,6 +574,7 @@ export default {
 			this.history = []
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []
+			this.goneIds = []
 			if (this.editingLimit) {
 				this.loadBoundaries()
 			}
@@ -728,6 +734,7 @@ export default {
 			}
 			this.boundaryQuery = ''
 			this.boundaryFeatures = []
+			this.goneIds = []
 			this.loadBoundaries()
 		},
 
@@ -875,9 +882,15 @@ export default {
 
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/boundaries'), {
-					params: this.view,
+					// The ids the draft cites ride along on a request that already goes
+					// out, because they are the only ones the answer can be about.
+					params: { ...this.view, ids: this.draft.picked.join(',') },
 				})
-				this.boundaryFeatures = data
+				this.boundaryFeatures = data.features
+				// Never merged into `boundaryFeatures`: that one array feeds the
+				// autocomplete, the clickable layer on the map and keepPickedGeometry,
+				// so a gone line with a name and a shape would be pickable again.
+				this.goneIds = data.gone
 				// A reopened Sector knows WHICH lines its Limit runs along and not
 				// what they look like — `draftFrom` has only the stored Limit to go
 				// on. Every line that comes into view fills its own shape back in,
@@ -1078,6 +1091,7 @@ export default {
 			// Unloaded on leaving the editor, which is the other half of loading
 			// them only inside it: eleven thousand lines are not the map.
 			this.boundaryFeatures = []
+			this.goneIds = []
 			this.boundaryQuery = ''
 			// Or the next draft opens already waiting for a click nobody asked for.
 			this.stopSeeding()

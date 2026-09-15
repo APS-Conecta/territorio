@@ -192,6 +192,12 @@ class ExportService {
 			'openingHours' => $feature->getOpeningHours(),
 			'notes' => $feature->getNotes(),
 			'sourceRef' => $feature->getSourceRef(),
+			// Never written to a file — every writer takes only the keys it maps,
+			// the writer tests hold all three to that, contact fields included. It
+			// rides along so the licence decision has something a person cannot
+			// edit: `sourceRef` is the Fuente box, `official` is what the authority
+			// published and only an import writes it (ADR-0003, #28).
+			'official' => $feature->getOfficial(),
 			// As a sentence, not as the stored parts. An export is read by a
 			// person or opened in a spreadsheet, and "Vicuña Mackenna y el canal"
 			// is the answer; a list of ids into a Boundary Dataset the reader does

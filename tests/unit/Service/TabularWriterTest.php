@@ -50,6 +50,30 @@ final class TabularWriterTest extends TestCase {
 	}
 
 	/**
+	 * The same imported record after somebody rewrote the Fuente box.
+	 *
+	 * `sourceRef` IS that box (`src/components/FeatureDetail.vue`) and anybody may
+	 * retype it. `official` is the row as the authority published it, written only
+	 * by an import — `FeatureService::applyProvenance()` runs for a Provenance and
+	 * a person's edit passes none (ADR-0003) — so it still names OpenStreetMap
+	 * after the edit, and the geometry in the file is still OpenStreetMap's.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function editedOsmRow(): array {
+		return array_merge(self::ROW, [
+			'name' => 'Calle Vicuña Mackenna',
+			'sourceRef' => 'Municipalidad',
+			'official' => json_encode(
+				array_merge(self::ROW, [
+					'sourceRef' => 'OpenStreetMap — https://www.openstreetmap.org/way/101',
+				]),
+				JSON_UNESCAPED_UNICODE,
+			),
+		]);
+	}
+
+	/**
 	 * Parse it the way a spreadsheet does, which includes eating the BOM.
 	 *
 	 * @return list<array<int, string>>
@@ -341,5 +365,44 @@ final class TabularWriterTest extends TestCase {
 
 		self::assertStringNotContainsString('<primera>', $kml);
 		self::assertNotFalse(simplexml_load_string($kml), 'the KML should parse');
+	}
+
+	/**
+	 * Rewriting Fuente must not drop the licence from the spreadsheet (#28).
+	 *
+	 * Same failure as in the GeoJSON and just as invisible: the OSM rows are still
+	 * there and the column saying whose they are has gone.
+	 */
+	public function testAnEditedFuenteDoesNotStripTheLicenceCell(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::editedOsmRow()], false));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertArrayHasKey('Licencia', $row);
+		self::assertStringContainsString('ODbL', $row['Licencia']);
+	}
+
+	/** And the KML says it too, from the same unedited copy. */
+	public function testAnEditedFuenteDoesNotStripTheLicenceFromTheKml(): void {
+		$kml = (new KmlWriter())->write([self::editedOsmRow()]);
+
+		self::assertStringContainsString('ODbL', $kml);
+	}
+
+	/**
+	 * And the copy they read that from never reaches either file.
+	 *
+	 * `official` is the whole published row, contact fields included. It rides in
+	 * the export row only so the licence can be decided, and a CSV written without
+	 * contact columns that carried the telephone number inside a JSON cell would
+	 * break exactly the promise ADR-0006 makes.
+	 */
+	public function testTheOfficialCopyNeverBecomesAColumnOrACell(): void {
+		$row = self::editedOsmRow();
+		$csv = (new CsvWriter())->write([$row], false);
+		$kml = (new KmlWriter())->write([$row]);
+
+		self::assertNotContains('official', $this->parse($csv)[0]);
+		self::assertStringNotContainsString('contacto@ejemplo.cl', $csv);
+		self::assertStringNotContainsString('contacto@ejemplo.cl', $kml);
 	}
 }

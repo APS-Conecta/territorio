@@ -97,12 +97,21 @@ An update that omitted the geometry destroyed it.
   export formats to make it easy. Attribution has to name the licence, not only the source, so the
   line is `© OpenStreetMap contributors, licencia ODbL` with the copyright URL.
 
-  Keyed on the row's `sourceRef`, which is the only thing an exported row knows about where it
-  came from: an OSM-derived Dataset arrives stamped `source_es: OpenStreetMap` with a `source_url`
-  (ADR-0004), and `GeoJsonReader` joins those into that field. Matched loosely — a source somebody
-  typed that merely mentions OSM makes a file carry a line it did not strictly owe, while a
-  stricter match that misses one makes the file a licence breach, and those two costs are not
-  comparable.
+  An OSM-derived Dataset arrives stamped `source_es: OpenStreetMap` with a `source_url` (ADR-0004),
+  and `GeoJsonReader` joins those into `sourceRef`. Read from there **and** from `official`, the
+  row as the authority published it. `sourceRef` alone would not have held: it is the Fuente box in
+  the form, so clearing or rewriting it on an imported street would drop the licence off every
+  export of exactly the record the notice is about, while the geometry in the file is still
+  OpenStreetMap's — and it would drop off silently. `official` is written only by an import
+  (`FeatureService::applyProvenance()` runs for a Provenance; a person's edit passes none,
+  ADR-0003), so no edit can reach it. It rides in the export row and is written to no file: it is
+  the whole published record, contact fields included, and each writer takes only the keys it maps
+  — held to that by a test per writer. Found by review; the first version of this slice keyed on
+  `sourceRef` alone.
+
+  Matched loosely — a source somebody typed that merely mentions OSM makes a file carry a line it
+  did not strictly owe, while a stricter match that misses one makes the file a licence breach, and
+  those two costs are not comparable.
 
   **Where it goes is decided by the fourth criterion, that it must not break whoever opens the
   file.** GeoJSON gets a top-level `license` foreign member, which RFC 7946 §6.1 allows and

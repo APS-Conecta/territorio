@@ -2307,12 +2307,313 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
     page.wait_for_timeout(400)
 
 
-def _seeded_categories():
-    """The colours the seed ships, borrowed from tools/ramp-check.py.
+# The neutral a Sector with no colour of its own is washed in, and the grey the
+# Unidad Vecinal hairline is drawn in. Read from src/ rather than copied, for
+# the reason the Category colours are read from the seed: a copy here would
+# agree with itself while the app disagreed with both.
+def _frontend_colour(name):
+    source = (Path(__file__).resolve().parent.parent / "src" / "taxonomy.js").read_text("utf-8")
+    match = re.search(name + r"\s*=\s*'(#[0-9a-fA-F]{6})'", source)
 
-    Imported rather than re-parsed. The hyphen in the filename keeps it off the
-    normal import path, and a second copy of the regex here is exactly the drift
-    this whole check exists to catch.
+    return match.group(1).lower() if match else None
+
+
+def _only_shape(page, name):
+    """Narrow everything to one record and hand back its path on the map.
+
+    The search box filters the ONE filtered set — the list, the map and Análisis
+    read it together (#17) — so filtering by a unique name leaves exactly one
+    shape in the overlay pane. That is what makes "the path" a thing this check
+    can point at without guessing which of a comuna's polygons it has.
+    """
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(1200)
+
+    return page.locator(".leaflet-overlay-pane path")
+
+
+def a_division_renders_as_a_division(page, failures):
+    """#21, #24 and #29 together: figure, ground, and the affordances that follow.
+
+    One function because they are one rule. A Unidad Vecinal is read from the
+    national cadastre and never drawn by the clinic (CONTEXT.md) — enormous
+    operational weight and, until this slice, zero visual weight: both divisions
+    were drawn with the same fill, the same outline and the same hover tooltip,
+    differing only in hue. Measured, that hue carried nothing: composited over
+    OSM land at the shipped `fillOpacity: 0.15` all 55 Category pairs collapse
+    (docs/design/map-legibility.md § 2).
+
+    Asserted on COMPUTED STYLE and never on a screenshot, per § 6: remote OSM
+    tiles under every picture would flake this into being ignored.
+
+    The Unidad Vecinal is imported through occ, because there is no other way to
+    make one — the sidebar files a drawn polygon as a Sector, and the
+    Subcategoría picker is hidden for a division precisely so nothing is
+    reclassified into the cadastre by hand. It is sited away from this
+    instance's data and retired on the way out: a live Unidad Vecinal claims
+    every Place it covers (ADR-0008) AND stretches the extent the map opens on,
+    which is measured from exactly these.
+    """
+    uv = f"UV Navegador {RUN}"
+    sector = f"Sector Catastro {RUN}"
+    neutral = _frontend_colour("DEFAULT_SECTOR_COLOUR")
+    south, west, north, east = -33.73, -70.44, -33.72, -70.43
+    geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {
+                "id": f"uv-{RUN}",
+                "name": uv,
+                "category": "division_territorial",
+                "subcategory": "unidad_vecinal",
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[west, south], [east, south], [east, north],
+                                 [west, north], [west, south]]],
+            },
+        }],
+    })
+
+    if not import_dataset(geojson, f"uv-{RUN}", boundary=False):
+        skip("could not import a Unidad Vecinal through occ; figure and ground is unchecked (#21)")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1500)
+
+    # The Registry first: a shape drawn correctly for a record that is not there
+    # proves nothing, which is the whole reason this file reads the change feed.
+    if registry_feature(page, uv) is None:
+        failures.append(f"{uv!r} did not reach the Registry, so nothing was drawn to check (#21)")
+        return
+
+    _ground_is_drawn_as_ground(page, uv, failures)
+    _the_ground_label_waits_for_its_zoom(page, uv, failures)
+    _figure_is_drawn_as_figure(page, sector, neutral, failures)
+    _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures)
+
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+    retire_the_runs_record(page, uv)
+
+    # Reload rather than click back out. The label check above zooms the map
+    # several levels in to cross the threshold, and every later check that
+    # clicks the canvas is written against the view the app opens on — which is
+    # measured from the Unidades Vecinales, one of which just went away.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1200)
+
+
+def _ground_is_drawn_as_ground(page, uv, failures):
+    """A Unidad Vecinal: no fill, a dashed hairline, and its name above a zoom."""
+    shapes = _only_shape(page, uv)
+    if shapes.count() == 0:
+        failures.append(f"{uv!r} is in the Registry but drew no shape on the map (#21)")
+        return
+
+    drawn = shapes.first.evaluate(
+        """(path) => {
+            const style = getComputedStyle(path)
+            return {
+                fill: style.fill,
+                dashes: style.strokeDasharray,
+                weight: style.strokeWidth,
+                opacity: style.strokeOpacity,
+            }
+        }""",
+    )
+
+    if drawn["fill"] != "none":
+        failures.append(
+            f"a Unidad Vecinal is filled {drawn['fill']!r}, not 'none' — it is read from the "
+            f"cadastre and never drawn by the clinic, so it is ground (#21)",
+        )
+    # '2px, 3px' in Chromium, '2, 3' elsewhere: the numbers are the assertion.
+    if re.findall(r"\d+", drawn["dashes"] or "")[:2] != ["2", "3"]:
+        failures.append(
+            f"a Unidad Vecinal's outline is {drawn['dashes']!r}, not the '2 3' dashed "
+            f"hairline map-legibility § 2 specifies (#21)",
+        )
+    if float(re.findall(r"[\d.]+", drawn["weight"])[0]) > 1:
+        failures.append(f"a Unidad Vecinal's outline is {drawn['weight']} wide, not a hairline (#21)")
+
+
+def _the_ground_label_waits_for_its_zoom(page, uv, failures):
+    """Fifty Unidad Vecinal labels at comuna zoom are a sheet of text, not a map."""
+    label = page.locator(".leaflet-tooltip.territorio-label--ground")
+    if label.count() == 0:
+        failures.append(f"{uv!r} carries no permanent label at all, at any zoom (#21)")
+        return
+
+    out, into = page.locator(".leaflet-control-zoom-out"), page.locator(".leaflet-control-zoom-in")
+    for _ in range(4):
+        out.click()
+        page.wait_for_timeout(250)
+
+    if label.first.is_visible():
+        failures.append(
+            "a Unidad Vecinal is labelled at a zoom where the whole comuna is on screen — "
+            "the threshold is what stands in for a collision library (#21)",
+        )
+
+    # Up to the threshold and no further than it takes to cross it.
+    crossed = False
+    for _ in range(12):
+        into.click()
+        page.wait_for_timeout(250)
+        if label.first.is_visible():
+            crossed = True
+            break
+
+    if not crossed:
+        failures.append(
+            "a Unidad Vecinal never shows its label, however far in the map is zoomed — "
+            "the threshold hides it rather than delaying it (#21)",
+        )
+    elif label.first.inner_text().strip() != uv:
+        failures.append(
+            f"the ground label reads {label.first.inner_text().strip()!r} rather than {uv!r}",
+        )
+
+
+def _figure_is_drawn_as_figure(page, sector, neutral, failures):
+    """A Sector: a subordinate wash, and a permanent label that is its identity."""
+    shapes = _only_shape(page, sector)
+    if shapes.count() == 0:
+        skip(f"{sector!r} is not on the map, so the Sector half of #21 is unchecked")
+        return
+
+    drawn = shapes.first.evaluate(
+        """(path) => {
+            const style = getComputedStyle(path)
+            return { fill: style.fill, alpha: style.fillOpacity }
+        }""",
+    )
+
+    if _hex_of(drawn["fill"]) != neutral:
+        failures.append(
+            f"a Sector nobody tinted is washed {drawn['fill']!r}, not the neutral {neutral} — "
+            f"CONTEXT.md says a clinic names its sectores words, numbers OR colours, so an "
+            f"unset colour has to be neutral rather than a Category's (#21, #29)",
+        )
+    if abs(float(drawn["alpha"]) - 0.10) > 0.001:
+        failures.append(
+            f"a Sector's wash is at alpha {drawn['alpha']}, not 0.10 — at 0.15 the worst "
+            f"dot-on-tint pair measures 2.90:1, under WCAG 1.4.11's 3:1 (#21)",
+        )
+
+    label = page.locator(".leaflet-tooltip.territorio-label").first
+    if label.count() == 0 or not label.is_visible():
+        failures.append(
+            f"{sector!r} carries no permanent label — the label is what identifies a Sector "
+            f"now that its colour is only a wash (#21)",
+        )
+        return
+
+    if label.inner_text().strip() != sector:
+        failures.append(f"the Sector label reads {label.inner_text().strip()!r}, not {sector!r}")
+
+    # `direction: center` is what makes Leaflet 1.9 fall through to
+    # PolyUtil.polygonCenter, a true area-weighted centroid — no plugin.
+    classes = label.get_attribute("class") or ""
+    if "leaflet-tooltip-center" not in classes:
+        failures.append(
+            f"the Sector label is placed {classes!r} rather than at the centroid (#21)",
+        )
+
+    # Never the theme. The basemap is raster OSM under both, so a dark-theme
+    # #ebebeb over OSM land #f2efe9 renders at 1.04:1 — invisible.
+    painted = {}
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.wait_for_timeout(300)
+        painted[scheme] = label.evaluate("(node) => getComputedStyle(node).color")
+    page.emulate_media(color_scheme="no-override")
+
+    if painted["light"] != painted["dark"]:
+        failures.append(
+            f"a map label is drawn {painted['light']} on light and {painted['dark']} on dark — "
+            f"it sits on a raster OSM tile in both, so its colour follows the TILE (#21)",
+        )
+
+
+def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures):
+    """#29 in the Datos list, and #24 in the sidebar, for both divisions."""
+    contrast = _ramp_check().contrast
+
+    for name, expected, wants_colour in ((uv, "dashed", False), (sector, "solid", True)):
+        page.locator(SEARCH).fill(name)
+        page.wait_for_timeout(900)
+        if page.locator(ROWS).count() == 0:
+            failures.append(f"{name!r} is not in the list, so its swatch was not checked (#29)")
+            continue
+
+        swatch = page.locator(".territorio-list__swatch").first
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            page.wait_for_timeout(300)
+            mark = swatch.evaluate(
+                """(node) => {
+                    const style = getComputedStyle(node)
+                    return {
+                        style: style.borderTopStyle,
+                        border: style.borderTopColor,
+                        fill: style.backgroundColor,
+                        page: getComputedStyle(document.body)
+                            .getPropertyValue('--color-main-background').trim(),
+                    }
+                }""",
+            )
+
+            if mark["style"] != expected:
+                failures.append(
+                    f"the list draws {name!r} with a {mark['style']!r} border, not a "
+                    f"{expected!r} ring echoing the map ({scheme} theme, #29)",
+                )
+            if _opaque(mark["fill"]):
+                failures.append(
+                    f"the list still fills {name!r} with {mark['fill']!r} — a division is a "
+                    f"ring, not a dot, and its `#334155` renders nowhere (#29)",
+                )
+
+            ring, behind = _hex_of(mark["border"]), _hex_of(mark["page"]) or mark["page"]
+            if ring is None or not re.fullmatch(r"#[0-9a-fA-F]{6}", behind or ""):
+                skip(f"could not measure {name!r}'s ring against the {scheme} page")
+            elif contrast(ring, behind) < 3.0:
+                failures.append(
+                    f"{name!r}'s ring is {contrast(ring, behind):.2f}:1 against the {scheme} "
+                    f"page — WCAG 1.4.11 asks 3:1 of non-text UI, which is the bar the "
+                    f"`#334155` dot failed at 1.73:1 (#29)",
+                )
+        page.emulate_media(color_scheme="no-override")
+
+        page.locator(ROWS).first.click()
+        page.wait_for_timeout(1200)
+        offered = page.locator('input[type="color"]').count() > 0
+        if offered and not wants_colour:
+            failures.append(
+                f"{name!r} is offered a colour. A Unidad Vecinal is read from the cadastre and "
+                f"never drawn by the clinic, and one edit puts a cadastre boundary back into "
+                f"the figure — `colourOf` honours a Feature's own colour (#24)",
+            )
+        if wants_colour and not offered:
+            failures.append(f"{name!r} is offered no colour, and a Sector still carries one (#24)")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+def _ramp_check():
+    """tools/ramp-check.py as a module, for its seed reader and its arithmetic.
+
+    Imported rather than re-implemented. The hyphen in the filename keeps it off
+    the normal import path, and a second copy of the regex — or of the contrast
+    formula — here is exactly the drift this whole check exists to catch.
     """
     import importlib.util
 
@@ -2321,7 +2622,33 @@ def _seeded_categories():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    return module.seeded_categories()
+    return module
+
+
+def _seeded_categories():
+    """The colours the seed ships, straight out of the PHP."""
+    return _ramp_check().seeded_categories()
+
+
+def _hex_of(painted):
+    """`rgb(148, 148, 148)` as `#949494`. Returns None for `none` and for blanks."""
+    numbers = re.findall(r"\d+", painted or "")
+    if len(numbers) < 3:
+        return None
+
+    return "#" + "".join(f"{int(n):02x}" for n in numbers[:3])
+
+
+def _opaque(painted):
+    """Whether a computed colour paints anything at all.
+
+    `rgba(0, 0, 0, 0)` is what an unset background computes to, and reading only
+    its first three numbers would report a transparent element as filled black —
+    which is the exact assertion #29 turns on.
+    """
+    parts = re.findall(r"[\d.]+", painted or "")
+
+    return len(parts) >= 3 and (len(parts) < 4 or float(parts[3]) > 0)
 
 
 def every_category_reaches_the_browser_with_its_colour(page, failures):
@@ -2944,6 +3271,10 @@ def main():
         # Sector above came from a Dataset, and an imported one's history is
         # indistinguishable from the hand-drawn one's.
         an_imported_sector_says_it_came_from_the_catastro(page, failures)
+        # After it, and reusing the Sector it just imported: this one needs a
+        # SAVED Sector nobody tinted, to read the neutral wash off, and it
+        # imports the Unidad Vecinal beside it.
+        a_division_renders_as_a_division(page, failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         a_tramo_typed_before_the_first_save_is_kept(page, failures)

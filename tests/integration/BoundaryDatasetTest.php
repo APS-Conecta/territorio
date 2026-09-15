@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Service\BoundaryService;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\Kind;
@@ -122,10 +123,11 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	 * What this pins is the structural half of that: an import only ever walks
 	 * its own Dataset, and a hand-drawn Sector belongs to none, so a refresh
 	 * cannot reach it. It would fail if matching ever went wider than
-	 * `findByDataset()` — and it is honest to say it proves no more than that. The
-	 * harder half, a Sector whose Limit cites boundary features that have since
-	 * moved, cannot exist until a Limit is stored (issue #15) and belongs to that
-	 * slice.
+	 * `findByDataset()` — and it is honest to say it proves no more than that.
+	 *
+	 * The harder half — a Sector whose Limit cites a boundary feature that is no
+	 * longer in the cadastre — is
+	 * `testALimitOutlivesTheLineItCitesAndTheEditorSaysSo()` below (issue #51).
 	 */
 	public function testARefreshCannotReachAHandDrawnSector(): void {
 		$sector = $this->sector('Sector de prueba');
@@ -219,6 +221,122 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		Server::get(FeatureService::class)->retire($one);
 
 		self::assertNotContains($one, $this->idsIn(-33.54, -70.61, -33.51, -70.57));
+	}
+
+	/**
+	 * Issue #51, and ADR-0007's harder half: a Limit part outlives the line it
+	 * cites, and the editor is told rather than left rendering a live pick.
+	 *
+	 * **"Gone" means the row is retired.** `retire()` is what `DELETE
+	 * /features/{id}` calls, and reverting an import batch retires the same way
+	 * (`RevertService`), so both arrive here as one state. A re-import does NOT
+	 * retire what the file stopped publishing: `applyRows()` walks only the rows
+	 * present in the file, so a way missing from a newer Overpass answer is
+	 * simply never mentioned. Making an import retire the absent rows is a
+	 * cadastre policy with its own consequences — a truncated download would
+	 * retire the comuna — and it is deliberately not this slice's.
+	 *
+	 * End to end and not simulated: the retirement goes through the service, and
+	 * the refresh is `importBoundaries()` over the real file the tool builds.
+	 * Both halves are asserted — the refresh leaves the row retired, AND the read
+	 * the Sector editor makes reports the cited id as gone.
+	 */
+	public function testALimitOutlivesTheLineItCitesAndTheEditorSaysSo(): void {
+		[$sector, $way] = $this->sectorCiting('way/101');
+
+		Server::get(FeatureService::class)->retire($way);
+		$refresh = $this->importBoundaries();
+
+		self::assertSame(1, $refresh->getSkipped(), 'the refresh did not skip the retired way');
+		self::assertTrue(
+			(bool)Server::get(FeatureMapper::class)->find($way)->getRetired(),
+			'a refresh revived a line somebody had retired (ADR-0003)',
+		);
+
+		// Criterion 1: detected. The editor asks about the ids its draft holds and
+		// is told which of them are no longer live Boundary features.
+		self::assertSame([$way], $this->editorSees([$way])['gone']);
+
+		// Criterion 2: the part keeps its name and stays in the Limit. Nothing
+		// swept the Sector when the line was retired — it was not even touched.
+		$limit = json_decode((string)Server::get(FeatureMapper::class)->find($sector)->getBoundaryLimit(), true);
+		self::assertSame([['featureId' => $way, 'name' => 'Calle de Prueba']], $limit);
+		self::assertCount(1, Server::get(FeatureService::class)->history($sector), 'created, and nothing since');
+	}
+
+	/**
+	 * And the answer carries ids and nothing else.
+	 *
+	 * This is the constraint the whole shape turns on. `features` becomes ONE
+	 * array in the client, feeding the autocomplete, the clickable layer on the
+	 * map and the cache that keeps a picked line's shape — so a retired row
+	 * arriving with a name and a geometry would be pickable again and would
+	 * un-grey «Generar», undoing ADR-0005's "retired records are never drawn".
+	 */
+	public function testTheAnswerNamesNoRetiredLine(): void {
+		[, $way] = $this->sectorCiting('way/101');
+		Server::get(FeatureService::class)->retire($way);
+
+		$answer = $this->editorSees([$way]);
+
+		// First that the read reached this test's own lines at all. Without it,
+		// an instance already holding a comuna could push both fixtures past
+		// `findBoundariesIn`'s 3000-row cap and every assertion below would be
+		// true of a payload that never had them in it.
+		$canal = (int)Server::get(FeatureMapper::class)->findByDataset($this->datasetId())['way/102']->getId();
+		self::assertContains($canal, array_column($answer['features'], 'id'), 'the box returned neither fixture');
+
+		self::assertNotContains($way, array_column($answer['features'], 'id'));
+		self::assertNotContains('Calle de Prueba', array_column($answer['features'], 'name'));
+		foreach ($answer['features'] as $feature) {
+			self::assertArrayNotHasKey('retired', $feature, 'a per-row flag is what the client would have to filter');
+		}
+	}
+
+	/**
+	 * A street that is merely off-screen is not gone.
+	 *
+	 * The distinction the server exists to make here: this read excludes retired
+	 * rows and loads only what overlaps the box — and stops at 3000 rows besides
+	 * (`findBoundariesIn`) — so "did not come back" means "off-screen OR gone"
+	 * and the browser cannot tell. Answering from the box would label half a
+	 * comuna as missing from the cadastre every time somebody zoomed in.
+	 */
+	public function testALineOutOfViewIsNotGone(): void {
+		[, $canal] = $this->sectorCiting('way/102');
+
+		$elsewhere = Server::get(BoundaryService::class)->inView(-33.40, -70.40, -33.39, -70.39, [$canal]);
+
+		self::assertNotContains($canal, array_column($elsewhere['features'], 'id'), 'the box was not chosen far enough away');
+		self::assertSame([], $elsewhere['gone']);
+	}
+
+	/**
+	 * A Sector whose Limit cites one imported way, by its id from the file.
+	 *
+	 * @return array{int, int} the Sector and the Boundary feature it cites
+	 */
+	private function sectorCiting(string $externalId): array {
+		$this->importBoundaries();
+		$feature = Server::get(FeatureMapper::class)->findByDataset($this->datasetId())[$externalId];
+		$id = (int)$feature->getId();
+
+		return [
+			$this->sector('Sector con límite', [
+				'limit' => [['featureId' => $id, 'name' => $feature->getName()]],
+			]),
+			$id,
+		];
+	}
+
+	/**
+	 * What the Sector editor's own read answers for a box holding the fixtures.
+	 *
+	 * @param int[] $cited
+	 * @return array{features: list<array<string, mixed>>, gone: list<int>}
+	 */
+	private function editorSees(array $cited): array {
+		return Server::get(BoundaryService::class)->inView(-33.54, -70.61, -33.51, -70.57, $cited);
 	}
 
 	/** @return int[] */

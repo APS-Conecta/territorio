@@ -3,6 +3,72 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.66.0] — unreleased
+
+The assignment tests stop describing the instance they happen to run on, and the awkward case they
+have to survive is arranged by the test rather than waited for.
+
+### Fixed
+
+- **`AssignmentTest` stops asserting things about the whole instance** (#117, #121). Redrawing a
+  Sector east leaves the Place it no longer covers pointing somewhere else, and the history
+  assertion said that somewhere was `null` — which is true only while *no other* boundary on the
+  install covers the coordinate. Fifteen lines above it, the in-flight assertion already refused to
+  make that claim and said why: this suite runs against an instance the browser gate and every other
+  suite also write to. So `make test-integration` went red on `main`, with an empty working tree,
+  because a browser-gate run that died partway through (an `appinfo/info.xml` bump put the instance
+  into `needsDbUpgrade`) never retired its own four-kilometre Sector, and that Sector claimed the
+  fixture coordinate. It is the third time leftovers have taken these tests down — #58 and #60 were
+  the first two — and every remaining slice's lander runs this suite, so a test that fails for
+  reasons unrelated to the change is how a real failure gets waved through.
+
+  The assertion now says what the redraw promises and nothing more: a `sectorId` change is recorded,
+  its `from` is the Sector under test, and its `to` is *not* that Sector. Where the record landed
+  afterwards is a fact about the Registry, not about the redraw.
+
+  **The awkward case is arranged rather than waited for.** The test now draws a second Sector over
+  its own fixture coordinate before drawing the one it moves, so "somebody else's boundary covers
+  this point" holds on every run instead of on the unlucky one — the condition the assertion has to
+  survive is part of the test rather than a property of whichever instance it happens to meet. It is
+  retired through `FeatureService` at the end rather than left to the raw-SQL teardown, because
+  retiring a boundary releases the records it claimed (#30) and deleting one leaves them pointing at
+  an id no read resolves.
+
+  Two siblings in the same file had the same shape and got the same treatment: the Place put outside
+  a Sector, and the "moved out" half of `testMovingAPlaceReassignsIt`, both of which asserted `null`
+  about a coordinate the install could legitimately have covered. The no-coordinate test keeps its
+  `null` — a record with no anchor is inside nothing, whatever else exists — and
+  `RevertAssignmentTest` was read and is sound: it already asserts the invariant rather than a
+  restored value, and a comment there records the failure that taught it.
+
+- **The `null` worth keeping moved to where the whole Registry fits in the test** (#117).
+  "A record outside every boundary is assigned to nothing" is a claim about a whole install, so it
+  is now made in `tests/unit/Service/AssignmentBoundaryTest.php`, where the Registry is one row the
+  test wrote. Both halves are asserted there, the point inside resolving to that boundary and the
+  point outside to nothing, because a `boundaries()` that found nothing at all would make the `null`
+  pass for a reason that has nothing to do with the point.
+
+  That trap had a second floor, found in review: the Registry held no Unidad Vecinal at all, so
+  `assertNull($outside->getUnidadVecinalId())` held because there was nothing that *could* have
+  claimed the point. It now holds a Unidad Vecinal three degrees east, and a third Place inside that
+  one proves the division answers — so the null says "no Unidad Vecinal contains this point" rather
+  than "this fixture has no Unidad Vecinales". Both halves were watched failing, by returning the
+  first boundary from `containing()` without asking where the point is.
+
+### Notes
+
+- **Tests only.** `lib/`, `src/` and `js/` are untouched — the defect was in what a test claimed,
+  not in what the app does — so no bundle ships with this version; `git diff --stat` against `main`
+  is the check, not the assumption.
+
+- **The rival is what makes the case reproducible, and that was measured.** On the dev instance as
+  it stands today no live boundary covers the fixture coordinate (the leftovers #121 named were
+  retired when it closed), so the old `assertNull` *passes* there: the defect #117 reported is
+  invisible until the instance drifts again. With the rival drawn by the test, the old assertion
+  fails on every run — `Failed asserting that 17661 is null`, the same shape #117 reported — and
+  the new one passes. That is the difference between a criterion the suite exercises and one that
+  waits for an unlucky day.
+
 ## [0.65.0] — unreleased
 
 The umbrella closes: the Category tree is editable data, and the design doc stops saying it is not.
@@ -58,53 +124,10 @@ The umbrella closes: the Category tree is editable data, and the design doc stop
   table — eleven was all there would ever be — so closing the umbrella meant checking the paragraphs
   that premise reached, not only the one that stated it. Found by opening `webpack.config.js`.
 
-### Fixed
-
-- **`AssignmentTest` stops asserting things about the whole instance** (#117, #121). Redrawing a
-  Sector east leaves the Place it no longer covers pointing somewhere else, and the history
-  assertion said that somewhere was `null` — which is true only while *no other* boundary on the
-  install covers the coordinate. Fifteen lines above it, the in-flight assertion already refused to
-  make that claim and said why: this suite runs against an instance the browser gate and every other
-  suite also write to. So `make test-integration` went red on `main`, with an empty working tree,
-  because a browser-gate run that died partway through (an `appinfo/info.xml` bump put the instance
-  into `needsDbUpgrade`) never retired its own four-kilometre Sector, and that Sector claimed the
-  fixture coordinate. It is the third time leftovers have taken these tests down — #58 and #60 were
-  the first two — and every remaining slice's lander runs this suite, so a test that fails for
-  reasons unrelated to the change is how a real failure gets waved through.
-
-  The assertion now says what the redraw promises and nothing more: a `sectorId` change is recorded,
-  its `from` is the Sector under test, and its `to` is *not* that Sector. Where the record landed
-  afterwards is a fact about the Registry, not about the redraw.
-
-  **The awkward case is arranged rather than waited for.** The test now draws a second Sector over
-  its own fixture coordinate before drawing the one it moves, so "somebody else's boundary covers
-  this point" holds on every run instead of on the unlucky one — the condition the assertion has to
-  survive is part of the test rather than a property of whichever instance it happens to meet. It is
-  retired through `FeatureService` at the end rather than left to the raw-SQL teardown, because
-  retiring a boundary releases the records it claimed (#30) and deleting one leaves them pointing at
-  an id no read resolves.
-
-  Two siblings in the same file had the same shape and got the same treatment: the Place put outside
-  a Sector, and the "moved out" half of `testMovingAPlaceReassignsIt`, both of which asserted `null`
-  about a coordinate the install could legitimately have covered. The no-coordinate test keeps its
-  `null` — a record with no anchor is inside nothing, whatever else exists — and
-  `RevertAssignmentTest` was read and is sound: it already asserts the invariant rather than a
-  restored value, and a comment there records the failure that taught it.
-
-- **The `null` worth keeping moved to where the whole Registry fits in the test** (#117).
-  "A record outside every boundary is assigned to nothing" is a claim about a whole install, so it
-  is now made in `tests/unit/Service/AssignmentBoundaryTest.php`, where the Registry is one row the
-  test wrote. Both halves are asserted there, the point inside resolving to that boundary and the
-  point outside to nothing, because a `boundaries()` that found nothing at all would make the `null`
-  pass for a reason that has nothing to do with the point.
-
 ### Notes
 
 - **Nothing outside `docs/` changed.** `src/` is untouched, so `js/` is not rebuilt and no bundle
   ships with this slice; `git diff --stat` against `main` is the check, not the assumption.
-
-- **#117 and #121 changed tests only.** `lib/` and `src/` are untouched by that slice too: the
-  defect was in what a test claimed, not in what the app does, so no bundle ships with it either.
 
 - **#40 closes with #36.** It is the spec behind the umbrella rather than a build item, and it
   carries no acceptance criteria of its own — its first lines say #36 "stays the umbrella and keeps

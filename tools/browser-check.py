@@ -4478,15 +4478,37 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
 PICKED_MARK = "bakery"
 
 
-def _drawn_mark(locator):
+def _mark_named(locator):
     """The Maki name of the mark inside one element, or None.
 
-    Off the rendered `<svg>`'s own id, which Maki writes into every icon. Not off
-    a class or an attribute this app sets: the question is which pictogram
-    REACHED the screen, and a name the app wrote beside a mark it failed to draw
-    would answer it wrongly in exactly the direction that matters.
+    Off the rendered `<svg>`'s own id, which Maki writes into every icon — and
+    which survives ONLY where this app inlines the markup itself, which is the
+    map pin's `divIcon`. Everywhere else the mark goes through
+    `NcIconSvgWrapper`, and that component removes the root id on purpose
+    (`svgDocument.documentElement.removeAttribute('id')`), so use `_mark_shape`
+    there. A check that read the id off a swatch would compare '' with '' and
+    pass on any mark at all.
     """
-    return locator.evaluate("(node) => node.querySelector('svg')?.id ?? null")
+    return locator.evaluate("(node) => node.querySelector('svg')?.id || null")
+
+
+def _mark_shape(locator):
+    """The geometry of the mark inside one element, or None.
+
+    Every `<path d>` under it, joined. This is what identifies a pictogram
+    wherever `NcIconSvgWrapper` has taken the name off it, and it is the right
+    comparison for «the same mark on the map, in the list and in the legend»:
+    two surfaces drawing one record have to draw the same SHAPE, which is the
+    thing a person sees, not the same attribute.
+    """
+    return locator.evaluate(
+        """(node) => {
+            const paths = [...node.querySelectorAll('svg path')]
+            return paths.length === 0
+                ? null
+                : paths.map((path) => path.getAttribute('d')).join('|')
+        }""",
+    )
 
 
 def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
@@ -4537,6 +4559,9 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
         page.keyboard.press("Escape")
         return
 
+    # Before the click, for the reason the other check gives: choosing closes
+    # the grid and the cell is gone.
+    chosen_shape = _mark_shape(mark.first)
     mark.first.click()
     page.wait_for_timeout(300)
 
@@ -4549,10 +4574,14 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
         page.keyboard.press("Escape")
         return
 
-    if _drawn_mark(swatch.first) != PICKED_MARK:
+    # By shape and not by name: this swatch is an `NcIconSvgWrapper`, which
+    # removes the root id, so there is no name left on it to read. Compared
+    # against the cell that was clicked, which is the only honest question —
+    # does the swatch now draw the mark that was picked.
+    if _mark_shape(swatch.first) != chosen_shape:
         failures.append(
-            f"the new Category's swatch still draws {_drawn_mark(swatch.first)!r} after "
-            f"{PICKED_MARK!r} was picked: nothing says what is about to be created",
+            f"the new Category's swatch does not draw {PICKED_MARK!r} after it was picked: "
+            f"nothing says what is about to be created",
         )
 
     page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picking.png"))
@@ -4596,13 +4625,9 @@ def a_category_can_be_given_a_pictogram(page, failures):
         )
         return
 
-    before = _drawn_mark(row.locator(".territorio-capas__swatch").first)
-    if before != "circle-stroked":
-        failures.append(
-            f"«{added}» was already drawing {before!r} before anything was picked: it should "
-            f"show the neutral fallback, which is what ADR-0017 promises a Category with no "
-            f"chosen mark",
-        )
+    before = _mark_shape(row.locator(".territorio-capas__swatch").first)
+    if before is None:
+        failures.append(f"the Capas swatch for «{added}» holds no mark at all")
 
     row.locator(".territorio-capas__swatch").first.click()
     picker = page.locator(".territorio-capas__picker")
@@ -4621,6 +4646,20 @@ def a_category_can_be_given_a_pictogram(page, failures):
     if mark.count() == 0:
         failures.append(f"the picker does not offer {PICKED_MARK!r}, so #46 could not pick one")
         return
+
+    # «A Category with no chosen mark still draws the neutral fallback rather than
+    # a blank». The grid's own «Sin pictograma» cell IS that fallback — it draws
+    # what choosing it produces — so the two are compared rather than a third copy
+    # of `circle-stroked` being named here.
+    neutral = _mark_shape(page.locator('.territorio-capas__glyph[title="Sin pictograma"]').first)
+    if neutral is None:
+        failures.append("the picker offers no way back to no pictogram at all")
+    elif before != neutral:
+        failures.append(
+            f"«{added}» was not drawing the neutral fallback before anything was picked — "
+            f"ADR-0017 promises exactly that for a Category nobody has chosen for, and #45's "
+            f"check passes on any non-empty mark",
+        )
 
     # The criterion in as many words: previewed at the size the map pin draws.
     # Measured off the rendered boxes, because the size lives in a custom
@@ -4651,6 +4690,8 @@ def a_category_can_be_given_a_pictogram(page, failures):
 
     page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picker.png"))
 
+    # Before the click: choosing closes the grid, so the cell is gone afterwards.
+    chosen_shape = _mark_shape(mark.first)
     mark.first.click()
     page.wait_for_timeout(900)
 
@@ -4671,11 +4712,12 @@ def a_category_can_be_given_a_pictogram(page, failures):
 
         # The Capas legend, without a reload: the served tree is swapped in, and
         # every surface reads the mark out of it.
-        drawn = _drawn_mark(_capas_category(page, added).locator(".territorio-capas__swatch").first)
-        if drawn != PICKED_MARK:
+        legend = _mark_shape(_capas_category(page, added).locator(".territorio-capas__swatch").first)
+        if legend != chosen_shape:
             failures.append(
-                f"the Capas legend still draws {drawn!r} for «{added}» after {PICKED_MARK!r} was "
-                f"chosen — it did not follow without a reload",
+                f"the Capas legend does not draw {PICKED_MARK!r} for «{added}» after it was "
+                f"chosen — it still draws what it drew before, so nothing followed without a "
+                f"reload",
             )
 
         _a_clustered_place(page, filed, f"{added} · Otro", 9, failures)
@@ -4687,31 +4729,41 @@ def a_category_can_be_given_a_pictogram(page, failures):
         # narrowed to this one record first — the same thing the #37 pin check does.
         _only_on_the_map(page, filed)
         pin = page.locator(".territorio-pin__dot").first
+        on_pin = None
         if pin.count() == 0:
             failures.append(f"{filed!r} drew no pin, so the chosen mark did not reach the map")
         else:
-            on_map = _drawn_mark(pin)
-            if on_map != PICKED_MARK:
+            # The pin is the one place the Maki name survives: this app builds
+            # that markup itself, so nothing has stripped the svg's id.
+            named = _mark_named(pin)
+            on_pin = _mark_shape(pin)
+            if named != PICKED_MARK:
                 failures.append(
-                    f"the map pin for {filed!r} draws {on_map!r}, not the {PICKED_MARK!r} its "
+                    f"the map pin for {filed!r} draws {named!r}, not the {PICKED_MARK!r} its "
                     f"Category was given — the chosen mark does not reach the map, which is the "
                     f"one surface with no label beside it (ADR-0013)",
+                )
+            if chosen_shape is not None and on_pin != chosen_shape:
+                failures.append(
+                    f"the map pin for {filed!r} draws a different shape from the cell that was "
+                    f"clicked: the preview and the pin are not the same pictogram",
                 )
             page.locator('[data-testid="map-canvas"]').screenshot(
                 path=str(SHOTS / "46-pin.png"),
             )
 
-        # The Datos list, filtered to the same record.
+        # The Datos list, filtered to the same record. By shape against the pin
+        # rather than by name: the list's mark goes through NcIconSvgWrapper,
+        # which takes the name off it — and «the same mark in both places» is the
+        # criterion anyway.
         swatch = page.locator(".territorio-list__swatch").first
         if swatch.count() == 0:
             failures.append(f"{filed!r} has no row in the Datos list")
-        else:
-            in_list = _drawn_mark(swatch)
-            if in_list != PICKED_MARK:
-                failures.append(
-                    f"the Datos list draws {in_list!r} for {filed!r}: the list and the map "
-                    f"disagree about what the same record is",
-                )
+        elif on_pin is not None and _mark_shape(swatch) != on_pin:
+            failures.append(
+                f"the Datos list and the map draw different pictograms for {filed!r}: the same "
+                f"record is two different things depending on where it is read",
+            )
         page.locator(SEARCH).fill("")
         page.wait_for_timeout(600)
     finally:

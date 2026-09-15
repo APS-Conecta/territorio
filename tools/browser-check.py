@@ -3993,7 +3993,7 @@ def _the_seeded_names_are_put_back(page, failures):
         )
 
 
-def a_category_can_be_renamed_without_a_reload(page, failures):
+def a_category_can_be_renamed_without_a_reload(page, errors, failures):
     """#41: rename a Category and a Subcategory, and see it everywhere at once.
 
     "Without a reload" is the criterion, and it is the one thing no other suite
@@ -4026,6 +4026,17 @@ def a_category_can_be_renamed_without_a_reload(page, failures):
     # Before anything looks for «Salud» by name: an earlier run that died mid
     # rename left it called something else, and only this puts it back.
     _the_seeded_names_are_put_back(page, failures)
+
+    # Análisis draws a section only for a Category holding something, and the
+    # cluster check immediately above retires the three records it filed under
+    # «Salud» on its way out — so by the time this runs, «Salud» holds nothing
+    # live and Análisis has nothing to name. This check therefore files its own
+    # record and retires it again in the `finally`, rather than borrowing
+    # another check's leftovers and going red the day that check tidies up.
+    filed_here = f"Cúmulo {RUN} análisis"
+    _a_clustered_place(
+        page, filed_here, f"{SEEDED_CATEGORY} · {SEEDED_SUB}", 4, failures
+    )
 
     try:
         row = _capas_category(page, SEEDED_CATEGORY)
@@ -4086,12 +4097,16 @@ def a_category_can_be_renamed_without_a_reload(page, failures):
         served = served_taxonomy(page)
         _the_registry_kept_the_slugs(served, renamed_category, renamed_sub, failures)
 
-        _a_blank_name_is_refused_in_the_panel(page, renamed_category, failures)
+        _a_blank_name_is_refused_in_the_panel(page, renamed_category, errors, failures)
     finally:
         # Every exit above has already renamed something, or may have: the write
         # can land and the panel still not settle. So the restore runs on all of
         # them, and reports if a name would not go back.
         _the_seeded_names_are_put_back(page, failures)
+        # And the record this check filed so Análisis had a section to draw:
+        # left behind it is one more live Place under «Salud» per run, on an
+        # instance the integration suite counts.
+        retire_the_runs_record(page, filed_here)
 
 
 def _the_picker_offers_the_new_name(page, expected, failures):
@@ -4107,7 +4122,11 @@ def _the_picker_offers_the_new_name(page, expected, failures):
     page.get_by_label("Subcategoría").fill(expected)
     page.wait_for_timeout(700)
 
-    offered = page.locator(".vs__dropdown-option").all_inner_texts()
+    # `all_text_contents()` and not `all_inner_texts()`: innerText is the
+    # RENDERED text, and an option as long as "Salud X · CESFAM X" wraps inside
+    # the narrow dropdown, so the browser handed back "Salud X · CES\nFAM X" and
+    # no comparison against the name that was typed could ever have matched.
+    offered = page.locator(".vs__dropdown-option").all_text_contents()
     if not any(expected in text for text in offered):
         failures.append(
             f"the Subcategoría picker does not offer {expected!r} — it is still showing the "
@@ -4133,7 +4152,7 @@ def _analisis_reads_the_new_name(page, category, subcategory, failures):
             f"Análisis has no «{category}» section: either it is still drawing the old name, or "
             f"this run's records are not filed under it",
         )
-    elif subcategory not in section.first.inner_text():
+    elif subcategory not in section.first.text_content():
         failures.append(
             f"Análisis draws «{category}» but still calls its Subcategory by the old name — the "
             f"chart reads the Subcategory rows through a separate binding",
@@ -4179,7 +4198,7 @@ def _the_registry_kept_the_slugs(served, category, subcategory, failures):
         )
 
 
-def _a_blank_name_is_refused_in_the_panel(page, label, failures):
+def _a_blank_name_is_refused_in_the_panel(page, label, errors, failures):
     """A refusal has to reach the person who typed, where they typed it."""
     row = _capas_category(page, label)
     pencil = row.locator(CAPAS_RENAME).first
@@ -4193,6 +4212,7 @@ def _a_blank_name_is_refused_in_the_panel(page, label, failures):
         failures.append("the rename control opened no field for the blank-name check")
         return
 
+    before = len(errors)
     field.fill("   ")
     field.press("Enter")
     page.wait_for_timeout(800)
@@ -4205,6 +4225,27 @@ def _a_blank_name_is_refused_in_the_panel(page, label, failures):
         )
     if _capas_category(page, label).count() == 0:
         failures.append("a refused rename changed the name in the panel anyway")
+
+    # The refusal IS an HTTP 422, and the browser logs every failed response as
+    # a console error — so main()'s run-wide console-error gate would fail on
+    # the one refusal this check exists to provoke. Exactly the entries this
+    # refusal added are dropped, and only the 422 among them: anything else it
+    # logged is a real fault and stays for that gate to report.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
+
+    # A refusal that outlives the rename it came from reads as a refusal of
+    # whatever is on screen now — and this panel holds eleven Categories and
+    # some fifty Subcategories, so the note names no row. Abandoning the rename
+    # has to take it away.
+    _capas_category(page, label).locator(CAPAS_RENAME).first.click()
+    page.wait_for_timeout(300)
+    page.locator(CAPAS_INPUT).press("Escape")
+    page.wait_for_timeout(500)
+    if page.locator(".territorio-capas .notecard--error").count() > 0:
+        failures.append(
+            "the Capas panel still shows the last refusal after the rename was abandoned: a "
+            "stale reason reads as a current one",
+        )
 
 
 def main():
@@ -4325,7 +4366,7 @@ def main():
         # After the cluster records above, because it renames the Category they
         # are filed under and Análisis draws no section for a Category holding
         # nothing. It puts both names back when it is done.
-        a_category_can_be_renamed_without_a_reload(page, failures)
+        a_category_can_be_renamed_without_a_reload(page, errors, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the

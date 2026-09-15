@@ -19,18 +19,6 @@ use OCP\Server;
  * has to put there for a Sector to have somewhere to go.
  */
 final class SectorTest extends IntegrationTestCase {
-	/** A closed ring in La Florida, as geoman hands one over. */
-	private const BOUNDARY = [
-		'type' => 'Polygon',
-		'coordinates' => [[
-			[-70.60, -33.53],
-			[-70.57, -33.53],
-			[-70.57, -33.51],
-			[-70.60, -33.51],
-			[-70.60, -33.53],
-		]],
-	];
-
 	public function testTheSeedLeavesSomewhereToFileASector(): void {
 		$divisions = null;
 		foreach (Server::get(CategoryMapper::class)->findAll() as $category) {
@@ -52,7 +40,7 @@ final class SectorTest extends IntegrationTestCase {
 	}
 
 	public function testADrawnSectorSurvivesTheRoundTrip(): void {
-		$id = $this->sector('Sector Norte', '#16a34a');
+		$id = $this->sector('Sector Norte', ['colour' => '#16a34a']);
 
 		$read = Server::get(FeatureMapper::class)->find($id);
 
@@ -76,7 +64,7 @@ final class SectorTest extends IntegrationTestCase {
 	 */
 	public function testASectorMayBeNamedWhateverTheClinicCallsIt(): void {
 		foreach (['3', 'Rojo', 'Sector Sur', '2 Norte'] as $name) {
-			$read = Server::get(FeatureMapper::class)->find($this->sector($name, '#dc2626'));
+			$read = Server::get(FeatureMapper::class)->find($this->sector($name, ['colour' => '#dc2626']));
 
 			self::assertSame($name, $read->getName());
 		}
@@ -84,7 +72,7 @@ final class SectorTest extends IntegrationTestCase {
 
 	/** Dragging a vertex is an ordinary edit: new ring, new box, one history entry. */
 	public function testReshapingMovesTheBoundaryAndItsBoundingBox(): void {
-		$id = $this->sector('Sector Poniente', '#2563eb');
+		$id = $this->sector('Sector Poniente', ['colour' => '#2563eb']);
 
 		$moved = self::BOUNDARY;
 		$moved['coordinates'][0][1] = [-70.55, -33.53];
@@ -108,17 +96,5 @@ final class SectorTest extends IntegrationTestCase {
 		$read = Server::get(FeatureMapper::class)->find($this->place('Plaza sin color'));
 
 		self::assertNull($read->getColour());
-	}
-
-	private function sector(string $name, string $colour): int {
-		$id = (int)Server::get(FeatureService::class)->create([
-			'name' => $name,
-			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'colour' => $colour,
-			'geometry' => self::BOUNDARY,
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
 	}
 }

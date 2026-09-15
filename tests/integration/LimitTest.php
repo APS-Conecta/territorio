@@ -19,7 +19,7 @@ use OCP\Server;
  * derived from the shape.
  */
 final class LimitTest extends IntegrationTestCase {
-	private const WEST = [[[-70.60, -33.54], [-70.56, -33.54], [-70.56, -33.50], [-70.60, -33.50], [-70.60, -33.54]]];
+	/** Somewhere other than the boundary every Sector fixture starts on. */
 	private const MOVED = [[[-70.59, -33.53], [-70.55, -33.53], [-70.55, -33.49], [-70.59, -33.49], [-70.59, -33.53]]];
 
 	private const LIMIT = [
@@ -36,25 +36,12 @@ final class LimitTest extends IntegrationTestCase {
 		$this->features = Server::get(FeatureService::class);
 	}
 
-	/** A Sector with a Limit, registered for cleanup. */
-	private function sector(string $name, array $limit, array $rings = self::WEST): int {
-		$id = (int)$this->features->create([
-			'name' => $name,
-			'subcategoryId' => $this->subcategoryIdBySlug('sector'),
-			'geometry' => ['type' => 'Polygon', 'coordinates' => $rings],
-			'limit' => $limit,
-		])->getId();
-		$this->created[] = $id;
-
-		return $id;
-	}
-
 	private function stored(int $id): array {
 		return Server::get(FeatureMapper::class)->find($id)->toClient();
 	}
 
 	public function testPickingRecordsWhatTheSectorRunsAlong(): void {
-		$id = $this->sector('Sector con límite', self::LIMIT);
+		$id = $this->sector('Sector con límite', ['limit' => self::LIMIT]);
 
 		self::assertSame(self::LIMIT, $this->stored($id)['limit']);
 	}
@@ -67,7 +54,7 @@ final class LimitTest extends IntegrationTestCase {
 	 * they wrote down the first time they nudge a corner.
 	 */
 	public function testTheLimitSurvivesHandAdjustmentOfTheGeometry(): void {
-		$id = $this->sector('Sector que se ajusta', self::LIMIT);
+		$id = $this->sector('Sector que se ajusta', ['limit' => self::LIMIT]);
 
 		$this->features->update($id, [
 			'name' => 'Sector que se ajusta',
@@ -83,14 +70,14 @@ final class LimitTest extends IntegrationTestCase {
 
 	/** ADR-0007: a Sector drawn by hand is just as valid, and has no Limit. */
 	public function testAHandDrawnSectorHasAnEmptyLimit(): void {
-		$id = $this->sector('Sector a mano', []);
+		$id = $this->sector('Sector a mano', ['limit' => []]);
 
 		self::assertNull($this->stored($id)['limit']);
 	}
 
 	/** Sending a Limit is how it is changed — including to nothing. */
 	public function testTheLimitCanBeChangedAndCleared(): void {
-		$id = $this->sector('Sector que cambia', self::LIMIT);
+		$id = $this->sector('Sector que cambia', ['limit' => self::LIMIT]);
 
 		$this->features->update($id, [
 			'name' => 'Sector que cambia',
@@ -112,7 +99,7 @@ final class LimitTest extends IntegrationTestCase {
 	 * "quién cambió el límite" is the question history exists to answer.
 	 */
 	public function testChangingTheLimitIsInHistory(): void {
-		$id = $this->sector('Sector con historial', self::LIMIT);
+		$id = $this->sector('Sector con historial', ['limit' => self::LIMIT]);
 
 		$this->features->update($id, [
 			'name' => 'Sector con historial',
@@ -138,11 +125,11 @@ final class LimitTest extends IntegrationTestCase {
 
 	/** A part with no readable name is not a part; it would render as a gap. */
 	public function testAPartWithNoNameIsRefusedRatherThanStored(): void {
-		$id = $this->sector('Sector con basura', [
+		$id = $this->sector('Sector con basura', ['limit' => [
 			['featureId' => 1, 'name' => '  '],
 			['name' => 'Canal San Carlos'],
 			'no soy un objeto',
-		]);
+		]]);
 
 		self::assertSame([['name' => 'Canal San Carlos']], $this->stored($id)['limit']);
 	}
@@ -155,13 +142,13 @@ final class LimitTest extends IntegrationTestCase {
 	 * structure, into a column with no length of its own.
 	 */
 	public function testAnAbsurdLimitIsBounded(): void {
-		$id = $this->sector('Sector con límite absurdo', [
+		$id = $this->sector('Sector con límite absurdo', ['limit' => [
 			...array_map(
 				static fn (int $n): array => ['featureId' => $n, 'name' => 'Calle ' . $n],
 				range(1, 900),
 			),
 			['name' => str_repeat('a', 500)],
-		]);
+		]]);
 
 		$stored = $this->stored($id)['limit'];
 		self::assertLessThanOrEqual(500, count($stored));
@@ -172,7 +159,7 @@ final class LimitTest extends IntegrationTestCase {
 
 	/** The export carries it as a sentence, because a person reads the export. */
 	public function testTheLimitAppearsInExports(): void {
-		$id = $this->sector('Sector que se exporta', self::LIMIT);
+		$id = $this->sector('Sector que se exporta', ['limit' => self::LIMIT]);
 
 		$geojson = json_decode(
 			Server::get(ExportService::class)->export([$id], 'geojson', false)['body'],
@@ -194,11 +181,11 @@ final class LimitTest extends IntegrationTestCase {
 	 * not what anybody said.
 	 */
 	public function testARepeatedNameIsSaidOnceInAnExport(): void {
-		$id = $this->sector('Sector con calle repetida', [
+		$id = $this->sector('Sector con calle repetida', ['limit' => [
 			['featureId' => 1, 'name' => 'Avenida Vicuña Mackenna'],
 			['featureId' => 2, 'name' => 'Avenida Vicuña Mackenna'],
 			['featureId' => 3, 'name' => 'Canal San Carlos'],
-		]);
+		]]);
 
 		$geojson = json_decode(
 			Server::get(ExportService::class)->export([$id], 'geojson', false)['body'],

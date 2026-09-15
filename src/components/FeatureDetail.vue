@@ -1,5 +1,53 @@
 <template>
 	<form class="territorio-detail" @submit.prevent="$emit('save')">
+		<!--
+			Saving and retiring, in one group, first in the form and stuck there
+			(issue #35). Retiring used to be the last control of a form whose height
+			is the Limit's, so on a real Sector it was 721px below the fold and was
+			reported as not existing at all. Sticky rather than merely first, because
+			"first" is only above the fold until somebody scrolls.
+
+			Inside the form on purpose: Guardar stays a real `type="submit"`, which is
+			the thing that was broken for eight slices, and the confirm step keeps
+			working exactly as it did beside it.
+		-->
+		<div v-if="!retired" class="territorio-detail__actions">
+			<!-- `type`, not `native-type`. In @nextcloud/vue 9 `type` IS the native
+			     button type and `variant` carries the appearance; `nativeType` was the
+			     v8 prop and no longer exists, so it fell through as an inert attribute
+			     and left the button a type="button" that never submitted its form. -->
+			<NcButton variant="primary" :disabled="saving" type="submit">
+				{{ saving ? 'Guardando…' : 'Guardar' }}
+			</NcButton>
+
+			<!-- Two-step, inline. Never a browser confirm(): it blocks the page, and
+			     there is nothing irreversible to warn about anyway — retiring keeps
+			     the record and its history (ADR-0005). The two steps matter more now
+			     that the destructive button sits beside the primary one, so they stay
+			     exactly as they were. Nothing to retire until the record exists. -->
+			<template v-if="draft.id !== null">
+				<NcButton v-if="!confirmingRetire"
+					class="territorio-detail__retire"
+					variant="tertiary"
+					@click="confirmingRetire = true">
+					Retirar del mapa
+				</NcButton>
+
+				<template v-else>
+					<p class="territorio-detail__hint territorio-detail__confirm">
+						Se retira del mapa y de la lista. No se borra: conserva su historial y
+						se puede restaurar.
+					</p>
+					<NcButton variant="error" @click="$emit('retire')">
+						Retirar
+					</NcButton>
+					<NcButton variant="tertiary" @click="confirmingRetire = false">
+						Cancelar
+					</NcButton>
+				</template>
+			</template>
+		</div>
+
 		<NcNoteCard v-if="error" type="error">
 			{{ error }}
 		</NcNoteCard>
@@ -86,41 +134,6 @@
 		<NcTextField v-model="draft.openingHours" class="territorio-detail__field" label="Horario" />
 		<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
-
-		<!-- `type`, not `native-type`. In @nextcloud/vue 9 `type` IS the native
-		     button type and `variant` carries the appearance; `nativeType` was the
-		     v8 prop and no longer exists, so it fell through as an inert attribute
-		     and left the button a type="button" that never submitted its form. -->
-		<NcButton v-if="!retired"
-			class="territorio-detail__field"
-			variant="primary"
-			:disabled="saving"
-			type="submit">
-			{{ saving ? 'Guardando…' : 'Guardar' }}
-		</NcButton>
-
-		<!-- Two-step, inline. Never a browser confirm(): it blocks the page, and
-		     there is nothing irreversible to warn about anyway — retiring keeps
-		     the record and its history (ADR-0005). Hidden once retired, or the
-		     sidebar would offer to retire something already retired. -->
-		<div v-if="draft.id !== null && !retired" class="territorio-detail__retire">
-			<NcButton v-if="!confirmingRetire" variant="tertiary" @click="confirmingRetire = true">
-				Retirar del mapa
-			</NcButton>
-
-			<template v-else>
-				<p class="territorio-detail__hint">
-					Se retira del mapa y de la lista. No se borra: conserva su historial y
-					se puede restaurar.
-				</p>
-				<NcButton variant="error" @click="$emit('retire')">
-					Retirar
-				</NcButton>
-				<NcButton variant="tertiary" @click="confirmingRetire = false">
-					Cancelar
-				</NcButton>
-			</template>
-		</div>
 
 		<FeatureHistory v-if="draft.id !== null" :entries="history" :taxonomy="taxonomy" />
 	</form>
@@ -335,14 +348,45 @@ export default {
 	gap: 8px;
 }
 
-.territorio-detail__retire {
-	margin-top: 24px;
-	border-top: 1px solid var(--color-border);
-	padding-top: 12px;
+/*
+ * Stuck under the sidebar header. `.app-sidebar` is the element that scrolls —
+ * the header scrolls with the content — so `top: 0` pins this bar to the top of
+ * the sidebar as soon as the header has passed it, and the form's height stops
+ * deciding whether a person can reach the controls (issue #35). Same shape as
+ * the sticky summary in CapasPanel.vue.
+ *
+ * The negative inline margin cancels the form's 4px padding, so nothing scrolls
+ * past in the gutters either side of an opaque bar.
+ */
+.territorio-detail__actions {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	margin: 0 -4px 4px;
+	padding: 8px 4px;
+	background: var(--color-main-background);
+	border-bottom: 1px solid var(--color-border);
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
 	align-items: center;
+}
+
+/*
+ * Destructive, and not the primary action: an outline in the error colour beside
+ * the filled Guardar. `tertiary` is transparent with a transparent border, so
+ * colouring the border is what draws the outline.
+ */
+.territorio-detail__retire {
+	border-color: var(--color-error);
+	color: var(--color-error);
+}
+
+/* Its own row, so the promise reads as a sentence rather than as a label
+   squeezed between two buttons. */
+.territorio-detail__confirm {
+	flex-basis: 100%;
+	margin-bottom: 0;
 }
 
 .territorio-detail__hint {

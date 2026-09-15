@@ -1977,6 +1977,14 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 CLUSTER = ".territorio-cluster"
 RING = ".territorio-cluster__ring"
 
+# The bubble, and the count disc inside it. Each is written twice — `iconSize`
+# in the component and `width`/`height` in its stylesheet — and #37 is the
+# slice that learned what an unmeasured copy costs: a mark resized without its
+# anchor draws every marker off the coordinate it belongs to, silently. So the
+# numbers live here and the check below measures what the browser actually drew
+# against them, rather than anybody keeping four copies in step by eye.
+CLUSTER_DISC, CLUSTER_COUNT, CLUSTER_BAND = 36, 24, 4
+
 # What markercluster's own stylesheet paints a bubble, by child count. Named
 # here so the check can say "this is a count hue" rather than "this is not the
 # colour I expected" — the whole of #22 is that these ever reached the map.
@@ -2189,6 +2197,9 @@ def a_cluster_says_what_is_under_it(page, failures):
             const style = getComputedStyle(ring)
             const count = ring.querySelector('.territorio-cluster__count')
             const inside = count ? getComputedStyle(count) : null
+            const box = ring.getBoundingClientRect()
+            const countBox = count ? count.getBoundingClientRect() : null
+            const margins = getComputedStyle(ring.parentElement)
             return {
                 gradient: style.backgroundImage,
                 fill: style.backgroundColor,
@@ -2196,9 +2207,53 @@ def a_cluster_says_what_is_under_it(page, failures):
                 count: count ? count.textContent.trim() : null,
                 ink: inside ? inside.color : null,
                 paper: inside ? inside.backgroundColor : null,
+                disc: [Math.round(box.width), Math.round(box.height)],
+                countDisc: countBox
+                    ? [Math.round(countBox.width), Math.round(countBox.height)]
+                    : null,
+                rim: parseFloat(style.borderTopWidth),
+                anchor: [parseFloat(margins.marginLeft), parseFloat(margins.marginTop)],
             }
         }""",
     )
+
+    if painted["disc"] != [CLUSTER_DISC, CLUSTER_DISC]:
+        failures.append(
+            f"a cluster bubble draws {painted['disc']}px, not {CLUSTER_DISC}px — a bubble is "
+            f"sized above the pin's {PIN_DOT}px so that it reads as more than one record "
+            f"before the count inside it is read at all (#22)",
+        )
+
+    # Derived from the disc that was just measured, not from CLUSTER_DISC: what
+    # is being asked is whether `iconAnchor` followed `iconSize`, and pinning
+    # both to the same constant would make the check agree with itself while
+    # every bubble sat off the records it covers. Exactly the pin's reasoning
+    # above, for the same defect.
+    centred = [-painted["disc"][0] / 2, -painted["disc"][1] / 2]
+    if painted["anchor"] != centred:
+        failures.append(
+            f"a {painted['disc']}px cluster is anchored at {painted['anchor']}px, not "
+            f"{centred}px — iconAnchor did not follow iconSize, so the bubble no longer sits "
+            f"over the records it stands for",
+        )
+
+    if painted["countDisc"] != [CLUSTER_COUNT, CLUSTER_COUNT]:
+        failures.append(
+            f"the count disc draws {painted['countDisc']}px, not {CLUSTER_COUNT}px — it covers "
+            f"the middle of the gradient, so its size is what is left of the Category bands",
+        )
+    else:
+        # The stylesheet claims a 4px band of Category is left over: (36 - 2·rim
+        # - 24) / 2. Measured rather than restated, because the band is what the
+        # ring says a cluster's Categories with, and any of the three sizes
+        # drifting eats it without anything going red.
+        band = (painted["disc"][0] - 2 * painted["rim"] - painted["countDisc"][0]) / 2
+        if band != CLUSTER_BAND:
+            failures.append(
+                f"the Category band around the count measures {band}px, not {CLUSTER_BAND}px — "
+                f"a {painted['disc'][0]}px disc with a {painted['rim']}px rim and a "
+                f"{painted['countDisc'][0]}px count leaves nothing of the gradient to read",
+            )
 
     if painted["count"] != "3":
         failures.append(

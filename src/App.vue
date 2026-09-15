@@ -768,6 +768,16 @@ export default {
 		 * a subcategoryId `subcategories` does not hold. That is a route, a
 		 * controller and their tests — a slice of its own, not a few lines here:
 		 * the taxonomy has no GET today, it is only ever served in initial state.
+		 *
+		 * Nothing here can name `division_territorial`: the «+» is only drawn for
+		 * the Categories the `treeOf` filter in taxonomy.js keeps, and that one is
+		 * not among them (a territorial division is drawn on the map, not typed —
+		 * CONTEXT.md). The route itself still accepts it, deliberately: refusing it
+		 * server-side would contradict #44's own criterion («under any Category»)
+		 * on the say-so of a lander rather than a decision, and the damage a
+		 * hand-posted row does is bounded and visible — the `divisionsOf` filter
+		 * would draw one more toggle beside the tree, filtering a division nothing
+		 * is filed under. Worth an issue, not a silent narrowing of the API.
 		 */
 		async addSubcategory({ categorySlug, label }) {
 			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}/subcategories`

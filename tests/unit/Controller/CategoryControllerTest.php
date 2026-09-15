@@ -103,9 +103,15 @@ final class CategoryControllerTest extends TestCase {
 
 	/**
 	 * The add path has to go through the same `attempt()` as the renames: a
-	 * duplicate is a refusal a person can act on, and a 500 says nothing.
+	 * refusal is something a person can act on, and a 500 says nothing.
+	 *
+	 * This pins the mapping only — the service is stubbed, so nothing here
+	 * exercises the duplicate rule itself. That rule is the `(category_id, slug)`
+	 * index becoming an `InvalidTaxonomyException`, and its only test is the
+	 * integration one (`CategoryCrudTest::testASecondSubcategoryWithTheSameName…`),
+	 * which needs a real database to mean anything.
 	 */
-	public function testADuplicateSubcategoryIsUnprocessableNotAServerError(): void {
+	public function testARefusalFromTheAddPathIsUnprocessableNotAServerError(): void {
 		$this->taxonomy->method('addSubcategory')
 			->willThrowException(new InvalidTaxonomyException('Ya existe una subcategoría con ese nombre en esta categoría.'));
 

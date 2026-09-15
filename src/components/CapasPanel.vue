@@ -27,7 +27,8 @@
 
 		<div class="territorio-capas__body">
 			<!--
-				A refusal belongs where the person typed. `error` in App.vue renders
+				A refusal belongs where the person typed — a rename's or an add's,
+				both of which are typed in this panel. `error` in App.vue renders
 				in the map column and only while no record is open, so a rename
 				refused with the sidebar open would have said nothing at all.
 			-->
@@ -111,6 +112,15 @@
 							a Subcategory has no colour and no pictogram of its own — it is
 							drawn with its Category's (ADR-0013) — and the slug is derived by
 							the server, never typed.
+
+							`division_territorial` has no «+» on purpose, and not because it
+							was forgotten: this loop runs over the `treeOf` filter, which
+							leaves that Category out (it is drawn as the toggles above, not as
+							a branch), and a territorial division is drawn on the map rather
+							than typed into a field — nothing else may be filed under a Sector
+							(CONTEXT.md). The route is deliberately left open rather than made
+							to refuse: the `addSubcategory` docblock in App.vue says what a
+							row posted there would look like, and why nothing here makes one.
 						-->
 						<button class="territorio-capas__add"
 							type="button"
@@ -203,7 +213,7 @@ export default {
 	props: {
 		taxonomy: { type: Array, required: true },
 		filter: { type: Object, required: true },
-		/** Why the last rename was refused, shown beside the row it came from. */
+		/** Why the last rename or add was refused, shown beside the row it came from. */
 		error: { type: String, default: '' },
 	},
 

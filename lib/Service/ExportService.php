@@ -139,8 +139,12 @@ class ExportService {
 				throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
 			}
 
-			$zip->addFromString('doc.kml', $this->kml->write($rows));
-			$body = $zip->close() ? file_get_contents($path) : false;
+			// Closed only if the entry went in: `close()` on an archive with
+			// nothing in it DELETES the file it was going to write (libzip), and
+			// reading it back afterwards would be a warning about a missing file
+			// instead of the refusal below.
+			$written = $zip->addFromString('doc.kml', $this->kml->write($rows));
+			$body = $written && $zip->close() ? file_get_contents($path) : false;
 			if ($body === false) {
 				throw new InvalidFeatureException('No se pudo escribir el archivo KMZ.');
 			}

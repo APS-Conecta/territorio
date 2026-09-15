@@ -100,7 +100,7 @@ export function withNote(parts, text) {
  * @param {number[]} gone ids the server says are no longer live Boundary features
  */
 export function groups(parts, gone = []) {
-	const missing = new Set(gone ?? [])
+	const missing = new Set(gone)
 	const rows = new Map()
 
 	;(parts ?? []).forEach((part) => {

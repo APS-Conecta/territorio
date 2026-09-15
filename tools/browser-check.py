@@ -3934,9 +3934,13 @@ def a_layer_can_be_renamed_without_a_reload(page, failures):
         )
         return
 
-    # Open the branch, so the Subcategory rows are on screen to rename.
-    renamed_row.locator(".territorio-capas__name").click()
-    page.wait_for_timeout(400)
+    # Open the branch, so the Subcategory rows are on screen to rename — and only
+    # if it is closed. Clicking a <summary> toggles it, so a branch another check
+    # left open would be folded shut here, and every locator below would then
+    # wait for a row that is in the DOM and not on the screen.
+    if not renamed_row.evaluate("node => node.open"):
+        renamed_row.locator(".territorio-capas__name").click()
+        page.wait_for_timeout(400)
     child = renamed_row.locator(".territorio-capas__child").filter(
         has_text=original_sub
     )

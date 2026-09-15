@@ -69,14 +69,33 @@ export function treeOf(taxonomy) {
 	return taxonomy.filter((category) => !isDivision(category))
 }
 
-/** One entry per territorial division, ready to toggle. */
+/**
+ * One entry per territorial division, ready to toggle.
+ *
+ * No colour. The division Category's seeded `#334155` is inert (#29): a
+ * division draws a boundary on the map and a ring in the list, neither of which
+ * is filled with it, and a copy carried here was a colour waiting to be
+ * painted somewhere.
+ */
 export function divisionsOf(taxonomy) {
 	return taxonomy.filter(isDivision).flatMap((category) => category.subcategories.map((subcategory) => ({
 		id: subcategory.id,
 		slug: subcategory.slug,
 		label: subcategory.label,
-		colour: category.color,
 	})))
+}
+
+/**
+ * What colour stands for a whole Category — a chart bar, a legend swatch.
+ *
+ * A territorial division answers with the neutral instead of its own. The
+ * seeded `#334155` measures 1.73:1 against the dark theme (WCAG 1.4.11 asks
+ * 3:1), and issue #29 decided the division stops being a coloured mark rather
+ * than being given a better colour: ADR-0013 measures the neutral band as
+ * having no room for a fourth grey, so there was nowhere legible to move it to.
+ */
+export function categoryColour(category) {
+	return isDivision(category) ? DEFAULT_SECTOR_COLOUR : category.color
 }
 
 /**
@@ -153,7 +172,17 @@ export function boundsOf(features, subcategories, slug) {
  * coloured by its Category with nothing to set by hand.
  */
 export function colourOf(feature, subcategories) {
-	return feature.colour ?? subcategories.get(feature.subcategoryId)?.colour ?? UNKNOWN_COLOUR
+	const subcategory = subcategories.get(feature.subcategoryId)
+
+	// A territorial division never falls back to its Category's colour: see
+	// categoryColour() for why `#334155` reaches no surface. A Sector nobody
+	// tinted reads neutral, which is what App.vue already writes onto a new one,
+	// and a Unidad Vecinal has no fill for it to reach at all (#21).
+	if (subcategory !== undefined && subcategory.categorySlug === DIVISIONS_SLUG) {
+		return feature.colour ?? DEFAULT_SECTOR_COLOUR
+	}
+
+	return feature.colour ?? subcategory?.colour ?? UNKNOWN_COLOUR
 }
 
 /**

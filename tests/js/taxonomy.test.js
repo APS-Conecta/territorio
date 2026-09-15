@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+	categoryColour,
 	colourOf,
 	defaultSubcategoryId,
 	divisionsOf,
 	boundsOf,
+	DEFAULT_SECTOR_COLOUR,
 	indexSubcategories,
 	isDivision,
 	sectorSubcategoryId,
@@ -30,7 +32,10 @@ const TAXONOMY = [
 		slug: 'division_territorial',
 		label: 'División territorial',
 		color: '#334155',
-		subcategories: [{ id: 21, slug: 'sector', label: 'Sector' }],
+		subcategories: [
+			{ id: 21, slug: 'sector', label: 'Sector' },
+			{ id: 22, slug: 'unidad_vecinal', label: 'Unidad Vecinal' },
+		],
 	},
 	{
 		id: 3,
@@ -47,9 +52,14 @@ describe('territorial divisions', () => {
 			.toEqual(['salud', 'sin_clasificar'])
 	})
 
+	/**
+	 * Without a colour. The division Category's own `#334155` is inert (#29) —
+	 * nothing draws it — and carrying it here was a copy waiting to be painted.
+	 */
 	it('are offered as toggles of their own', () => {
 		expect(divisionsOf(TAXONOMY)).toEqual([
-			{ id: 21, slug: 'sector', label: 'Sector', colour: '#334155' },
+			{ id: 21, slug: 'sector', label: 'Sector' },
+			{ id: 22, slug: 'unidad_vecinal', label: 'Unidad Vecinal' },
 		])
 	})
 
@@ -90,6 +100,36 @@ describe('what colour a record is drawn in', () => {
 
 	it('falls back again when the Subcategory is one the taxonomy no longer has', () => {
 		expect(colourOf({ subcategoryId: 999, colour: null }, subcategories)).toBe(UNKNOWN_COLOUR)
+	})
+
+	/**
+	 * Issue #29: the seeded `#334155` measures 1.73:1 against the dark theme,
+	 * and ADR-0013 measures the neutral band as having no room for a fourth
+	 * grey — so the division stops being a coloured mark instead of being given
+	 * a better colour. It stays in the seed and reaches no surface.
+	 */
+	it('never hands back the division Category colour', () => {
+		expect(colourOf({ subcategoryId: 21, colour: null }, subcategories))
+			.toBe(DEFAULT_SECTOR_COLOUR)
+		expect(colourOf({ subcategoryId: 22, colour: null }, subcategories))
+			.toBe(DEFAULT_SECTOR_COLOUR)
+	})
+
+	/** A Sector a clinic did tint keeps its tint — #24 destroys nothing. */
+	it('still honours a division\'s own colour where there is one', () => {
+		expect(colourOf({ subcategoryId: 21, colour: '#16a34a' }, subcategories)).toBe('#16a34a')
+		expect(colourOf({ subcategoryId: 22, colour: '#16a34a' }, subcategories)).toBe('#16a34a')
+	})
+})
+
+describe('what colour stands for a whole Category', () => {
+	it('is the Category\'s own', () => {
+		expect(categoryColour(TAXONOMY[0])).toBe('#dc2626')
+	})
+
+	/** The Análisis chart is the last surface #334155 could have reached. */
+	it('is the neutral for a territorial division, never its inert seed colour', () => {
+		expect(categoryColour(TAXONOMY[1])).toBe(DEFAULT_SECTOR_COLOUR)
 	})
 })
 

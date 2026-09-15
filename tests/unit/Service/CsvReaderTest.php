@@ -87,6 +87,22 @@ final class CsvReaderTest extends TestCase {
 	}
 
 	/**
+	 * A line break inside a quoted cell is part of the cell, not the end of the
+	 * row — somebody types one into a Notas column and a spreadsheet saves it
+	 * quoted. This is why the file is read as a stream rather than split into
+	 * lines first: only the reader that is mid-quote knows the row has not ended.
+	 */
+	public function testALineBreakInsideAQuotedCellDoesNotEndTheRow(): void {
+		$rows = $this->reader->read(
+			"Nombre,Notas\nCESFAM de Prueba,\"Atiende de 8 a 14.\nCerrado en enero.\"\n",
+			'prueba',
+		);
+
+		self::assertCount(1, $rows);
+		self::assertSame("Atiende de 8 a 14.\nCerrado en enero.", $rows[0]['notes']);
+	}
+
+	/**
 	 * Excel writes a BOM in front of a UTF-8 CSV — this app's own writer does
 	 * too. Left in, it would be part of the first heading and «Nombre» would stop
 	 * being «Nombre», so the whole file would be refused for a reason nobody can

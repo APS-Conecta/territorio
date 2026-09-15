@@ -3,9 +3,9 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.60.0] — unreleased
+## [0.61.0] — unreleased
 
-The Capas panel is the clinic's vocabulary now, not the seed's.
+The clinic can put a word of its own into the taxonomy, not only re-word the seed's.
 
 ### Added
 
@@ -34,6 +34,22 @@ The Capas panel is the clinic's vocabulary now, not the seed's.
   Nothing removes a Subcategory yet (#47), which is why the browser gate names the one it adds
   after the run: a fixed name would be added once and refused as a duplicate by every run
   afterwards, and a check that only works the first time is not a check.
+
+  It does not tell the browsers that are already open. Adding does not advance the Revision cursor,
+  for the same reason a rename does not (the dated correction on ADR-0002: the counter hangs on a
+  Feature id, and a Subcategory is not a Feature) — but the consequence is not the rename's. A
+  colleague's tab has no entry for the new Subcategory at all, so the first record filed under it
+  arrives through the change feed within seconds and reads there as «Clasificación desconocida», in
+  the colour this app uses to mean a broken reference, until that tab is reloaded. That is accepted
+  for the thin create path and marked where it is decided, in `App.vue`: pushing the taxonomy into
+  open tabs wants a GET on it and a refetch from the poll, which is a slice of its own and not a
+  corner of this one.
+
+## [0.60.0] — unreleased
+
+The Capas panel is the clinic's vocabulary now, not the seed's.
+
+### Added
 
 - **A Category and a Subcategory can be renamed from the Capas panel** (#41). CONTEXT.md has always
   said a Category is "editable data, not code"; it was not. The eleven Categories and their

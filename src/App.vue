@@ -753,6 +753,21 @@ export default {
 		 * — which is what puts the new Subcategory in the Capas panel and in the
 		 * Subcategoría picker at once, with no reload and no second copy that can
 		 * disagree.
+		 *
+		 * ponytail: nothing tells the browsers that are already open. Adding does
+		 * not advance the Revision cursor, for the same reason a rename does not
+		 * (the dated correction on ADR-0002: the counter hangs on a Feature id and
+		 * a Subcategory is not a Feature) — but a rename only leaves a colleague
+		 * reading a stale label, and this leaves them with no entry for the new id
+		 * at all. `poll()` delivers the first record filed under it within seconds,
+		 * `indexSubcategories()` has no key for it, and FeatureList then draws it
+		 * as «Clasificación desconocida» in UNKNOWN_COLOUR — the pair this repo
+		 * chose to mean a broken reference — until that browser reloads.
+		 * The ceiling is accepted for the thin create path; the upgrade is a GET on
+		 * the taxonomy and a refetch from `poll()` when an incoming Feature carries
+		 * a subcategoryId `subcategories` does not hold. That is a route, a
+		 * controller and their tests — a slice of its own, not a few lines here:
+		 * the taxonomy has no GET today, it is only ever served in initial state.
 		 */
 		async addSubcategory({ categorySlug, label }) {
 			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}/subcategories`

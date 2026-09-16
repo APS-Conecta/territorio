@@ -29,6 +29,7 @@ its own, where it is the subject rather than a step on the way to something
 else. That took this from passing two runs in three to nine of nine.
 """
 
+import io
 import json
 import re
 import subprocess
@@ -1979,6 +1980,118 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
             f"the {cesfam['id']!r} «Salud · CESFAM» the «Salud»/«CESFAM» cells named — a person "
             "typing what the app shows them lands in Sin clasificar (#101)",
         )
+def a_kmz_imports_like_the_kml_inside_it(page, failures):
+    """#103: the dialog takes a KMZ, warns as it does for a KML, and imports it.
+
+    The PHP tests pin the unzipping — the first `.kml` entry whatever it is
+    called, the refusals, the temporary file. What only the running app can
+    answer is that a person who picks a `.kmz` in the file dialog sees the
+    lossiness notice before committing to it, and that the record comes out the
+    other end. Both halves are asserted here: the notice on the screen, and the
+    record in the REGISTRY rather than in the dialog's own summary, which is the
+    server's own reply and would say "1 creado" whether or not anything was
+    written.
+
+    The archive is awkward in the two ways real ones are, because those are the
+    criteria: named `.KMZ` in capitals, and holding an icon ahead of a document
+    that nobody called `doc.kml`.
+
+    The Place it imports is left behind, sited at this run's nudge like every
+    other record these checks create. A leftover Place is inert — unlike a
+    leftover Sector, which would claim every Place it covers, run after run.
+    """
+    name = f"Junta del KMZ {RUN}"
+    lat, lon = -33.49 - NUDGE / 200, -70.49 - NUDGE / 200
+    kml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>Salud</name>'
+        f"<Placemark><name>{name}</name>"
+        f"<Point><coordinates>{lon},{lat},0</coordinates></Point>"
+        "</Placemark></Folder></Document></kml>"
+    ).encode()
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        # Ahead of the KML on purpose: "the first entry" and "the first .kml
+        # entry" are different rules, and only the second one is the format's.
+        archive.writestr("images/icono.png", "no soy kml")
+        archive.writestr("capa principal.kml", kml)
+    kmz = buffer.getvalue()
+
+    # The CSV check runs immediately before this one and leaves its dialog OPEN,
+    # for the reason that check documents: after `set_input_files` an Escape does
+    # not reach the NcDialog. Clicking the toolbar button behind an open modal
+    # does not open a second one, so this check closes what it finds first.
+    closer = page.get_by_role("dialog").get_by_role("button", name="Close")
+    if closer.count() != 0:
+        closer.first.click()
+        page.wait_for_timeout(600)
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.wait_for_timeout(600)
+
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"catastro-{RUN}.KMZ",
+        "mimeType": "application/vnd.google-earth.kmz",
+        "buffer": kmz,
+    })
+    page.wait_for_timeout(400)
+    if page.get_by_text("No trae teléfono").count() == 0:
+        failures.append("choosing a KMZ said nothing about what it cannot carry")
+
+    # Kept: the notice is a sentence a person reads, and a count of zero is not
+    # something anybody can check back on afterwards.
+    page.screenshot(path=str(SHOTS / "kmz-import.png"), full_page=False)
+
+    # A Dataset of this run's own, so re-running updates nothing from last time:
+    # matching is on (Dataset, external id).
+    page.get_by_label("Conjunto de datos").fill(f"kmz-{RUN}")
+    page.get_by_role("button", name="Importar", exact=True).click()
+    page.wait_for_timeout(2500)
+
+    imported = registry_feature(page, name)
+    if imported is None:
+        failures.append(f"the KMZ import left no {name!r} in the Registry")
+    elif (imported.get("geometry") or {}).get("type") != "Point":
+        failures.append(f"the record from the KMZ arrived as {imported.get('geometry')!r}")
+
+    # And a `.kmz` that is not an archive is answered with the sentence, not with
+    # a stack trace or a silent nothing. Same dialog, still open.
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"roto-{RUN}.kmz",
+        "mimeType": "application/vnd.google-earth.kmz",
+        "buffer": b"no soy un zip",
+    })
+    page.wait_for_timeout(400)
+    page.get_by_role("button", name="Importar", exact=True).click()
+    page.wait_for_timeout(2000)
+    if page.get_by_text("no es un KMZ").count() == 0:
+        failures.append("a .kmz that is not an archive was not refused in words")
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+
+def occ_import_names_the_formats_it_takes(failures):
+    """#103: `occ territorio:import` says KMZ is one of the formats it takes.
+
+    Read off the running command rather than off the source, because the source
+    is what it was written from: the criterion is that a person typing `--help`
+    is told, and only the command can say what it prints.
+    """
+    printed = subprocess.run(
+        ["docker", "compose", "-f", "compose.dev.yaml", "exec", "-T", "-u", "www-data",
+         "nextcloud", "php", "occ", "territorio:import", "--help"],
+        capture_output=True, timeout=120,
+    )
+    if printed.returncode != 0:
+        skip("occ territorio:import --help did not run, so the formats it names are unchecked")
+        return
+
+    if "KMZ" not in printed.stdout.decode(errors="replace"):
+        failures.append("occ territorio:import does not name KMZ among the formats it takes")
+
+
 
 
 def kml_says_what_it_cannot_carry(page, failures):
@@ -5724,6 +5837,8 @@ def main():
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
         a_csv_imports_and_says_what_does_not_come_back_in(page, failures)
+        a_kmz_imports_like_the_kml_inside_it(page, failures)
+        occ_import_names_the_formats_it_takes(failures)
         browser.close()
 
     if errors:

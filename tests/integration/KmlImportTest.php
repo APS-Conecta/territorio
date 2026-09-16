@@ -7,12 +7,14 @@ namespace OCA\Territorio\Tests\Integration;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
+use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\Kind;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IDBConnection;
 use OCP\Server;
+use ZipArchive;
 
 /**
  * A Google MyMaps export, through the same pipeline GeoJSON uses.
@@ -216,6 +218,92 @@ final class KmlImportTest extends IntegrationTestCase {
 		return $subcategory->getLabel();
 	}
 
+	/**
+	 * A KMZ imports to the same Features as the KML inside it (issue #103).
+	 *
+	 * Stated as the import itself states it: after the archive has been imported,
+	 * the same KML imported DIRECTLY finds every record already there and
+	 * unchanged. `differs()` compares the whole official blob, so "unchanged"
+	 * here means every field and every derived external id matched — a stronger
+	 * claim than any list of expectations this test could carry, and one that
+	 * cannot drift away from what the KML tests above assert.
+	 *
+	 * The archive is deliberately awkward in the two ways real ones are: the name
+	 * is `.KMZ` in capitals, like `.kml` has always been accepted in any case, and
+	 * the document inside is not called `doc.kml` — QGIS and ArcGIS write
+	 * `<capa>.kml`, and an icon sits ahead of it.
+	 */
+	public function testAKmzImportsTheSameRecordsAsTheKmlInsideIt(): void {
+		$batch = $this->importArchive(
+			'Catastro de Prueba.KMZ',
+			['images/icono.png' => 'no soy kml', 'capa principal.kml' => self::KML],
+		);
+
+		self::assertSame(3, $batch->getCreated());
+
+		$kml = $this->import();
+
+		self::assertSame(0, $kml->getCreated(), 'the KMZ created records the KML does not recognise');
+		self::assertSame(3, $kml->getUnchanged(), 'the KMZ and the KML inside it did not agree field for field');
+	}
+
+	/**
+	 * A `.kmz` that is not an archive is refused, and refused BEFORE the Dataset
+	 * is created — the same "a file that is wrong anywhere imports nothing" the
+	 * rest of the pipeline promises. The unit tests pin the message; what only
+	 * the database can answer is that nothing was left behind.
+	 */
+	public function testAKmzThatIsNotAnArchiveImportsNothingAtAll(): void {
+		try {
+			Server::get(ImportService::class)->importFile(
+				'no soy un zip',
+				'roto.kmz',
+				self::SLUG,
+				null,
+				'prueba',
+			);
+			self::fail('a KMZ that is not an archive should be refused');
+		} catch (InvalidImportException $e) {
+			self::assertStringContainsString('no es un KMZ', $e->getMessage());
+		}
+
+		$this->expectException(DoesNotExistException::class);
+		Server::get(DatasetMapper::class)->findBySlug(self::SLUG);
+	}
+
+	/**
+	 * The archive, built the only way `ZipArchive` can build one — through a
+	 * path, because `close()` is what writes it and it writes it to a file.
+	 *
+	 * @param array<string, string> $entries
+	 */
+	private function importArchive(string $filename, array $entries): \OCA\Territorio\Db\ImportBatch {
+		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-fixture-');
+
+		try {
+			$zip = new ZipArchive();
+			self::assertTrue($zip->open($path, ZipArchive::OVERWRITE) === true);
+			foreach ($entries as $name => $contents) {
+				self::assertTrue($zip->addFromString($name, $contents));
+			}
+			self::assertTrue($zip->close());
+
+			$batch = Server::get(ImportService::class)->importFile(
+				(string)file_get_contents($path),
+				$filename,
+				self::SLUG,
+				'MyMaps de prueba',
+				'prueba',
+			);
+		} finally {
+			unlink($path);
+		}
+
+		$this->track();
+
+		return $batch;
+	}
+
 	private function import(): \OCA\Territorio\Db\ImportBatch {
 		$batch = Server::get(ImportService::class)->importFile(
 			self::KML,
@@ -225,6 +313,13 @@ final class KmlImportTest extends IntegrationTestCase {
 			'prueba',
 		);
 
+		$this->track();
+
+		return $batch;
+	}
+
+	/** Whatever this run's Dataset now holds, so tearDown can take it away again. */
+	private function track(): void {
 		try {
 			$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
 			$this->datasets[] = $id;
@@ -234,8 +329,6 @@ final class KmlImportTest extends IntegrationTestCase {
 		} catch (DoesNotExistException) {
 			// Nothing was created, which the assertions will say better than this.
 		}
-
-		return $batch;
 	}
 
 	private const KML = <<<'XML'

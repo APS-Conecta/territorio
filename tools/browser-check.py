@@ -34,6 +34,7 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
@@ -81,6 +82,12 @@ NUDGE = int(RUN, 16) % 120
 ROWS = ".app-content-list .list-item"
 MARKERS = ".leaflet-marker-icon"
 SEARCH = ".territorio-list__search input"
+
+# The Índice (#105): the fourth pane, and its own table. Addressed by
+# `data-key` rather than by column position, because the whole point of the pane
+# is that columns can be taken away.
+INDICE = '[data-testid="indice-table"]'
+INDICE_COLUMNS = ".territorio-indice__columns"
 
 # The Capas panel's own rename affordance (#41): the pencil per row, and the
 # field it turns the label into.
@@ -1867,6 +1874,230 @@ def search_narrows_everything(page, failures):
         failures.append(f"clearing did not restore the list ({rows.count()} vs {before_rows})")
 
 
+
+def _folded(value):
+    """Lower-cased and stripped of accents, exactly as `filters.js` folds.
+
+    The Índice sorts with `localeCompare(…, { sensitivity: 'base' })`, which is
+    the same rule: case and accent are not letters. Written out here rather than
+    reached for through a locale, because the names this run makes are the ones
+    being ordered and this says in four lines what is being claimed about them.
+    """
+    return "".join(
+        character for character in unicodedata.normalize("NFD", value)
+        if not unicodedata.combining(character)
+    ).lower()
+
+
+def _indice_table(page):
+    """The table as it is drawn: the column keys, and a dict per row.
+
+    By `data-key` and not by position — a hidden column shifts every index, and a
+    check that read column 6 would quietly start asserting about the next one.
+    """
+    return page.evaluate(
+        """() => {
+            const table = document.querySelector('[data-testid="indice-table"]')
+            if (table === null) {
+                return { columns: [], rows: [] }
+            }
+            return {
+                columns: [...table.querySelectorAll('thead th')].map((th) => th.dataset.key),
+                rows: [...table.querySelectorAll('tbody tr')].map((tr) => Object.fromEntries(
+                    [...tr.querySelectorAll('td')].map((td) => [td.dataset.key, td.innerText.trim()]),
+                )),
+            }
+        }""",
+    )
+
+
+def _pane(page, name):
+    """Switch the main area to one pane, scoped to our own switch.
+
+    With a record open the sidebar carries a «Mapa» control of its own, and an
+    unscoped role lookup finds both.
+    """
+    page.locator(".territorio-main__switch").get_by_role("button", name=name).click()
+    page.wait_for_timeout(300)
+
+
+# What `locationQuality` is called on screen, kept in step with QUALITY_LABELS in
+# src/indice.js — the criterion is that the Exactitud column says a word, and a
+# check that read the stored value back off the screen would pass on either.
+QUALITIES = {"exacta": "Exacta", "aproximada": "Aproximada", "sin_coordenada": "Sin coordenada"}
+
+
+def the_indice_reads_the_registry(page, failures):
+    """#105: a fourth pane showing the Registry as rows, sorted by its headers.
+
+    The pane draws the one filtered set — the same array the map, the Datos list,
+    the Análisis counts and Exportar read — so most of what is checked here is
+    that it AGREES with them rather than that it can count. `filters.js` says why
+    a second narrowing path would be the bug: the table would show one number
+    while Exportar carried another.
+
+    Asserted against the Registry as the change feed hands it back, not against
+    the screen: a Sector column is the whole criterion when it holds a name and
+    worthless when it holds the id that was stored, and both look like a table.
+    """
+    box = page.locator(SEARCH)
+
+    # This run's records and nothing else, so what follows is exact rather than
+    # "whatever the instance has accumulated".
+    box.fill(RUN)
+    page.wait_for_timeout(500)
+    _pane(page, "Índice")
+
+    drawn = _indice_table(page)
+    names = [row["name"] for row in drawn["rows"]]
+
+    # A sort over one row is true whatever the sort does. Fail rather than pass
+    # quietly: this whole file exists because a green line hid an empty screen.
+    if len(names) < 3:
+        failures.append(
+            f"the Índice drew {len(names)} rows for this run — too few to prove a sort, so "
+            f"nothing below was really checked",
+        )
+        page.screenshot(path=str(SHOTS / "indice-empty.png"), full_page=False)
+
+    if drawn["columns"][:3] != ["name", "category", "subcategory"]:
+        failures.append(f"the Índice opened with columns {drawn['columns']}")
+
+    # The same set the Datos list is showing, which is the set Exportar takes its
+    # ids from (`exportableIds` is that list minus retired records, and none of
+    # these is retired). One filtered array, four surfaces.
+    listed = page.locator(ROWS).count()
+    if len(names) != listed:
+        failures.append(
+            f"the Índice shows {len(names)} rows while Datos — and so Exportar — has {listed}",
+        )
+
+    # Every row is a record the Registry actually holds, by name. A table can
+    # invent a row as easily as it can drop one.
+    registry = {feature["name"]: feature for feature in registry_features(page)}
+    for name in names:
+        if name not in registry:
+            failures.append(f"the Índice drew a row for {name!r}, which the Registry does not hold")
+        elif registry[name]["retired"]:
+            failures.append(f"the Índice drew {name!r}, which is retired — the map would not")
+
+    # The criterion: the rendered order IS the order those names sort into.
+    if names != sorted(names, key=_folded):
+        failures.append(f"the Índice did not open sorted by Nombre: {names}")
+
+    page.locator(f'{INDICE} th[data-key="name"] button').click()
+    page.wait_for_timeout(200)
+    flipped = [row["name"] for row in _indice_table(page)["rows"]]
+    if flipped != sorted(names, key=_folded, reverse=True):
+        failures.append(f"clicking Nombre again did not reverse the order: {flipped}")
+
+    page.locator(f'{INDICE} th[data-key="name"] button').click()
+    page.wait_for_timeout(200)
+    if [row["name"] for row in _indice_table(page)["rows"]] != sorted(names, key=_folded):
+        failures.append("a third click on Nombre did not come back to ascending")
+
+    # Never an id (the criterion). Checked against what the Registry stored: the
+    # Sector cell must be the NAME of the boundary whose id is on the record, or
+    # «sin asignar» — and a cell holding the bare id would pass any check that
+    # only looked at the screen.
+    for row in _indice_table(page)["rows"]:
+        stored = registry.get(row["name"])
+        if stored is None:
+            continue
+
+        expected = "sin asignar"
+        if stored["sectorId"] is not None:
+            boundary = next(
+                (f for f in registry.values() if f["id"] == stored["sectorId"]), None,
+            )
+            expected = boundary["name"] if boundary is not None else "sin asignar"
+        if row["sector"] != expected:
+            failures.append(
+                f"{row['name']!r} shows Sector {row['sector']!r}; the Registry stores "
+                f"{stored['sectorId']!r}, which is {expected!r}",
+            )
+
+        if row["category"].isdigit() or row["subcategory"].isdigit():
+            failures.append(
+                f"{row['name']!r} shows its classification as an id: "
+                f"{row['category']!r} / {row['subcategory']!r}",
+            )
+
+        if row["quality"] != QUALITIES.get(stored["locationQuality"], ""):
+            failures.append(
+                f"{row['name']!r} shows Exactitud {row['quality']!r} for a record the Registry "
+                f"stores as {stored['locationQuality']!r}",
+            )
+
+    # Hiding a column, and the criterion that the choice survives a pane switch.
+    # The pane is rebuilt on every switch (v-if), so this is the whole of it.
+    page.locator(INDICE_COLUMNS).get_by_text("Teléfono", exact=True).click()
+    page.wait_for_timeout(200)
+    if "phone" in _indice_table(page)["columns"]:
+        failures.append("unticking «Teléfono» left the column on screen")
+
+    _pane(page, "Análisis")
+    _pane(page, "Índice")
+    if "phone" in _indice_table(page)["columns"]:
+        failures.append("the hidden column came back on the way through Análisis")
+    if "name" not in _indice_table(page)["columns"]:
+        failures.append("switching panes lost the columns that were on")
+
+    page.locator(INDICE_COLUMNS).get_by_text("Teléfono", exact=True).click()
+    page.wait_for_timeout(200)
+    if "phone" not in _indice_table(page)["columns"]:
+        failures.append("ticking «Teléfono» back did not bring the column back")
+
+    # Capas narrows the table, the Datos list and the Análisis counts together —
+    # the criterion, and the reason there is no per-column filter here.
+    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
+    page.wait_for_timeout(500)
+    narrowed = len(_indice_table(page)["rows"])
+    if narrowed >= len(names):
+        failures.append(
+            f"unticking Sector left the Índice at {narrowed} of {len(names)} rows — it is not "
+            f"reading the one filtered set",
+        )
+    if narrowed != page.locator(ROWS).count():
+        failures.append(
+            f"Capas left the Índice at {narrowed} rows and Datos at {page.locator(ROWS).count()}",
+        )
+
+    _pane(page, "Análisis")
+    counted = int(page.locator(".territorio-analisis h2").inner_text().split()[0])
+    _pane(page, "Índice")
+    if counted != narrowed:
+        failures.append(f"Análisis counted {counted} while the Índice drew {narrowed}")
+
+    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # Clicking a row opens that record. Scoped to the sidebar's own form: the
+    # Índice draws a «Nombre» header and a «Nombre» checkbox, and an unscoped
+    # label lookup would find three things.
+    remaining = _indice_table(page)["rows"]
+    if not remaining:
+        failures.append("the Índice had no row left to open, so opening a record was not checked")
+        box.fill("")
+        _pane(page, "Mapa")
+        return
+
+    opening = remaining[0]["name"]
+    page.locator(f"{INDICE} tbody tr").first.click()
+    if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
+        failures.append(f"clicking the row for {opening!r} opened nothing")
+    else:
+        opened = page.locator(".territorio-detail").get_by_label("Nombre").input_value().strip()
+        if opened != opening:
+            failures.append(f"clicking the row for {opening!r} opened {opened!r}")
+        page.screenshot(path=str(SHOTS / "indice.png"), full_page=False)
+        page.locator(".app-sidebar__close").first.click()
+        page.wait_for_timeout(300)
+
+    box.fill("")
+    page.wait_for_timeout(400)
+    _pane(page, "Mapa")
+
 def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
     """#101: a spreadsheet goes in through the dialog, and the records are there.
 
@@ -2891,14 +3122,14 @@ def the_zoom_controls_are_in_spanish(page, failures):
             failures.append(f"the zoom control {selector} is titled {title!r}, expected {expected!r}")
 
 
-def registry_feature(page, name):
-    """One record as the Registry holds it, by name. None if it is not there.
+def registry_features(page):
+    """Every record the Registry holds, through the app's own change feed.
 
-    Through the app's own change feed rather than the screen or the database:
-    it is the read a second browser would do, so it proves the record was
-    written rather than that a form still has values in it.
+    Rather than the screen or the database: it is the read a second browser
+    would do, so what comes back proves what was written rather than what a form
+    still has values in it.
     """
-    features = page.evaluate(
+    return page.evaluate(
         """async () => {
             const response = await fetch(
                 '/index.php/apps/territorio/changes?since=0',
@@ -2909,7 +3140,13 @@ def registry_feature(page, name):
         }""",
     )
 
-    return next((feature for feature in features if feature.get("name") == name), None)
+
+def registry_feature(page, name):
+    """One record as the Registry holds it, by name. None if it is not there."""
+    return next(
+        (feature for feature in registry_features(page) if feature.get("name") == name),
+        None,
+    )
 
 
 def a_dragged_vertex_stays_with_its_own_record(page, failures):
@@ -5784,6 +6021,12 @@ def main():
 
         the_map_survives_churn(page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
+
+        # Here, and not earlier: the Índice is worth checking over several records
+        # with different names, and by now this run has made a Place and three
+        # Sectores. Before the cluster records below, which sit eleven metres apart
+        # and add nothing a table can show.
+        the_indice_reads_the_registry(page, failures)
 
         # Three records a few metres apart, made once and read by both checks
         # below: one bubble to measure the ring on, and two pins to measure the

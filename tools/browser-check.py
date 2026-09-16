@@ -825,6 +825,10 @@ def a_kmz_is_that_kml_in_an_archive(page, kml_bytes, failures):
     if page.get_by_text("Incluir datos de contacto").count() != 0:
         failures.append("the KMZ format offered the contacts switch")
 
+    # Kept, because two of #102's criteria are about what the dialog shows and a
+    # count of zero is not something a person can read back later.
+    page.screenshot(path=str(SHOTS / "kmz-dialog.png"), full_page=False)
+
     with page.expect_download(timeout=20_000) as download:
         page.get_by_role("button", name="Exportar", exact=True).last.click()
     kmz = download.value

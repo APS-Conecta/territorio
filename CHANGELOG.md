@@ -3,10 +3,47 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.72.0] — unreleased
+
+The Category colour tests stop describing the instance they happen to run on.
+
+### Fixed
+
+- **`CategoryCrudTest` stops asserting that a spare colour is free** (#134). Four of its tests
+  opened by claiming the instance had an unused spare, and on the dev instance all eight are held:
+  the browser gate leaves one Category per run, each of them files a record, and ADR-0016 refuses a
+  removal while a record is filed under a Category — retired ones included. So the pool drains and
+  never refills, every new Category correctly takes the neutral, and the suite went red on `main`
+  with an empty working tree for a reason that had nothing to do with the app. It is the fifth
+  appearance of one shape (#58, #60, #117, #121, #122) and the first where the contended thing is a
+  finite resource rather than a coordinate.
+
+  **The assertions are now relative to the pool the instance is already in.** One helper states the
+  rule — the first free spare, or the neutral once they are all held (ADR-0017) — and each test
+  pins the colour the app owed at the moment it asked. That is the same statement in both
+  directions: on a fresh instance it says «the next unused spare», on a drained one it says «the
+  neutral», and an implementation handing out a spare somebody already holds fails it either way.
+  The leftovers are left standing rather than cleaned up. They *could* be cleaned — the
+  record filed under each one is moved to «Sin clasificar · Otro» and the Category then comes away,
+  which is the route ADR-0016 tells a person to take, since a Feature cannot be un-created through
+  the app at all (ADR-0005) and only ever moves. But that is an act on one instance, and the browser
+  gate makes another leftover on every run, so a suite that needed the pool clean would be red again
+  within the week. Nothing re-reads them except the surfaces that read any Category, where they
+  appear as ordinary Categories on the neutral; `make lint`'s ramp check reads the seed, never the
+  instance.
+
+  **What a drained instance cannot show is measured somewhere it can be.** «Two Categories take
+  different colours» and «the spare comes back on removal» are not false once the pool is empty,
+  they are unobservable — every implementation, right or wrong, answers with the neutral. So the
+  spare pool becomes an input in a new unit test with mocked mappers (`TaxonomyColourTest`): half
+  taken, all eight taken, and one freed by a removal are three states written down rather than
+  three states waited for, and they run on every `make test`, including CI, which does not run the
+  integration suite at all. Without it, making the integration tests survive a drained pool would
+  have meant quietly giving up the properties they were written for.
+
 ## [0.71.0] — unreleased
 
-A file the clinic already has in Nextcloud Files need not be uploaded a second time, and the
-Category colour tests stop describing the instance they happen to run on.
+A file the clinic already has in Nextcloud Files need not be uploaded a second time.
 
 ### Added
 
@@ -35,40 +72,6 @@ Category colour tests stop describing the instance they happen to run on.
   on the multipart upload, and `getContent()` loads the node whole into PHP's memory — so the size
   is read off the node first, with the same constant and the same sentence an oversized upload
   gets.
-
-### Fixed
-
-- **`CategoryCrudTest` stops asserting that a spare colour is free** (#134). Four of its tests
-  opened by claiming the instance had an unused spare, and on the dev instance all eight are held:
-  the browser gate leaves one Category per run, each of them files a record, and ADR-0016 refuses a
-  removal while a record is filed under a Category — retired ones included. So the pool drains and
-  never refills, every new Category correctly takes the neutral, and the suite went red on `main`
-  with an empty working tree for a reason that had nothing to do with the app. It is the fifth
-  appearance of one shape (#58, #60, #117, #121, #122) and the first where the contended thing is a
-  finite resource rather than a coordinate.
-
-  **The assertions are now relative to the pool the instance is already in.** One helper states the
-  rule — the first free spare, or the neutral once they are all held (ADR-0017) — and each test
-  pins the colour the app owed at the moment it asked. That is the same statement in both
-  directions: on a fresh instance it says «the next unused spare», on a drained one it says «the
-  neutral», and an implementation handing out a spare somebody already holds fails it either way.
-  The thirty-two leftovers are left standing rather than cleaned up. They *could* be cleaned — the
-  record filed under each one is moved to «Sin clasificar · Otro» and the Category then comes away,
-  which is the route ADR-0016 tells a person to take, since a Feature cannot be un-created through
-  the app at all (ADR-0005) and only ever moves. But that is an act on one instance, and the browser
-  gate makes another leftover on every run, so a suite that needed the pool clean would be red again
-  within the week. Nothing re-reads them except the surfaces that read any Category, where they
-  appear as ordinary Categories on the neutral; `make lint`'s ramp check reads the seed, never the
-  instance.
-
-  **What a drained instance cannot show is measured somewhere it can be.** «Two Categories take
-  different colours» and «the spare comes back on removal» are not false once the pool is empty,
-  they are unobservable — every implementation, right or wrong, answers with the neutral. So the
-  spare pool becomes an input in a new unit test with mocked mappers (`TaxonomyColourTest`): half
-  taken, all eight taken, and one freed by a removal are three states written down rather than
-  three states waited for, and they run on every `make test`, including CI, which does not run the
-  integration suite at all. Without it, making the integration tests survive a drained pool would
-  have meant quietly giving up the properties they were written for.
 
 ## [0.70.0] — unreleased
 

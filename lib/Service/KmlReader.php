@@ -9,7 +9,8 @@ use SimpleXMLElement;
 use ZipArchive;
 
 /**
- * Reads a KML export — in practice, a Google MyMaps one.
+ * Reads a KML export — in practice, a Google MyMaps one — and, since #103, the
+ * same KML inside the archive Google Earth calls a KMZ.
  *
  * It does not read rows itself. It turns the file into a GeoJSON
  * FeatureCollection and hands that to `GeoJsonReader`, so a KML import IS a

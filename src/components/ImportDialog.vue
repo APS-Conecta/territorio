@@ -64,7 +64,24 @@
 					@change="pick">
 			</label>
 
-			<p v-if="file" class="territorio-import__hint">
+			<!--
+				The same import, from a file the clinic already has (#104):
+				«re-importar el mismo archivo sin volver a subirlo». It is not a
+				second source of truth — the Registry is that, and a local edit
+				still outranks anything a re-import carries (ADR-0003).
+			-->
+			<NcButton class="territorio-import__field"
+				variant="tertiary"
+				:disabled="working"
+				@click="pickFromFiles">
+				Desde archivos de Nextcloud
+			</NcButton>
+
+			<p v-if="path" class="territorio-import__hint">
+				{{ path }} · ya está en sus archivos de Nextcloud
+			</p>
+
+			<p v-else-if="file" class="territorio-import__hint">
 				{{ file.name }} · {{ Math.round(file.size / 1024) }} KB
 			</p>
 
@@ -129,6 +146,9 @@ export default {
 		return {
 			dataset: '',
 			file: null,
+			// The path of a file already in Files, when that is where this import
+			// is coming from (#104). Exactly one of `path` and `file` is ever set.
+			path: '',
 			working: false,
 			error: '',
 			result: null,
@@ -142,7 +162,20 @@ export default {
 
 	computed: {
 		canImport() {
-			return !this.working && this.file !== null && this.dataset.trim() !== ''
+			return !this.working && this.chosenName !== '' && this.dataset.trim() !== ''
+		},
+
+		/**
+		 * The name of whichever file is chosen, lowercased, however it was
+		 * chosen — the browser's for an upload, the last segment of the path for
+		 * one already in Files.
+		 *
+		 * One place, because the server has one too: `ImportService` dispatches
+		 * on the suffix of the name it is given, so a KML picked from Files is
+		 * read as a KML and warned about as one (#104).
+		 */
+		chosenName() {
+			return (this.path.split('/').pop() || this.file?.name || '').toLowerCase().trim()
 		},
 
 		/**
@@ -157,14 +190,12 @@ export default {
 		 * telephone numbers back.
 		 */
 		isKmlFamily() {
-			const name = (this.file?.name ?? '').toLowerCase().trim()
-
-			return name.endsWith('.kml') || name.endsWith('.kmz')
+			return this.chosenName.endsWith('.kml') || this.chosenName.endsWith('.kmz')
 		},
 
 		/** The same, for the spreadsheet a clinic sends (#101). */
 		isCsv() {
-			return (this.file?.name ?? '').toLowerCase().trim().endsWith('.csv')
+			return this.chosenName.endsWith('.csv')
 		},
 
 		/**
@@ -213,8 +244,44 @@ export default {
 
 		pick(event) {
 			this.file = event.target.files?.[0] ?? null
+			this.path = ''
 			this.error = ''
 			this.result = null
+		},
+
+		/**
+		 * The platform's own file picker, which hands back a PATH — nothing is
+		 * read in the browser and nothing is uploaded again (#104).
+		 *
+		 * ponytail: `OC.dialogs.filepicker`, which Nextcloud 34 still ships and
+		 * this app needs no new dependency for. `NcFilePicker` in the installed
+		 * @nextcloud/vue wraps an `<input type="file">` and emits browser File
+		 * objects, which is the upload above wearing a different coat; the
+		 * upgrade path, if core ever drops `OC.dialogs`, is `@nextcloud/dialogs`.
+		 *
+		 * No mimetype filter: Files guesses a `.geojson` as JSON or as plain
+		 * text depending on how it arrived, and filtering on the guess would
+		 * hide the very file the person came to import. The suffix picks the
+		 * reader, here as on the server.
+		 */
+		pickFromFiles() {
+			if (!window.OC?.dialogs?.filepicker) {
+				this.error = 'Esta versión de Nextcloud no ofrece el selector de archivos.'
+				return
+			}
+
+			window.OC.dialogs.filepicker(
+				'Elegir un archivo para importar',
+				(path) => {
+					this.path = path
+					this.file = null
+					this.error = ''
+					this.result = null
+				},
+				false,
+				[],
+				true,
+			)
 		},
 
 		async send() {
@@ -223,7 +290,13 @@ export default {
 			this.result = null
 
 			const body = new FormData()
-			body.append('file', this.file)
+			// One request either way: the server reads the bytes from the path
+			// when there is one, and everything after that is the same import.
+			if (this.path) {
+				body.append('path', this.path)
+			} else {
+				body.append('file', this.file)
+			}
 			body.append('dataset', this.dataset.trim())
 
 			try {

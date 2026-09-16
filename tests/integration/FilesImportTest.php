@@ -78,11 +78,13 @@ final class FilesImportTest extends IntegrationTestCase {
 		$dataset = Server::get(DatasetMapper::class)->findBySlug(self::DATASET);
 		$imported = $this->features->findByDataset((int)$dataset->getId());
 		self::assertCount(1, $imported);
-		self::assertSame('Plaza de Archivos', $imported[0]->getName());
+		// Keyed by external id, which is the `uid` the GeoJSON carries — asserting
+		// on the key is how the rest of the suite reads this mapper.
+		self::assertSame('Plaza de Archivos', $imported['t:files']->getName());
 
 		Server::get(RevertService::class)->revert((int)$response->getData()['id'], self::UID);
 		self::assertTrue(
-			(bool)$this->features->find((int)$imported[0]->getId())->getRetired(),
+			(bool)$this->features->find((int)$imported['t:files']->getId())->getRetired(),
 			'a batch imported from Files reverts like one that was uploaded',
 		);
 	}

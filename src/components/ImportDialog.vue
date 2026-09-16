@@ -58,7 +58,8 @@
 
 			<label class="territorio-import__field territorio-import__file">
 				<span>Archivo</span>
-				<input type="file"
+				<input ref="archivo"
+					type="file"
 					accept=".geojson,.json,.kml,.kmz,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,text/csv"
 					:disabled="working"
 					@change="pick">
@@ -275,6 +276,13 @@ export default {
 				(path) => {
 					this.path = path
 					this.file = null
+					// The native input keeps displaying the name it was given, so
+					// leaving it alone puts a filename on screen beside a hint
+					// naming a different file — and only the hint is true about
+					// what will be imported. `pick()` clears `path` the same way.
+					if (this.$refs.archivo) {
+						this.$refs.archivo.value = ''
+					}
 					this.error = ''
 					this.result = null
 				},

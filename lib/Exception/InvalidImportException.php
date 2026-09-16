@@ -6,6 +6,6 @@ namespace OCA\Territorio\Exception;
 
 use RuntimeException;
 
-/** Thrown when a file offered for import is not one this app can read. */
+/** Thrown when an import is refused with a sentence a person reads, rather than a stack trace. */
 class InvalidImportException extends RuntimeException {
 }

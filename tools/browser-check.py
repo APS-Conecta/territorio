@@ -2339,6 +2339,16 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
     function that can change under us. It is driven by the file's own name and a
     Choose/Elegir button, and it leaves a screenshot either way — if this fails
     on a selector rather than on the app, `files-picker.png` is what says so.
+
+    A KML is picked BEFORE the GeoJSON that gets imported, because the reader is
+    chosen from the name in both directions and the only place that can be seen
+    is the browser: `chosenName` reads the suffix off the PATH when one is
+    chosen and off the uploaded File when one is not, and nothing else in the
+    repo loads a component. #103 added the lossiness notice precisely so a
+    person is warned before importing, and a file reached through Files must
+    warn them the same way. The same pass checks that choosing from Files clears
+    the upload control — otherwise the control names one file while the hint
+    names another, and only the hint is true.
     """
     name = f"Plaza de Archivos {RUN}"
     lat, lon = round(-33.47 - NUDGE / 200, 4), round(-70.47 - NUDGE / 200, 4)
@@ -2356,20 +2366,26 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
     # Into the user's own Files tree, over WebDAV, with the session this browser
     # already has. Not through the app: the criterion is that a file somebody
     # else put there imports, so nothing this app wrote may be involved.
-    written = page.evaluate(
-        """async ([path, body]) => {
-            const response = await fetch(`/remote.php/dav/files/admin/${path}`, {
-                method: 'PUT',
-                headers: { requesttoken: window.OC.requestToken },
-                body,
-            })
-            return response.status
-        }""",
-        [filename, geojson],
-    )
-    if written not in (201, 204):
-        failures.append(f"could not put {filename!r} into Files over WebDAV: HTTP {written}")
-        return
+    kml_name = f"catastro-{RUN}.kml"
+
+    def into_files(path, body):
+        return page.evaluate(
+            """async ([path, body]) => {
+                const response = await fetch(`/remote.php/dav/files/admin/${path}`, {
+                    method: 'PUT',
+                    headers: { requesttoken: window.OC.requestToken },
+                    body,
+                })
+                return response.status
+            }""",
+            [path, body],
+        )
+
+    for path, body in ((filename, geojson), (kml_name, '<?xml version="1.0"?><kml/>')):
+        written = into_files(path, body)
+        if written not in (201, 204):
+            failures.append(f"could not put {path!r} into Files over WebDAV: HTTP {written}")
+            return
 
     closer = page.get_by_role("dialog").get_by_role("button", name="Close")
     if closer.count() != 0:
@@ -2379,27 +2395,62 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
     page.get_by_role("button", name="Importar / deshacer").click()
     page.wait_for_timeout(600)
     page.get_by_label("Conjunto de datos").fill(f"archivos-{RUN}")
-    page.get_by_role("button", name="Desde archivos de Nextcloud").click()
 
-    # The picker is core's own dialog, opened on top of this app's.
-    picker = page.get_by_role("dialog").last
-    try:
-        picker.get_by_text(filename, exact=False).first.wait_for(timeout=20_000)
-    except PlaywrightTimeout:
+    # An upload chosen first, so that picking from Files has something stale to
+    # clear. Without it the next assertion would pass on an input nobody filled.
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"subido-{RUN}.geojson",
+        "mimeType": "application/geo+json",
+        "buffer": b'{"type":"FeatureCollection","features":[]}',
+    })
+    page.wait_for_timeout(400)
+    if page.locator('input[type="file"]').evaluate("input => input.files.length") != 1:
+        failures.append("the upload control did not take the file this check gave it (#104)")
+
+    def choose_from_files(wanted):
+        """Open core's picker and choose `wanted`; False if the picker is what moved."""
+        page.get_by_role("button", name="Desde archivos de Nextcloud").click()
+
+        # The picker is core's own dialog, opened on top of this app's.
+        picker = page.get_by_role("dialog").last
+        try:
+            picker.get_by_text(wanted, exact=False).first.wait_for(timeout=20_000)
+        except PlaywrightTimeout:
+            page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
+            failures.append(
+                f"the Nextcloud file picker never listed {wanted!r} — see files-picker.png "
+                "(the button opened nothing, or core's picker moved)",
+            )
+            return False
+
+        picker.get_by_text(wanted, exact=False).first.click()
         page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
-        failures.append(
-            f"the Nextcloud file picker never listed {filename!r} — see files-picker.png "
-            "(the button opened nothing, or core's picker moved)",
-        )
-        return
+        choose = picker.get_by_role("button", name=re.compile(r"^(choose|elegir|select)", re.I))
+        if choose.count() == 0:
+            failures.append("core's file picker offered no Choose button — see files-picker.png")
+            return False
+        choose.first.click()
+        page.wait_for_timeout(600)
+        return True
 
-    picker.get_by_text(filename, exact=False).first.click()
-    page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
-    choose = picker.get_by_role("button", name=re.compile(r"^(choose|elegir|select)", re.I))
-    if choose.count() == 0:
-        failures.append("core's file picker offered no Choose button — see files-picker.png")
+    # The KML first: the reader is chosen from the name, and a person reaching a
+    # KML through Files must get the same warning an uploaded KML raises (#103).
+    if not choose_from_files(kml_name):
         return
-    choose.first.click()
+    if page.get_by_text("No trae teléfono").count() == 0:
+        failures.append("a KML chosen from Files said nothing about what it cannot carry (#104)")
+    if page.locator('input[type="file"]').evaluate("input => input.files.length") != 0:
+        failures.append(
+            "choosing from Files left the upload control naming another file, so the "
+            "control and the hint below it disagree (#104)",
+        )
+
+    # Then the GeoJSON that is actually imported. The warning going away is the
+    # other half of the same branch: the suffix is read off the new path.
+    if not choose_from_files(filename):
+        return
+    if page.get_by_text("No trae teléfono").count() != 0:
+        failures.append("a GeoJSON chosen from Files still raised the KML warning (#104)")
 
     # The dialog says which file it is about to import, and says it as a PATH:
     # that sentence is the difference between a second upload and this slice.
@@ -2449,13 +2500,15 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
     # The file itself is not left in Files: it is not a Registry record and
     # nothing here retires it, so it would pile up one per run.
     page.evaluate(
-        """async (path) => {
-            await fetch(`/remote.php/dav/files/admin/${path}`, {
-                method: 'DELETE',
-                headers: { requesttoken: window.OC.requestToken },
-            })
+        """async (paths) => {
+            for (const path of paths) {
+                await fetch(`/remote.php/dav/files/admin/${path}`, {
+                    method: 'DELETE',
+                    headers: { requesttoken: window.OC.requestToken },
+                })
+            }
         }""",
-        filename,
+        [filename, kml_name],
     )
 
 

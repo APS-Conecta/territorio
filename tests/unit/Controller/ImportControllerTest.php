@@ -102,13 +102,17 @@ final class ImportControllerTest extends TestCase {
 	}
 
 	/**
-	 * A file shared WITH the caller is importable because it is mounted in their
-	 * own user folder — by design (the share is what put it there), not by a
-	 * missing check. This pins that the path is resolved through that folder and
-	 * nowhere else: resolving from the root, or from a path the client sends
-	 * whole, is what would make somebody else's file reachable.
+	 * Resolution goes through the caller's own user folder and nowhere else:
+	 * resolving from the root, or from a path the client sends whole, is what
+	 * would make somebody else's file reachable.
+	 *
+	 * That is also the reason a file shared WITH the caller is importable — a
+	 * share is mounted in their user folder, so it is reachable by design rather
+	 * than by a missing check. This test does NOT exercise a share: the harness
+	 * has one account. The name says what is measured so a green tick is not
+	 * read as evidence of the share.
 	 */
-	public function testASharedFileIsReachedThroughTheCallersOwnFolder(): void {
+	public function testAPathIsResolvedOnlyThroughTheCallersOwnFolder(): void {
 		$this->params = ['dataset' => 'laflorida', 'path' => '/Compartido/catastro.geojson'];
 		$this->root->expects(self::once())->method('getUserFolder')->with(self::UID);
 		$this->home->method('get')->willReturn($this->node(512, 'catastro.geojson', '{}'));

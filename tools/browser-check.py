@@ -1902,6 +1902,18 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
         f"{name};Salud;CESFAM;{lat};{lon};Avenida Uno 123, local 4;229112233\n"
     ).replace(".", ",")
 
+    # The KML check runs immediately before this one and leaves the dialog OPEN:
+    # measured, not assumed — after `set_input_files` its closing Escape does not
+    # reach the NcDialog, and the picture that check saves afterwards is a
+    # picture of an open dialog. Nothing noticed because it used to be the last
+    # thing to run before `browser.close()`. So this check closes what it finds
+    # and opens its own: the first assertion below is about a dialog with no file
+    # chosen, and a dialog still holding `mymaps.kml` would make it a lie.
+    closer = page.get_by_role("dialog").get_by_role("button", name="Close")
+    if closer.count() != 0:
+        closer.first.click()
+        page.wait_for_timeout(600)
+
     page.get_by_role("button", name="Importar / deshacer").click()
     page.wait_for_timeout(600)
 

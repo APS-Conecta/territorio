@@ -18,6 +18,7 @@ No contiene información de pacientes.
     <category>tools</category>
     <dependencies>
         <php min-version="8.1"/>
+        <lib>zip</lib>
         <nextcloud min-version="34" max-version="34"/>
     </dependencies>
     <navigations>

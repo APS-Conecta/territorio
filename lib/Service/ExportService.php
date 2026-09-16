@@ -38,8 +38,6 @@ class ExportService {
 	/** What each format is called, what it writes, and what it is served as. */
 	private const FORMATS = ['geojson', 'csv', 'kml', 'kmz'];
 
-	/** The formats that are a KML, whatever their extension. */
-	private const KML_FAMILY = ['kml', 'kmz'];
 
 	private const MIME = [
 		'geojson' => 'application/geo+json',
@@ -86,7 +84,7 @@ class ExportService {
 		// A KMZ is that same KML in an archive, so it is refused by the same rule:
 		// letting it through would prompt for a password AND write an entry to the
 		// export log claiming contact data left the building when none did.
-		if (in_array($format, self::KML_FAMILY, true) && $contacts) {
+		if (($format === 'kml' || $format === 'kmz') && $contacts) {
 			throw new InvalidFeatureException(
 				'Un archivo KML no lleva datos de contacto; expórtelo sin marcarlos.',
 			);
@@ -124,6 +122,15 @@ class ExportService {
 	 * the temporary directory and read back, and the `finally` is the point of
 	 * the shape — the KML is rendered INTO the open archive, so a writer that
 	 * throws halfway leaves a file behind unless something removes it.
+	 *
+	 * The three failures below are the server's, not the caller's, and they are
+	 * still `InvalidFeatureException` — which `ExportController` answers with a
+	 * 422. Said out loud rather than left to be discovered: a full disk is not a
+	 * malformed request, so a monitor counting 422s will file these under the
+	 * caller's fault. The trade is deliberate — the alternative is letting a
+	 * `RuntimeException` reach the framework, which answers 500 and loses the
+	 * Spanish sentence the person is shown. Worth revisiting if this app ever
+	 * grows a way to say "our fault" in the person's language.
 	 *
 	 * @param list<array<string, mixed>> $rows
 	 */

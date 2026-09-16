@@ -41,7 +41,18 @@ final class ExportServiceTest extends TestCase {
 		$this->log = $this->createMock(ExportRecordMapper::class);
 	}
 
-	/** Temporary files this process can see right now, so a leak is a new one. */
+	/**
+	 * Temporary files this process can see right now, so a leak is a NEW one.
+	 *
+	 * The glob is over the SHARED temporary directory, so no assertion over it may
+	 * be a count: a second `make test` in a sibling worktree, or a stray left by a
+	 * run that crashed, would make this suite red for something it did not do.
+	 * Where the test can name the archive it created — the failure path, which
+	 * snapshots from inside the write — it asserts about that path alone and is
+	 * immune to anything else in `/tmp`. The success path has no such injection
+	 * point, so it compares sets and would still notice a foreign file created
+	 * while it ran; that is the residue, and it is smaller than a count.
+	 */
 	private static function strays(): array {
 		return glob(sys_get_temp_dir() . '/territorio-kmz*') ?: [];
 	}
@@ -182,12 +193,16 @@ final class ExportServiceTest extends TestCase {
 			self::assertSame('no se pudo escribir', $failure->getMessage());
 		}
 
-		self::assertCount(
-			count($before) + 1,
-			$duringTheFailure,
+		$archive = array_diff($duringTheFailure, $before);
+		self::assertNotEmpty(
+			$archive,
 			'the failure did not happen with the temporary archive open, so this proves nothing',
 		);
-		self::assertSame($before, self::strays(), 'the temporary archive was left behind');
+		self::assertSame(
+			[],
+			array_values(array_filter($archive, 'file_exists')),
+			'the temporary archive was left behind',
+		);
 	}
 
 	/** And it is gone after a write that worked, too. */
@@ -196,6 +211,6 @@ final class ExportServiceTest extends TestCase {
 
 		$this->service()->export([1], 'kmz', false);
 
-		self::assertSame($before, self::strays(), 'the temporary archive was left behind');
+		self::assertEmpty(array_diff(self::strays(), $before), 'the temporary archive was left behind');
 	}
 }

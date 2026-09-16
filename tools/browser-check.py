@@ -1874,7 +1874,6 @@ def search_narrows_everything(page, failures):
         failures.append(f"clearing did not restore the list ({rows.count()} vs {before_rows})")
 
 
-
 def _folded(value):
     """Lower-cased and stripped of accents, exactly as `filters.js` folds.
 
@@ -2057,8 +2056,7 @@ def the_indice_reads_the_registry(page, failures):
 
     # Capas narrows the table, the Datos list and the Análisis counts together —
     # the criterion, and the reason there is no per-column filter here.
-    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
-    page.wait_for_timeout(500)
+    toggle_division(page, "Sector")
     narrowed = len(_indice_table(page)["rows"])
     if narrowed >= len(names):
         failures.append(
@@ -2076,8 +2074,7 @@ def the_indice_reads_the_registry(page, failures):
     if counted != narrowed:
         failures.append(f"Análisis counted {counted} while the Índice drew {narrowed}")
 
-    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
-    page.wait_for_timeout(500)
+    toggle_division(page, "Sector")
 
     # Clicking a row opens that record. Scoped to the sidebar's own form: the
     # Índice draws a «Nombre» header and a «Nombre» checkbox, and an unscoped
@@ -2104,6 +2101,7 @@ def the_indice_reads_the_registry(page, failures):
     box.fill("")
     page.wait_for_timeout(400)
     _pane(page, "Mapa")
+
 
 def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
     """#101: a spreadsheet goes in through the dialog, and the records are there.

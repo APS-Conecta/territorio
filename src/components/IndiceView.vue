@@ -44,8 +44,13 @@
 			browser already draws rows, columns and a header that a screen reader
 			announces as one. `aria-sort` on the header cell is how the sort is
 			announced — it is the platform's own attribute for exactly this.
+
+			Drawn only while a column is on: unticking all ten would otherwise leave
+			a header with no cells and one blank row per record — `rows.length` is
+			still what it was, so the empty state above does not catch it. The
+			checkbox row stays, which is the way back.
 		-->
-		<table v-else class="territorio-indice__table" data-testid="indice-table">
+		<table v-else-if="shown.length > 0" class="territorio-indice__table" data-testid="indice-table">
 			<thead>
 				<tr>
 					<th v-for="column in shown"
@@ -72,14 +77,16 @@
 					:class="{ 'territorio-indice__row--selected': row.id === selectedId }"
 					@click="$emit('select', row.id)">
 					<!--
-						The first cell carries the button, so the row is openable from
-						the keyboard too and a screen reader announces the record by its
-						name rather than as "row 41". The click on the <tr> stays,
-						because a person reading across a row clicks wherever they are.
+						The first SHOWN cell carries the button, so the row is openable
+						from the keyboard too. Not the «Nombre» cell: hiding Nombre is a
+						first-class feature of this pane, and binding the only focusable
+						control to a column a person can take away is how the table
+						becomes mouse-only. The click on the <tr> stays, because a
+						person reading across a row clicks wherever they are.
 					-->
 					<td v-for="column in shown" :key="column.key" :data-key="column.key">
-						<button v-if="column.key === 'name'" type="button" class="territorio-indice__open">
-							{{ row.cells.name }}
+						<button v-if="column.key === shown[0].key" type="button" class="territorio-indice__open">
+							{{ row.cells[column.key] }}
 						</button>
 						<template v-else>{{ row.cells[column.key] }}</template>
 					</td>

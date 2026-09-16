@@ -30,18 +30,20 @@ use OCP\Server;
  * the row it just wrote proves the database works, not that the app does.
  *
  * **Every colour assertion here is relative to the pool the instance is already
- * in** (#134). A long-lived instance carries Categories this suite cannot remove
- * — the browser gate leaves one per run, each holding a record, and ADR-0016
- * refuses a removal while a record is filed under it, retired ones included. So
- * the spares are not a fixture: they are whatever is left. Four tests used to
- * open by asserting a spare was free, and once the eight were held they failed
- * for a reason that had nothing to do with the app.
+ * in** (#134). A long-lived instance carries Categories that are not this
+ * suite's to remove — the browser gate leaves one per run, each holding a
+ * record, and ADR-0016 refuses a removal until somebody reclassifies it. So the
+ * spares are not a fixture: they are whatever is left. Four tests used to open
+ * by asserting a spare was free, and once the eight were held they failed for a
+ * reason that had nothing to do with the app.
  *
  * Nothing re-reads those leftovers except the surfaces that read any Category:
  * the Capas panel, the picker and Análisis show them as ordinary clinic
  * Categories on the neutral, which is what ADR-0017 says a Category past the
  * ceiling looks like. `make lint`'s ramp check reads the SEED, never the
- * instance, so they cannot reach it. They are left standing on purpose.
+ * instance, so they cannot reach it. Clearing them by hand is possible and does
+ * not help for long: the gate makes another on the next run, and a suite that
+ * needed the pool clean would be red again within the week.
  */
 final class CategoryCrudTest extends IntegrationTestCase {
 	/** The Category this test renames. Not one another test paints or counts. */
@@ -211,7 +213,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * long-lived instance four of them failed for a reason that had nothing to
 	 * do with the app: the browser gate leaves one Category per run holding a
 	 * spare, and each of those files a record, so ADR-0016 refuses to take it
-	 * away and the colour never comes back.
+	 * away until somebody reclassifies the record, and the colour stays out.
 	 *
 	 * Derived here from `EnsureSeedData::SPARES` and the served tree rather than
 	 * asked of the service: an oracle that called the code under test would

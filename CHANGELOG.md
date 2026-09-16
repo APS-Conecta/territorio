@@ -3,6 +3,38 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.71.0] — unreleased
+
+A file the clinic already has in Nextcloud Files need not be uploaded a second time.
+
+### Added
+
+- **A file already in Nextcloud Files can be imported without being uploaded again** (#104).
+  «Desde archivos de Nextcloud» in the import dialog opens the platform's own file picker; the
+  chosen file is read from the caller's own tree and handed to the very call an upload makes. So
+  the suffix picks the reader — a KML in Files imports as a KML — and the run is one revertible
+  ImportBatch like any other (ADR-0009). This does **not** make a Files folder a source of truth:
+  the Registry is the single shared body of records and a local edit still outranks anything a
+  re-import carries (ADR-0003). It is «re-importar el mismo archivo sin volver a subirlo».
+
+  **No new service and no new dependency.** The branch is two calls in `ImportController`, because
+  a service with one caller is an interface with one implementation. In the browser it is
+  `OC.dialogs.filepicker`, which Nextcloud 34 still ships: `@nextcloud/dialogs` is not installed,
+  and the `NcFilePicker` that is wraps an `<input type="file">` and hands back browser `File`
+  objects — which is the upload again, wearing a different coat.
+
+  **The request carries a path, and the caller's own user folder is the whole access rule.** A file
+  somebody shared with the caller is mounted there, so it is importable by design rather than by a
+  missing check; a path that is not theirs does not resolve. Every file-system exception on that
+  road is caught and answered as the Spanish 422 the dialog knows how to show — nothing in this app
+  had ever touched Files, so each of those was a 500 until this slice, including the plain case of
+  a path that is no longer there.
+
+  **The 8 MB cap applies here too, and is checked before the bytes are read.** It was enforced only
+  on the multipart upload, and `getContent()` loads the node whole into PHP's memory — so the size
+  is read off the node first, with the same constant and the same sentence an oversized upload
+  gets.
+
 ## [0.70.0] — unreleased
 
 The Registry becomes a table: a fourth pane that reads down a column.
@@ -43,8 +75,7 @@ The Registry becomes a table: a fourth pane that reads down a column.
 
 ## [0.69.0] — unreleased
 
-An import can be a KMZ, which is the KML this app already reads, in an archive — and a file the
-clinic already has in Nextcloud Files need not be uploaded a second time.
+An import can be a KMZ, which is the KML this app already reads, in an archive.
 
 ### Added
 
@@ -80,32 +111,6 @@ clinic already has in Nextcloud Files need not be uploaded a second time.
   no `.kml` in it are both answered in Spanish, before a Dataset is created and before a single row
   is written. Without the first of those the person got `ValueError: Invalid or uninitialized Zip
   object` through a 500.
-
-- **A file already in Nextcloud Files can be imported without being uploaded again** (#104).
-  «Desde archivos de Nextcloud» in the import dialog opens the platform's own file picker; the
-  chosen file is read from the caller's own tree and handed to the very call an upload makes. So
-  the suffix picks the reader — a KML in Files imports as a KML — and the run is one revertible
-  ImportBatch like any other (ADR-0009). This does **not** make a Files folder a source of truth:
-  the Registry is the single shared body of records and a local edit still outranks anything a
-  re-import carries (ADR-0003). It is «re-importar el mismo archivo sin volver a subirlo».
-
-  **No new service and no new dependency.** The branch is two calls in `ImportController`, because
-  a service with one caller is an interface with one implementation. In the browser it is
-  `OC.dialogs.filepicker`, which Nextcloud 34 still ships: `@nextcloud/dialogs` is not installed,
-  and the `NcFilePicker` that is wraps an `<input type="file">` and hands back browser `File`
-  objects — which is the upload again, wearing a different coat.
-
-  **The request carries a path, and the caller's own user folder is the whole access rule.** A file
-  somebody shared with the caller is mounted there, so it is importable by design rather than by a
-  missing check; a path that is not theirs does not resolve. Every file-system exception on that
-  road is caught and answered as the Spanish 422 the dialog knows how to show — nothing in this app
-  had ever touched Files, so each of those was a 500 until this slice, including the plain case of
-  a path that is no longer there.
-
-  **The 8 MB cap applies here too, and is checked before the bytes are read.** It was enforced only
-  on the multipart upload, and `getContent()` loads the node whole into PHP's memory — so the size
-  is read off the node first, with the same constant and the same sentence an oversized upload
-  gets.
 
 ## [0.68.0] — unreleased
 

@@ -1980,7 +1980,7 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
             f"the {cesfam['id']!r} «Salud · CESFAM» the «Salud»/«CESFAM» cells named — a person "
             "typing what the app shows them lands in Sin clasificar (#101)",
         )
-def a_kmz_imports_like_the_kml_inside_it(page, failures):
+def a_kmz_imports_like_the_kml_inside_it(page, errors, failures):
     """#103: the dialog takes a KMZ, warns as it does for a KML, and imports it.
 
     The PHP tests pin the unzipping — the first `.kml` entry whatever it is
@@ -2064,6 +2064,7 @@ def a_kmz_imports_like_the_kml_inside_it(page, failures):
 
     # And a `.kmz` that is not an archive is answered with the sentence, not with
     # a stack trace or a silent nothing. Same dialog, still open.
+    before = len(errors)
     page.locator('input[type="file"]').set_input_files({
         "name": f"roto-{RUN}.kmz",
         "mimeType": "application/vnd.google-earth.kmz",
@@ -2074,6 +2075,12 @@ def a_kmz_imports_like_the_kml_inside_it(page, failures):
     page.wait_for_timeout(2000)
     if page.get_by_text("no es un KMZ").count() == 0:
         failures.append("a .kmz that is not an archive was not refused in words")
+
+    # The refusal IS an HTTP 422 and the browser logs every failed response as a
+    # console error, which main()'s run-wide gate would then report. Exactly the
+    # entries this refusal added are dropped, and only the 422 among them — the
+    # same scoping the Capas refusals use.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
 
     page.keyboard.press("Escape")
     page.wait_for_timeout(400)
@@ -5844,7 +5851,7 @@ def main():
         kml_says_what_it_cannot_carry(page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
         a_csv_imports_and_says_what_does_not_come_back_in(page, failures)
-        a_kmz_imports_like_the_kml_inside_it(page, failures)
+        a_kmz_imports_like_the_kml_inside_it(page, errors, failures)
         occ_import_names_the_formats_it_takes(failures)
         browser.close()
 

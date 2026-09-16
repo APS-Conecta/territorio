@@ -3,6 +3,45 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.69.0] — unreleased
+
+An import can be a KMZ, which is the KML this app already reads, in an archive.
+
+### Added
+
+- **KMZ joins the import formats** (#103). The archive people are actually sent: Google Earth
+  exports one by default and MyMaps offers it beside the KML. It adds no reader — the archive is
+  unzipped and the KML inside goes to `KmlReader`, so the batch, the matching, ADR-0003's override
+  rule and ADR-0009's revert are the one implementation they already were, and a KMZ import is a
+  KML import in every way that can be observed afterwards.
+
+  **The document is the FIRST `.kml` entry, not `doc.kml`.** That name is Google Earth's
+  convention; the format's rule is the position, and QGIS, ArcGIS and several exporters write
+  `<capa>.kml`. `getFromName('doc.kml')` returns false for those, so asking by name would have told
+  somebody their perfectly valid KMZ held no map — blaming the file for our assumption, which is
+  the same mistake the KML reader made once about namespaces. An icon or an overlay image sitting
+  ahead of the document is ordinary, so "the first entry" and "the first `.kml` entry" are
+  different rules and only the second is the format's.
+
+  **No dependency, and a temporary file that is the call's own.** `ZipArchive` is PHP's own and is
+  in the runtime image already — #102 put it there for the export. It cannot read from memory,
+  though: `open()` takes a path, and what the ingestion path carries is a string, because both the
+  browser upload and `occ territorio:import` read the bytes before calling the service. So the
+  bytes go through the temporary directory, and the `finally` — not the end of the request — is
+  what removes that file on the refused path as well as the imported one. A refused import is
+  precisely where files would otherwise pile up, because that is the path nobody watches.
+
+  **The lossiness notice covers the KMZ, which was the part worth getting right.** The import
+  dialog keys its warning on a KML-family rule now, the shape #102 gave the export dialog. A KMZ
+  carries exactly what the KML inside it carries — no phone, no email, no contact, no hours — so a
+  notice that appeared for one and not the other would have told a person that zipping their MyMaps
+  export brings their telephone numbers back.
+
+  **Refusals are sentences, not stack traces.** A `.kmz` that is not an archive and an archive with
+  no `.kml` in it are both answered in Spanish, before a Dataset is created and before a single row
+  is written. Without the first of those the person got `ValueError: Invalid or uninitialized Zip
+  object` through a 500.
+
 ## [0.68.0] — unreleased
 
 A spreadsheet is a file this app can read: CSV joins GeoJSON and KML on the way in.

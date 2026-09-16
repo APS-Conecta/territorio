@@ -5067,8 +5067,11 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
     the panel, in the Subcategoría picker and in Análisis, with nothing reloaded
     — and the one about the neutral not reading as a failure, which is a question
     about which note card it lands in. The integration suite proves the write,
-    the derived slug, the unique index and the walk down the spare list against
-    the real schema; none of that says a person can see any of it.
+    the derived slug and the unique index against the real schema; none of that
+    says a person can see any of it. The walk down the spare list moved to
+    `TaxonomyColourTest` in #134: this check leaves a Category behind on every
+    run — see the note below — so the instance holds every spare before long, and
+    on that instance the integration suite can no longer see a walk to measure.
 
     What was written is asserted against the Registry per SKILL.md § 5, through
     `served_taxonomy()` — the read a second browser does. The colour is pinned to

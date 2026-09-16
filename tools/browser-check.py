@@ -1942,6 +1942,13 @@ def the_indice_reads_the_registry(page, failures):
     """
     box = page.locator(SEARCH)
 
+    # Whatever ran before this may have left a record open, and the check below
+    # that clicking a row OPENS one would then be true before it clicked: the
+    # sidebar is already there, holding somebody else's name.
+    if page.locator(".app-sidebar__close").count() > 0:
+        page.locator(".app-sidebar__close").first.click()
+        page.wait_for_timeout(300)
+
     # This run's records and nothing else, so what follows is exact rather than
     # "whatever the instance has accumulated".
     box.fill(RUN)

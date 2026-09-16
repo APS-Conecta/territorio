@@ -4,7 +4,10 @@
 # Nextcloud. Anything that must touch IAppConfig, QBMapper or occ runs against
 # compose.dev.yaml instead.
 FROM php:8.3-cli
-# zip is composer's, not ours — without it composer cannot unpack a dist archive.
+# zip is ours as well as composer's: composer cannot unpack a dist archive without
+# it, and since #102 `ExportService::kmz()` builds the archive with `ZipArchive`,
+# so trimming it here would take the KMZ cases out of `make test` rather than
+# slow a download down.
 #
 # intl is ours, and it is here so that this image can be wrong about production
 # in one fewer way. Nextcloud requires intl, DuplicateFinder folds accents with

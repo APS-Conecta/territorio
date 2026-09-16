@@ -53,6 +53,9 @@
 					<NcButton :pressed="pane === 'mapa'" @click="pane = 'mapa'">
 						Mapa
 					</NcButton>
+					<NcButton :pressed="pane === 'indice'" @click="pane = 'indice'">
+						Índice
+					</NcButton>
 					<NcButton :pressed="pane === 'analisis'" @click="pane = 'analisis'">
 						Análisis
 					</NcButton>
@@ -92,6 +95,29 @@
 					@map-click="placeDraft"
 					@draw="startSector"
 					@reshape="reshapeDraft" />
+
+				<!--
+					v-if, like Análisis and the queue beside it, and NOT the map's
+					v-show. The Índice's column checkboxes are labelled «Nombre»,
+					«Teléfono», «Correo» — the record form's own words — so a pane left
+					mounted behind the map would put two controls with one accessible
+					name in the page at once, and a screen reader would read the record's
+					name field and a column switch as the same thing. What survives the
+					rebuild is `indice` below, which is where it belongs anyway.
+
+					The filtered LIVE Registry, like the map: `listed` answers with the
+					retired list alone once that toggle is on (ADR-0005), and a table of
+					retired records would disagree with both the map and what Exportar
+					would carry.
+				-->
+				<IndiceView v-if="pane === 'indice'"
+					v-model:view="indice"
+					:features="liveFiltered"
+					:taxonomy="taxonomy"
+					:boundaries="boundaries"
+					:selected-id="selectedId"
+					:filtered="isFiltered(filter)"
+					@select="select" />
 
 				<AnalisisView v-if="pane === 'analisis'"
 					:counts="counts"
@@ -197,6 +223,7 @@ import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import IndiceView from './components/IndiceView.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { suggestions, toggleGroup, togglePick } from './boundaries.js'
 import { groups, partsFrom, readable, sectorFields, withNote, without } from './limit.js'
@@ -250,6 +277,7 @@ export default {
 		ExportDialog,
 		FeatureList,
 		ImportDialog,
+		IndiceView,
 		NcAppContent,
 		NcAppSidebar,
 		NcButton,
@@ -272,6 +300,13 @@ export default {
 			// View is the glossary's word for the whole personal on-screen state —
 			// of which this is one part, alongside the filter above.
 			pane: 'mapa',
+			// The Índice's own View — which columns it draws and in what order
+			// (#105). Here and not in the component for the reason the filter is
+			// here: the View is personal (CONTEXT.md) and lives in this browser, and
+			// the pane itself is rebuilt on every switch. HIDDEN columns rather than
+			// shown ones, filters.js's rule: a column added to COLUMNS is absent
+			// from the set, so it appears on its own.
+			indice: { hidden: new Set(), key: 'name', ascending: true },
 			// Pairs of records that might be one place (issue #16). Ids only: both
 			// sides of a pending pair are visible, so `features` already holds them
 			// and a second copy could only disagree with the first.

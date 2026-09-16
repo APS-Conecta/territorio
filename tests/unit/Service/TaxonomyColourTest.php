@@ -64,9 +64,10 @@ final class TaxonomyColourTest extends TestCase {
 
 		// A fake rather than a stub: `nextColour()` reads the Categories that
 		// exist AFTER the previous insert, which is the whole of ADR-0017's
-		// derivation — a `willReturn()` frozen at setUp would answer the second
-		// add with the pool the first one saw, and every "two in a row" assertion
-		// below would pass against an implementation holding a counter.
+		// derivation. Frozen to the pool the first call saw, the two-in-a-row
+		// test below goes red against the CORRECT implementation — it hands out
+		// the first spare twice — which was watched, and is what "the pool is an
+		// input" has to mean here.
 		$this->categories->method('findAll')->willReturnCallback(fn (): array => $this->live);
 		$this->categories->method('insert')->willReturnCallback(
 			function (Category $category): Category {
@@ -137,7 +138,13 @@ final class TaxonomyColourTest extends TestCase {
 	 * The criterion a person states as "they do not all come out the same
 	 * colour", pinned to the two exact spares rather than to "different": an
 	 * implementation that handed out the first spare twice fails on the second
-	 * value, and one holding a counter fails on the first.
+	 * value.
+	 *
+	 * What it does NOT separate is the derivation from a counter: while nothing
+	 * has been handed back, `SPARES[count($taken) - 1]` answers with these same
+	 * two spares and passes here. Watched, not predicted — that implementation
+	 * was injected and this test stayed green. The hand-back below is the one
+	 * that went red, and it is the only one that did.
 	 */
 	public function testTwoCategoriesAddedInARowTakeTheFirstTwoSpares(): void {
 		$this->holding(self::SEEDED);
@@ -164,10 +171,15 @@ final class TaxonomyColourTest extends TestCase {
 	 * next one. Two Categories sharing the neutral is not an error — hue only
 	 * groups Categories and the glyph identifies them (ADR-0013).
 	 *
-	 * The second add is what makes this more than a restatement of the first: an
-	 * implementation walking a counter rather than the live colours would hand
-	 * out a spare somebody already holds here, which is the bug the drained
-	 * instance can no longer see for itself.
+	 * The second add is what makes this more than a restatement of the first, and
+	 * what it catches is narrower than "a counter": an implementation that
+	 * answers the neutral once and then resumes handing out spares gives the
+	 * second Category one somebody already holds. Injected and watched going red
+	 * on this line, and on this line only.
+	 *
+	 * A counter is NOT caught here: past the end of the list a counter answers
+	 * the neutral too, so both adds agree with the derivation. The hand-back
+	 * below is where that one shows.
 	 */
 	public function testWithEverySpareHeldTheCategoryIsStillCreatedAndTakesTheNeutral(): void {
 		$this->holding(self::SEEDED, ...EnsureSeedData::SPARES);

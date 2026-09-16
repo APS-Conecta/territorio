@@ -13,8 +13,8 @@
 			</NcNoteCard>
 
 			<p v-else class="territorio-import__hint">
-				GeoJSON (un FeatureCollection), KML o CSV. Se revisa entero antes de escribir
-				nada: si una fila es inválida, no se importa ninguna.
+				GeoJSON (un FeatureCollection), KML, KMZ o CSV. Se revisa entero antes de
+				escribir nada: si una fila es inválida, no se importa ninguna.
 			</p>
 
 			<!--
@@ -23,9 +23,10 @@
 				so a person who expects their phone numbers to arrive needs to know
 				that while they can still choose a different file.
 			-->
-			<NcNoteCard v-if="isKml" type="warning" class="territorio-import__field">
-				KML trae menos que GeoJSON. De este archivo se importan la geometría, el
-				nombre, la carpeta (como categoría) y la descripción (como notas).
+			<NcNoteCard v-if="isKmlFamily" type="warning" class="territorio-import__field">
+				KML y KMZ traen menos que GeoJSON. De este archivo se importan la
+				geometría, el nombre, la carpeta (como categoría) y la descripción
+				(como notas).
 				<strong>No trae teléfono, correo, persona de contacto, horario ni fuente</strong>:
 				esos campos quedan vacíos y se pueden completar después, registro a registro.
 			</NcNoteCard>
@@ -58,7 +59,7 @@
 			<label class="territorio-import__field territorio-import__file">
 				<span>Archivo</span>
 				<input type="file"
-					accept=".geojson,.json,.kml,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,text/csv"
+					accept=".geojson,.json,.kml,.kmz,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,text/csv"
 					:disabled="working"
 					@change="pick">
 			</label>
@@ -145,12 +146,20 @@ export default {
 		},
 
 		/**
-		 * Whether the chosen file is KML, which decides whether the lossiness
-		 * notice is shown. By extension, like the server: the same rule in both
-		 * places, so what the notice warns about is what the import will do.
+		 * Whether the chosen file is a KML or the same KML in an archive, which
+		 * decides whether the lossiness notice is shown. By extension, like the
+		 * server: the same rule in both places, so what the notice warns about is
+		 * what the import will do.
+		 *
+		 * A KMZ is unzipped and handed to the KML reader (#103), so it carries
+		 * exactly as little — a notice that appeared for one and not the other
+		 * would promise a person that zipping their MyMaps export brings their
+		 * telephone numbers back.
 		 */
-		isKml() {
-			return (this.file?.name ?? '').toLowerCase().trim().endsWith('.kml')
+		isKmlFamily() {
+			const name = (this.file?.name ?? '').toLowerCase().trim()
+
+			return name.endsWith('.kml') || name.endsWith('.kmz')
 		},
 
 		/** The same, for the spreadsheet a clinic sends (#101). */

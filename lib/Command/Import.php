@@ -13,7 +13,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * occ territorio:import <archivo.geojson|.kml|.csv> --dataset=<slug>
+ * occ territorio:import <archivo.geojson|.kml|.kmz|.csv> --dataset=<slug>
  *
  * The headless half of importing. The browser upload goes through the same
  * service, so the two cannot drift.
@@ -30,8 +30,12 @@ class Import extends Command {
 
 	protected function configure(): void {
 		$this->setName('territorio:import')
-			->setDescription('Importa un GeoJSON, KML o CSV a un conjunto de datos')
-			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson, .kml o .csv')
+			// The formats are named here because this line is the only place the
+			// command says what it takes, and a person reading `occ list` has
+			// nothing else to go on. A KMZ is a KML in an archive (#103), and the
+			// suffix is what picks the reader — in any case, as it always was.
+			->setDescription('Importa un GeoJSON, KML, KMZ o CSV a un conjunto de datos')
+			->addArgument('archivo', InputArgument::REQUIRED, 'Ruta al archivo .geojson, .kml, .kmz o .csv')
 			->addOption('dataset', null, InputOption::VALUE_REQUIRED, 'Slug del conjunto de datos')
 			->addOption('label', null, InputOption::VALUE_REQUIRED, 'Nombre visible del conjunto, si es nuevo')
 			// There is no logged-in user on the command line, so the batch would

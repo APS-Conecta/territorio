@@ -19,9 +19,10 @@ use OCA\Territorio\Migration\EnsureSeedData;
 /**
  * Brings a file into a Dataset, once or repeatedly.
  *
- * GeoJSON, KML or CSV — the format decides only which reader runs. All three
- * produce the same rows, so the batch, the matching, the local-override rule and
- * the revert are one implementation and cannot drift apart between them.
+ * GeoJSON, KML, KMZ or CSV — the format decides only which reader runs, and a
+ * KMZ is a KML in an archive, so there are three readers for four formats. All
+ * of them produce the same rows, so the batch, the matching, the local-override
+ * rule and the revert are one implementation and cannot drift apart between them.
  *
  * Three rules do most of the work here, and all three are ADRs rather than
  * preferences:
@@ -71,11 +72,11 @@ class ImportService {
 	 * arrived in (issue #8).
 	 *
 	 * FORMAT SELECTION is by filename suffix and is deliberately not a refusal:
-	 * `.kml` in any case is KML, `.csv` is a spreadsheet, and EVERYTHING ELSE —
-	 * including an unrecognised suffix and an empty filename — is read as GeoJSON.
-	 * A caller that cannot name its input still gets a parse error from the reader
-	 * rather than a rejection here, which is why `occ` can pipe a file with any
-	 * name.
+	 * `.kml` in any case is KML, `.kmz` is that KML in an archive, `.csv` is a
+	 * spreadsheet, and EVERYTHING ELSE — including an unrecognised suffix and an
+	 * empty filename — is read as GeoJSON. A caller that cannot name its input
+	 * still gets a parse error from the reader rather than a rejection here,
+	 * which is why `occ` can pipe a file with any name.
 	 *
 	 * ORDER, because a failure part-way leaves different debris at each step:
 	 *   1. the comuna claim is refused first, before a single row is written
@@ -117,6 +118,7 @@ class ImportService {
 		return $this->importRows(
 			match (self::suffixOf($filename)) {
 				'.kml' => $this->kml->read($contents, $datasetSlug),
+				'.kmz' => $this->kml->readArchive($contents, $datasetSlug),
 				'.csv' => $this->csv->read($contents, $datasetSlug),
 				default => $this->reader->read($contents, $datasetSlug),
 			},

@@ -227,6 +227,13 @@ export function indexSubcategories(taxonomy) {
 		category.subcategories.forEach((subcategory) => {
 			index.set(subcategory.id, {
 				label: fullLabel(category, subcategory),
+				// The two halves as well as the composed name (#105). The Índice
+				// draws Categoría and Subcategoría as separate columns, and
+				// splitting "Category · Subcategory" back apart on the separator
+				// would break on the first label containing one. They are read off
+				// the taxonomy here so the index stays the one reading of it.
+				categoryLabel: category.label,
+				subcategoryLabel: subcategory.label,
 				colour: category.color,
 				// `?? null`, because a browser holding initial state from before
 				// the column existed has no `glyph` key — and `undefined` would

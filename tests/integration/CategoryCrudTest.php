@@ -28,6 +28,20 @@ use OCP\Server;
  * here. `RampRepaintTest` is the precedent, including reading back through
  * `TaxonomyService::tree()` rather than the table: a test that asserts against
  * the row it just wrote proves the database works, not that the app does.
+ *
+ * **Every colour assertion here is relative to the pool the instance is already
+ * in** (#134). A long-lived instance carries Categories this suite cannot remove
+ * — the browser gate leaves one per run, each holding a record, and ADR-0016
+ * refuses a removal while a record is filed under it, retired ones included. So
+ * the spares are not a fixture: they are whatever is left. Four tests used to
+ * open by asserting a spare was free, and once the eight were held they failed
+ * for a reason that had nothing to do with the app.
+ *
+ * Nothing re-reads those leftovers except the surfaces that read any Category:
+ * the Capas panel, the picker and Análisis show them as ordinary clinic
+ * Categories on the neutral, which is what ADR-0017 says a Category past the
+ * ceiling looks like. `make lint`'s ramp check reads the SEED, never the
+ * instance, so they cannot reach it. They are left standing on purpose.
  */
 final class CategoryCrudTest extends IntegrationTestCase {
 	/** The Category this test renames. Not one another test paints or counts. */
@@ -170,6 +184,12 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * @return list<string>
 	 */
 	private function freeSpares(): array {
+		// The `spare_failures()` refusal, in the one place every colour assertion
+		// below reads from: an empty SPARES would make each of them assert
+		// nothing at all, and that is drift in the seed rather than a pool state.
+		self::assertNotEmpty(EnsureSeedData::SPARES,
+			'the seed ships no spares, so nothing below is measuring anything');
+
 		$taken = array_map(
 			static fn (array $category): string => strtolower($category['color']),
 			$this->taxonomy()->tree(),
@@ -179,6 +199,30 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			EnsureSeedData::SPARES,
 			static fn (string $spare): bool => !in_array(strtolower($spare), $taken, true),
 		));
+	}
+
+	/**
+	 * The colour the app owes the next Category added: the first free spare, or
+	 * the neutral once they are all held (ADR-0017).
+	 *
+	 * The whole rule, stated where the test can read it — which is what lets
+	 * these tests be true on an instance whose pool is already drained (#134).
+	 * Every one of them used to open by asserting a spare was free, so on a
+	 * long-lived instance four of them failed for a reason that had nothing to
+	 * do with the app: the browser gate leaves one Category per run holding a
+	 * spare, and each of those files a record, so ADR-0016 refuses to take it
+	 * away and the colour never comes back.
+	 *
+	 * Derived here from `EnsureSeedData::SPARES` and the served tree rather than
+	 * asked of the service: an oracle that called the code under test would
+	 * agree with it however wrong it was.
+	 *
+	 * This says nothing about the pool being interesting. What a drained
+	 * instance cannot show — that a spare is handed out once, and comes back on
+	 * removal — is measured in `TaxonomyColourTest`, where the pool is an input.
+	 */
+	private function colourOwedToANewCategory(): string {
+		return $this->freeSpares()[0] ?? EnsureSeedData::NEUTRAL;
 	}
 
 	private function taxonomy(): TaxonomyService {
@@ -536,22 +580,26 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * Issue #45: a clinic names a Category the seed does not have, and it is
 	 * there — with a slug nobody typed and a colour nobody chose.
 	 *
-	 * The colour is pinned to the exact spare the app owed it rather than to
-	 * "some spare": ADR-0017 says assigning a colour IS taking the next unused
-	 * one, and an assertion that merely checks membership passes just as well
-	 * against an implementation that always hands out the first.
+	 * The colour is pinned to the exact one the app owed it rather than to "some
+	 * spare": ADR-0017 says assigning a colour IS taking the next unused one, and
+	 * an assertion that merely checks membership passes just as well against an
+	 * implementation that always hands out the first.
+	 *
+	 * Owed, not "the next unused spare", because on an instance holding all eight
+	 * the owed colour is the neutral — and that is the same rule, not a weaker
+	 * assertion: an implementation handing out a spare somebody already holds
+	 * fails here on exactly that instance (#134).
 	 */
-	public function testAnAddedCategoryIsServedWithADerivedSlugAndTheNextUnusedSpare(): void {
-		$owed = $this->freeSpares();
-		self::assertNotEmpty($owed, 'no spare is free on this instance, so this test would assert nothing');
+	public function testAnAddedCategoryIsServedWithADerivedSlugAndTheColourItIsOwed(): void {
+		$owed = $this->colourOwedToANewCategory();
 
 		[$tree, $category] = $this->addCategory('Comité de vivienda');
 
 		self::assertSame('comite_de_vivienda', $category['slug']);
 		self::assertSame('Comité de vivienda', $category['label']);
 		self::assertGreaterThan(0, $category['id']);
-		self::assertSame($owed[0], $category['color'],
-			'the Category did not take the next unused spare (ADR-0017)');
+		self::assertSame($owed, $category['color'],
+			'the Category did not take the colour it was owed (ADR-0017)');
 		self::assertSame($this->taxonomy()->tree(), $tree,
 			'the add answered with something other than the tree the browser swaps in');
 	}
@@ -583,18 +631,30 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * The criterion a person would state as "they do not all come out the same
 	 * colour". It is the one an implementation holding a counter, or reading the
 	 * spare list without looking at what is already taken, gets wrong.
+	 *
+	 * Asserted as the two colours the app owed, read at the two moments it reads
+	 * them, rather than as "different" — because "different" stops being true the
+	 * moment the pool is drained, and a Category on the neutral is not a failure:
+	 * hue only groups Categories and the glyph identifies them (ADR-0013). Both
+	 * forms catch the counter; only this one survives a long-lived instance.
+	 *
+	 * The second read happens AFTER the first add, which is the whole of what
+	 * makes two in a row safe: the first is a row by the time the second looks.
+	 * So while a spare is free the two are necessarily different, and the
+	 * assertion below says which two.
 	 */
-	public function testTwoCategoriesAddedInARowTakeDifferentColours(): void {
-		self::assertGreaterThanOrEqual(2, count($this->freeSpares()),
-			'fewer than two spares are free, so both of these would correctly take the neutral');
-
+	public function testTwoCategoriesAddedInARowEachTakeTheColourTheyAreOwed(): void {
+		$owedFirst = $this->colourOwedToANewCategory();
 		[, $first] = $this->addCategory('Comité de deportes');
+		$owedSecond = $this->colourOwedToANewCategory();
 		[, $second] = $this->addCategory('Comité de cultura');
 
-		self::assertNotSame($first['color'], $second['color'],
-			'two Categories added in a row took the same colour');
-		self::assertNotSame(EnsureSeedData::NEUTRAL, $second['color'],
-			'the second add fell to the neutral while a spare was still free');
+		self::assertSame(
+			[$owedFirst, $owedSecond],
+			[$first['color'], $second['color']],
+			'two Categories added in a row did not take the colours the app owed them: '
+			. 'a counter has crept in, or the second add did not see the first',
+		);
 	}
 
 	/**
@@ -605,30 +665,37 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * takes the neutral, and nothing about that is an error — hue only groups
 	 * Categories into families and the glyph identifies them (ADR-0013).
 	 *
-	 * The colours are collected and compared as a set as well as one by one: an
+	 * The whole walk is compared in one assertion rather than spare by spare: an
 	 * implementation that handed out the same spare twice would pass every
 	 * individual "is a spare" assertion.
+	 *
+	 * On an instance whose pool is already drained the walk is empty and measures
+	 * nothing — which is why the ceiling is crossed TWICE below rather than once.
+	 * Two adds past the end is the part that still says something there: an
+	 * implementation walking a counter rather than the live colours hands the
+	 * second one a spare somebody already holds. The walk itself is measured, at
+	 * every pool state, in `TaxonomyColourTest`.
 	 */
 	public function testWhenTheSparesRunOutTheCategoryIsStillCreatedAndTakesTheNeutral(): void {
 		$owed = $this->freeSpares();
-		self::assertNotEmpty($owed, 'no spare is free on this instance, so this test would exhaust nothing');
 
 		$given = [];
-		foreach ($owed as $index => $spare) {
+		foreach (array_keys($owed) as $index) {
 			[, $category] = $this->addCategory(sprintf('Comité de prueba %d', $index));
 			$given[] = $category['color'];
-			self::assertSame($spare, $category['color'], sprintf(
-				'Category %d took %s where the next unused spare was %s',
-				$index, $category['color'], $spare,
-			));
 		}
-		self::assertCount(count($owed), array_unique($given),
-			'the same spare was handed out twice');
+		self::assertSame($owed, $given,
+			'the walk down the spare list is not the one the app took: a spare was skipped, '
+			. 'handed out twice, or given out in another order');
 
 		[, $overflow] = $this->addCategory('Comité sin color');
+		[, $beyond] = $this->addCategory('Comité sin color tampoco');
 
-		self::assertSame(EnsureSeedData::NEUTRAL, $overflow['color'],
-			'with no spare left the Category took something other than the neutral');
+		self::assertSame(
+			[EnsureSeedData::NEUTRAL, EnsureSeedData::NEUTRAL],
+			[$overflow['color'], $beyond['color']],
+			'with no spare left a Category took something other than the neutral',
+		);
 		self::assertSame('comite_sin_color', $overflow['slug'],
 			'the Category past the ceiling was not created properly — it is still a Category');
 		self::assertCount(1, $overflow['subcategories'],
@@ -883,22 +950,35 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 * the Categories that exist — so removing one hands its spare back rather
 	 * than spending it forever.
 	 *
-	 * Worth its own test because "the spare comes back" is not something the
+	 * Worth its own test because "the colour comes back" is not something the
 	 * removal code does; it is something the removal code must not PREVENT, and
 	 * the difference only shows against the real table.
+	 *
+	 * Here it is the removal against the real table that is being proved, not the
+	 * derivation: on an instance holding every spare the colour handed back is
+	 * the neutral, and a hand-back of the neutral is not evidence of anything —
+	 * every implementation answers with it (#134). The removal still has to have
+	 * happened for the second add to mean anything, which is what the assertion
+	 * between them is for. The hand-back of a SPARE is measured deterministically
+	 * in `TaxonomyColourTest`, where the pool is an input rather than whatever the
+	 * instance is carrying.
 	 */
-	public function testARemovedCategoryHandsItsSpareColourBack(): void {
-		$owed = $this->freeSpares();
-		self::assertNotEmpty($owed, 'no spare is free on this instance, so this test asserts nothing');
+	public function testARemovedCategoryHandsTheColourItHeldBack(): void {
+		$owed = $this->colourOwedToANewCategory();
 
 		[, $first] = $this->addCategory('Comité efímero');
-		self::assertSame($owed[0], $first['color']);
+		self::assertSame($owed, $first['color']);
 
 		$this->taxonomy()->removeCategory($first['slug']);
+		self::assertNull($this->served($first['slug']),
+			'the removal did not happen, so nothing below is about a hand-back');
+		self::assertSame($owed, $this->colourOwedToANewCategory(),
+			'the colour the removed Category held is not the one the app owes again');
+
 		[, $second] = $this->addCategory('Comité siguiente');
 
-		self::assertSame($owed[0], $second['color'],
-			'the spare the removed Category held was not offered again: ADR-0017 derives the '
+		self::assertSame($owed, $second['color'],
+			'the colour the removed Category held was not offered again: ADR-0017 derives the '
 			. 'colour from the Categories that exist, so a counter has crept in somewhere');
 	}
 

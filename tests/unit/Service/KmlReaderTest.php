@@ -8,6 +8,7 @@ use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\GeoJsonReader;
 use OCA\Territorio\Service\KmlReader;
 use PHPUnit\Framework\TestCase;
+use ZipArchive;
 
 /**
  * Reading a Google MyMaps export.
@@ -279,6 +280,125 @@ final class KmlReaderTest extends TestCase {
 		$rows = $this->reader->read(self::LOOSE, 'prueba');
 
 		self::assertSame('Escrito a mano en el mapa', $rows[0]['notes']);
+	}
+
+	/**
+	 * A KMZ is a KML in a ZIP, and this reads the one inside it (issue #103).
+	 *
+	 * Asserted against `read()` on the same bytes rather than against a list of
+	 * expected rows: the criterion is that the two arrive IDENTICAL, and a second
+	 * list of expectations here would be a second thing to keep in step with the
+	 * KML tests above.
+	 */
+	public function testAKmzIsReadAsTheKmlInsideIt(): void {
+		self::assertSame(
+			$this->reader->read(self::KML, 'prueba'),
+			$this->reader->readArchive(self::kmz(['doc.kml' => self::KML]), 'prueba'),
+		);
+	}
+
+	/**
+	 * `doc.kml` is Google Earth's convention, not the format's rule: the document
+	 * is the FIRST `.kml` entry in the archive, and QGIS, ArcGIS and several
+	 * exporters write `<capa>.kml`. Asking for `doc.kml` by name would refuse a
+	 * perfectly valid file — and blame the file for it.
+	 *
+	 * The image entry ahead of it is the other half: the first entry of the
+	 * archive is very often an icon, so "the first entry" and "the first `.kml`
+	 * entry" are different rules and only the second one is the format's.
+	 */
+	public function testTheDocumentIsTheFirstKmlEntryWhateverItIsCalled(): void {
+		self::assertSame(
+			$this->reader->read(self::KML, 'prueba'),
+			$this->reader->readArchive(
+				self::kmz(['images/icono.png' => 'no soy kml', 'La Florida.KML' => self::KML]),
+				'prueba',
+			),
+		);
+	}
+
+	/** An archive holding no KML is refused, in the language the person reads. */
+	public function testAnArchiveWithNoKmlEntryIsRefusedInSpanish(): void {
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('no contiene ningún archivo .kml');
+
+		$this->reader->readArchive(self::kmz(['leeme.txt' => 'nada aquí']), 'prueba');
+	}
+
+	/**
+	 * Something that is not an archive at all is refused the same way, rather
+	 * than reaching the XML parser or leaving a `ZipArchive` warning where a
+	 * sentence in Spanish belongs.
+	 */
+	public function testSomethingThatIsNotAnArchiveIsRefusedRatherThanThrown(): void {
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('no es un KMZ');
+
+		$this->reader->readArchive('no soy un zip', 'prueba');
+	}
+
+	/**
+	 * `ZipArchive::open()` takes a path and the ingestion path carries a string —
+	 * both the browser upload and `occ territorio:import` read the bytes before
+	 * calling the service — so the bytes go through a temporary file. Nothing
+	 * else removes it, so both paths out of the method have to.
+	 *
+	 * Compared as sets and never as a count: the temporary directory is shared,
+	 * so a sibling worktree's `make test` running at the same time would make an
+	 * assertion about how many files are in it red for something this suite did
+	 * not do. What is left behind by this call is what it is asked about.
+	 */
+	public function testTheTemporaryFileIsGoneOnBothPaths(): void {
+		$before = self::strays();
+		$this->reader->readArchive(self::kmz(['doc.kml' => self::KML]), 'prueba');
+
+		self::assertSame($before, self::strays(), 'a KMZ that imported left its temporary file behind');
+
+		try {
+			$this->reader->readArchive('no soy un zip', 'prueba');
+		} catch (InvalidImportException) {
+			// The point of the call; the assertion is below it.
+		}
+
+		self::assertSame($before, self::strays(), 'a KMZ that was refused left its temporary file behind');
+	}
+
+	/**
+	 * Temporary files matching the name the reader builds under, so a leak shows
+	 * up as a NEW one. See `testTheTemporaryFileIsGoneOnBothPaths` for why this
+	 * is never turned into a count.
+	 *
+	 * @return list<string>
+	 */
+	private static function strays(): array {
+		$found = glob(sys_get_temp_dir() . '/territorio-kmz*') ?: [];
+		sort($found);
+
+		return $found;
+	}
+
+	/**
+	 * An archive holding exactly these entries, built the only way `ZipArchive`
+	 * can build one — through a path, because `close()` is what writes an archive
+	 * and it writes it to a file.
+	 *
+	 * @param array<string, string> $entries
+	 */
+	private static function kmz(array $entries): string {
+		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-fixture-');
+
+		try {
+			$zip = new ZipArchive();
+			self::assertTrue($zip->open($path, ZipArchive::OVERWRITE) === true);
+			foreach ($entries as $name => $contents) {
+				self::assertTrue($zip->addFromString($name, $contents));
+			}
+			self::assertTrue($zip->close());
+
+			return (string)file_get_contents($path);
+		} finally {
+			unlink($path);
+		}
 	}
 
 	private const KML = <<<'XML'

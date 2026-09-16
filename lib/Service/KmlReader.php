@@ -6,6 +6,7 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Exception\InvalidImportException;
 use SimpleXMLElement;
+use ZipArchive;
 
 /**
  * Reads a KML export — in practice, a Google MyMaps one.
@@ -45,6 +46,87 @@ class KmlReader {
 	 */
 	public function read(string $xml, string $datasetSlug): array {
 		return $this->geoJson->fromCollection($this->asCollection($xml), $datasetSlug);
+	}
+
+	/**
+	 * A KMZ: the KML this reads, inside a ZIP (issue #103).
+	 *
+	 * The archive is unwrapped here and nothing else changes — a KMZ import IS a
+	 * KML import, for the same reason a KML import is a GeoJSON one above.
+	 *
+	 * **The document is the FIRST `.kml` entry, not `doc.kml`.** That name is
+	 * Google Earth's convention and the format's rule is the position, which QGIS
+	 * and ArcGIS take at their word and fill with `<capa>.kml`. Asking libzip for
+	 * `doc.kml` by name returns false for those files, and the person would be
+	 * told their perfectly valid KMZ held no map. The entries are walked in
+	 * order, and anything ahead of the KML — an icon, an overlay image, a
+	 * directory entry — is simply not a `.kml`.
+	 *
+	 * `ZipArchive` is PHP's own and cannot read from memory: `open()` takes a
+	 * path, and what arrives here is a string, because both the browser upload
+	 * and `occ territorio:import` read the bytes before calling the service. So
+	 * the bytes are written to a temporary file, and the `finally` is what makes
+	 * that file the call's own rather than the request's: nothing else removes
+	 * it, and a refused import is the path where it would otherwise pile up.
+	 *
+	 * @return list<array<string, mixed>>
+	 * @throws InvalidImportException
+	 */
+	public function readArchive(string $kmz, string $datasetSlug): array {
+		return $this->read($this->kmlIn($kmz), $datasetSlug);
+	}
+
+	/**
+	 * The KML held by an archive's first `.kml` entry.
+	 *
+	 * @throws InvalidImportException
+	 */
+	private function kmlIn(string $kmz): string {
+		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-');
+		if ($path === false) {
+			throw new InvalidImportException('No se pudo preparar la lectura del archivo KMZ.');
+		}
+
+		// Everything after the file EXISTS happens inside the try, including
+		// writing to it: a full disk is a failure like any other and must not be
+		// the one path that leaves the file behind.
+		try {
+			if (file_put_contents($path, $kmz) === false) {
+				throw new InvalidImportException('No se pudo preparar la lectura del archivo KMZ.');
+			}
+
+			$zip = new ZipArchive();
+			if ($zip->open($path) !== true) {
+				throw new InvalidImportException(
+					'El archivo no es un KMZ: no se pudo abrir como archivo comprimido.',
+				);
+			}
+
+			try {
+				for ($entry = 0; $entry < $zip->numFiles; $entry++) {
+					$name = (string)$zip->getNameIndex($entry);
+					if (!str_ends_with(strtolower($name), '.kml')) {
+						continue;
+					}
+
+					$kml = $zip->getFromIndex($entry);
+					if ($kml === false) {
+						throw new InvalidImportException(sprintf(
+							'No se pudo leer «%s» dentro del KMZ.',
+							$name,
+						));
+					}
+
+					return $kml;
+				}
+			} finally {
+				$zip->close();
+			}
+
+			throw new InvalidImportException('El archivo KMZ no contiene ningún archivo .kml.');
+		} finally {
+			unlink($path);
+		}
 	}
 
 	/**

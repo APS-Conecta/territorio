@@ -37,6 +37,7 @@
 </template>
 
 <script>
+import { QUALITY_LABELS } from '../indice.js'
 import { readable } from '../limit.js'
 import { indexSubcategories } from '../taxonomy.js'
 
@@ -87,11 +88,6 @@ const FIELDS = {
 	unidadVecinalId: 'Unidad Vecinal',
 }
 
-const QUALITIES = {
-	exacta: 'Exacta',
-	aproximada: 'Aproximada',
-	sin_coordenada: 'Sin coordenada',
-}
 
 export default {
 	name: 'FeatureHistory',
@@ -132,7 +128,7 @@ export default {
 			}
 
 			if (field === 'locationQuality') {
-				return QUALITIES[value] ?? value
+				return QUALITY_LABELS[value] ?? value
 			}
 
 			// Stored as JSON, said as a sentence. Left raw it would be the wall of

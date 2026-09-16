@@ -313,6 +313,20 @@ class CsvReader {
 	 * separator. There is no ambiguity to resolve: a coordinate has no thousands
 	 * group, so a comma in one of these two cells is a decimal point and nothing
 	 * else.
+	 *
+	 * An unreadable cell — «s/i», «-33°27'», a stray unit — is deliberately the
+	 * same as an empty one: null, so the record imports with no geometry. No
+	 * count is owed for it because the record says so itself, and says it in the
+	 * place somebody looking for missing coordinates already looks: it sits at
+	 * Location quality Absent in the Registry, alongside every record whose
+	 * address never resolved. That is unlike GeoJSON's «geometría no soportada»,
+	 * which IS counted, because a shape this app cannot store leaves nothing
+	 * behind to find.
+	 *
+	 * ponytail: no count distinguishes «filled but unreadable» from «never
+	 * supplied». Carry one through `GeoJsonReader` to the ImportBatch when a
+	 * clinic's file turns out to be full of them and the Registry filter is not
+	 * enough to find them.
 	 */
 	private static function number(?string $cell): ?float {
 		$plain = str_replace(',', '.', (string)$cell);

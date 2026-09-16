@@ -2322,6 +2322,143 @@ def a_kmz_imports_like_the_kml_inside_it(page, errors, failures):
     page.wait_for_timeout(400)
 
 
+def a_file_already_in_files_imports_without_being_uploaded(page, errors, failures):
+    """#104: the file is already in Nextcloud Files, and is imported from there.
+
+    The whole point of the slice is the half no PHP test can reach: the request
+    carries a PATH, and the bytes are read by the server from the caller's own
+    tree. So the file is put into Files over WebDAV first — the way a person
+    would have got it there — and then picked with the platform's own file
+    picker, which is what `OC.dialogs.filepicker` opens.
+
+    Asserted on the REGISTRY, like every other import check here: the dialog's
+    success line is the server's own reply and would read "1 creados" whether or
+    not a record was written.
+
+    The picker is core's, not this app's, so its markup is the one thing in this
+    function that can change under us. It is driven by the file's own name and a
+    Choose/Elegir button, and it leaves a screenshot either way — if this fails
+    on a selector rather than on the app, `files-picker.png` is what says so.
+    """
+    name = f"Plaza de Archivos {RUN}"
+    lat, lon = round(-33.47 - NUDGE / 200, 4), round(-70.47 - NUDGE / 200, 4)
+    filename = f"catastro-{RUN}.geojson"
+    geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {"uid": f"files:{RUN}", "name": name, "category": "salud",
+                           "subcategory": "cesfam", "source": "prueba"},
+        }],
+    })
+
+    # Into the user's own Files tree, over WebDAV, with the session this browser
+    # already has. Not through the app: the criterion is that a file somebody
+    # else put there imports, so nothing this app wrote may be involved.
+    written = page.evaluate(
+        """async ([path, body]) => {
+            const response = await fetch(`/remote.php/dav/files/admin/${path}`, {
+                method: 'PUT',
+                headers: { requesttoken: window.OC.requestToken },
+                body,
+            })
+            return response.status
+        }""",
+        [filename, geojson],
+    )
+    if written not in (201, 204):
+        failures.append(f"could not put {filename!r} into Files over WebDAV: HTTP {written}")
+        return
+
+    closer = page.get_by_role("dialog").get_by_role("button", name="Close")
+    if closer.count() != 0:
+        closer.first.click()
+        page.wait_for_timeout(600)
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.wait_for_timeout(600)
+    page.get_by_label("Conjunto de datos").fill(f"archivos-{RUN}")
+    page.get_by_role("button", name="Desde archivos de Nextcloud").click()
+
+    # The picker is core's own dialog, opened on top of this app's.
+    picker = page.get_by_role("dialog").last
+    try:
+        picker.get_by_text(filename, exact=False).first.wait_for(timeout=20_000)
+    except PlaywrightTimeout:
+        page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
+        failures.append(
+            f"the Nextcloud file picker never listed {filename!r} — see files-picker.png "
+            "(the button opened nothing, or core's picker moved)",
+        )
+        return
+
+    picker.get_by_text(filename, exact=False).first.click()
+    page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
+    choose = picker.get_by_role("button", name=re.compile(r"^(choose|elegir|select)", re.I))
+    if choose.count() == 0:
+        failures.append("core's file picker offered no Choose button — see files-picker.png")
+        return
+    choose.first.click()
+
+    # The dialog says which file it is about to import, and says it as a PATH:
+    # that sentence is the difference between a second upload and this slice.
+    if not settles(page, lambda: page.get_by_text("ya está en sus archivos").count() != 0):
+        failures.append("the import dialog never said the chosen file is already in Files")
+
+    page.get_by_role("button", name="Importar", exact=True).click()
+    page.wait_for_timeout(2500)
+    page.screenshot(path=str(SHOTS / "files-import.png"), full_page=False)
+
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} is not in the Registry: importing from Files wrote nothing (#104)")
+    elif stored.get("datasetId") is None:
+        failures.append(f"{name!r} carries no datasetId, so it is not an imported record (#104)")
+
+    # And a path nobody can reach is the Spanish 422 the dialog shows, never a
+    # 500. Posted directly because no picker will offer another user's file.
+    before = len(errors)
+    refusal = page.evaluate(
+        """async () => {
+            const body = new FormData()
+            body.append('path', '/no-existe-en-ninguna-parte.geojson')
+            body.append('dataset', 'archivos-refusal')
+            const response = await fetch('/index.php/apps/territorio/import', {
+                method: 'POST',
+                headers: { requesttoken: window.OC.requestToken },
+                body,
+            })
+            return { status: response.status, body: await response.json() }
+        }""",
+    )
+    if refusal["status"] != 422:
+        failures.append(f"an unreachable path answered HTTP {refusal['status']}, not 422 (#104)")
+    elif "Nextcloud" not in (refusal["body"].get("message") or ""):
+        failures.append(f"the refusal for an unreachable path reads {refusal['body']!r} (#104)")
+
+    # The refusal IS an HTTP 422 and the browser logs every failed response as a
+    # console error, which main()'s run-wide gate would then report. Exactly the
+    # entries this refusal added are dropped, and only the 422 among them — the
+    # same scoping the KMZ refusal uses.
+    errors[before:] = [message for message in errors[before:] if "422" not in message]
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+
+    # The file itself is not left in Files: it is not a Registry record and
+    # nothing here retires it, so it would pile up one per run.
+    page.evaluate(
+        """async (path) => {
+            await fetch(`/remote.php/dav/files/admin/${path}`, {
+                method: 'DELETE',
+                headers: { requesttoken: window.OC.requestToken },
+            })
+        }""",
+        filename,
+    )
+
+
 def occ_import_names_the_formats_it_takes(failures):
     """#103: `occ territorio:import` says KMZ is one of the formats it takes.
 
@@ -6100,6 +6237,7 @@ def main():
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
         a_csv_imports_and_says_what_does_not_come_back_in(page, failures)
         a_kmz_imports_like_the_kml_inside_it(page, errors, failures)
+        a_file_already_in_files_imports_without_being_uploaded(page, errors, failures)
         occ_import_names_the_formats_it_takes(failures)
         browser.close()
 

@@ -99,6 +99,10 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			// the thing several of these tests deliberately arrange — a tidy-up
 			// that went through it would fail on exactly the runs that matter.
 			// Cleaning up after a test run is not the app (IntegrationTestCase).
+			// #134 asked for the opposite and was re-scoped to this, in writing on
+			// the issue: `FeatureMapper::delete()` refuses (ADR-0005) and
+			// `refuseIfInUse()` counts retired records, so an app-route unwind is
+			// refused on exactly the runs that file a record under a fixture.
 			// Left behind, each run would add a row the next run's duplicate check
 			// would collide with.
 			$qb = $db->getQueryBuilder();

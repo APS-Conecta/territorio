@@ -2030,6 +2030,13 @@ def a_kmz_imports_like_the_kml_inside_it(page, failures):
     page.get_by_role("button", name="Importar / deshacer").click()
     page.wait_for_timeout(600)
 
+    # The file picker offers it. Asserted on the attribute because Playwright
+    # sets the file straight onto the input and would sail past an `accept` that
+    # no longer listed the format — a person choosing the file by hand would not.
+    accept = page.locator('input[type="file"]').get_attribute("accept") or ""
+    if ".kmz" not in accept:
+        failures.append(f"the import dialog does not offer .kmz in the file picker: {accept!r}")
+
     page.locator('input[type="file"]').set_input_files({
         "name": f"catastro-{RUN}.KMZ",
         "mimeType": "application/vnd.google-earth.kmz",

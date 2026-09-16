@@ -635,14 +635,16 @@ final class CategoryCrudTest extends IntegrationTestCase {
 
 	/**
 	 * The criterion a person would state as "they do not all come out the same
-	 * colour". It is the one an implementation holding a counter, or reading the
-	 * spare list without looking at what is already taken, gets wrong.
+	 * colour". It is the one an implementation that reads the spare list without
+	 * looking at what is already taken gets wrong.
 	 *
 	 * Asserted as the two colours the app owed, read at the two moments it reads
 	 * them, rather than as "different" — because "different" stops being true the
 	 * moment the pool is drained, and a Category on the neutral is not a failure:
-	 * hue only groups Categories and the glyph identifies them (ADR-0013). Both
-	 * forms catch the counter; only this one survives a long-lived instance.
+	 * hue only groups Categories and the glyph identifies them (ADR-0013). What
+	 * neither form says anything about on a drained instance is a counter: there
+	 * the app owes the neutral twice and every implementation agrees. That
+	 * property is measured where the pool is an input (`TaxonomyColourTest`).
 	 *
 	 * The second read happens AFTER the first add, which is the whole of what
 	 * makes two in a row safe: the first is a row by the time the second looks.
@@ -677,10 +679,14 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	 *
 	 * On an instance whose pool is already drained the walk is empty and measures
 	 * nothing — which is why the ceiling is crossed TWICE below rather than once.
-	 * Two adds past the end is the part that still says something there: an
-	 * implementation walking a counter rather than the live colours hands the
-	 * second one a spare somebody already holds. The walk itself is measured, at
-	 * every pool state, in `TaxonomyColourTest`.
+	 * Name exactly what the second add still says there, because it is narrow: an
+	 * implementation that answers the neutral once and then resumes handing out
+	 * spares gives that Category one a live Category already holds. It does NOT
+	 * catch a counter — past the end of the list a counter answers the neutral
+	 * too. Both halves were watched in `TaxonomyColourTest`, whose twin of this
+	 * test went red against the first defect and green against the second; the
+	 * walk, and the hand-back that does catch a counter, are measured there at
+	 * every pool state.
 	 */
 	public function testWhenTheSparesRunOutTheCategoryIsStillCreatedAndTakesTheNeutral(): void {
 		$owed = $this->freeSpares();

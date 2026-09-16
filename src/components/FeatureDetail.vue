@@ -163,6 +163,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
+import { nameOf as boundaryName } from '../boundaries.js'
 import { provenance } from '../limit.js'
 import {
 	DEFAULT_SECTOR_COLOUR,
@@ -325,17 +326,9 @@ export default {
 	},
 
 	methods: {
-		/**
-		 * A boundary's name, from the records the app already holds. "Sin asignar"
-		 * covers both real answers — no coordinate, and a coordinate outside every
-		 * boundary — because from here they are the same fact: nothing to show.
-		 */
+		/** The shared resolver (boundaries.js), so this and the Índice say one thing. */
 		nameOf(id) {
-			if (id === null || id === undefined) {
-				return 'sin asignar'
-			}
-
-			return this.boundaries.find((feature) => feature.id === id)?.name ?? 'sin asignar'
+			return boundaryName(this.boundaries, id)
 		},
 
 		clearCoordinates() {

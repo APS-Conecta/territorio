@@ -88,3 +88,14 @@ export function toggleGroup(picked, ids) {
 		? picked.filter((id) => !ids.includes(id))
 		: [...picked, ...ids.filter((id) => !picked.includes(id))]
 }
+
+/**
+ * A boundary's name, from the records the app already holds.
+ *
+ * «Sin asignar» covers both real answers — no coordinate, and a coordinate
+ * outside every boundary — because from here they are the same fact: nothing to
+ * show. One copy, because the sidebar and the Índice must never describe one
+ * assignment differently, and two copies of a wording is how they come to.
+ */
+export const nameOf = (boundaries, id) =>
+	boundaries.find((boundary) => boundary.id === id)?.name ?? 'sin asignar'

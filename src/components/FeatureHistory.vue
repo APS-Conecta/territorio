@@ -88,7 +88,6 @@ const FIELDS = {
 	unidadVecinalId: 'Unidad Vecinal',
 }
 
-
 export default {
 	name: 'FeatureHistory',
 

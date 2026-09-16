@@ -17,6 +17,8 @@
  * `.vue` file has the browser gate as its only proof.
  */
 
+import { nameOf } from './boundaries.js'
+
 /**
  * What the stored `locationQuality` is called on screen (`LocationQuality` in
  * PHP).
@@ -58,15 +60,6 @@ export const COLUMNS = [
 const text = (value) => (value === null || value === undefined ? '' : String(value))
 
 /**
- * A boundary's name, from the records the app already holds — the sidebar's own
- * rule and its own word (FeatureDetail.nameOf), so the table and the record it
- * opens never describe one assignment differently. No coordinate and a
- * coordinate outside every boundary are the same fact from here: nothing to
- * show.
- */
-const boundaryName = (names, id) => names.get(id) ?? 'sin asignar'
-
-/**
  * The filtered Features as rows of text, ready to draw and ready to sort.
  *
  * Text, because the criterion is that Sector, Unidad Vecinal, Categoría and
@@ -81,8 +74,6 @@ const boundaryName = (names, id) => names.get(id) ?? 'sin asignar'
  * @return {Array} one `{ id, cells }` per Feature
  */
 export function rowsFor(features, subcategories, boundaries) {
-	const names = new Map(boundaries.map((boundary) => [boundary.id, boundary.name]))
-
 	return features.map((feature) => {
 		const subcategory = subcategories.get(feature.subcategoryId)
 
@@ -101,8 +92,8 @@ export function rowsFor(features, subcategories, boundaries) {
 				// every row.
 				category: subcategory?.categoryLabel ?? 'Clasificación desconocida',
 				subcategory: subcategory?.subcategoryLabel ?? '',
-				sector: boundaryName(names, feature.sectorId),
-				unidadVecinal: boundaryName(names, feature.unidadVecinalId),
+				sector: nameOf(boundaries, feature.sectorId),
+				unidadVecinal: nameOf(boundaries, feature.unidadVecinalId),
 				address: text(feature.address),
 				phone: text(feature.phone),
 				email: text(feature.email),

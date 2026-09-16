@@ -52,10 +52,14 @@ Category colour tests stop describing the instance they happen to run on.
   pins the colour the app owed at the moment it asked. That is the same statement in both
   directions: on a fresh instance it says «the next unused spare», on a drained one it says «the
   neutral», and an implementation handing out a spare somebody already holds fails it either way.
-  The thirty-two leftovers are left standing rather than cleaned up, because nothing can clean them:
-  a Feature cannot be un-created through the app at all (ADR-0005), so a Category holding one is
-  permanent. Nothing re-reads them except the surfaces that read any Category, where they appear as
-  ordinary Categories on the neutral; `make lint`'s ramp check reads the seed, never the instance.
+  The thirty-two leftovers are left standing rather than cleaned up. They *could* be cleaned — the
+  record filed under each one is moved to «Sin clasificar · Otro» and the Category then comes away,
+  which is the route ADR-0016 tells a person to take, since a Feature cannot be un-created through
+  the app at all (ADR-0005) and only ever moves. But that is an act on one instance, and the browser
+  gate makes another leftover on every run, so a suite that needed the pool clean would be red again
+  within the week. Nothing re-reads them except the surfaces that read any Category, where they
+  appear as ordinary Categories on the neutral; `make lint`'s ramp check reads the seed, never the
+  instance.
 
   **What a drained instance cannot show is measured somewhere it can be.** «Two Categories take
   different colours» and «the spare comes back on removal» are not false once the pool is empty,

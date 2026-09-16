@@ -24,7 +24,7 @@ Version 0.27.0. `appinfo/info.xml` is where the version lives; nothing else decl
 
 Working: the app shell and the map; Places created, edited, retired and restored, with history and
 a polled change cursor behind them; the Capas panel and text search driving map, Datos and Análisis
-from one filtered set; GeoJSON and KML import as a Dataset, revertible batch by batch; the Comuna
+from one filtered set; GeoJSON, KML and CSV import as a Dataset, revertible batch by batch; the Comuna
 setting and the Unidad Vecinal cadastre import; Sectores drawn by hand or polygonized from picked
 boundary features, with their Limit kept in words; assignment to Sector and Unidad Vecinal derived
 from geometry and stored; the duplicate review queue; exports to GeoJSON, CSV and KML with their

@@ -42,6 +42,38 @@ An import can be a KMZ, which is the KML this app already reads, in an archive.
   is written. Without the first of those the person got `ValueError: Invalid or uninitialized Zip
   object` through a 500.
 
+- **El Índice: the Registry as a table** (#105). A fourth pane beside Mapa, Análisis and Posibles
+  duplicados, showing the filtered Features as rows and their fields as columns — Nombre,
+  Categoría, Subcategoría, Sector, Unidad Vecinal, Dirección, Teléfono, Correo, Exactitud and
+  Revisión. Clicking a header sorts by that column, ascending and then descending; clicking a row
+  opens the record; a row of checkboxes takes columns away and brings them back. Nothing before it
+  let a person read the catastro down a column, which is what checking it against a municipal list
+  actually looks like.
+
+  **It narrows nothing, and that is the feature.** There is one filtered set in this app and the
+  map, the Datos list, the Análisis counts and Exportar all read it, so the table reads the same
+  array and adds no per-column filters. Sorting is safe precisely because it changes the order and
+  never the membership — so «Exportar lo que está viendo ahora» keeps meaning what it says without
+  a line of new code. A second narrowing path is how the table would come to show one number while
+  Exportar carried another.
+
+  **Names, never ids.** Sector and Unidad Vecinal are stored as Feature ids and the classification
+  as a Subcategory id, so the sorting is done on the RESOLVED value: ordering the Sector column by
+  the id would order it by which boundary happened to be imported first — invisible, and wrong in a
+  way nobody on screen could catch. A Subcategory the taxonomy no longer has still refuses to read
+  «Sin clasificar», which is a real seeded Category (FeatureList's rule, kept).
+
+  **`Revisión` and not a «fecha de modificación».** A Feature carries no timestamp to the client,
+  only its integer revision; the date lives in the revision log, one request per row, and is its
+  own issue.
+
+  **The pane is rebuilt on every switch, so its View lives in App.vue.** The column checkboxes are
+  labelled «Nombre», «Teléfono», «Correo» — the record form's own words — so a pane left mounted
+  behind the map would put two controls with one accessible name in the page at once. Which columns
+  are hidden and how the rows are ordered therefore sit beside the filter, where the personal View
+  already lives; hidden columns rather than shown ones, for filters.js's reason: a column added
+  later appears on its own.
+
 ## [0.68.0] — unreleased
 
 A spreadsheet is a file this app can read: CSV joins GeoJSON and KML on the way in.

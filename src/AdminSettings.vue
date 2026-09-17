@@ -237,18 +237,18 @@ export default {
 <style scoped>
 .territorio-admin__exports {
 	width: 100%;
-	margin-top: 12px;
+	margin-top: calc(var(--default-grid-baseline) * 3);
 	border-collapse: collapse;
 }
 
 .territorio-admin__exports th,
 .territorio-admin__exports td {
 	text-align: start;
-	padding: 4px 8px;
+	padding: var(--default-grid-baseline) calc(var(--default-grid-baseline) * 2);
 	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-admin__field {
-	margin-top: 12px;
+	margin-top: calc(var(--default-grid-baseline) * 3);
 }
 </style>

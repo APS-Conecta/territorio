@@ -7,6 +7,16 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 The Category colour tests stop describing the instance they happen to run on.
 
+### Added
+
+- **A render error in the main column now shows *«No pudimos mostrar esta sección»* instead of a
+  blank page.** The map is mounted with `v-show` so it survives a pane switch, which also means it is
+  mounted from first paint whatever pane is showing — so one throwing render took the switch, the
+  Índice and Análisis down with it, and an empty page looks exactly like the instance being down. The
+  Capas panel and the Datos list are outside the boundary and keep working as navigation. The error
+  still reaches the browser console, so the fallback does not cost a diagnosis. It covers render,
+  watcher and lifecycle errors — not a throw inside a click handler or a rejected promise.
+
 ### Fixed
 
 - **`CategoryCrudTest` stops asserting that a spare colour is free** (#134). Four of its tests

@@ -295,6 +295,18 @@ export default {
 		L.tileLayer(this.basemap.url, {
 			attribution: this.attributionHtml,
 			maxZoom: 19,
+			// Nextcloud serves every page with `Referrer-Policy: no-referrer`, so
+			// without this a tile request carries no `Referer` at all — measured.
+			// A browser also supplies its own `User-Agent`, which names Chrome and
+			// not this app, so the two things OpenStreetMap's Tile Usage Policy
+			// asks an application to identify itself by are both absent and the
+			// traffic is indistinguishable from anonymous scraping. That is the
+			// profile they rate-limit and then answer `403`.
+			//
+			// `origin` and not the browser default: it sends the scheme, host and
+			// port and never a path, so a third party learns which instance asked
+			// and never which page of it, nor which record was open.
+			referrerPolicy: 'origin',
 		})
 			// Tiles failing is not an error the app should die on: the clinic may
 			// be offline, or the tile host firewalled. Pan, zoom and everything

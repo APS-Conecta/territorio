@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TILE_RETRY_DELAYS_MS, isSpentTile, retryTile } from '../../src/tiles.js'
+import {
+	TILE_RETRY_DELAYS_MS,
+	TILE_RETRY_GIVE_UP_AFTER,
+	hasGivenUpOnTiles,
+	isSpentTile,
+	resetTileRetries,
+	retryTile,
+} from '../../src/tiles.js'
 
 /**
  * Asking again for a basemap tile that failed.
@@ -47,6 +54,7 @@ const tileStub = (url = 'https://tile.openstreetmap.org/12/1244/2452.png') => {
 describe('retryTile', () => {
 	beforeEach(() => {
 		vi.useFakeTimers()
+		resetTileRetries()
 	})
 
 	afterEach(() => {
@@ -127,5 +135,42 @@ describe('retryTile', () => {
 		// wire, pointed at nothing.
 		expect(retryTile(tile)).toBe(false)
 		expect(tile.writes).toEqual([])
+	})
+	it('stops retrying altogether once enough tiles have failed outright', () => {
+		// One tile failing is a blip. This many is the host refusing us — and the
+		// answer to being refused is not four times the requests. `403` is what
+		// makes it matter: OpenStreetMap blocks applications, and a blocked client
+		// that retries harder is deepening its own block.
+		const exhaust = () => {
+			const tile = tileStub()
+			for (const delay of TILE_RETRY_DELAYS_MS) {
+				retryTile(tile)
+				vi.advanceTimersByTime(delay)
+			}
+			return tile
+		}
+
+		for (let i = 0; i < TILE_RETRY_GIVE_UP_AFTER; i++) {
+			exhaust()
+		}
+
+		expect(hasGivenUpOnTiles()).toBe(true)
+
+		// A brand new tile, with every attempt still unspent, is not retried.
+		const fresh = tileStub()
+		expect(retryTile(fresh)).toBe(false)
+		vi.runAllTimers()
+		expect(fresh.writes).toEqual([])
+	})
+
+	it('keeps retrying while failures stay occasional', () => {
+		const tile = tileStub()
+
+		// Well under the ceiling: a few scattered holes must still heal.
+		expect(retryTile(tile)).toBe(true)
+		expect(hasGivenUpOnTiles()).toBe(false)
+
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+		expect(tile.writes).toHaveLength(1)
 	})
 })

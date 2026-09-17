@@ -19,6 +19,26 @@ The Category colour tests stop describing the instance they happen to run on.
 
 ### Fixed
 
+- **The map now tells OpenStreetMap who is asking, which is what a `403` means it was not doing.**
+  Nextcloud serves every page with `Referrer-Policy: no-referrer`, so tile requests went out with no
+  `Referer` header at all — measured, on the real instance. A browser supplies its own `User-Agent`,
+  naming Chrome and not this app. So both of the things OpenStreetMap's Tile Usage Policy asks an
+  application to identify itself by were absent, and the traffic was indistinguishable from
+  anonymous scraping — the profile they rate-limit and then answer `403` to. The tile layer now sets
+  `referrerPolicy: 'origin'`, which Leaflet documents for exactly this case ("your map's rendering
+  context has a strict default but your tile provider expects a valid referrer"), and the requests
+  carry `Referer: https://<instance>/`.
+
+  **`origin`, not the browser default.** It sends the scheme, host and port and never a path, so a
+  third party learns which instance asked and never which page of it was open or which record was on
+  screen. Measured both ways: with no element policy the header is absent, with
+  `strict-origin-when-cross-origin` the full path went out, with `origin` only the host does.
+
+  This is not a promise that a `403` goes away. OpenStreetMap's own answer to a blocked application
+  is that heavy users must run their own tile server or use a third party — the escape ADR-0004
+  already built, since the tile URL is an administrator setting. Identifying ourselves is the part
+  that is this app's to fix.
+
 - **A basemap tile that failed is asked for again, so the map stops keeping permanent grey holes.**
   Leaflet never retries one, and not by oversight: `TileLayer._tileOnError` hands the tile straight
   to `_tileReady`, which stamps `tile.loaded` with a timestamp and fires `tileerror` — and a stamped
@@ -41,6 +61,13 @@ The Category colour tests stop describing the instance they happen to run on.
   re-requested unchanged, with no cache-busting parameter — a unique query string would miss OSM's
   CDN on every retry and turn each failed tile into a guaranteed origin hit, the opposite of what
   their policy asks for.
+
+  **And it stops retrying altogether once eight tiles have failed outright.** A handful of holes is
+  a blip worth re-asking about; that many is the host refusing us, and answering a refusal with four
+  times the requests is how an application deepens its own block. Measured against a host answering
+  `403` to everything: the first screenful costs 3.67 requests per tile, and then panning across 158
+  further tiles costs exactly **1.00 request per tile** — no amplification at all. Without the
+  breaker that same pan would have been some 630 requests aimed at a server already saying no.
 
   **The «No se pudo cargar el fondo de mapa» warning is untouched, and still correct.** It needs
   *no* tile to have ever loaded, so it stays quiet for a handful of holes and still appears for a

@@ -42,8 +42,37 @@ const EMPTY_TILE_SRC_PREFIX = 'data:image/gif'
  */
 export const TILE_RETRY_DELAYS_MS = [1000, 4000, 12000]
 
+/**
+ * How many tiles may exhaust their attempts before we stop retrying at all.
+ *
+ * A handful of holes is a blip worth re-asking about. This many is not a blip:
+ * the host is down, firewalled, or refusing us — and `403` is the one that makes
+ * this a correctness matter rather than a nicety. A blocked client that answers
+ * by sending four times the requests is deepening its own block, which is the
+ * behaviour OpenStreetMap's Blocked applications page describes. An <img> error
+ * carries no status, so the app cannot tell a 403 from a 503; it can tell «one
+ * tile failed» from «everything is failing», and that is enough to stop.
+ */
+export const TILE_RETRY_GIVE_UP_AFTER = 8
+
+/**
+ * Tiles that have used up every attempt, this page load.
+ *
+ * ponytail: module state, because there is exactly one map per page. Hand it to
+ * the layer if a second map ever shares the page.
+ */
+let spentTiles = 0
+
+/** Only for tests, which would otherwise inherit the count from each other. */
+export const resetTileRetries = () => {
+	spentTiles = 0
+}
+
 /** Whether this tile has used up its attempts. */
 export const isSpentTile = (tile) => (tile?._territorioRetries ?? 0) >= TILE_RETRY_DELAYS_MS.length
+
+/** Whether enough tiles have failed outright that we have stopped asking. */
+export const hasGivenUpOnTiles = () => spentTiles >= TILE_RETRY_GIVE_UP_AFTER
 
 /**
  * Schedule one more request for a tile that just failed.
@@ -61,7 +90,7 @@ export const isSpentTile = (tile) => (tile?._territorioRetries ?? 0) >= TILE_RET
 export function retryTile(tile) {
 	// No parent means Leaflet removed the tile: the view moved on, and the fetch
 	// would be for a square nobody is looking at.
-	if (!tile || !tile.parentNode || isSpentTile(tile)) {
+	if (!tile || !tile.parentNode || isSpentTile(tile) || hasGivenUpOnTiles()) {
 		return false
 	}
 
@@ -71,6 +100,10 @@ export function retryTile(tile) {
 
 	const attempt = tile._territorioRetries ?? 0
 	tile._territorioRetries = attempt + 1
+
+	if (isSpentTile(tile)) {
+		spentTiles += 1
+	}
 
 	// Captured now, because by the time the timer runs Leaflet may have pointed
 	// this element at its blank.

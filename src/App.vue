@@ -36,108 +36,117 @@
 				</div>
 			</template>
 
-			<div class="territorio-main">
-				<!--
-					A refusal that happens before there is a draft has nowhere else to
-					go: the sidebar that normally shows `error` only exists while one is
-					open, so a failure in startSector() was written to a component that
-					was not mounted and the drawn polygon vanished with no explanation.
-				-->
-				<NcNoteCard v-if="error !== '' && draft === null"
-					type="error"
-					class="territorio-main__error">
-					{{ error }}
-				</NcNoteCard>
-
-				<div class="territorio-main__switch">
-					<NcButton :pressed="pane === 'mapa'" @click="pane = 'mapa'">
-						Mapa
-					</NcButton>
-					<NcButton :pressed="pane === 'indice'" @click="pane = 'indice'">
-						Índice
-					</NcButton>
-					<NcButton :pressed="pane === 'analisis'" @click="pane = 'analisis'">
-						Análisis
-					</NcButton>
+			<!--
+				Around `.territorio-main`, not inside it: the Capas panel and the Datos
+				list live in the `#list` slot above, outside this component, so they go on
+				working as navigation while the main column shows the fallback. The
+				boundary renders a fragment, so `.territorio-main` stays a direct child of
+				NcAppContent and its `height: 100%` still resolves against the same box.
+			-->
+			<ErrorBoundary>
+				<div class="territorio-main">
 					<!--
-						The count sits on the button because that is the only place it
-						gets read. A queue nobody can see the size of is a queue nobody
-						opens (issue #16), and it is hidden when empty so that it reads
-						as news rather than furniture.
+						A refusal that happens before there is a draft has nowhere else to
+						go: the sidebar that normally shows `error` only exists while one is
+						open, so a failure in startSector() was written to a component that
+						was not mounted and the drawn polygon vanished with no explanation.
 					-->
-					<NcButton :pressed="pane === 'duplicados'" @click="pane = 'duplicados'">
-						Posibles duplicados<span v-if="duplicates.length > 0"> ({{ duplicates.length }})</span>
-					</NcButton>
+					<NcNoteCard v-if="error !== '' && draft === null"
+						type="error"
+						class="territorio-main__error">
+						{{ error }}
+					</NcNoteCard>
+
+					<div class="territorio-main__switch">
+						<NcButton :pressed="pane === 'mapa'" @click="pane = 'mapa'">
+							Mapa
+						</NcButton>
+						<NcButton :pressed="pane === 'indice'" @click="pane = 'indice'">
+							Índice
+						</NcButton>
+						<NcButton :pressed="pane === 'analisis'" @click="pane = 'analisis'">
+							Análisis
+						</NcButton>
+						<!--
+							The count sits on the button because that is the only place it
+							gets read. A queue nobody can see the size of is a queue nobody
+							opens (issue #16), and it is hidden when empty so that it reads
+							as news rather than furniture.
+						-->
+						<NcButton :pressed="pane === 'duplicados'" @click="pane = 'duplicados'">
+							Posibles duplicados<span v-if="duplicates.length > 0"> ({{ duplicates.length }})</span>
+						</NcButton>
+					</div>
+
+					<!--
+						v-show, not v-if: tearing the Leaflet map down and rebuilding it on
+						every switch would throw away the viewport the user had panned to.
+						The ResizeObserver inside it re-measures when it comes back.
+
+						The map only ever shows what is live. Retired records are browsable
+						in the list so they can be restored, never drawn.
+					-->
+					<TerritorioMap v-show="pane === 'mapa'"
+						:features="liveFiltered"
+						:taxonomy="taxonomy"
+						:selected-id="selectedId"
+						:draft-geometry="draftGeometry"
+						:draft-colour="draft?.colour ?? null"
+						:draft-subcategory-id="draft?.subcategoryId ?? null"
+						:draft-name="draft?.name ?? ''"
+						:placing="placing"
+						:boundaries="editingLimit ? boundaryFeatures : []"
+						:picked-ids="draft?.picked ?? []"
+						@pick="togglePicked"
+						@view-changed="onViewChanged"
+						@select="select"
+						@map-click="placeDraft"
+						@draw="startSector"
+						@reshape="reshapeDraft" />
+
+					<!--
+						v-if, like Análisis and the queue beside it, and NOT the map's
+						v-show. The Índice's column checkboxes are labelled «Nombre»,
+						«Teléfono», «Correo» — the record form's own words — so a pane left
+						mounted behind the map would put two controls with one accessible
+						name in the page at once, and a screen reader would read the record's
+						name field and a column switch as the same thing. What survives the
+						rebuild is `indice` below, which is where it belongs anyway.
+
+						The filtered LIVE Registry, like the map: `listed` answers with the
+						retired list alone once that toggle is on (ADR-0005), and a table of
+						retired records would disagree with both the map and what Exportar
+						would carry.
+					-->
+					<IndiceView v-if="pane === 'indice'"
+						v-model:view="indice"
+						:features="liveFiltered"
+						:taxonomy="taxonomy"
+						:boundaries="boundaries"
+						:selected-id="selectedId"
+						:filtered="isFiltered(filter)"
+						@select="select" />
+
+					<AnalisisView v-if="pane === 'analisis'"
+						:counts="counts"
+						:filtered="isFiltered(filter)" />
+
+					<!--
+						Unfiltered on purpose, unlike everything beside it. The Capas panel
+						and the search are about what someone is looking at; the queue is
+						about what is waiting to be decided, and hiding half a pair behind a
+						filter would leave a card with one side and no question.
+					-->
+					<DuplicatesView v-if="pane === 'duplicados'"
+						:pairs="duplicates"
+						:features="features"
+						:taxonomy="taxonomy"
+						:busy="resolving"
+						@merge="mergePair"
+						@dismiss="dismissPair"
+						@show="select" />
 				</div>
-
-				<!--
-					v-show, not v-if: tearing the Leaflet map down and rebuilding it on
-					every switch would throw away the viewport the user had panned to.
-					The ResizeObserver inside it re-measures when it comes back.
-
-					The map only ever shows what is live. Retired records are browsable
-					in the list so they can be restored, never drawn.
-				-->
-				<TerritorioMap v-show="pane === 'mapa'"
-					:features="liveFiltered"
-					:taxonomy="taxonomy"
-					:selected-id="selectedId"
-					:draft-geometry="draftGeometry"
-					:draft-colour="draft?.colour ?? null"
-					:draft-subcategory-id="draft?.subcategoryId ?? null"
-					:draft-name="draft?.name ?? ''"
-					:placing="placing"
-					:boundaries="editingLimit ? boundaryFeatures : []"
-					:picked-ids="draft?.picked ?? []"
-					@pick="togglePicked"
-					@view-changed="onViewChanged"
-					@select="select"
-					@map-click="placeDraft"
-					@draw="startSector"
-					@reshape="reshapeDraft" />
-
-				<!--
-					v-if, like Análisis and the queue beside it, and NOT the map's
-					v-show. The Índice's column checkboxes are labelled «Nombre»,
-					«Teléfono», «Correo» — the record form's own words — so a pane left
-					mounted behind the map would put two controls with one accessible
-					name in the page at once, and a screen reader would read the record's
-					name field and a column switch as the same thing. What survives the
-					rebuild is `indice` below, which is where it belongs anyway.
-
-					The filtered LIVE Registry, like the map: `listed` answers with the
-					retired list alone once that toggle is on (ADR-0005), and a table of
-					retired records would disagree with both the map and what Exportar
-					would carry.
-				-->
-				<IndiceView v-if="pane === 'indice'"
-					v-model:view="indice"
-					:features="liveFiltered"
-					:taxonomy="taxonomy"
-					:boundaries="boundaries"
-					:selected-id="selectedId"
-					:filtered="isFiltered(filter)"
-					@select="select" />
-
-				<AnalisisView v-if="pane === 'analisis'"
-					:counts="counts"
-					:filtered="isFiltered(filter)" />
-
-				<!--
-					Unfiltered on purpose, unlike everything beside it. The Capas panel
-					and the search are about what someone is looking at; the queue is
-					about what is waiting to be decided, and hiding half a pair behind a
-					filter would leave a card with one side and no question.
-				-->
-				<DuplicatesView v-if="pane === 'duplicados'"
-					:pairs="duplicates"
-					:features="features"
-					:taxonomy="taxonomy"
-					:busy="resolving"
-					@merge="mergePair"
-					@dismiss="dismissPair"
-					@show="select" />
-			</div>
+			</ErrorBoundary>
 		</NcAppContent>
 
 		<ImportDialog v-if="importing" @close="importing = false" @imported="afterImport" />
@@ -219,6 +228,7 @@ import AnalisisView from './components/AnalisisView.vue'
 import BoundaryPicker from './components/BoundaryPicker.vue'
 import CapasPanel from './components/CapasPanel.vue'
 import DuplicatesView from './components/DuplicatesView.vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ExportDialog from './components/ExportDialog.vue'
@@ -273,6 +283,7 @@ export default {
 		BoundaryPicker,
 		CapasPanel,
 		DuplicatesView,
+		ErrorBoundary,
 		FeatureDetail,
 		ExportDialog,
 		FeatureList,

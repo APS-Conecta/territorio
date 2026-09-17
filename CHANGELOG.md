@@ -19,6 +19,36 @@ The Category colour tests stop describing the instance they happen to run on.
 
 ### Fixed
 
+- **A basemap tile that failed is asked for again, so the map stops keeping permanent grey holes.**
+  Leaflet never retries one, and not by oversight: `TileLayer._tileOnError` hands the tile straight
+  to `_tileReady`, which stamps `tile.loaded` with a timestamp and fires `tileerror` — and a stamped
+  tile is a finished tile, so no later pan, resize or five-second poll re-requests it. Measured on
+  this app with 40% of tiles answered `503`: 10 of 16 blank, and still 10 of 16 blank twelve seconds
+  after the host recovered *and* after a resize. The hole was permanent for the life of the page.
+  The same run now ends 0 of 16 blank, healed with no user interaction.
+
+  **It matters because of what the tile host is.** OpenStreetMap's wiki files
+  `tile.openstreetmap.org` as a P2 best-effort service under a Tile Usage Policy, answers `429` when
+  it rate-limits, and publishes a list of applications it blocked outright for heavy use. A tile
+  failing now and then is the contract ADR-0004 accepted when it made the basemap a public service,
+  not a fault. The fix is not OpenStreetMap-specific for that same reason: a clinic's own tile
+  server drops requests too, and Leaflet will not retry those either.
+
+  **Bounded and backing off — 1 + 3 attempts per tile over ~17 seconds, then stop.** That is a
+  safety property rather than a tuning knob: an unbounded retry against a server already refusing is
+  precisely the behaviour OpenStreetMap blocks applications for. Measured against a host refusing
+  everything, each of 12 tiles took exactly 4 requests and the wire then went quiet. The url is
+  re-requested unchanged, with no cache-busting parameter — a unique query string would miss OSM's
+  CDN on every retry and turn each failed tile into a guaranteed origin hit, the opposite of what
+  their policy asks for.
+
+  **The «No se pudo cargar el fondo de mapa» warning is untouched, and still correct.** It needs
+  *no* tile to have ever loaded, so it stays quiet for a handful of holes and still appears for a
+  host that is genuinely gone — verified while the retries were exhausting. A `404` past the edge of
+  coverage reaches the same handler indistinguishably, because an `<img>` error event carries no
+  status; three wasted requests for a tile that does not exist is the price of not needing to know
+  which kind of failure this was.
+
 - **`CategoryCrudTest` stops asserting that a spare colour is free** (#134). Four of its tests
   opened by claiming the instance had an unused spare, and on the dev instance all eight are held:
   the browser gate leaves one Category per run, each of them files a record, and ADR-0016 refuses a

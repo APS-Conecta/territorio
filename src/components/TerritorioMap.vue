@@ -30,6 +30,7 @@ import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
 import { PIN_DOT_SIZE, PIN_GLYPH_SIZE, labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { clusterRing, isApproximate } from '../pins.js'
+import { retryTile } from '../tiles.js'
 import {
 	boundsOf,
 	colourOf,
@@ -298,8 +299,14 @@ export default {
 			// Tiles failing is not an error the app should die on: the clinic may
 			// be offline, or the tile host firewalled. Pan, zoom and everything
 			// drawn on top keep working, so we note it and carry on.
-			.on('tileerror', () => {
+			.on('tileerror', (event) => {
 				this.tileFailed = true
+
+				// Leaflet stamps a failed tile as finished and never asks for it
+				// again, so without this the grey square stays for the life of the
+				// page — no pan, resize or poll brings it back. A bounded few
+				// retries heal a 429 or a lost second of network (`tiles.js`).
+				retryTile(event.tile)
 			})
 			.on('tileload', () => {
 				this.tileLoaded = true

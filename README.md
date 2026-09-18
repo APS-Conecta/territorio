@@ -263,6 +263,23 @@ good one. Past **100 m** the map says in words that the position is approximate 
 the sector shown. A reading that arrives with no accuracy at all is treated as untrustworthy rather
 than as perfect.
 
+## Deploying a version bump
+
+Bumping `appinfo/info.xml` puts the whole Nextcloud instance into **"requires upgrade"** — every
+page answers `503`, not just this app — until the upgrade runs:
+
+```
+docker compose exec -u www-data nextcloud php occ upgrade
+```
+
+Measured here on 2026-09-18: the bump to 0.73.0 took the login page to 503, and `occ upgrade`
+restored it and reported `Updated <territorio> to 0.73.0`. Bump the version and run the upgrade as
+one step, never as two.
+
+The instance must have `appstoreenabled=0` first (this stack sets `NC_appstoreenabled: "0"` in
+`compose.yaml`): `occ upgrade` will otherwise fetch from the app store, which is how a pinned,
+vendored app silently becomes whatever is newest.
+
 ## Licence
 
 AGPL-3.0-or-later — see [`LICENSE`](LICENSE).

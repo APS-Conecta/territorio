@@ -32,6 +32,11 @@ const BROWSER = {
 	ResizeObserver: 'readonly',
 	FormData: 'readonly',
 	URL: 'readonly',
+	// The basemap archive is a cross-origin static file, so it is read with plain
+	// `fetch` and not `@nextcloud/axios` — that one attaches this instance's CSRF
+	// headers, which have no business on a third host and would fail preflight.
+	fetch: 'readonly',
+	TextDecoder: 'readonly',
 	OC: 'readonly',
 	Date: 'readonly',
 }

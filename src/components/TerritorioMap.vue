@@ -1,10 +1,18 @@
 <template>
-	<div class="territorio-map">
+	<div class="territorio-map"
+		:class="{ 'territorio-map--vector': basemap.kind === 'pmtiles' }">
 		<NcNoteCard v-if="basemapUnreachable"
 			type="warning"
 			class="territorio-map__notice">
 			No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta
 			la imagen de fondo.
+		</NcNoteCard>
+
+		<NcNoteCard v-if="locateNotice"
+			:type="locateNoticeType"
+			class="territorio-map__notice"
+			data-testid="locate-notice">
+			{{ locateNotice }}
 		</NcNoteCard>
 
 		<div ref="container" class="territorio-map__canvas" data-testid="map-canvas" />
@@ -29,7 +37,9 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
 import { glyphFor } from '../glyphs.js'
 import { PIN_DOT_SIZE, PIN_GLYPH_SIZE, labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { accuracyLabel, isFixTrustworthy, locateErrorMessage } from '../locate.js'
 import { clusterRing, isApproximate } from '../pins.js'
+import { leafletLayer } from 'protomaps-leaflet'
 import { retryTile } from '../tiles.js'
 import {
 	boundsOf,
@@ -56,6 +66,39 @@ const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
  * yet — an empty map somewhere plausible beats an empty map over the ocean.
  */
 const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
+
+/** How far the map lets a person zoom, whichever basemap is drawing it. */
+const MAX_ZOOM = 19
+
+/**
+ * The deepest zoom the Protomaps archive actually holds (ADR-0019).
+ *
+ * Its own header says `max zoom 15`, and Protomaps document z15 as sufficient
+ * for street-level mapping. Past it a vector layer OVERZOOMS — it keeps scaling
+ * the z15 data instead of asking for a z16 tile that is not in the file — so the
+ * map still zooms to 19 and simply stops fetching. Leaving this unset makes it
+ * ask for tiles the archive does not have, at every zoom past 15.
+ */
+const PMTILES_MAX_DATA_ZOOM = 15
+
+/**
+ * The first seven bytes of a PMTiles archive spell its own name.
+ *
+ * Checked because a 206 is not proof: a proxy or an error page can answer a
+ * range request with something that is not an archive, and the failure then
+ * looks like an empty map rather than a bad URL.
+ */
+const PMTILES_MAGIC = 'PMTiles'
+
+/**
+ * The «you are here» blue.
+ *
+ * Deliberately outside the Category ramp: in this app hue GROUPS Categories
+ * (ADR-0013), so a dot in one of those hues would read as a record somebody
+ * filed rather than as the device's own position. This is the one mark on the
+ * map that means nothing about the territory.
+ */
+const LOCATION_COLOUR = '#1a73e8'
 
 /** Between overlayPane (400) and markerPane (600): above shapes, below pins. */
 const PICKABLE_PANE = 'territorio-pickable'
@@ -153,6 +196,12 @@ export default {
 			// change that happens to look identical, which is precisely what
 			// reopening a saved Sector produces.
 			reported: '',
+
+			// «¿Dónde estoy?». `locating` is the control's own state, so the button
+			// can say whether pressing it again stops following.
+			locating: false,
+			locateNotice: '',
+			locateNoticeType: 'warning',
 		}
 	},
 
@@ -267,6 +316,10 @@ export default {
 			zoomOutTitle: 'Alejar',
 		}).addTo(this.map)
 
+		this.addLocateControl()
+		this.map.on('locationfound', this.onLocationFound)
+		this.map.on('locationerror', this.onLocationError)
+
 		// A pane of its own for the lines a Limit can follow, above the Sectores
 		// and below the pins. Without it they share overlayPane with the Sector
 		// polygons, which are translucent-FILLED and so clickable across their
@@ -292,38 +345,7 @@ export default {
 			this.map.fitBounds(comuna, { padding: [16, 16], animate: false })
 		}
 
-		L.tileLayer(this.basemap.url, {
-			attribution: this.attributionHtml,
-			maxZoom: 19,
-			// Nextcloud serves every page with `Referrer-Policy: no-referrer`, so
-			// without this a tile request carries no `Referer` at all — measured.
-			// A browser also supplies its own `User-Agent`, which names Chrome and
-			// not this app, so the two things OpenStreetMap's Tile Usage Policy
-			// asks an application to identify itself by are both absent and the
-			// traffic is indistinguishable from anonymous scraping. That is the
-			// profile they rate-limit and then answer `403`.
-			//
-			// `origin` and not the browser default: it sends the scheme, host and
-			// port and never a path, so a third party learns which instance asked
-			// and never which page of it, nor which record was open.
-			referrerPolicy: 'origin',
-		})
-			// Tiles failing is not an error the app should die on: the clinic may
-			// be offline, or the tile host firewalled. Pan, zoom and everything
-			// drawn on top keep working, so we note it and carry on.
-			.on('tileerror', (event) => {
-				this.tileFailed = true
-
-				// Leaflet stamps a failed tile as finished and never asks for it
-				// again, so without this the grey square stays for the life of the
-				// page — no pan, resize or poll brings it back. A bounded few
-				// retries heal a 429 or a lost second of network (`tiles.js`).
-				retryTile(event.tile)
-			})
-			.on('tileload', () => {
-				this.tileLoaded = true
-			})
-			.addTo(this.map)
+		this.addBasemap()
 
 		// Shapes live in Leaflet's overlayPane and markers in its markerPane, which
 		// is what puts a Sector's fill beneath the pins standing on it. Nothing
@@ -353,10 +375,272 @@ export default {
 
 	beforeUnmount() {
 		this.resizeObserver?.disconnect()
+		// Before `remove()`, and explicitly: `map.remove()` tears down the map but
+		// a watch started with `locate({ watch: true })` is a
+		// `navigator.geolocation` subscription held by the browser, which would
+		// otherwise keep waking the GPS after the map it fed is gone.
+		this.map?.stopLocate()
 		this.map?.remove()
 	},
 
 	methods: {
+		/**
+		 * Draw the basemap, in whichever of its two forms this install serves.
+		 *
+		 * ADR-0019: a PMTiles archive is one file the browser reads with Range
+		 * requests, and a raster URL is a directory of images. They need different
+		 * Leaflet layers, different failure handling and different CSP directives
+		 * (`PageController` owns that last one), so the fork is here and once.
+		 */
+		addBasemap() {
+			if (this.basemap.kind === 'pmtiles') {
+				this.addPmtilesBasemap()
+				return
+			}
+
+			this.addRasterBasemap()
+		},
+
+		/**
+		 * The Protomaps vector basemap, drawn to canvas by `protomaps-leaflet`.
+		 *
+		 * That library is in maintenance mode and its own docs point new projects
+		 * at MapLibre. It is still the right one here for the reason those docs
+		 * give for keeping it: this map is Leaflet all the way down — geoman draws
+		 * on it, markercluster clusters on it, and `PICKABLE_PANE` orders it — and
+		 * MapLibre would mean rewriting every one of those. The same docs call it
+		 * suited to non-interactive layers, which is exactly what a basemap under
+		 * our own overlays is: nothing here is ever clicked.
+		 */
+		addPmtilesBasemap() {
+			leafletLayer({
+				url: this.basemap.url,
+				attribution: this.attributionHtml,
+				// Spanish labels from the archive itself, so place names match the
+				// rest of the interface instead of arriving in English.
+				lang: 'es',
+				// `light`, and the brightness that goes with it is not decoration:
+				// see the `--vector` filter at the bottom of this file. Bare
+				// `light` earth is darker than the raster land every ratio in
+				// map-legibility § 2 was measured over, which drops the worst
+				// dot-on-tint pair to 2.65:1 — below WCAG 1.4.11's floor and worse
+				// than the 3.04:1 it replaced. `white` would clear it at 3.44:1 but
+				// renders a basemap so pale the street grid is hard to read, and
+				// reading the street grid is how a Sector gets drawn at all.
+				flavor: 'light',
+				maxZoom: MAX_ZOOM,
+				maxDataZoom: PMTILES_MAX_DATA_ZOOM,
+			})
+				.on('tileload', () => {
+					this.tileLoaded = true
+				})
+				.addTo(this.map)
+
+			// And NOT a `tileerror` handler, because there is no such event here:
+			// `protomaps-leaflet` calls Leaflet's done callback as `done(undefined,
+			// tile)` unconditionally, so a tile that never rendered is
+			// indistinguishable from one that did. Without the check below a
+			// wrong URL is a blank map with no warning and nothing in the console.
+			this.reportArchiveReachable()
+		},
+
+		/**
+		 * Say whether the archive is actually there, once, at mount.
+		 *
+		 * Reads the first seven bytes rather than trusting a status: a 206 only
+		 * says something answered. What has to be true is that the server honours
+		 * Range AND that what comes back is an archive — a server that ignores
+		 * Range would make the reader pull a gigabyte for every tile, and an error
+		 * page can arrive with a perfectly good status code.
+		 */
+		async reportArchiveReachable() {
+			try {
+				const response = await fetch(this.basemap.url, { headers: { Range: `bytes=0-${PMTILES_MAGIC.length - 1}` } })
+
+				if (response.status !== 206) {
+					// Not an error to read the body of: if Range was ignored this is
+					// the whole archive, and reading it would do the damage the
+					// check exists to prevent.
+					response.body?.cancel()
+					this.tileFailed = true
+					return
+				}
+
+				if (new TextDecoder().decode(await response.arrayBuffer()) !== PMTILES_MAGIC) {
+					this.tileFailed = true
+					return
+				}
+
+				this.tileLoaded = true
+			} catch {
+				// Offline, blocked, or a name that does not resolve. The map, the
+				// pins and everything drawn on top keep working without it.
+				this.tileFailed = true
+			}
+		},
+
+		/**
+		 * The «¿Dónde estoy?» button, under the zoom control.
+		 *
+		 * A real `<button>` inside a Leaflet control rather than a div with a
+		 * click handler, so it is focusable, announced and operable from the
+		 * keyboard without any of `a11y.js` — that helper exists for SVG layers,
+		 * which have no such element to borrow.
+		 */
+		addLocateControl() {
+			const control = L.control({ position: 'topright' })
+
+			control.onAdd = () => {
+				const container = L.DomUtil.create('div', 'leaflet-bar territorio-locate')
+				const button = L.DomUtil.create('a', '', container)
+				button.href = '#'
+				button.role = 'button'
+				button.textContent = '◎'
+				button.title = '¿Dónde estoy?'
+				button.setAttribute('aria-label', '¿Dónde estoy?')
+
+				// Or the click pans the map underneath and the href scrolls the page.
+				L.DomEvent.disableClickPropagation(container)
+				L.DomEvent.on(button, 'click', (event) => {
+					L.DomEvent.preventDefault(event)
+					this.toggleLocate(button)
+				})
+
+				this.locateButton = button
+				return container
+			}
+
+			control.addTo(this.map)
+		},
+
+		/**
+		 * Start or stop following the device's position.
+		 *
+		 * `watch`, not a single reading: somebody using this is walking a sector
+		 * with a phone, and a one-shot fix is stale by the next corner. Stopping
+		 * is half the feature — a watch nobody turns off keeps the GPS awake.
+		 */
+		toggleLocate(button) {
+			if (this.locating) {
+				this.map.stopLocate()
+				this.locating = false
+				this.locationLayer?.remove()
+				this.locationLayer = null
+				this.locateNotice = ''
+				button?.setAttribute('aria-pressed', 'false')
+				return
+			}
+
+			this.locating = true
+			this.locateNotice = ''
+			button?.setAttribute('aria-pressed', 'true')
+			this.map.locate({
+				watch: true,
+				enableHighAccuracy: true,
+				// Not `setView`: this map may be mid-draw, and Leaflet moving the
+				// view under a hand placing a vertex is the same class of problem
+				// the animated zoom caused. The first fix recentres, later ones do
+				// not — see below.
+				setView: false,
+			})
+		},
+
+		/**
+		 * Draw where the person is, and say how sure we are.
+		 *
+		 * The accuracy circle is not decoration. This app decides which Sector a
+		 * point falls in (ADR-0008), and a fix taken indoors is routinely loose
+		 * enough to sit on either side of a boundary while looking exactly as
+		 * confident as a good one. So a loose fix is drawn as the circle it really
+		 * is, and says so in words.
+		 */
+		onLocationFound(event) {
+			const accuracy = event.accuracy
+			const trustworthy = isFixTrustworthy(accuracy)
+
+			this.locationLayer?.remove()
+			this.locationLayer = L.layerGroup([
+				// The area the reading actually covers, always — at a good fix it is
+				// a small ring around the dot, which reads as precision rather than
+				// as a claim.
+				L.circle(event.latlng, {
+					radius: Math.max(accuracy || 0, 1),
+					interactive: false,
+					weight: 1,
+					color: LOCATION_COLOUR,
+					fillColor: LOCATION_COLOUR,
+					fillOpacity: 0.12,
+				}),
+				// A dot, not a pin: a pin here would read as a Place somebody filed,
+				// and hue in this app means a Category (ADR-0013). The white ring is
+				// what keeps it legible over both the earth and the water of the
+				// basemap.
+				L.circleMarker(event.latlng, {
+					radius: 6,
+					interactive: false,
+					weight: 3,
+					color: '#ffffff',
+					fillColor: LOCATION_COLOUR,
+					fillOpacity: 1,
+				}),
+			]).addTo(this.map)
+
+			if (!this.locatedOnce) {
+				this.locatedOnce = true
+				this.map.setView(event.latlng, Math.max(this.map.getZoom(), 16), { animate: false })
+			}
+
+			this.locateNoticeType = 'warning'
+			this.locateNotice = trustworthy
+				? ''
+				: `Su ubicación es aproximada (${accuracyLabel(accuracy)}). Puede no coincidir con el sector que se muestra.`
+		},
+
+		onLocationError(event) {
+			this.locating = false
+			this.locateButton?.setAttribute('aria-pressed', 'false')
+			this.locationLayer?.remove()
+			this.locationLayer = null
+			this.locateNoticeType = 'error'
+			this.locateNotice = locateErrorMessage(event?.code)
+		},
+
+		/** A directory of `{z}/{x}/{y}` images — OpenStreetMap's shape, and any clone of it. */
+		addRasterBasemap() {
+			L.tileLayer(this.basemap.url, {
+				attribution: this.attributionHtml,
+				maxZoom: MAX_ZOOM,
+				// Nextcloud serves every page with `Referrer-Policy: no-referrer`, so
+				// without this a tile request carries no `Referer` at all — measured.
+				// A browser also supplies its own `User-Agent`, which names Chrome and
+				// not this app, so the two things OpenStreetMap's Tile Usage Policy
+				// asks an application to identify itself by are both absent and the
+				// traffic is indistinguishable from anonymous scraping. That is the
+				// profile they rate-limit and then answer `403`.
+				//
+				// `origin` and not the browser default: it sends the scheme, host and
+				// port and never a path, so a third party learns which instance asked
+				// and never which page of it, nor which record was open.
+				referrerPolicy: 'origin',
+			})
+				// Tiles failing is not an error the app should die on: the clinic may
+				// be offline, or the tile host firewalled. Pan, zoom and everything
+				// drawn on top keep working, so we note it and carry on.
+				.on('tileerror', (event) => {
+					this.tileFailed = true
+
+					// Leaflet stamps a failed tile as finished and never asks for it
+					// again, so without this the grey square stays for the life of the
+					// page — no pan, resize or poll brings it back. A bounded few
+					// retries heal a 429 or a lost second of network (`tiles.js`).
+					retryTile(event.tile)
+				})
+				.on('tileload', () => {
+					this.tileLoaded = true
+				})
+				.addTo(this.map)
+		},
+
 		/**
 		 * Rebuild the whole marker layer rather than diffing it. One comuna is
 		 * hundreds of markers, where clearing and re-adding costs nothing and a
@@ -845,6 +1129,29 @@ export default {
  */
 .leaflet-tile-pane {
 	filter: saturate(0.55);
+}
+
+/*
+ * The Protomaps basemap, and ONLY it, is lifted as well as desaturated.
+ *
+ * This is the "moves all of them at once" the note above warns about, done on
+ * purpose and with all of them re-measured (ADR-0019, map-legibility § 2.2).
+ * The reason it is needed: Protomaps `light` earth is darker than the raster
+ * land every § 2 ratio was taken over, which alone drops the worst dot-on-tint
+ * pair to 2.65:1 — under WCAG 1.4.11's 3:1 and under the 3.04:1 it replaces.
+ * At 1.09 that pair reads 3.14:1, and every other measured ratio comes out
+ * BETTER than it was on raster: park 2.98:1 against 2.60:1, water 2.63:1
+ * against 2.20:1, the dark-theme label still invisible at 1.08:1 so § 2's
+ * "labels follow the tile" rule stands, and the hairline over the dark page
+ * background untouched at 1.87:1 because this filter is on the tile pane and
+ * the page is not in it.
+ *
+ * Scoped to the vector basemap so the raster path keeps exactly the numbers
+ * § 2 documents for it — a clinic still serving `{z}/{x}/{y}` tiles has not
+ * agreed to a re-measurement.
+ */
+.territorio-map--vector .leaflet-tile-pane {
+	filter: saturate(0.55) brightness(1.09);
 }
 
 /*

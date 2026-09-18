@@ -11,6 +11,7 @@ use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCA\Territorio\Service\Basemap;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
@@ -61,11 +62,20 @@ class PageController extends Controller {
 
 		$response = new TemplateResponse(Application::APP_ID, 'index');
 
-		// The policy is derived from the same setting the tiles come from, so
-		// repointing the basemap cannot leave the map blocked by a stale host
-		// (ADR-0004). Tiles are <img> loads, so img-src is the whole story.
+		// The policy is derived from the same setting the basemap comes from, so
+		// repointing it cannot leave the map blocked by a stale host (ADR-0004).
+		//
+		// WHICH directive follows from how the browser fetches it, and getting
+		// that wrong fails silently in the worst way: the host is named, the
+		// policy reads as though it allowed the basemap, and the map is blank.
+		// Raster tiles are <img> loads — `img-src`. A PMTiles archive is read
+		// with `fetch` and Range requests — `connect-src`.
 		$csp = new ContentSecurityPolicy();
-		$csp->addAllowedImageDomain($basemap->cspHost());
+		if ($basemap->kind() === Basemap::KIND_PMTILES) {
+			$csp->addAllowedConnectDomain($basemap->cspHost());
+		} else {
+			$csp->addAllowedImageDomain($basemap->cspHost());
+		}
 		$response->setContentSecurityPolicy($csp);
 
 		return $response;

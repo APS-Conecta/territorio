@@ -181,8 +181,93 @@ final class BasemapTest extends TestCase {
 				'url' => Basemap::DEFAULT_URL,
 				'attribution' => Basemap::DEFAULT_ATTRIBUTION,
 				'usesOpenStreetMap' => true,
+				'kind' => Basemap::KIND_RASTER,
 			],
 			Basemap::resolve(null, null)->jsonSerialize(),
+		);
+	}
+
+	/**
+	 * A PMTiles archive is one file the BROWSER reads with Range requests, not a
+	 * directory of images. It therefore carries none of Leaflet's `{z}/{x}/{y}`
+	 * placeholders — and the placeholder test is exactly what used to decide
+	 * whether a URL was a tile URL at all, so without this a `.pmtiles` setting
+	 * was rejected and the map quietly stayed on OpenStreetMap.
+	 */
+	public function testAPmtilesArchiveIsAcceptedWithoutTilePlaceholders(): void {
+		$basemap = Basemap::resolve('https://tiles.cesfam.local/chile.pmtiles', 'Protomaps');
+
+		self::assertSame('https://tiles.cesfam.local/chile.pmtiles', $basemap->url());
+		self::assertSame(Basemap::KIND_PMTILES, $basemap->kind());
+		self::assertFalse($basemap->wasRejected());
+	}
+
+	public function testAPmtilesArchiveKeepsItsOriginForThePolicy(): void {
+		$basemap = Basemap::resolve('https://tiles.cesfam.local:10009/chile.pmtiles', '');
+
+		self::assertSame('https://tiles.cesfam.local:10009', $basemap->cspHost());
+	}
+
+	/**
+	 * The distinction the Content-Security-Policy turns on. Raster tiles are
+	 * `<img>` loads and belong in `img-src`; a PMTiles archive is `fetch`ed, so
+	 * naming it in `img-src` leaves the map blank with a policy that reads as
+	 * though it allowed the thing it just blocked.
+	 */
+	public function testKindSaysHowTheBasemapIsFetched(): void {
+		self::assertSame(
+			Basemap::KIND_RASTER,
+			Basemap::resolve('https://tiles.intranet/{z}/{x}/{y}.png', '')->kind(),
+		);
+		self::assertSame(
+			Basemap::KIND_PMTILES,
+			Basemap::resolve('https://tiles.intranet/chile.pmtiles', '')->kind(),
+		);
+	}
+
+	public function testAPmtilesArchiveIsNotOpenStreetMapsOwnTileService(): void {
+		// `usesOpenStreetMap` gates OpenStreetMap's own copyright LINK markup, which
+		// belongs to their tile service. A Protomaps archive is still OSM DATA and
+		// still owes ODbL credit — that is the attribution string's job, not this
+		// flag's.
+		self::assertFalse(
+			Basemap::resolve('https://tiles.intranet/chile.pmtiles', '')->usesOpenStreetMap(),
+		);
+	}
+
+	public function testAPmtilesUrlWithAQueryStringIsStillAnArchive(): void {
+		$basemap = Basemap::resolve('https://tiles.local/chile.pmtiles?v=20260915', '');
+
+		self::assertSame(Basemap::KIND_PMTILES, $basemap->kind());
+		self::assertFalse($basemap->wasRejected());
+	}
+
+	public function testSomethingThatIsNeitherFormIsStillRejected(): void {
+		// The guard this change could most easily have opened: a bare host, a
+		// static image, or a path that merely mentions the word.
+		foreach ([
+			'https://maps.local/static.png',
+			'https://maps.local/',
+			'https://maps.local/pmtiles/readme.txt',
+		] as $url) {
+			self::assertTrue(
+				Basemap::resolve($url, '')->wasRejected(),
+				"{$url} should not be accepted",
+			);
+			self::assertSame(Basemap::DEFAULT_URL, Basemap::resolve($url, '')->url());
+		}
+	}
+
+	public function testAPmtilesArchiveMustStillBeAnHttpUrl(): void {
+		// Not file:// and not a bare path: the browser fetches this cross-origin,
+		// and whatever lands here is also what goes into a response header.
+		self::assertTrue(Basemap::resolve('file:///srv/tiles/chile.pmtiles', '')->wasRejected());
+		self::assertTrue(Basemap::resolve('/srv/tiles/chile.pmtiles', '')->wasRejected());
+	}
+
+	public function testAPmtilesArchiveCannotSmuggleAHeaderBreak(): void {
+		self::assertTrue(
+			Basemap::resolve("https://tiles.local;script-src *\n/chile.pmtiles", '')->wasRejected(),
 		);
 	}
 }

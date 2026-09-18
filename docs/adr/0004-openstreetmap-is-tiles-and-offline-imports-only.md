@@ -21,9 +21,18 @@ The tile URL is an administrator setting defaulting to the public OSM tile servi
 attribution and a Content-Security-Policy allowance for the tile host. A clinic that later loses
 internet access repoints that one setting at a self-hosted tile server; no code changes.
 
+**Superseded in part (2026-09-18) by
+[ADR-0019](0019-the-basemap-is-a-self-hosted-pmtiles-archive.md).** The public OSM tile service
+answered 403 — it is a best-effort service whose own policy asks heavy users to host their own — so
+the default is now a self-hosted PMTiles archive, and a basemap URL may be either form. The
+mechanism this paragraph describes is exactly what made that a configuration change instead of a
+rewrite; it was right. Only the default moved.
+
 ## Consequences
 
 - Refreshing OSM-derived data is a re-import, governed by ADR-0003.
 - taginfo is a research aid used while choosing which OSM tags to query. It is not a dependency.
-- Out of the box, client browsers need internet for the basemap. The map must stay usable, with
-  features and geometry intact, when tiles fail to load.
+- ~~Out of the box, client browsers need internet for the basemap.~~ **No longer true as of
+  ADR-0019**: the archive is served beside the app, so the basemap reaches exactly as far as the
+  app does. The second half stands and is load-bearing — the map must stay usable, with features
+  and geometry intact, when the basemap fails to load.

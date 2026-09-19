@@ -7,6 +7,14 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 The basemap stops being somebody else's public service.
 
+### Added
+
+- **The map page and the admin panel show their loading state instead of a blank frame** while the
+  bundle boots — spinner + `<noscript>` from the suite theme (`themes/apsconecta`, MAPEO.md §5),
+  the same component in every custom app. Vue's container mount replaces the mount's children on
+  boot, so the stub removes itself. Before this there was nothing at all: a blank frame until the
+  webpack bundle mounted, and nothing for a JS-disabled browser.
+
 ### Changed
 
 - **The basemap is a PMTiles archive this stack serves itself, not OpenStreetMap's tile service**

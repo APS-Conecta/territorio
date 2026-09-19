@@ -5,11 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidTaxonomyException;
 use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Db\DoesNotExistException;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -27,6 +24,8 @@ use OCP\IRequest;
  * a refusal becomes.
  */
 class CategoryController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private TaxonomyService $taxonomy,
@@ -106,20 +105,4 @@ class CategoryController extends Controller {
 		return $this->attempt(fn (): array => $this->taxonomy->removeSubcategory($slug, $subSlug));
 	}
 
-	/**
-	 * A refusal is 422 and carries the reason; a slug nobody has is 404.
-	 *
-	 * @param callable(): array<int|string, mixed> $action
-	 */
-	private function attempt(callable $action): JSONResponse {
-		try {
-			return new JSONResponse($action());
-		} catch (InvalidTaxonomyException $e) {
-			// Understood and refused — the message names what to fix, and the
-			// panel shows it where the person typed.
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
-		} catch (DoesNotExistException) {
-			return new JSONResponse(['message' => 'no existe'], Http::STATUS_NOT_FOUND);
-		}
-	}
 }

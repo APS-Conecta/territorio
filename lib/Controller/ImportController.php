@@ -5,13 +5,10 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Db\DoesNotExistException;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
@@ -35,6 +32,8 @@ use OCP\Lock\LockedException;
  * The same service backs `occ territorio:import`, so the two cannot drift.
  */
 class ImportController extends Controller {
+	use Refuses;
+
 	/**
 	 * A comuna's catastro is well under a megabyte — La Florida's 865 features
 	 * are 567 KB. The limit is here so a mistaken upload fails immediately and
@@ -72,26 +71,22 @@ class ImportController extends Controller {
 		// revertible (ADR-0009) exactly as an upload's is.
 		$path = trim((string)$this->request->getParam('path', ''));
 
-		try {
+		// A file rejected during reading wrote nothing at all. One that failed
+		// part-way through writing left a batch behind that can be reverted —
+		// which is why the message matters and the batch is recorded first.
+		return $this->attempt(function () use ($path, $dataset): array {
 			[$contents, $filename] = $path === ''
 				? $this->uploadedFile()
 				: $this->fileInNextcloud($path);
 
-			$batch = $this->import->importFile(
+			return $this->import->importFile(
 				$contents,
 				$filename,
 				$dataset,
 				trim((string)$this->request->getParam('label', '')) ?: null,
 				$this->userSession->getUser()?->getUID(),
-			);
-		} catch (InvalidImportException|InvalidFeatureException $e) {
-			// A file rejected during reading wrote nothing at all. One that failed
-			// part-way through writing left a batch behind that can be reverted —
-			// which is why the message matters and the batch is recorded first.
-			return $this->refuse($e->getMessage());
-		}
-
-		return new JSONResponse($batch->toClient());
+			)->toClient();
+		});
 	}
 
 	/**
@@ -174,19 +169,16 @@ class ImportController extends Controller {
 	 * undoable, not that fewer people may reach it.
 	 */
 	#[NoAdminRequired]
-	public function revert(int $id): JSONResponse {
-		try {
-			$revert = $this->revertService->revert($id, $this->userSession->getUser()?->getUID());
-		} catch (DoesNotExistException) {
-			return new JSONResponse(['message' => 'Ese lote no existe.'], Http::STATUS_NOT_FOUND);
-		} catch (InvalidImportException $e) {
-			return $this->refuse($e->getMessage());
+	public function revert(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing('Ese lote no existe.');
 		}
 
-		return new JSONResponse($revert->toClient());
-	}
-
-	private function refuse(string $message): JSONResponse {
-		return new JSONResponse(['message' => $message], Http::STATUS_UNPROCESSABLE_ENTITY);
+		return $this->attempt(
+			fn (): array => $this->revertService
+				->revert((int)$id, $this->userSession->getUser()?->getUID())
+				->toClient(),
+			'Ese lote no existe.',
+		);
 	}
 }

@@ -244,4 +244,23 @@ final class ImportControllerTest extends TestCase {
 		self::assertSame(Http::STATUS_OK, $this->controller->upload()->getStatus());
 		unlink($tmp);
 	}
+
+	/** L0-03: a malformed batch id is the same not-found as a batch nobody has. */
+	public function testAMalformedBatchIdIsTheSameNotFound(): void {
+		$reverts = $this->createMock(RevertService::class);
+		$reverts->expects(self::never())->method('revert');
+		$session = $this->createStub(IUserSession::class);
+		$controller = new ImportController(
+			$this->createStub(IRequest::class),
+			$this->import,
+			$reverts,
+			$session,
+			$this->root,
+		);
+
+		$response = $controller->revert('retired');
+
+		self::assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+		self::assertSame('Ese lote no existe.', $response->getData()['message']);
+	}
 }

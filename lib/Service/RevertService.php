@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use DateTime;
+use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\ImportBatchMapper;
@@ -198,7 +199,7 @@ class RevertService {
 	 * asignar" about a record the database says is assigned. Registry-wide,
 	 * silent, and the revert counted those records as successfully updated.
 	 */
-	private function setRetired(\OCA\Territorio\Db\Feature $feature, bool $retired): bool {
+	private function setRetired(Feature $feature, bool $retired): bool {
 		if ((bool)$feature->getRetired() === $retired) {
 			return false;
 		}
@@ -218,7 +219,7 @@ class RevertService {
 	 *
 	 * @param array<string, array{from: mixed, to: mixed}> $changes
 	 */
-	private function restoreValues(\OCA\Territorio\Db\Feature $feature, array $changes): bool {
+	private function restoreValues(Feature $feature, array $changes): bool {
 		if ($changes === []) {
 			// An update that changed nothing visible — a refreshed official value,
 			// say. There is nothing to put back, and counting it as undone would

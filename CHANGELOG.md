@@ -7,14 +7,6 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 The basemap stops being somebody else's public service.
 
-### Added
-
-- **The map page and the admin panel show their loading state instead of a blank frame** while the
-  bundle boots — spinner + `<noscript>` from the suite theme (`themes/apsconecta`, MAPEO.md §5),
-  the same component in every custom app. Vue's container mount replaces the mount's children on
-  boot, so the stub removes itself. Before this there was nothing at all: a blank frame until the
-  webpack bundle mounted, and nothing for a JS-disabled browser.
-
 ### Changed
 
 - **The basemap is a PMTiles archive this stack serves itself, not OpenStreetMap's tile service**
@@ -121,6 +113,12 @@ The basemap stops being somebody else's public service.
   draft was voseo — «Podés», «probá» — which is not how anybody is addressed in a Chilean clinic,
   and nothing in the repo would have caught it, so a test now pins the register.
 
+- **The map page and the admin panel show their loading state instead of a blank frame** while the
+  bundle boots — spinner + `<noscript>` from the suite theme (`themes/apsconecta`, MAPEO.md §5),
+  the same component in every custom app. Vue's container mount replaces the mount's children on
+  boot, so the stub removes itself. Before this there was nothing at all: a blank frame until the
+  webpack bundle mounted, and nothing for a JS-disabled browser.
+
 ### Fixed
 
 - **The archive's reachability is checked directly, because there is no `tileerror` to hook.**
@@ -134,6 +132,11 @@ The basemap stops being somebody else's public service.
   server that ignored it would make the reader pull a gigabyte per tile, so the body is cancelled
   unread rather than measured), that something is actually there, and that what is there is an
   archive rather than an error page served with a good status.
+
+- **A crafted route id no longer answers a 500.** `PUT /features/retired` and its siblings used
+  to TypeError before the method body ran — a 500 about a request that names no record; all seven
+  `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
+  `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
 
 ## [0.72.0] — unreleased
 

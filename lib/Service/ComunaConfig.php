@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
-use InvalidArgumentException;
 use OCA\Territorio\AppInfo\Application;
+use OCA\Territorio\Exception\InvalidComunaException;
 use OCP\IAppConfig;
 
 /**
@@ -29,7 +29,7 @@ class ComunaConfig {
 
 		try {
 			return Comuna::of($cut, $this->appConfig->getValueString(Application::APP_ID, self::KEY_NAME));
-		} catch (InvalidArgumentException) {
+		} catch (InvalidComunaException) {
 			// Something unusable was stored, before this validated or by hand. Say
 			// "not chosen" rather than throwing on every page load — setup is
 			// reachable from there and a broken value is fixed by choosing again.

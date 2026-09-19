@@ -8,7 +8,6 @@ use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\ExportService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\PasswordConfirmationRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -30,6 +29,8 @@ use OCP\IRequest;
  * time teaches people to type their password without reading why.
  */
 class ExportController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private ExportService $exports,
@@ -68,10 +69,7 @@ class ExportController extends Controller {
 	private function write(bool $contacts): DataDownloadResponse|JSONResponse {
 		$ids = $this->request->getParam('ids');
 		if (!is_array($ids)) {
-			return new JSONResponse(
-				['message' => 'Falta la lista de registros a exportar.'],
-				Http::STATUS_UNPROCESSABLE_ENTITY,
-			);
+			return $this->refuse('Falta la lista de registros a exportar.');
 		}
 
 		try {
@@ -82,7 +80,7 @@ class ExportController extends Controller {
 				(string)$this->request->getParam('scope', ''),
 			);
 		} catch (InvalidFeatureException $e) {
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
+			return $this->refuse($e->getMessage());
 		}
 
 		return new DataDownloadResponse($file['body'], $file['filename'], $file['mime']);

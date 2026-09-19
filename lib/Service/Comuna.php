@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
-use InvalidArgumentException;
+use JsonSerializable;
+use OCA\Territorio\Exception\InvalidComunaException;
 
 /**
  * The Chilean municipality this install is scoped to — see `CONTEXT.md`.
@@ -17,7 +18,7 @@ use InvalidArgumentException;
  * Depends on no OCP class, so it tests in bare PHP. {@see ComunaConfig} is the
  * part that needs Nextcloud.
  */
-final class Comuna {
+final class Comuna implements JsonSerializable {
 	private function __construct(
 		public readonly string $cut,
 		public readonly string $name,
@@ -34,12 +35,12 @@ final class Comuna {
 	 * and storing it would mean every UV file is later refused for a reason
 	 * nobody can see.
 	 *
-	 * @throws InvalidArgumentException
+	 * @throws InvalidComunaException
 	 */
 	public static function of(string $cut, string $name = ''): self {
 		$cut = trim($cut);
 		if (preg_match('/^\d{5}$/', $cut) !== 1) {
-			throw new InvalidArgumentException(sprintf(
+			throw new InvalidComunaException(sprintf(
 				'"%s" no es un código CUT: se esperan cinco dígitos, como 13110.',
 				$cut,
 			));

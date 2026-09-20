@@ -91,16 +91,18 @@ class ImportService {
 	 *      what it did;
 	 *   7. the duplicate scan runs last, after the batch has closed.
 	 *
-	 * SIZE is NOT capped here. `ImportController::MAX_BYTES` caps the browser
-	 * upload at 8 MiB; `occ territorio:import` has no cap at all, deliberately —
-	 * a comuna's cadastre arrives on the command line.
+	 * SIZE is NOT capped here. `ImportFiles::MAX_BYTES` caps what the browser
+	 * sends — an upload or a Files path alike — at 8 MiB; `occ territorio:import`
+	 * has no cap at all, deliberately — a comuna's cadastre arrives on the
+	 * command line.
 	 *
 	 * @param string      $contents   the file itself
 	 * @param string      $filename   used ONLY to pick the reader; see above
 	 * @param string      $datasetSlug
 	 * @param string|null $label      null means "no label", and the Dataset takes
-	 *                                the slug. Callers reading operator input
-	 *                                normalise "" to null before this point.
+	 *                                the slug. "" and whitespace mean the same,
+	 *                                normalised here — callers pass what they
+	 *                                were given, raw.
 	 * @param string|null $actor      null where nobody was behind it
 	 * @param bool|null   $boundary   null means "not saying", which leaves an
 	 *                                existing Dataset's flag alone
@@ -115,6 +117,14 @@ class ImportService {
 		?string $actor = null,
 		?bool $boundary = null,
 	): ImportBatch {
+		// `?:` and not `??`: an empty label is a label the caller did not give,
+		// and `$label ?? $datasetSlug` below only catches null. Letting '' through
+		// put it into Dataset::setLabel(''), where Entity::setter early-returns on
+		// the '' initialiser and the NOT NULL `label` column is omitted from the
+		// INSERT. Both callers — the browser route and `occ` — pass what they
+		// were given; this is the one place it is normalised.
+		$label = trim((string)$label) ?: null;
+
 		return $this->importRows(
 			match (self::suffixOf($filename)) {
 				'.kml' => $this->kml->read($contents, $datasetSlug),

@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Unit\Controller;
 
 use OCA\Territorio\Controller\ImportController;
 use OCA\Territorio\Db\ImportBatch;
+use OCA\Territorio\Service\ImportFiles;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Http;
@@ -23,11 +24,13 @@ use PHPUnit\Framework\TestCase;
 /**
  * Importing a file that is already in Nextcloud Files (#104).
  *
- * The refusals are what is asserted here, and they are asserted at the
- * controller because that is where they live: a path is a trust boundary in a
- * way an uploaded temporary file is not. The Files API is mocked — whether
- * `getUserFolder()` really mounts a share is Nextcloud's test to write, and the
- * browser gate drives the whole thing end to end.
+ * The refusals are what is asserted here, asserted THROUGH the controller,
+ * which is where a refusal becomes the 422 the dialog shows: the acquisition
+ * machinery now lives in `ImportFiles` (L1-04), built real in this suite over
+ * the same mocked OCP edges. A path is a trust boundary in a way an uploaded
+ * temporary file is not. The Files API is mocked — whether `getUserFolder()`
+ * really mounts a share is Nextcloud's test to write, and the browser gate
+ * drives the whole thing end to end.
  *
  * Every one of these used to be a 500: nothing in this controller caught a
  * file-system exception, because nothing in this app had ever touched Files.
@@ -64,7 +67,7 @@ final class ImportControllerTest extends TestCase {
 			$this->import,
 			$this->createStub(RevertService::class),
 			$session,
-			$this->root,
+			new ImportFiles($this->request, $session, $this->root),
 		);
 	}
 
@@ -95,7 +98,7 @@ final class ImportControllerTest extends TestCase {
 
 		$this->import->expects(self::once())
 			->method('importFile')
-			->with('<kml>bytes</kml>', 'catastro.kml', 'laflorida', null, self::UID)
+			->with('<kml>bytes</kml>', 'catastro.kml', 'laflorida', '', self::UID)
 			->willReturn(new ImportBatch());
 
 		self::assertSame(Http::STATUS_OK, $this->controller->upload()->getStatus());
@@ -236,7 +239,7 @@ final class ImportControllerTest extends TestCase {
 				'{"type":"FeatureCollection","features":[]}',
 				'catastro.geojson',
 				'laflorida',
-				null,
+				'',
 				self::UID,
 			)
 			->willReturn(new ImportBatch());
@@ -250,12 +253,13 @@ final class ImportControllerTest extends TestCase {
 		$reverts = $this->createMock(RevertService::class);
 		$reverts->expects(self::never())->method('revert');
 		$session = $this->createStub(IUserSession::class);
+		$request = $this->createStub(IRequest::class);
 		$controller = new ImportController(
-			$this->createStub(IRequest::class),
+			$request,
 			$this->import,
 			$reverts,
 			$session,
-			$this->root,
+			new ImportFiles($request, $session, $this->root),
 		);
 
 		$response = $controller->revert('retired');

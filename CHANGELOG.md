@@ -86,6 +86,13 @@ The basemap stops being somebody else's public service.
   vector basemap, so a clinic still serving raster tiles keeps exactly the numbers § 2 documents
   for it — it has not agreed to a re-measurement.
 
+- **The import path owns its label rule, and ImportFiles owns its bytes.** The `trim(...) ?: null`
+  normalisation lived inline in two callers, bound only by a comment that named the other; it is
+  `ImportService`'s now and both callers pass what they were given. The upload and Files-tree
+  acquisition moved with it, out of the controller and into `ImportFiles` — the controller is
+  wiring only, the same shape as its siblings, and the size cap and its one sentence are a single
+  constant both doors share.
+
 ### Added
 
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom

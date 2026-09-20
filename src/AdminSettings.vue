@@ -43,14 +43,14 @@
 		</NcSettingsSection>
 
 	<NcSettingsSection name="Fondo de mapa"
-		description="De dónde vienen las imágenes de fondo del mapa. Por omisión se usan
-			las teselas públicas de OpenStreetMap, que requieren acceso a internet desde
-			cada equipo. Un CESFAM sin internet puede apuntar esta dirección a su propio
-			servidor de teselas.">
+		description="De dónde viene el dibujo de fondo del mapa. Puede ser un archivo
+			.pmtiles propio del CESFAM —lo habitual, y no necesita internet en cada
+			equipo— o la dirección de un servidor de teselas con {z}, {x} e {y}.">
 		<NcNoteCard v-if="rejected" type="warning">
-			Esa dirección no es una URL de teselas válida, así que el mapa sigue usando
-			OpenStreetMap. Debe empezar por http:// o https:// e incluir
-			<code>{z}</code>, <code>{x}</code> e <code>{y}</code>.
+			Esa dirección no sirve como fondo de mapa, así que el mapa sigue usando el
+			anterior. Debe empezar por http:// o https:// y terminar en
+			<code>.pmtiles</code>, o bien incluir <code>{z}</code>, <code>{x}</code> e
+			<code>{y}</code>.
 		</NcNoteCard>
 
 		<NcNoteCard v-else-if="failed" type="error">
@@ -62,8 +62,8 @@
 		</NcNoteCard>
 
 		<NcTextField v-model="url"
-			label="Dirección de las teselas"
-			placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+			label="Dirección del fondo de mapa"
+			placeholder="https://mapas.ejemplo.cl/chile.pmtiles"
 			:disabled="saving" />
 
 		<NcTextField v-model="attribution"
@@ -137,7 +137,7 @@ export default {
 	data() {
 		// These are the stored values, not the resolved ones: a URL Territorio
 		// declined must stay in the box that produced it, next to the warning
-		// saying why the map is still on OpenStreetMap. An empty box means unset.
+		// saying why the map is still on the previous basemap. An empty box means unset.
 		const basemap = loadState('territorio', 'basemap')
 		const comuna = loadState('territorio', 'comuna')
 

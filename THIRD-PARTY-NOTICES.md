@@ -78,9 +78,14 @@ nested `a/node_modules/b`.
 
 ### The count
 
-Measured 2026-09-15 by `make notices`: **67 packages are compiled into `js/`, and 67 are named
-here.** The tables below add up to that number — 50 from the source maps, 16 inlined, 1 probed —
+Measured 2026-09-18 by `make notices`: **76 packages are compiled into `js/`, and 76 are named
+here.** The tables below add up to that number — 59 from the source maps, 16 inlined, 1 probed —
 and `make notices` fails if they ever do not.
+
+Nine of those arrived in one go on 2026-09-18 with `protomaps-leaflet` (ADR-0019): the library
+itself, `@protomaps/basemaps`, `pmtiles`, `pbf`, `@mapbox/point-geometry`, `@mapbox/vector-tile`,
+`color2k`, `potpack` and `fflate`. `make notices` named all nine on the first run after the
+install, which is the check doing its job — one `npm install` is nine attribution obligations.
 
 `vue` is named as well and is not one of the 67: `import { createApp } from 'vue'` resolves to a
 bundler build that re-exports `@vue/runtime-dom`, and what reaches `js/` is those four `@vue/*`
@@ -95,6 +100,7 @@ and `nextcloud/ocp` are `require-dev` and are not distributed.
 |---|---|
 | AGPL-3.0-or-later † | `@nextcloud/vue` |
 | BSD-2-Clause | `leaflet` |
+| BSD-3-Clause | `protomaps-leaflet` |
 | CC0-1.0 | `@mapbox/maki` |
 | GPL-3.0-or-later | `@nextcloud/axios` |
 | GPL-3.0-or-later | `@nextcloud/initial-state` |
@@ -117,6 +123,14 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 
 | Licence | Component |
 |---|---|
+| BSD-3-Clause | `@mapbox/vector-tile` |
+| BSD-3-Clause † | `@protomaps/basemaps` |
+| BSD-3-Clause | `pbf` |
+| BSD-3-Clause † | `pmtiles` |
+| ISC | `@mapbox/point-geometry` |
+| ISC | `potpack` |
+| MIT | `color2k` |
+| MIT | `fflate` |
 | GPL-3.0-or-later | `@nextcloud/auth` |
 | GPL-3.0-or-later | `@nextcloud/browser-storage` |
 | GPL-3.0-or-later | `@nextcloud/capabilities` |
@@ -222,6 +236,10 @@ copyright line, then the permission text, which is one text they all carry. Copy
 copied from each package's licence file by `tools/notices.sh`'s own reading of it, not retyped.
 
 ```
+color2k
+    Copyright (c) 2020 Rico Kahler
+fflate
+    Copyright (c) 2026 Arjun Barrett
 leaflet.markercluster
     Copyright 2012 David Leaver
 bignumber.js
@@ -357,6 +375,48 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### BSD 3-Clause — the Protomaps basemap stack
+
+Five packages arrived with `protomaps-leaflet` under BSD-3-Clause (ADR-0019). Its second clause
+requires this notice be reproduced wherever the code is redistributed in binary form, which the
+bundles under `js/` are.
+
+```
+protomaps-leaflet
+    Copyright 2021-2024 Protomaps LLC
+@mapbox/vector-tile
+    Copyright (c) 2024, Mapbox
+pbf
+    Copyright (c) 2024, Mapbox
+@protomaps/basemaps †
+    no licence file published; `package.json` declares BSD-3-Clause
+pmtiles †
+    no licence file published; `package.json` declares BSD-3-Clause
+```
+
+**The two marked †** are the case this file's own rule was written for: they ship no licence file
+at all, so there is no text of theirs to read and none to copy. Their `package.json` declares
+`BSD-3-Clause`, and that declaration is all the evidence there is — recorded as a declaration
+rather than as a reading, because the distinction is the whole reason this file reads files. Both
+are published by Protomaps LLC, the same author as `protomaps-leaflet`, whose file *is* below.
+
+The text, from `protomaps-leaflet`'s own licence file, unmodified:
+
+```
+Copyright 2021-2024 Protomaps LLC
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+
 ### BSD 2-Clause — `leaflet`
 
 Leaflet's second clause requires the notice below be reproduced in a redistribution in binary
@@ -391,10 +451,26 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### ISC — `semver`
+### ISC — `semver`, `@mapbox/point-geometry`, `potpack`
 
 `semver` reaches the bundle through `@nextcloud/event-bus`, which vendors it under its own
-`node_modules`.
+`node_modules`. The other two arrived with `protomaps-leaflet` (ADR-0019): it does its geometry
+in `@mapbox/point-geometry` and packs its label glyphs with `potpack`.
+
+ISC is one text with three different copyright lines, so the lines are here and the text is
+below once:
+
+```
+@mapbox/point-geometry
+    Copyright (c) 2024, Mapbox
+potpack
+    Copyright (c) 2018, Mapbox
+semver
+    Copyright (c) Isaac Z. Schlueter and Contributors
+```
+
+`semver`'s own file is reproduced in full below; the other two carry the same permission and
+disclaimer text verbatim under the copyright lines above.
 
 ```
 The ISC License

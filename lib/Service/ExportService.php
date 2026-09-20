@@ -11,7 +11,6 @@ use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\IUserSession;
-use ZipArchive;
 
 /**
  * Taking the filtered set out of the app (issue #17, ADR-0006).
@@ -96,7 +95,9 @@ class ExportService {
 			'geojson' => $this->geoJson->write($rows, $contacts),
 			'csv' => $this->csv->write($rows, $contacts),
 			'kml' => $this->kml->write($rows),
-			'kmz' => $this->kmz($rows),
+			// A KMZ is that KML in an archive (issue #102): rendered into the
+			// open archive by `Kmz`, the one home of the temp-file dance.
+			'kmz' => Kmz::archive(fn (): string => $this->kml->write($rows)),
 		};
 
 		if ($contacts) {
@@ -108,58 +109,6 @@ class ExportService {
 			'mime' => self::MIME[$format],
 			'body' => $body,
 		];
-	}
-
-	/**
-	 * The same KML, in the archive Google Earth calls a KMZ.
-	 *
-	 * A KMZ is a ZIP holding one `doc.kml`, so there is nothing to write here
-	 * beyond what `KmlWriter` already writes — a second rendering would be a
-	 * second thing to keep in step with it.
-	 *
-	 * `ZipArchive` is PHP's own and cannot write to memory: `close()` is what
-	 * flushes the archive, and it flushes it to a path. So the file is built in
-	 * the temporary directory and read back, and the `finally` is the point of
-	 * the shape — the KML is rendered INTO the open archive, so a writer that
-	 * throws halfway leaves a file behind unless something removes it.
-	 *
-	 * The three failures below are the server's, not the caller's, and they are
-	 * still `InvalidFeatureException` — which `ExportController` answers with a
-	 * 422. Said out loud rather than left to be discovered: a full disk is not a
-	 * malformed request, so a monitor counting 422s will file these under the
-	 * caller's fault. The trade is deliberate — the alternative is letting a
-	 * `RuntimeException` reach the framework, which answers 500 and loses the
-	 * Spanish sentence the person is shown. Worth revisiting if this app ever
-	 * grows a way to say "our fault" in the person's language.
-	 *
-	 * @param list<array<string, mixed>> $rows
-	 */
-	private function kmz(array $rows): string {
-		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-');
-		if ($path === false) {
-			throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
-		}
-
-		try {
-			$zip = new ZipArchive();
-			if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
-				throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
-			}
-
-			// Closed only if the entry went in: `close()` on an archive with
-			// nothing in it DELETES the file it was going to write (libzip), and
-			// reading it back afterwards would be a warning about a missing file
-			// instead of the refusal below.
-			$written = $zip->addFromString('doc.kml', $this->kml->write($rows));
-			$body = $written && $zip->close() ? file_get_contents($path) : false;
-			if ($body === false) {
-				throw new InvalidFeatureException('No se pudo escribir el archivo KMZ.');
-			}
-
-			return $body;
-		} finally {
-			unlink($path);
-		}
 	}
 
 	/**

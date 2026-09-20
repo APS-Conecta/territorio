@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use InvalidArgumentException;
+use OCA\Territorio\Exception\InvalidComunaException;
 use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Service\Comuna;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
@@ -23,6 +22,8 @@ use OCP\IRequest;
  * administrator-only and CSRF-protected.
  */
 class AdminSettingsController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private BasemapConfig $basemapConfig,
@@ -54,8 +55,8 @@ class AdminSettingsController extends Controller {
 	public function saveComuna(string $cut = '', string $name = ''): JSONResponse {
 		try {
 			$comuna = Comuna::of($cut, $name);
-		} catch (InvalidArgumentException $e) {
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
+		} catch (InvalidComunaException $e) {
+			return $this->refuse($e->getMessage());
 		}
 
 		$this->comunaConfig->set($comuna);

@@ -69,7 +69,7 @@ final class FeatureControllerTest extends TestCase {
 	public function testEditingSomethingThatIsGoneIsNotFound(): void {
 		$this->features->method('update')->willThrowException(new DoesNotExistException('gone'));
 
-		self::assertSame(Http::STATUS_NOT_FOUND, $this->controller->update(404)->getStatus());
+		self::assertSame(Http::STATUS_NOT_FOUND, $this->controller->update('404')->getStatus());
 	}
 
 	public function testAnUpdateReturnsTheStoredFeature(): void {
@@ -78,9 +78,41 @@ final class FeatureControllerTest extends TestCase {
 		$feature->setName('Nuevo nombre');
 		$this->features->method('update')->willReturn($feature);
 
-		$response = $this->controller->update(3);
+		$response = $this->controller->update('3');
 
 		self::assertSame(Http::STATUS_OK, $response->getStatus());
 		self::assertSame('Nuevo nombre', $response->getData()['name']);
+	}
+
+	/**
+	 * L0-03: a crafted `PUT /features/retired` used to be a TypeError before
+	 * the method body ran — a 500 about a request that names no record. The
+	 * guard routes it down the same not-found path a missing record takes, and
+	 * the service is never asked about it.
+	 */
+	public function testAMalformedIdIsTheSameNotFound(): void {
+		$this->features->expects(self::never())->method('update');
+
+		$response = $this->controller->update('retired');
+
+		self::assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+		self::assertSame('no existe', $response->getData()['message']);
+	}
+
+	/**
+	 * The same guard, on the three routes that share it (L0-03): each of
+	 * destroy/restore/history used to TypeError before its body ran on a
+	 * crafted id, and none of them is exercised anywhere else — the integration
+	 * suite drives FeatureService directly — so the guard is pinned here or
+	 * nowhere.
+	 */
+	public function testRetireRestoreAndHistoryTakeTheSameGuardAsUpdate(): void {
+		$this->features->expects(self::never())->method('retire');
+		$this->features->expects(self::never())->method('restore');
+		$this->features->expects(self::never())->method('history');
+
+		self::assertSame(Http::STATUS_NOT_FOUND, $this->controller->destroy('retired')->getStatus());
+		self::assertSame(Http::STATUS_NOT_FOUND, $this->controller->restore('retired')->getStatus());
+		self::assertSame(Http::STATUS_NOT_FOUND, $this->controller->history('retired')->getStatus());
 	}
 }

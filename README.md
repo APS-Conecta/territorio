@@ -73,7 +73,7 @@ Four settings, all app config under the `territorio` app id, all reachable at
 
 | Key | What it does | Default |
 |---|---|---|
-| `tile_url` | The Leaflet tile template the basemap draws. The Content-Security-Policy host is derived from it, so the two cannot drift. A string without `{z}`, `{x}` and `{y}` is stored verbatim but never served. | empty → `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
+| `tile_url` | The basemap the map draws — either a `.pmtiles` archive or a Leaflet `{z}/{x}/{y}` template (ADR-0019). The Content-Security-Policy host is derived from it, and the directive from which form it is, so neither can drift. A string that is neither form is stored verbatim but never served. | empty → `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
 | `tile_attribution` | Plain-text credit shown over the map. Ignored while `tile_url` is rejected or unset, because we are then serving OpenStreetMap's tiles and owe OpenStreetMap the credit. | empty → `© OpenStreetMap contributors` |
 | `comuna_cut` | The CUT code of the comuna this install serves. Empty means "not chosen yet" and the setup screen says so. | empty |
 | `comuna_name` | The comuna's name, for display. Written together with `comuna_cut`. | empty |
@@ -198,13 +198,87 @@ what format, how many records and what it was of. An administrator reads that li
 
 ## The basemap
 
-Tiles come from OpenStreetMap by default. An administrator can repoint them at any tile server
-(Settings → Administration → Territorio), including a self-hosted one for a clinic without
-internet access — see [ADR-0004](docs/adr/0004-openstreetmap-is-tiles-and-offline-imports-only.md).
+**A self-hosted PMTiles archive**, not a public tile service
+([ADR-0019](docs/adr/0019-the-basemap-is-a-self-hosted-pmtiles-archive.md)). OpenStreetMap's public
+tile service answered `403` — it is a P2 best-effort service whose own policy asks heavy users to
+host their own — so the basemap is one file served beside the app and read by the browser over HTTP
+Range requests. The map now reaches exactly as far as the app does, with no third party in the path.
 
-The Content-Security-Policy host is derived from whatever URL is configured, so the two can never
-drift apart. A URL that is not a usable tile template is stored as typed but never served: the map
-falls back to OpenStreetMap and the settings page says so.
+Two forms are accepted, and `Basemap::kind()` decides which:
+
+| the URL looks like | what it is | the browser | the CSP directive |
+|---|---|---|---|
+| `…/chile.pmtiles` | one archive, read by byte range | `fetch` | `connect-src` |
+| `…/{z}/{x}/{y}.png` | a directory of raster images | `<img>` | `img-src` |
+
+The raster form is still fully supported, because ADR-0004's promise was that an administrator can
+repoint this at their own server. The Content-Security-Policy host is derived from whatever URL is
+configured, so the two can never drift apart — and the *directive* is derived from the kind, because
+naming a PMTiles host in `img-src` blocks it while the policy reads as though it allowed it. A URL
+that is neither form is stored as typed but never served: the map falls back and the settings page
+says so.
+
+Attribution is unchanged and still required. The archive is an ODbL Produced Work and its own
+metadata declares `© OpenStreetMap`, so self-hosting moves where the bytes come from, not whose data
+it is.
+
+### Building the archive
+
+The basemap is generated data with a refresh schedule, so it is **not in this repository**. Build it
+with Protomaps' [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI:
+
+```
+pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles chile.pmtiles \
+  --bbox=-110.0,-56.0,-66.4,-17.5 --download-threads=8
+```
+
+That pulls **only** the bbox out of the planet build over Range requests — no planet download. The
+result is **1.04 GB**, all of Chile at zoom 0–15.
+
+- **The bbox starts at `-110.0` on purpose.** Stopping at the mainland (`-75.8`) silently excludes
+  **Isla de Pascua** (lon −109.4) and **Juan Fernández** (−78.8), both comunas with health
+  facilities. Including them costs **4.7 MB**, because empty Pacific deduplicates away.
+- **`<YYYYMMDD>` cannot be pinned.** The daily builds expire — one nine days old already returns
+  `404` — so this is a scheduled re-extract, not a fixed URL in a script.
+- **Zoom 15 is the whole archive** and is what Protomaps document as sufficient for street-level
+  mapping. Each further level roughly doubles the file (measured: 2.04×, 1.93×, 1.97×).
+
+Serve it from anything that honours **Range** requests and sets CORS; this stack uses an
+`nginx:alpine` container (`tiles` in `compose.yaml`). Then point `tile_url` at it.
+
+**The file size is not what a client downloads.** Measured over one comuna: 552 KB for a screenful
+at z12, 863 KB at z14, 952 KB at z15, and 2.3 MB to work the whole comuna across all three — a ratio
+of about 1:460. Vector tiles re-render at any zoom, so z15 data serves z16–19 with no further
+fetches.
+
+## Where you are
+
+The map has a **«¿Dónde estoy?»** control under the zoom buttons: Leaflet's own geolocation watch, no
+dependency, and it needs HTTPS.
+
+It draws the accuracy, not just the position, and that is the point. This app decides which Sector
+and which Unidad Vecinal a point falls in (ADR-0008), and those boundaries are streets apart — a fix
+taken indoors is routinely accurate to hundreds of metres while looking exactly as confident as a
+good one. Past **100 m** the map says in words that the position is approximate and may not match
+the sector shown. A reading that arrives with no accuracy at all is treated as untrustworthy rather
+than as perfect.
+
+## Deploying a version bump
+
+Bumping `appinfo/info.xml` puts the whole Nextcloud instance into **"requires upgrade"** — every
+page answers `503`, not just this app — until the upgrade runs:
+
+```
+docker compose exec -u www-data nextcloud php occ upgrade
+```
+
+Measured here on 2026-09-18: the bump to 0.73.0 took the login page to 503, and `occ upgrade`
+restored it and reported `Updated <territorio> to 0.73.0`. Bump the version and run the upgrade as
+one step, never as two.
+
+The instance must have `appstoreenabled=0` first (this stack sets `NC_appstoreenabled: "0"` in
+`compose.yaml`): `occ upgrade` will otherwise fetch from the app store, which is how a pinned,
+vendored app silently becomes whatever is newest.
 
 ## Licence
 

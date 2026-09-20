@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Exception;
 
-use RuntimeException;
-
 /** Thrown when what a person submitted is not a Feature this app will store. */
-class InvalidFeatureException extends RuntimeException {
+class InvalidFeatureException extends RefusedException {
 }

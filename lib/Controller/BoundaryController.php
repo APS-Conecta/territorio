@@ -8,7 +8,6 @@ use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Service\BoundaryService;
 use OCA\Territorio\Service\FeatureService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -20,6 +19,8 @@ use OCP\IRequest;
  * later is a new file rather than a rewrite (issue #18).
  */
 class BoundaryController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private BoundaryService $boundaries,
@@ -46,10 +47,7 @@ class BoundaryController extends Controller {
 	): JSONResponse {
 		foreach ([$south, $west, $north, $east] as $ordinate) {
 			if (!is_numeric($ordinate)) {
-				return new JSONResponse(
-					['message' => 'Indique el área con south, west, north y east.'],
-					Http::STATUS_UNPROCESSABLE_ENTITY,
-				);
+				return $this->refuse('Indique el área con south, west, north y east.');
 			}
 		}
 

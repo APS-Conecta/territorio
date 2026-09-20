@@ -5,12 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidFeatureException;
-use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\FeatureService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Db\DoesNotExistException;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -27,6 +23,8 @@ use OCP\IRequest;
  * an OCS controller later a new file rather than a rewrite.
  */
 class FeatureController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private FeatureService $features,
@@ -41,9 +39,16 @@ class FeatureController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function update(int $id): JSONResponse {
+	public function update(string $id): JSONResponse {
+		// Route ids arrive as strings; anything not a whole number is the same
+		// not-found as a record nobody has (L0-03) — a TypeError before the
+		// method body even ran answered 500 to a request about nothing.
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
 		return $this->attempt(fn (): array
-			=> $this->features->update($id, $this->request->getParams())->toClient());
+			=> $this->features->update((int)$id, $this->request->getParams())->toClient());
 	}
 
 	/**
@@ -52,13 +57,21 @@ class FeatureController extends Controller {
 	 * than renamed — calling the route `/retire` would only move the surprise.
 	 */
 	#[NoAdminRequired]
-	public function destroy(int $id): JSONResponse {
-		return $this->attempt(fn (): array => $this->features->retire($id)->toClient());
+	public function destroy(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
+		return $this->attempt(fn (): array => $this->features->retire((int)$id)->toClient());
 	}
 
 	#[NoAdminRequired]
-	public function restore(int $id): JSONResponse {
-		return $this->attempt(fn (): array => $this->features->restore($id)->toClient());
+	public function restore(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
+		return $this->attempt(fn (): array => $this->features->restore((int)$id)->toClient());
 	}
 
 	#[NoAdminRequired]
@@ -70,25 +83,12 @@ class FeatureController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function history(int $id): JSONResponse {
-		return $this->attempt(fn (): array => $this->features->history($id));
+	public function history(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
+		return $this->attempt(fn (): array => $this->features->history((int)$id));
 	}
 
-	/**
-	 * One place to turn the service's refusals into status codes, so neither
-	 * action repeats the mapping and neither can quietly forget a case.
-	 *
-	 * @param callable(): array<string, mixed> $action
-	 */
-	private function attempt(callable $action): JSONResponse {
-		try {
-			return new JSONResponse($action());
-		} catch (InvalidFeatureException|InvalidGeometryException $e) {
-			// The submission was understood and refused — the message names what
-			// to fix, and the form shows it.
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
-		} catch (DoesNotExistException) {
-			return new JSONResponse(['message' => 'no existe'], Http::STATUS_NOT_FOUND);
-		}
-	}
 }

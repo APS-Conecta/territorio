@@ -7,6 +7,7 @@ namespace OCA\Territorio\Tests\Integration;
 use OCA\Territorio\Controller\ImportController;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Service\ImportFiles;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Http;
@@ -120,7 +121,7 @@ final class FilesImportTest extends IntegrationTestCase {
 			Server::get(ImportService::class),
 			Server::get(RevertService::class),
 			$session,
-			$this->root,
+			new ImportFiles($request, $session, $this->root),
 		);
 	}
 

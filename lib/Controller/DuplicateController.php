@@ -5,11 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\DuplicateService;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Db\DoesNotExistException;
-use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -25,6 +22,8 @@ use OCP\IRequest;
  * DuplicateService.
  */
 class DuplicateController extends Controller {
+	use Refuses;
+
 	public function __construct(
 		IRequest $request,
 		private DuplicateService $duplicates,
@@ -43,26 +42,32 @@ class DuplicateController extends Controller {
 	 * newer row is not the truer one.
 	 */
 	#[NoAdminRequired]
-	public function merge(int $id): JSONResponse {
+	public function merge(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
+		// Absent — not empty, absent — the merge is refused naming the field
+		// (L1-03): the caller said nothing about which record survives, and the
+		// old answer pretended they had named one that was not part of the pair.
+		$survivorId = $this->request->getParam('survivorId');
+		if ($survivorId === null) {
+			return $this->refuse('Indique cuál registro sobrevive.');
+		}
+
 		return $this->attempt(fn (): array => $this->duplicates->merge(
-			$id,
-			(int)$this->request->getParam('survivorId'),
+			(int)$id,
+			(int)$survivorId,
 		)->toClient());
 	}
 
 	#[NoAdminRequired]
-	public function dismiss(int $id): JSONResponse {
-		return $this->attempt(fn (): array => $this->duplicates->dismiss($id)->toClient());
+	public function dismiss(string $id): JSONResponse {
+		if (!ctype_digit($id)) {
+			return $this->missing();
+		}
+
+		return $this->attempt(fn (): array => $this->duplicates->dismiss((int)$id)->toClient());
 	}
 
-	/** @param callable(): array<string, mixed> $action */
-	private function attempt(callable $action): JSONResponse {
-		try {
-			return new JSONResponse($action());
-		} catch (InvalidFeatureException $e) {
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
-		} catch (DoesNotExistException) {
-			return new JSONResponse(['message' => 'no existe'], Http::STATUS_NOT_FOUND);
-		}
-	}
 }

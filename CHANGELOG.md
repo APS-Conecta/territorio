@@ -3,6 +3,161 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
+## [0.73.0] — unreleased
+
+The basemap stops being somebody else's public service.
+
+### Changed
+
+- **The basemap is a PMTiles archive this stack serves itself, not OpenStreetMap's tile service**
+  (ADR-0019). One file, all of Chile, read straight from the browser over HTTP Range requests.
+
+  **Because the public service answered `403`.** Not intermittently, and not for everyone:
+  reachable from the server, refused from a clinic's network. A `403` there means *blocked*, and
+  measurement said why this app was a candidate — see the `Referer` entry under 0.72.0. Their wiki
+  files `tile.openstreetmap.org` as a **P2 best-effort** service under a Tile Usage Policy, and
+  their own answer to a blocked application is to run your own tile server or use a third party.
+  So the app now does, and the dependency that produced the 403 is gone rather than negotiated
+  with: measured after the change, a full page load contacts `openstreetmap.org` **zero times**.
+
+  **The archive is 1.04 GB and nobody downloads it.** All of Chile at zoom 0–15, bbox
+  `-110.0,-56.0,-66.4,-17.5`. PMTiles is read by byte range, so a client pulls only the ranges
+  holding the tiles it is drawing — measured over La Florida: **552 KB** for a screenful at z12,
+  **863 KB** at z14, **952 KB** at z15, **2.3 MB** to work the whole comuna across all three. A
+  ratio of about **1:460** against the file. Vector tiles also re-render at any zoom, so z15 data
+  serves z16–19 with no further fetches, where raster refetched on every level.
+
+  **The bbox includes the islands, and that was not free by accident.** A bbox stopping at the
+  mainland (`-75.8`) silently excludes **Isla de Pascua** (lon −109.4) and **Juan Fernández**
+  (−78.8) — two comunas with health facilities. Including them adds 368,000 tile entries and
+  **4.7 MB**, because empty Pacific deduplicates away. Measured alternatives, same build: one
+  comuna 5.7 MB, Región Metropolitana 82 MB. Chile-wide because this app is for multiple comunas
+  and multiple CESFAMs; regional would save ~985 MB of a 90 GB disk and buy an install that only
+  works in Santiago.
+
+  **A basemap URL is now one of two forms and `Basemap::kind()` says which.** A `.pmtiles` URL
+  carries none of Leaflet's `{z}/{x}/{y}` placeholders — and the placeholder test was exactly what
+  decided whether a URL was a basemap at all, so before this the setting was *silently rejected*
+  and the map quietly stayed on OpenStreetMap. The raster form stays fully supported, because
+  ADR-0004's promise was that an administrator can repoint this at their own server.
+
+  **The Content-Security-Policy directive follows from the kind.** Raster tiles are `<img>` loads
+  and belong in `img-src`; an archive is `fetch`ed and belongs in `connect-src`. Getting this wrong
+  fails in the worst way available — the host is named, the policy reads as though it allowed the
+  basemap, and the map is blank.
+
+  **Rendered with `protomaps-leaflet`, not MapLibre**, and that is a decision its own docs describe:
+  they put the library in maintenance mode and point new projects at MapLibre "except for legacy
+  projects that heavily depend on Leaflet". This map is Leaflet all the way down — geoman draws on
+  it, markercluster clusters on it, `PICKABLE_PANE` orders it — and the same docs call the library
+  suited to non-interactive layers, which is precisely what a basemap under our own overlays is.
+
+  **Nine packages of attribution arrived with it.** `make notices` named every one on the first run
+  after the install and failed until they were credited: the library, `@protomaps/basemaps`,
+  `pmtiles`, `pbf`, `@mapbox/point-geometry`, `@mapbox/vector-tile`, `color2k`, `potpack`,
+  `fflate`. Two of them ship no licence file at all and are marked † accordingly. Attribution to
+  OpenStreetMap is unchanged and still required: the archive is an ODbL Produced Work and its own
+  metadata declares `© OpenStreetMap`.
+
+  **The refresh cannot be a pinned URL.** Protomaps' daily builds expire — `20260908` was already
+  `404` nine days later. Extract once, serve locally, re-extract on a schedule.
+
+- **Every measured legibility ratio was re-measured, and one of them needed the basemap changed**
+  (`docs/design/map-legibility.md` § 2.2). All of § 2 was taken over raster OSM land, so the swap
+  made every one of them a claim about a surface that is no longer there.
+
+  Bare Protomaps `light` earth is darker than raster OSM land, which alone put the worst
+  dot-on-tint pair at **2.65:1** — under WCAG 1.4.11's floor and under the **3.04:1** it replaced.
+  No alpha rescues that: even a wash of zero reads 2.84:1, because what changed is the basemap's
+  lightness and not the wash over it. A `brightness(1.09)` on the vector tile pane puts it at
+  **3.14:1**, and leaves every other measured ratio *better* than it was on raster — park 2.98:1
+  against 2.60:1, water 2.63:1 against 2.20:1.
+
+  **Two things § 2 did not say, found while checking it.** Its `3.04:1` is the only surface it
+  measured: over raster *water* the same pair read **2.20:1** and over *green* **2.60:1**, both
+  under the floor, for as long as this app has existed. That is not a regression this change
+  introduced — it is the first time anyone looked. What keeps it off the defect list is what § 2
+  already said keeps it off: the pin's 2px border, so a dot never relies on fill-vs-tint contrast
+  alone.
+
+  `white` was measured too and clears the floor on land *and* park (3.44 / 3.38). It was rejected
+  for something no ratio captures: it renders a basemap so pale the street grid is hard to read,
+  and reading the street grid is how a Sector gets drawn (ADR-0007). The filter is scoped to the
+  vector basemap, so a clinic still serving raster tiles keeps exactly the numbers § 2 documents
+  for it — it has not agreed to a re-measurement.
+
+- **The import path owns its label rule, and ImportFiles owns its bytes.** The `trim(...) ?: null`
+  normalisation lived inline in two callers, bound only by a comment that named the other; it is
+  `ImportService`'s now and both callers pass what they were given. The upload and Files-tree
+  acquisition moved with it, out of the controller and into `ImportFiles` — the controller is
+  wiring only, the same shape as its siblings, and the size cap and its one sentence are a single
+  constant both doors share.
+
+- **The KMZ temp-file dance lives once.** libzip cannot read or write from memory, so the import
+  and the export each wrote the same tempnam + ZipArchive + finally-unlink routine independently.
+  `Kmz` holds it now — the read side keeps its `InvalidImportException` sentences and the write
+  side its `InvalidFeatureException`, so each caller's narrow catch still catches exactly what it
+  always did. The KML is still rendered INTO the open archive, which is what the mid-write
+  failure test proves.
+
+- **The folding rule is defined once, and the twins are pinned by tests instead of comments.**
+  `fold` existed in the Registry search, the street picker and the server's duplicate queue, held
+  together by cross-referencing comments that could drift silently. The browser imports the one
+  definition from `filters.js` now, and `tests/js/twins.test.js` reads the PHP source and fails
+  loudly when either side's rule moves — the same doctrine as the map pins and the glyph tests.
+
+### Added
+
+- **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom
+  control, Leaflet's own `locate({ watch: true })`, and no dependency.
+
+  **The accuracy is the feature, not decoration.** This app decides which Sector and which Unidad
+  Vecinal a point falls in (ADR-0008), and those boundaries are streets apart. A fix taken indoors
+  is routinely accurate to hundreds of metres and arrives looking exactly as confident as a good
+  one. So a fix is drawn with the circle it really covers, and past **100 m** it says in words that
+  it is approximate and may not match the sector shown — 100 m because a block in La Florida is
+  well under it. A reading with no accuracy attached is treated as untrustworthy rather than as
+  perfect, which is the case where believing it costs most.
+
+  **A dot with a white ring, not a pin, and not in a Category hue.** Hue groups Categories
+  (ADR-0013), so a position in a ramp colour would read as a record somebody filed, and a pin would
+  read as a filed Place. `#1a73e8` sits ΔE 0.113 from its nearest Category against the 0.05 floor
+  at which two dots read as one colour, and 4.07:1 against the basemap.
+
+  **`watch`, and it stops.** Somebody using this is walking a sector with a phone, so a one-shot
+  fix is stale by the next corner — but a watch nobody turns off keeps the GPS awake, so the
+  control toggles and `beforeUnmount` calls `stopLocate()` explicitly. `map.remove()` does not:
+  the watch is a `navigator.geolocation` subscription held by the browser, not by the map.
+
+  Error messages are in **usted**, like every other sentence this app shows a person. The first
+  draft was voseo — «Podés», «probá» — which is not how anybody is addressed in a Chilean clinic,
+  and nothing in the repo would have caught it, so a test now pins the register.
+
+- **The map page and the admin panel show their loading state instead of a blank frame** while the
+  bundle boots — spinner + `<noscript>` from the suite theme (`themes/apsconecta`, MAPEO.md §5),
+  the same component in every custom app. Vue's container mount replaces the mount's children on
+  boot, so the stub removes itself. Before this there was nothing at all: a blank frame until the
+  webpack bundle mounted, and nothing for a JS-disabled browser.
+
+### Fixed
+
+- **The archive's reachability is checked directly, because there is no `tileerror` to hook.**
+  `protomaps-leaflet` calls Leaflet's done callback as `done(undefined, tile)` unconditionally, so
+  a tile that never rendered is indistinguishable from one that did, and the
+  «No se pudo cargar el fondo de mapa» warning would never have appeared for a vector basemap —
+  a wrong URL would be a blank map with nothing in the console.
+
+  So the first seven bytes are read once, at mount, and they have to spell `PMTiles`. That checks
+  three things a status code does not: that the server honours Range (**a 206, specifically** — a
+  server that ignored it would make the reader pull a gigabyte per tile, so the body is cancelled
+  unread rather than measured), that something is actually there, and that what is there is an
+  archive rather than an error page served with a good status.
+
+- **A crafted route id no longer answers a 500.** `PUT /features/retired` and its siblings used
+  to TypeError before the method body ran — a 500 about a request that names no record; all seven
+  `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
+  `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+
 ## [0.72.0] — unreleased
 
 The Category colour tests stop describing the instance they happen to run on.
@@ -18,6 +173,63 @@ The Category colour tests stop describing the instance they happen to run on.
   watcher and lifecycle errors — not a throw inside a click handler or a rejected promise.
 
 ### Fixed
+
+- **The map now tells OpenStreetMap who is asking, which is what a `403` means it was not doing.**
+  Nextcloud serves every page with `Referrer-Policy: no-referrer`, so tile requests went out with no
+  `Referer` header at all — measured, on the real instance. A browser supplies its own `User-Agent`,
+  naming Chrome and not this app. So both of the things OpenStreetMap's Tile Usage Policy asks an
+  application to identify itself by were absent, and the traffic was indistinguishable from
+  anonymous scraping — the profile they rate-limit and then answer `403` to. The tile layer now sets
+  `referrerPolicy: 'origin'`, which Leaflet documents for exactly this case ("your map's rendering
+  context has a strict default but your tile provider expects a valid referrer"), and the requests
+  carry `Referer: https://<instance>/`.
+
+  **`origin`, not the browser default.** It sends the scheme, host and port and never a path, so a
+  third party learns which instance asked and never which page of it was open or which record was on
+  screen. Measured both ways: with no element policy the header is absent, with
+  `strict-origin-when-cross-origin` the full path went out, with `origin` only the host does.
+
+  This is not a promise that a `403` goes away. OpenStreetMap's own answer to a blocked application
+  is that heavy users must run their own tile server or use a third party — the escape ADR-0004
+  already built, since the tile URL is an administrator setting. Identifying ourselves is the part
+  that is this app's to fix.
+
+- **A basemap tile that failed is asked for again, so the map stops keeping permanent grey holes.**
+  Leaflet never retries one, and not by oversight: `TileLayer._tileOnError` hands the tile straight
+  to `_tileReady`, which stamps `tile.loaded` with a timestamp and fires `tileerror` — and a stamped
+  tile is a finished tile, so no later pan, resize or five-second poll re-requests it. Measured on
+  this app with 40% of tiles answered `503`: 10 of 16 blank, and still 10 of 16 blank twelve seconds
+  after the host recovered *and* after a resize. The hole was permanent for the life of the page.
+  The same run now ends 0 of 16 blank, healed with no user interaction.
+
+  **It matters because of what the tile host is.** OpenStreetMap's wiki files
+  `tile.openstreetmap.org` as a P2 best-effort service under a Tile Usage Policy, answers `429` when
+  it rate-limits, and publishes a list of applications it blocked outright for heavy use. A tile
+  failing now and then is the contract ADR-0004 accepted when it made the basemap a public service,
+  not a fault. The fix is not OpenStreetMap-specific for that same reason: a clinic's own tile
+  server drops requests too, and Leaflet will not retry those either.
+
+  **Bounded and backing off — 1 + 3 attempts per tile over ~17 seconds, then stop.** That is a
+  safety property rather than a tuning knob: an unbounded retry against a server already refusing is
+  precisely the behaviour OpenStreetMap blocks applications for. Measured against a host refusing
+  everything, each of 12 tiles took exactly 4 requests and the wire then went quiet. The url is
+  re-requested unchanged, with no cache-busting parameter — a unique query string would miss OSM's
+  CDN on every retry and turn each failed tile into a guaranteed origin hit, the opposite of what
+  their policy asks for.
+
+  **And it stops retrying altogether once eight tiles have failed outright.** A handful of holes is
+  a blip worth re-asking about; that many is the host refusing us, and answering a refusal with four
+  times the requests is how an application deepens its own block. Measured against a host answering
+  `403` to everything: the first screenful costs 3.67 requests per tile, and then panning across 158
+  further tiles costs exactly **1.00 request per tile** — no amplification at all. Without the
+  breaker that same pan would have been some 630 requests aimed at a server already saying no.
+
+  **The «No se pudo cargar el fondo de mapa» warning is untouched, and still correct.** It needs
+  *no* tile to have ever loaded, so it stays quiet for a handful of holes and still appears for a
+  host that is genuinely gone — verified while the retries were exhausting. A `404` past the edge of
+  coverage reaches the same handler indistinguishably, because an `<img>` error event carries no
+  status; three wasted requests for a tile that does not exist is the price of not needing to know
+  which kind of failure this was.
 
 - **`CategoryCrudTest` stops asserting that a spare colour is free** (#134). Four of its tests
   opened by claiming the instance had an unused spare, and on the dev instance all eight are held:

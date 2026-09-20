@@ -93,6 +93,13 @@ The basemap stops being somebody else's public service.
   wiring only, the same shape as its siblings, and the size cap and its one sentence are a single
   constant both doors share.
 
+- **The KMZ temp-file dance lives once.** libzip cannot read or write from memory, so the import
+  and the export each wrote the same tempnam + ZipArchive + finally-unlink routine independently.
+  `Kmz` holds it now — the read side keeps its `InvalidImportException` sentences and the write
+  side its `InvalidFeatureException`, so each caller's narrow catch still catches exactly what it
+  always did. The KML is still rendered INTO the open archive, which is what the mid-write
+  failure test proves.
+
 ### Added
 
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom

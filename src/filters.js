@@ -27,13 +27,18 @@ export function emptyFilter() {
 /**
  * Text as it is compared: lower-cased and stripped of accents.
  *
+ * The app's one folding rule, exported for the street picker too: the Registry
+ * search and the Boundary suggestions must agree about what matches, and the
+ * server keeps a fold of its own for the duplicate queue (DuplicateFinder.php)
+ * for the same reason.
+ *
  * Nobody types "Peñaflor" with the tilde when they are looking for something
  * in a hurry, and a search that only matches the accented form is a search that
  * quietly finds nothing. NFD splits a letter from its diacritic so the diacritic
  * can be dropped on its own; \p{Diacritic} then covers every accent Spanish uses
  * rather than a hand-written list of five.
  */
-const fold = (value) => String(value ?? '')
+export const fold = (value) => String(value ?? '')
 	.normalize('NFD')
 	.replace(/\p{Diacritic}/gu, '')
 	.toLowerCase()

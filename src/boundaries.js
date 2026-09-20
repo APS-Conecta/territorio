@@ -9,12 +9,7 @@
  * Pure, so it can be tested at all: the picking itself lives in a component and
  * the deciding lives here.
  */
-
-/** Folded for comparison, exactly as the Registry search folds (filters.js). */
-const fold = (value) => String(value ?? '')
-	.normalize('NFD')
-	.replace(/\p{Diacritic}/gu, '')
-	.toLowerCase()
+import { fold } from './filters.js'
 
 /**
  * What someone typing has to choose between.

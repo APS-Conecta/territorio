@@ -100,6 +100,12 @@ The basemap stops being somebody else's public service.
   always did. The KML is still rendered INTO the open archive, which is what the mid-write
   failure test proves.
 
+- **The folding rule is defined once, and the twins are pinned by tests instead of comments.**
+  `fold` existed in the Registry search, the street picker and the server's duplicate queue, held
+  together by cross-referencing comments that could drift silently. The browser imports the one
+  definition from `filters.js` now, and `tests/js/twins.test.js` reads the PHP source and fails
+  loudly when either side's rule moves — the same doctrine as the map pins and the glyph tests.
+
 ### Added
 
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom

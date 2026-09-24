@@ -6,11 +6,15 @@
 #                       bare container cannot run: settings pages, IAppConfig, occ. Not the gestion stack.
 
 IMG := territorio-test
-DOCKER := docker run --rm -v "$(CURDIR)":/app -w /app $(IMG)
+# aps-common is consumed as a path repository (../aps-common); the test
+# container needs it mounted where composer resolves it from /app. The
+# sibling must exist beside this repo (org layout) — aps-sync names the fix.
+APS ?= $(CURDIR)/../aps-common
+DOCKER := docker run --rm -v "$(CURDIR)":/app -v "$(APS)":/aps-common -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean
+.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean aps-sync aps-drift
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -76,10 +80,36 @@ notices: build
 watch:
 	npm run watch
 
+# Copy the aps-common package into its committed home: vendor/aps/common/src
+# (the subtree the tarball ships) and the OC\Hooks\Emitter test stub. The
+# sibling checkout must exist beside this repo (org layout).
+aps-sync:
+	@test -d "$(APS)/src" || { echo "aps-common not found at $(APS) — clone the sibling first"; exit 1; }
+	mkdir -p vendor/aps/common tests/stubs/OC/Hooks
+	rm -rf vendor/aps/common/src
+	git -C "$(APS)" archive HEAD src | tar -x -C vendor/aps/common
+	cp "$(APS)/stub/OC/Hooks/Emitter.php" tests/stubs/OC/Hooks/Emitter.php
+
+# vendor/aps/common/src is committed, so it can drift from the package the
+# way js/ can drift from src/. `git status --porcelain` (not diff --exit-code)
+# so a rename that deletes one file and adds another is seen — the same
+# lesson the js/ CI arm records.
+aps-drift: aps-sync
+	@drift="$$(git status --porcelain -- vendor/aps/common/src tests/stubs/OC/Hooks/Emitter.php)"; \
+	if [ -n "$$drift" ]; then \
+		printf '%s\n' "$$drift"; \
+		echo "::error::vendor/aps/common/src is behind aps-common. Run 'make aps-sync' and commit the result."; \
+		exit 1; \
+	fi
+
 # js/ is committed (Nextcloud apps ship built assets), so it is not cleaned here —
 # removing it would just dirty the working tree. `npm run build` overwrites it.
+# vendor/aps/common/src is COMMITTED too (the js/ doctrine) — it is not
+# cleaned either, removing it would just dirty the tree. git clean removes every
+# untracked/ignored build product under vendor/ and leaves tracked files alone.
 clean:
-	rm -rf vendor node_modules js/*.map .phpunit.cache
+	git clean -xfd -- vendor
+	rm -rf node_modules js/*.map .phpunit.cache
 
 # ── Throwaway Nextcloud instance (compose.dev.yaml) ────────────────────────────────────────────
 # First run pulls images and installs Nextcloud; a couple of minutes. After that, seconds.

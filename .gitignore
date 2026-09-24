@@ -1,6 +1,16 @@
 # deps
 node_modules/
-/vendor/
+# vendor/ is built per-machine EXCEPT aps-common's src/, which is committed:
+# release tarballs are `git archive` of the tracked tree, so the shared code
+# rides the tarball the way js/ does. Composer's installed extras under
+# vendor/aps (the package's own composer.json, tests/, stub/) stay ignored —
+# src/ is the artifact aps-sync reproduces.
+/vendor/*
+!/vendor/aps/
+/vendor/aps/*
+!/vendor/aps/common/
+/vendor/aps/common/*
+!/vendor/aps/common/src/
 
 # build — js/ IS committed (Nextcloud apps ship built assets), and so are the
 # .LICENSE.txt files terser extracts: they carry third-party licence notices.
@@ -30,3 +40,4 @@ tools/.browser-check/
 
 # tools/browser-check.py imports tools/ramp-check.py, so Python caches it here.
 __pycache__/
+graphify-out/

@@ -142,8 +142,8 @@ final class Basemap implements JsonSerializable {
 	 */
 	public function jsonSerialize(): array {
 		return [
-			'url' => $this->url,
-			'attribution' => $this->attribution,
+			'url' => $this->url(),
+			'attribution' => $this->attribution(),
 			'usesOpenStreetMap' => $this->usesOpenStreetMap(),
 			'kind' => $this->kind,
 		];

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use APS\Common\Csv;
+
 /**
  * The Datos view as a spreadsheet (issue #17).
  *
@@ -93,32 +95,16 @@ class CsvWriter {
 
 		// A BOM, so that Excel opens a Spanish name as "Ñuñoa" rather than
 		// "Ã'uÃ±oa". LibreOffice asks; Excel does not, it just guesses Latin-1.
-		return "\u{FEFF}" . $csv;
+		return Csv::BOM . $csv;
 	}
 
 	/**
-	 * One cell, with anything a spreadsheet would run defused.
-	 *
-	 * Excel and LibreOffice treat a cell beginning with `=`, `+`, `-` or `@` as a
-	 * formula and evaluate it the moment the file is opened — `=HYPERLINK(...)`
-	 * and worse. Every user of this instance can edit every record (ADR-0005), so
-	 * "a colleague typed it" is not a defence: the formula runs on the machine of
-	 * whoever opens the export, which is usually somebody else.
-	 *
-	 * A leading apostrophe is the spreadsheet's own "this is text" marker: Excel
-	 * and LibreOffice do not display it, so the cell reads exactly as it was
-	 * typed. It IS in the bytes, so a script reading this file sees it — which is
-	 * the trade this file is for. A CSV here is for a person with a spreadsheet;
-	 * the machine-readable export is the GeoJSON, and it needs none of this
-	 * because nothing evaluates JSON on open.
-	 *
-	 * A phone number beginning with `+56` gets the marker too. That is the price
-	 * of not guessing which leading `+` is arithmetic.
+	 * One cell, defused — the shared rule (aps-common's Csv::text, where the
+	 * formula-threat reasoning and the apostrophe trade live). Kept as a
+	 * private forward so the writer's own docblock story stays local.
 	 */
 	private static function text(mixed $value): string {
-		$text = (string)$value;
-
-		return $text !== '' && str_contains("=+-@\t\r", $text[0]) ? "'" . $text : $text;
+		return Csv::text($value);
 	}
 
 	/**

@@ -31,11 +31,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # aps-common is consumed as a path repository at ../aps-common, and the
+      # runner's checkout cannot place a sibling — clone it explicitly so
+      # `make test` resolves `aps/common` exactly as a dev machine does.
+      # (The repo must exist first: Phase 1 pushes aps-common to APS-Conecta
+      # before this job's first post-slice run.)
+      - name: aps-common sibling
+        run: git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+
       # No setup-php: both targets run inside Dockerfile.test, which the Makefile builds.
       # That image carries intl, without which the accent tests pass by not running.
       # `make lint` also runs tools/ramp-check.py on the host — the runner's own python3.
       - name: Unit tests
         run: make test
+
+      # vendor/aps/common/src is committed, so it can drift from the package
+      # the way js/ can drift from src/. Same gate, second artifact.
+      - name: aps-common drift
+        run: make aps-drift
 
       - name: Lint
         run: make lint

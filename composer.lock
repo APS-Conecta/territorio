@@ -4,8 +4,43 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d86ec3dc834cab511a9b7d18467bfebe",
-    "packages": [],
+    "content-hash": "195a00c39a7f073a77e974beae8e9a7c",
+    "packages": [
+        {
+            "name": "aps/common",
+            "version": "1.0.0",
+            "dist": {
+                "type": "path",
+                "url": "../aps-common",
+                "reference": "8ba1674925ffff253e84d7fb4e6ad822f587329d"
+            },
+            "require": {
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^10"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "APS\\Common\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "APS\\Common\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "AGPL-3.0-or-later"
+            ],
+            "description": "Shared text rules for APS Conecta apps — the CSV dialect and fold/slug family, stated once",
+            "transport-options": {
+                "symlink": false,
+                "relative": true
+            }
+        }
+    ],
     "packages-dev": [
         {
             "name": "myclabs/deep-copy",

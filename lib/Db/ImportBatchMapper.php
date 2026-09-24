@@ -76,11 +76,7 @@ class ImportBatchMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
-	/** @return ImportBatch[] newest first */
-	public function findAll(): array {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')->from($this->getTableName())->orderBy('id', 'DESC');
-
-		return $this->findEntities($qb);
-	}
+	/** Deleted — ImportBatchMapper::findAll(): zero callers anywhere (L1-18).
+	 *  The only consumer of batches is findRecent(). Wire it back when an
+	 *  admin report needs the whole list. */
 }

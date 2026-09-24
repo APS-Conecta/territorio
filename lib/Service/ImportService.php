@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use APS\Common\Text;
+
 use DateTime;
 use OCA\Territorio\Db\Dataset;
 use OCA\Territorio\Db\DatasetMapper;
@@ -276,6 +278,7 @@ class ImportService {
 	 */
 	private function prepare(array $rows): array {
 		$subcategories = $this->subcategoryIndex();
+		$byLabel = $this->subcategoryLabels();
 		$fallback = $subcategories[implode('/', EnsureSeedData::FALLBACK)] ?? null;
 		if ($fallback === null) {
 			throw new InvalidImportException(
@@ -308,7 +311,7 @@ class ImportService {
 				continue;
 			}
 
-			$row['subcategoryId'] = $this->classify($row, $subcategories, $fallback);
+			$row['subcategoryId'] = $this->classify($row, $subcategories, $byLabel, $fallback);
 			$prepared[$externalId] = $row;
 		}
 
@@ -530,38 +533,93 @@ class ImportService {
 	}
 
 	/**
-	 * Where a row lands in the taxonomy.
+	 * One classification-matching home (L1-06): the label the file typed,
+	 * then two slug vocabularies — the plain slug and the seed's own
+	 * short-word-dropped slug («movilidad y transporte» → movilidad_transporte,
+	 * how EnsureSeedData names its Categories) — applied to the CATEGORY,
+	 * where the seed's dropped-word slugs live.
 	 *
-	 * The named pair first. Then — only when the file named a Category and NO
-	 * Subcategory — that Category's own "Otro". That case is KML (issue #8): a
-	 * Google MyMaps export names a Folder and nothing finer, and matching on the
-	 * pair alone would send every record in the file to Sin clasificar while the
-	 * Folder sat there naming the right Category.
+	 * The label is matched first because it is the one vocabulary that cannot
+	 * drift from the seed's slugs: a file names what the Capas panel shows
+	 * («Deporte y recreación»), and folding it never loses the short words the
+	 * seed drops. Only reachable with both halves named.
 	 *
 	 * Deliberately not applied when the file DID name a Subcategory and this
-	 * install has no such thing. Falling to that Category's Otro would be a guess
-	 * about what was meant, and it would also change where existing records live:
-	 * `differs()` compares the Subcategory, so re-importing an unchanged GeoJSON
-	 * would quietly move rows out of Sin clasificar and spend a Revision doing it.
-	 * Sin clasificar · Otro says the honest thing — the file named something this
-	 * install does not have.
+	 * install has no such thing. Falling to that Category's Otro would be a
+	 * guess about what was meant, and it would also change where existing
+	 * records live: `differs()` compares the Subcategory, so re-importing an
+	 * unchanged GeoJSON would quietly move rows out of Sin clasificar and
+	 * spend a Revision doing it. Sin clasificar · Otro says the honest
+	 * thing — the file named something this install does not have.
 	 *
 	 * @param array<string, mixed> $row
 	 * @param array<string, int> $subcategories
+	 * @param array<string, int> $byLabel
 	 */
-	private function classify(array $row, array $subcategories, int $fallback): int {
-		$category = $row['categorySlug'];
-		if ($category === null) {
+	private function classify(array $row, array $subcategories, array $byLabel, int $fallback): int {
+		$category = $row['category'];
+		if ($category === null || $category === '') {
 			return $fallback;
 		}
+		$subcategory = $row['subcategory'] ?? null;
+		$subcategorySlug = $subcategory === null || $subcategory === ''
+			? null
+			: TaxonomyService::slugFor($subcategory);
 
-		if ($row['subcategorySlug'] === null) {
-			return $subcategories[$category . '/otro']
-				?? $this->asSubcategory($category, $subcategories)
-				?? $fallback;
+		// Label-first: a file names what the Capas panel shows («Deporte y
+		// recreación»), and the label is the one vocabulary that cannot drift
+		// from the seed's slugs. Only reachable with both halves named.
+		if ($subcategorySlug !== null) {
+			$label = Text::fold($category) . '·' . Text::fold($subcategory);
+			if (isset($byLabel[$label])) {
+				return $byLabel[$label];
+			}
 		}
 
-		return $subcategories[$category . '/' . $row['subcategorySlug']] ?? $fallback;
+		// Both slug vocabularies, on the category — the seed's dropped-word
+		// slugs (deporte_recreacion, movilidad_transporte) are Category slugs.
+		foreach ([TaxonomyService::slugFor($category), self::seedSlug($category)] as $categorySlug) {
+			if ($subcategorySlug === null) {
+				$hit = $subcategories[$categorySlug . '/otro']
+				?? $this->asSubcategory($categorySlug, $subcategories);
+			} else {
+				$hit = $subcategories[$categorySlug . '/' . $subcategorySlug]
+				?? $subcategories[$categorySlug . '/' . self::seedSlug($subcategory)];
+			}
+			if ($hit !== null) {
+				return $hit;
+			}
+		}
+
+		return $fallback;
+	}
+
+	/**
+	 * The seed's slug vocabulary: short words dropped, the way EnsureSeedData
+	 * names its Categories («deporte_recreacion»). KmlReader's folder
+	 * heuristic, moved to the one matching home (L1-06) — checked against
+	 * the twelve seeded slugs, not assumed.
+	 */
+	private static function seedSlug(string $label): string {
+		$folded = Text::fold($label);
+		$words = array_filter(
+			preg_split('/[^a-z0-9]+/', $folded) ?: [],
+			static fn (string $word): bool => $word !== '' && !in_array($word, ['y', 'de', 'la', 'el'], true),
+		);
+
+		return implode('_', $words);
+	}
+
+	/** @return array<string, int> "foldedCategory·foldedSubcategory" → Subcategory id */
+	private function subcategoryLabels(): array {
+		$index = [];
+		foreach ($this->taxonomy->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				$index[Text::fold($category['label']) . '·' . Text::fold($subcategory['label'])] = $subcategory['id'];
+			}
+		}
+
+		return $index;
 	}
 
 	/**

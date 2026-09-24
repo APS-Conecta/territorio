@@ -83,6 +83,30 @@ final class GeoJsonWriterTest extends TestCase {
 		return (new GeoJsonReader())->read($json, 'catastro');
 	}
 
+	/**
+	 * The writer's input keys are the writer's own (`categorySlug`); the reader
+	 * answers with the raw-carrying `category`/`subcategory` keys (L1-06). Same
+	 * values, two vocabularies — this maps one onto the other so a row can be
+	 * its own re-import expectation.
+	 *
+	 * @param array<string, mixed> $row
+	 * @return array<string, mixed>
+	 */
+	private function asReadBack(array $row): array {
+		$read = [];
+		foreach ($row as $key => $value) {
+			if ($key === 'categorySlug') {
+				$read['category'] = $value;
+			} elseif ($key === 'subcategorySlug') {
+				$read['subcategory'] = $value;
+			} else {
+				$read[$key] = $value;
+			}
+		}
+
+		return $read;
+	}
+
 	public function testEveryFieldSurvivesAReImport(): void {
 		$back = $this->roundTrip([self::FULL]);
 
@@ -90,7 +114,7 @@ final class GeoJsonWriterTest extends TestCase {
 		// 'comuna' is what the FILE claims and only the UV cadastre claims it, so
 		// it is not a property of the record and cannot round-trip.
 		unset($back[0]['comuna']);
-		self::assertSame(self::FULL, $back[0]);
+		self::assertSame($this->asReadBack(self::FULL), $back[0]);
 	}
 
 	/**
@@ -118,8 +142,8 @@ final class GeoJsonWriterTest extends TestCase {
 		$bare = [
 			'externalId' => 'catastro:bare',
 			'name' => 'Sin nada más',
-			'categorySlug' => null,
-			'subcategorySlug' => null,
+			'category' => null,
+			'subcategory' => null,
 			'geometry' => null,
 			'locationQuality' => null,
 			'address' => null,
@@ -230,7 +254,7 @@ final class GeoJsonWriterTest extends TestCase {
 
 		self::assertCount(1, $back);
 		unset($back[0]['comuna']);
-		self::assertSame(self::osmRow(), $back[0]);
+		self::assertSame($this->asReadBack(self::osmRow()), $back[0]);
 	}
 
 	/** Exporting nothing is an empty collection, not a broken file. */

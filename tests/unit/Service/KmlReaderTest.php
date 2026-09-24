@@ -64,7 +64,7 @@ final class KmlReaderTest extends TestCase {
 	/**
 	 * The Folder is the only classification a MyMaps export carries, and it works
 	 * because those folders were built from these Categories in the first place.
-	 * Slugified here rather than matched against the taxonomy: the reader knows
+	 * Raw here rather than matched against the taxonomy: the reader knows
 	 * nothing about what Categories exist, which is the import's job.
 	 */
 	/**
@@ -143,15 +143,15 @@ final class KmlReaderTest extends TestCase {
 	public function testTheFolderNameBecomesTheCategory(): void {
 		$rows = $this->reader->read(self::KML, 'prueba');
 
-		self::assertSame('salud', $rows[0]['categorySlug']);
-		self::assertSame('movilidad_transporte', $rows[1]['categorySlug']);
+		self::assertSame('Salud', $rows[0]['category']);
+		self::assertSame('Movilidad y transporte', $rows[1]['category']);
 	}
 
 	/** No Folder yields no Category rather than a guess. */
 	public function testAPlacemarkOutsideAnyFolderCarriesNoCategory(): void {
 		$rows = $this->reader->read(self::LOOSE, 'prueba');
 
-		self::assertNull($rows[0]['categorySlug']);
+		self::assertNull($rows[0]['category']);
 	}
 
 	/**
@@ -160,7 +160,7 @@ final class KmlReaderTest extends TestCase {
 	 */
 	public function testThereIsNeverASubcategory(): void {
 		foreach ($this->reader->read(self::KML, 'prueba') as $row) {
-			self::assertNull($row['subcategorySlug']);
+			self::assertNull($row['subcategory']);
 		}
 	}
 
@@ -209,7 +209,7 @@ final class KmlReaderTest extends TestCase {
 		$rows = $this->reader->read($xml, 'prueba');
 
 		self::assertCount(1, $rows, 'no Placemark found for ' . ($xmlns ?: 'no namespace'));
-		self::assertSame('salud', $rows[0]['categorySlug']);
+		self::assertSame('Salud', $rows[0]['category']);
 	}
 
 	/** @return array<string, array{string}> */

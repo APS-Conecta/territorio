@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { fold } from '../../src/filters.js'
+import { DIVISIONS_SLUG } from '../../src/taxonomy.js'
 import { readable } from '../../src/limit.js'
 
 /**
@@ -28,7 +29,7 @@ import { readable } from '../../src/limit.js'
 // in its name, and .pathname hands back the %20 still escaped. (pins.test.js)
 const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 
-describe('fold (filters.js) against DuplicateFinder::fold (the duplicate queue)', () => {
+describe('fold (filters.js) against Text::fold (the duplicate queue)', () => {
 	it('folds the names both stacks must agree about', () => {
 		// The shapes the two folds exist for: the real duplicate pair the
 		// finder's own docblock names, and the spellings its rules exist to
@@ -57,7 +58,9 @@ describe('fold (filters.js) against DuplicateFinder::fold (the duplicate queue)'
 	})
 
 	it('still folds the way the server folds', () => {
-		const php = readFileSync(`${ROOT}lib/Service/DuplicateFinder.php`, 'utf8')
+		// The server fold moved to aps-common (DuplicateFinder::fold delegates),
+		// so the tripwire reads the committed copy of the package the app ships.
+		const php = readFileSync(`${ROOT}vendor/aps/common/src/Text.php`, 'utf8')
 
 		// Tripwires, not proofs: the PHP fold is decompose (FORM_D) → strip
 		// combining marks (\p{Mn}) → lower-case — the same three steps as the
@@ -124,5 +127,26 @@ describe('readable (limit.js) against readableLimit (the export column)', () => 
 
 		expect(readable([...thirtyWays, { name: 'el canal' }]))
 			.toBe(`Vicuña Mackenna${final}el canal`)
+	})
+})
+
+describe('taxonomy.js slug constants against EnsureSeedData.php', () => {
+	const seed = readFileSync(`${ROOT}lib/Migration/EnsureSeedData.php`, 'utf8')
+	const php = (name) => seed.match(new RegExp(`const ${name} = '([^']+)'`))?.[1]
+	const phpFallback = seed.match(/FALLBACK = \['category' => '([^']+)', 'subcategory' => '([^']+)'\]/)
+
+	it('pins DIVISIONS_SLUG and the division subcategory slugs', () => {
+		expect(php('DIVISIONS_SLUG')).toBe(DIVISIONS_SLUG)
+		expect(seed).toContain(`'sector' =>`)
+		expect(seed).toContain(`'unidad_vecinal' =>`)
+	})
+
+	it('pins FALLBACK: a PHP rename of the category slug breaks the js source that assumes it', () => {
+		const taxonomySource = readFileSync(`${ROOT}src/taxonomy.js`, 'utf8')
+		expect(taxonomySource).toContain(`'${phpFallback[1]}'`)
+		// The subcategory half ('otro') has no JS twin — defaultSubcategoryId
+		// resolves the first subcategory dynamically — so the pin is the PHP
+		// pair's presence, asserted above by the regex that captured it.
+		expect(phpFallback).not.toBeNull()
 	})
 })

@@ -18,30 +18,14 @@
  * (CONTEXT.md), and changing it changes nothing for anyone else.
  */
 import { categoryColour } from './taxonomy.js'
+import { fold, textMatches, listFor as sharedListFor } from './aps/filters.js'
+
+export { fold }
 
 /** Nothing hidden and nothing typed: everything is on screen. */
 export function emptyFilter() {
 	return { hidden: new Set(), query: '' }
 }
-
-/**
- * Text as it is compared: lower-cased and stripped of accents.
- *
- * The app's one folding rule, exported for the street picker too: the Registry
- * search and the Boundary suggestions must agree about what matches, and the
- * server keeps a fold of its own for the duplicate queue (DuplicateFinder.php)
- * for the same reason.
- *
- * Nobody types "Peñaflor" with the tilde when they are looking for something
- * in a hurry, and a search that only matches the accented form is a search that
- * quietly finds nothing. NFD splits a letter from its diacritic so the diacritic
- * can be dropped on its own; \p{Diacritic} then covers every accent Spanish uses
- * rather than a hand-written list of five.
- */
-export const fold = (value) => String(value ?? '')
-	.normalize('NFD')
-	.replace(/\p{Diacritic}/gu, '')
-	.toLowerCase()
 
 /**
  * Whether a record answers to what someone typed.
@@ -56,17 +40,12 @@ export const fold = (value) => String(value ?? '')
  * actually feels slow.
  */
 export function matches(feature, query, subcategories) {
-	const needle = fold(query).trim()
-	if (needle === '') {
-		return true
-	}
-
-	return [
+	return textMatches(query, [
 		feature.name,
 		feature.address,
 		feature.contactPerson,
 		subcategories.get(feature.subcategoryId)?.label,
-	].some((field) => fold(field).includes(needle))
+	])
 }
 
 /**
@@ -179,16 +158,13 @@ export function categoryState(filter, category) {
  * when it lived in a computed property it was wrong and nothing noticed.
  */
 export function listFor({ features, retiredFeatures, showRetired, filter, subcategories }) {
-	if (!showRetired) {
-		return filterFeatures(features, filter, subcategories)
-	}
-
-	// The search DOES reach the retired list, where the Capas toggles do not. A
-	// toggle is a background setting someone forgot they left on; a query is
-	// someone saying out loud what they are looking for, and ignoring it in the
-	// list they are staring at would be the app overruling an explicit
-	// instruction.
-	return retiredFeatures.filter((feature) => matches(feature, filter.query, subcategories))
+	return sharedListFor({
+		live: features,
+		retired: retiredFeatures,
+		showRetired,
+		filterLive: (live) => filterFeatures(live, filter, subcategories),
+		matchesOf: (feature) => matches(feature, filter.query, subcategories),
+	})
 }
 
 /**

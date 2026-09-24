@@ -47,13 +47,15 @@ final class CsvImportTest extends IntegrationTestCase {
 
 	/**
 	 * The same record, said in GeoJSON. Not a different record with the same
-	 * name: every field is the one the CSV row carries, so a re-import has
-	 * nothing to write — which is the assertion.
+	 * name: every field is the one the CSV row carries — including the raw
+	 * classification labels, which both readers now pass through unchanged
+	 * so `differs()` sees the same official blob — so a re-import has
+	 * nothing to write, which is the assertion.
 	 */
 	private const GEOJSON = <<<'JSON'
 	{"type":"FeatureCollection","features":[
 	  {"type":"Feature","geometry":{"type":"Point","coordinates":[-70.5991,-33.5211]},
-	   "properties":{"name":"CESFAM de Prueba","category":"salud","subcategory":"cesfam",
+	   "properties":{"name":"CESFAM de Prueba","category":"Salud","subcategory":"CESFAM",
 	     "ubicacion":"exacta","address":"Avenida Uno 123, local 4","phone":"229112233",
 	     "email":"cesfam@ejemplo.cl","contact_person":"Marcela Ríos","contact_role":"Directora",
 	     "opening_hours":"Lunes a viernes","notes":"Sin novedad"}}

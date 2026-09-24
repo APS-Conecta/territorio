@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use APS\Common\Text;
 use OCA\Territorio\Db\Category;
 use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\FeatureMapper;
@@ -31,22 +32,8 @@ class TaxonomyService {
 	 */
 	private const LABEL_LENGTH = 128;
 
-	/**
-	 * `territorio_subcategory.slug` is `VARCHAR(64)`. The label it is derived
-	 * from may be twice that, so the cap is reached by ordinary names and not
-	 * only by abuse.
-	 *
-	 * ponytail: two labels that differ only after their 64th slug character
-	 * derive to the same slug, so the second is refused with «Ya existe una
-	 * subcategoría con ese nombre en esta categoría» — a sentence that is false
-	 * about two names the person reads as different. Accepted because a name
-	 * that long is not one a clinic types; the upgrade is to widen the column to
-	 * `LABEL_LENGTH` in a migration, or to disambiguate the cut slug with a
-	 * suffix. Named here rather than at the refusal because this is where the
-	 * ceiling is decided.
-	 */
-	private const SLUG_LENGTH = 64;
-
+	/** Deleted — private const SLUG_LENGTH: sole referencing site was the
+	 *  slugFor body that now lives in Text. */
 	/**
 	 * `territorio_category.glyph` is `VARCHAR(64)`. Nobody types one — it is
 	 * picked out of a grid of the marks the app vendors — so this is about what
@@ -643,31 +630,13 @@ class TaxonomyService {
 	}
 
 	/**
-	 * The identifier a label makes: accents off, case down, everything else a
-	 * separator.
-	 *
-	 * Not `KmlReader::slug()`, which drops «y», «de», «la» and «el» so that a KML
-	 * Folder name lands on a slug the seed already carries. That is a heuristic
-	 * for matching existing rows and the wrong rule for a name somebody just
-	 * typed: «Casa de la cultura» is `casa_de_la_cultura` here, and nothing has
-	 * to recognise it afterwards.
-	 *
-	 * Decomposes and drops the combining marks rather than mapping the seven
-	 * Spanish letters, for the reason `DuplicateFinder::fold()` gives: a clinic
-	 * types what it types, and a list of seven is a list that is missing one.
-	 *
-	 * Public and static because it is pure — the only rule on this write path
-	 * that has no database in it, and the only one with no screen that would show
-	 * it going wrong (`TaxonomySlugTest`).
+	 * The identifier a label makes — the shared rule, stated once in
+	 * aps-common's Text (L0-03/L1-05). Kept as a static forward so every
+	 * call site (CsvReader headings, the admin write doors, the tests)
+	 * keeps working unchanged.
 	 */
 	public static function slugFor(string $label): string {
-		$decomposed = \Normalizer::normalize($label, \Normalizer::FORM_D);
-		$stripped = preg_replace('/\p{Mn}/u', '', $decomposed === false ? $label : $decomposed);
-		$slug = (string)preg_replace('/[^a-z0-9]+/', '_', mb_strtolower((string)$stripped));
-
-		// Trimmed again after the cut, so a name cut mid-separator does not make
-		// a slug the same label would not make twice.
-		return trim(mb_substr(trim($slug, '_'), 0, self::SLUG_LENGTH), '_');
+		return Text::slugFor($label);
 	}
 
 	/**

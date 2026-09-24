@@ -80,25 +80,28 @@ notices: build
 watch:
 	npm run watch
 
-# Copy the aps-common package into its committed home: vendor/aps/common/src
-# (the subtree the tarball ships) and the OC\Hooks\Emitter test stub. The
+# Copy the aps-common package into its committed homes: vendor/aps/common/src
+# (the subtree the tarball ships), the OC\Hooks\Emitter test stub, and the js
+# half under src/aps/ (the committed bundle the browser code imports). The
 # sibling checkout must exist beside this repo (org layout).
 aps-sync:
 	@test -d "$(APS)/src" || { echo "aps-common not found at $(APS) — clone the sibling first"; exit 1; }
-	mkdir -p vendor/aps/common tests/stubs/OC/Hooks
-	rm -rf vendor/aps/common/src
+	rm -rf vendor/aps/common/src src/aps
+	mkdir -p vendor/aps/common tests/stubs/OC/Hooks src/aps
 	git -C "$(APS)" archive HEAD src | tar -x -C vendor/aps/common
 	cp "$(APS)/stub/OC/Hooks/Emitter.php" tests/stubs/OC/Hooks/Emitter.php
+	git -C "$(APS)" archive HEAD js | tar -x -C src/aps --strip-components=1
+	rm -f src/aps/*.test.js
 
-# vendor/aps/common/src is committed, so it can drift from the package the
-# way js/ can drift from src/. `git status --porcelain` (not diff --exit-code)
-# so a rename that deletes one file and adds another is seen — the same
-# lesson the js/ CI arm records.
+# vendor/aps/common/src and src/aps are committed, so they can drift from the
+# package the way js/ can drift from src/. `git status --porcelain` (not
+# diff --exit-code) so a rename that deletes one file and adds another is
+# seen — the same lesson the js/ CI arm records.
 aps-drift: aps-sync
-	@drift="$$(git status --porcelain -- vendor/aps/common/src tests/stubs/OC/Hooks/Emitter.php)"; \
+	@drift="$$(git status --porcelain -- vendor/aps/common/src src/aps tests/stubs/OC/Hooks/Emitter.php)"; \
 	if [ -n "$$drift" ]; then \
 		printf '%s\n' "$$drift"; \
-		echo "::error::vendor/aps/common/src is behind aps-common. Run 'make aps-sync' and commit the result."; \
+		echo "::error::aps-common artifacts are behind the package. Run 'make aps-sync' and commit the result."; \
 		exit 1; \
 	fi
 

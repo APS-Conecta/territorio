@@ -64,8 +64,8 @@ final class CsvReaderTest extends TestCase {
 		self::assertSame([
 			'externalId' => $row['externalId'],
 			'name' => 'CESFAM de Prueba',
-			'categorySlug' => 'salud',
-			'subcategorySlug' => 'cesfam',
+			'category' => 'Salud',
+			'subcategory' => 'CESFAM',
 			'geometry' => ['type' => 'Point', 'coordinates' => [-70.5991, -33.5211]],
 			'locationQuality' => 'exacta',
 			'address' => 'Avenida Uno 123, local 4',
@@ -81,23 +81,19 @@ final class CsvReaderTest extends TestCase {
 	}
 
 	/**
-	 * The two classification cells are folded the way the headings are.
-	 *
-	 * `ImportService::classify()` looks the pair up in an index keyed by SLUG, so
-	 * a clinic that types what the app shows it — «Educación», «Jardín infantil»
-	 * — would land every row in Sin clasificar, silently and with no count to
-	 * explain it. Slugified, not matched, for the reason `KmlReader::folderOf()`
-	 * gives about the Folder it reads: which Categories exist is the import's
-	 * business, not the reader's.
+	 * The two classification cells keep their raw labels — one matching home,
+	 * `ImportService::classify()`, which tries the label the Capas panel shows
+	 * before any slug (L1-06). A clinic that types «Educación», «Jardín
+	 * infantil» now classifies through that label path.
 	 */
-	public function testTheClassificationCellsAreFoldedLikeTheHeadingsAre(): void {
+	public function testTheClassificationCellsKeepTheirRawLabels(): void {
 		$row = $this->reader->read(
 			"Nombre,Categoría,Subcategoría\nJardín de Prueba,Educación,Jardín infantil\n",
 			'prueba',
 		)[0];
 
-		self::assertSame('educacion', $row['categorySlug']);
-		self::assertSame('jardin_infantil', $row['subcategorySlug']);
+		self::assertSame('Educación', $row['category']);
+		self::assertSame('Jardín infantil', $row['subcategory']);
 	}
 
 	/**

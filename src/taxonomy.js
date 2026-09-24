@@ -26,7 +26,9 @@ export const UNKNOWN_COLOUR = '#62676c'
  * when the cadastre arrives. Matched by slug, which is the stable identifier: a
  * clinic may rename the label, and ids differ per install.
  */
-const DIVISIONS_SLUG = 'division_territorial'
+// Exported for tests/js/twins.test.js, which pins it against the PHP seed's
+// own constant (L1-27): a rename over there breaks the js that assumes it.
+export const DIVISIONS_SLUG = 'division_territorial'
 
 /** Sector's slug within it. Nothing else may be filed under this. */
 export const SECTOR_SLUG = 'sector'

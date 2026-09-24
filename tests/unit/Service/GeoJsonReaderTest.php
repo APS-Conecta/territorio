@@ -36,8 +36,8 @@ final class GeoJsonReaderTest extends TestCase {
 		$row = $this->read(self::JDV)[0];
 
 		self::assertSame('Junta de Vecinos de Prueba', $row['name']);
-		self::assertSame('organizacion_social', $row['categorySlug']);
-		self::assertSame('junta_de_vecinos', $row['subcategorySlug']);
+		self::assertSame('organizacion_social', $row['category']);
+		self::assertSame('junta_de_vecinos', $row['subcategory']);
 		self::assertSame('Calle de Prueba 123', $row['address']);
 		self::assertSame('900000000', $row['phone']);
 		self::assertSame('jdv@example.org', $row['email']);

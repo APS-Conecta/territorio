@@ -29,12 +29,6 @@ use SimpleXMLElement;
  * five tag names.
  */
 class KmlReader {
-	/** What a Folder's name has to survive to be usable as a Category slug. */
-	private const ACCENTS = [
-		'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
-		'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
-	];
-
 	public function __construct(
 		private GeoJsonReader $geoJson,
 	) {
@@ -129,8 +123,8 @@ class KmlReader {
 		}
 
 		// The Folder is the only classification a MyMaps export carries, and it
-		// works because those folders were built from these Categories. Slugified,
-		// not matched: which Categories exist is the import's business, not the
+		// works because those folders were built from these Categories. Raw, not
+		// matched: which Categories exist is the import's business, not the
 		// reader's.
 		$folder = $this->folderOf($placemark);
 		if ($folder !== null) {
@@ -236,32 +230,13 @@ class KmlReader {
 		return $positions;
 	}
 
-	/** The name of the nearest enclosing Folder, slugified, or null. */
+	/** The name of the nearest enclosing Folder, raw — classify() owns the
+	 *  matching (L1-06). */
 	private function folderOf(SimpleXMLElement $placemark): ?string {
 		$folders = $placemark->xpath('ancestor::*[local-name()="Folder"][1]/*[local-name()="name"]');
 		$name = trim((string)($folders[0] ?? ''));
 
-		return $name === '' ? null : $this->slug($name);
+		return $name === '' ? null : $name;
 	}
 
-	/**
-	 * "Movilidad y transporte" → `movilidad_transporte`, which is the slug the
-	 * seed uses. Short words are dropped for the same reason the seed leaves them
-	 * out: nobody writes `movilidad_y_transporte`.
-	 *
-	 * ponytail: a heuristic that happens to reproduce all twelve seeded slugs —
-	 * checked, not assumed. A Category a clinic adds later can miss it ("Casa de
-	 * la cultura" slugs to `casa_cultura`), and the row lands in Sin clasificar
-	 * rather than anywhere wrong. Match on the Category's label instead when that
-	 * starts costing somebody real re-filing.
-	 */
-	private function slug(string $name): string {
-		$folded = strtolower(strtr($name, self::ACCENTS));
-		$words = array_filter(
-			preg_split('/[^a-z0-9]+/', $folded) ?: [],
-			static fn (string $word): bool => $word !== '' && !in_array($word, ['y', 'de', 'la', 'el'], true),
-		);
-
-		return implode('_', $words);
-	}
 }

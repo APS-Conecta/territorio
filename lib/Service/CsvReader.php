@@ -67,12 +67,6 @@ class CsvReader {
 	private const LATITUDE = 'latitud';
 	private const LONGITUDE = 'longitud';
 
-	/**
-	 * The two columns whose CELL is a classification and is folded like a
-	 * heading, not passed through like a phone number.
-	 */
-	private const CLASSIFICATION = ['category', 'subcategory'];
-
 	public function __construct(
 		private GeoJsonReader $geoJson,
 	) {
@@ -189,23 +183,6 @@ class CsvReader {
 	 * downstream, which is the same rule GeoJSON and KML rows meet: a nameless
 	 * record is unfindable in the list and unidentifiable in the duplicate queue.
 	 *
-	 * The «Categoría» and «Subcategoría» cells are folded with the same
-	 * `slugFor()` the headings are matched on, because they are the one pair a
-	 * person TYPES: they copy what the Capas panel shows them — «Salud»,
-	 * «Educación», «Organización social» — while `ImportService::classify()`
-	 * looks the pair up in an index keyed by slug. Unfolded, every such row lands
-	 * in Sin clasificar silently, with no count that could explain it. Slugified,
-	 * not matched, for the reason `KmlReader::folderOf()` gives about the Folder
-	 * name it reads: which Categories exist is the import's business, not the
-	 * reader's.
-	 *
-	 * ponytail: folding only. `slugFor('Deporte y recreación')` is
-	 * `deporte_y_recreacion` while the seed's slug is `deporte_recreacion` — the
-	 * seed drops short words — so that one row still falls to Sin clasificar,
-	 * which is exactly where it fell before. Matching on the Category's LABEL is
-	 * the fix for the residue, it belongs in `ImportService` beside the other two
-	 * matching heuristics, and it is its own issue.
-	 *
 	 * @param array<int, string> $columns
 	 * @param list<?string> $cells
 	 * @return ?array<string, mixed>
@@ -215,9 +192,10 @@ class CsvReader {
 		foreach ($columns as $index => $key) {
 			$value = trim((string)($cells[$index] ?? ''));
 			if ($value !== '') {
-				$values[$key] = in_array($key, self::CLASSIFICATION, true)
-					? TaxonomyService::slugFor($value)
-					: $value;
+				// Classification cells keep their raw label — one matching
+				// home, ImportService::classify() (L1-06). Folding them here is
+				// how «Deporte y recreación» fell to Sin clasificar via CSV.
+				$values[$key] = $value;
 			}
 		}
 

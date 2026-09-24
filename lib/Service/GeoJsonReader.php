@@ -133,8 +133,11 @@ class GeoJsonReader {
 		return [
 			'externalId' => $this->externalId($feature, $properties, $source, $name, $geometry),
 			'name' => $name,
-			'categorySlug' => trim((string)($properties['category'] ?? '')) ?: null,
-			'subcategorySlug' => trim((string)($properties['subcategory'] ?? '')) ?: null,
+			// Raw label or slug, as the file carries it — classify() owns the
+			// matching vocabularies (L1-06). Our own export writes slugs here
+			// and still round-trips through the slug path.
+			'category' => trim((string)($properties['category'] ?? '')) ?: null,
+			'subcategory' => trim((string)($properties['subcategory'] ?? '')) ?: null,
 			'geometry' => $geometry,
 			'locationQuality' => self::QUALITIES[strtolower(trim((string)($properties['ubicacion'] ?? '')))] ?? null,
 			'address' => $this->text($properties['address'] ?? null),

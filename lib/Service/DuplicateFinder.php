@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use APS\Common\Text;
+
 /**
  * Which records might be the same place (issue #16).
  *
@@ -172,10 +174,7 @@ final class DuplicateFinder {
 	 * characters nobody put in that list.
 	 */
 	private static function fold(string $value): string {
-		$decomposed = \Normalizer::normalize($value, \Normalizer::FORM_D);
-		$stripped = preg_replace('/\p{Mn}/u', '', $decomposed === false ? $value : $decomposed);
-
-		return trim((string)preg_replace('/\s+/', ' ', mb_strtolower((string)$stripped)));
+		return Text::fold($value);
 	}
 
 	/**

@@ -30,7 +30,7 @@ export function textMatches(query, fields) {
  * What a list shows: the narrowed live set, or the retired recovery screen.
  *
  * The retired list is deliberately NOT narrowed by the browsing filter —
- * it is the recovery screen (territorio ADR-0005), and gating it on a
+ * it is the recovery screen (territorio#ADR-0005), and gating it on a
  * forgotten toggle tells someone the record they are looking for was
  * destroyed. The search DOES reach it: a query is someone saying out loud
  * what they are looking for, and ignoring it would overrule an explicit

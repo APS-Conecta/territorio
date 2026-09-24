@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use APS\Common\Text;
+use OCA\Territorio\Domain\Geometry;
+use OCA\Territorio\Domain\LocationQuality;
+use OCA\Territorio\Domain\Provenance;
 
 use DateTime;
 use OCA\Territorio\Db\Dataset;
@@ -88,7 +91,8 @@ class ImportService {
 	 *   4. the ImportBatch is written BEFORE the first row, per ADR-0009: each
 	 *      row commits its own transaction, so a file that fails at row 400
 	 *      leaves 399 behind, and the batch is what makes those revertible;
-	 *   5. rows apply;
+	 *   5. rows apply — name and «ubicación» are checked with the rest, in
+	 *      `prepare()`, before any of them is (L1-15);
 	 *   6. counts are recorded in a `finally`, so a run that threw still says
 	 *      what it did;
 	 *   7. the duplicate scan runs last, after the batch has closed.
@@ -119,6 +123,14 @@ class ImportService {
 		?string $actor = null,
 		?bool $boundary = null,
 	): ImportBatch {
+		// The one rule both doors used to carry a copy of (L1-02). The browser
+		// route and `occ` pass what they were given; this is the one place an
+		// empty slug is refused, with the sentence the browser door always used —
+		// and the L0-05 OCS route, when it exists, inherits it for free.
+		if (trim($datasetSlug) === '') {
+			throw new InvalidImportException('Indique a qué conjunto de datos importar.');
+		}
+
 		// `?:` and not `??`: an empty label is a label the caller did not give,
 		// and `$label ?? $datasetSlug` below only catches null. Letting '' through
 		// put it into Dataset::setLabel(''), where Entity::setter early-returns on
@@ -202,7 +214,10 @@ class ImportService {
 				$dataset = $datasets[$batch->getDatasetId()] ?? null;
 
 				return $batch->toClient() + [
-					'dataset' => $dataset?->getLabel() ?? 'conjunto eliminado',
+					// A null dataset is a reassignment sweep's batch (L1-16) — not a
+				// deleted Dataset, which is what 'conjunto eliminado' says.
+				'dataset' => $dataset?->getLabel()
+					?? ($batch->getDatasetId() === null ? 'reasignación de límite' : 'conjunto eliminado'),
 					'undone' => $this->batches->isUndone((int)$batch->getId()),
 				];
 			},
@@ -277,7 +292,12 @@ class ImportService {
 	 * @return array{0: array<string, array<string, mixed>>, 1: int}
 	 */
 	private function prepare(array $rows): array {
-		$subcategories = $this->subcategoryIndex();
+		// The shared flat index (L1-20), inverted into the matching shape — one
+		// taxonomy derivation per request instead of Import's private copy.
+		$subcategories = [];
+		foreach ($this->taxonomy->subcategoryIndex() as $id => $pair) {
+			$subcategories[$pair['category'] . '/' . $pair['subcategory']] = $id;
+		}
 		$byLabel = $this->subcategoryLabels();
 		$fallback = $subcategories[implode('/', EnsureSeedData::FALLBACK)] ?? null;
 		if ($fallback === null) {
@@ -309,6 +329,47 @@ class ImportService {
 			} catch (InvalidGeometryException $e) {
 				$problems[] = sprintf('%s: %s', $row['name'], $e->getMessage());
 				continue;
+			}
+
+			// L1-15: name and location quality are checked HERE, pre-write, so
+			// the class docblock's "checked in full before a single row is
+			// written" is literally true. Today's readers refuse nameless rows
+			// themselves — this is the one-way-in check that stays true when a
+			// reader changes.
+			$name = trim((string)($row['name'] ?? ''));
+			if ($name === '') {
+				$problems[] = sprintf('%s: el registro no tiene nombre.', $externalId);
+				continue;
+			}
+
+			// The raw «ubicación» cell (L1-07/L1-15), judged in this one place:
+			//  - null is the DEFAULT and stays — most files say nothing, and a
+			//    coordinate-bearing row takes Exact, documented here rather than
+			//    silently rewritten;
+			//  - «sin_coordenada» on a row that HAS a coordinate, or any quality
+			//    at all on a row that has none, is a file contradicting itself —
+			//    the UI path's own 422 posture, applied to imports;
+			//  - anything else the enum does not know is refused by name.
+			// Case-folded first, so «EXACTA» behaves as it always did.
+			$quality = $row['locationQuality'] ?? null;
+			if ($quality !== null) {
+				$quality = mb_strtolower(trim($quality));
+				$row['locationQuality'] = $quality !== '' ? $quality : null;
+			}
+			if (($row['locationQuality'] ?? null) !== null) {
+				$case = LocationQuality::tryFrom($row['locationQuality']);
+				if ($case === null) {
+					$problems[] = sprintf(
+						'%s: exactitud desconocida «%s».', $name, $row['locationQuality'],
+					);
+					continue;
+				}
+				if ($row['geometry'] === null xor $case === LocationQuality::Absent) {
+					$problems[] = $row['geometry'] === null
+						? sprintf('%s: la exactitud describe una coordenada que el registro no tiene.', $name)
+						: sprintf('%s: dice «sin_coordenada» y trae una coordenada.', $name);
+					continue;
+				}
 			}
 
 			$row['subcategoryId'] = $this->classify($row, $subcategories, $byLabel, $fallback);
@@ -356,13 +417,25 @@ class ImportService {
 		try {
 			// Every Revision taken in here is stamped with this batch, so a revert
 			// acts on exactly the rows the import touched and leaves a colleague's
-			// concurrent edit alone.
-			$this->revisions->duringImport(
-				(int)$batch->getId(),
-				// A long closure, not fn(): an arrow function captures by value, so
-				// the counts applyRows() writes by reference would never come back.
-				function () use ($dataset, $rows, &$counts): void {
-					$this->applyRows($dataset, $rows, $counts);
+			// concurrent edit alone — including the batch-end sweep's, which is
+			// why the flush runs INSIDE the stamp (L1-13).
+			$this->featureService->deferringReassignments(
+				function () use ($batch, $dataset, $rows, &$counts): void {
+					$this->revisions->duringImport(
+						(int)$batch->getId(),
+						// A long closure, not fn(): an arrow function captures by value, so
+						// the counts applyRows() writes by reference would never come back.
+						function () use ($dataset, $rows, &$counts): void {
+							try {
+								$this->applyRows($dataset, $rows, $counts);
+							} finally {
+								// Also on a run that threw: the rows it did write include
+								// boundaries, and their Places hold assignments from
+								// before the batch.
+								$this->featureService->flushDeferredReassignments();
+							}
+						},
+					);
 				},
 			);
 		} finally {
@@ -657,15 +730,4 @@ class ImportService {
 		return null;
 	}
 
-	/** @return array<string, int> "categorySlug/subcategorySlug" → Subcategory id */
-	private function subcategoryIndex(): array {
-		$index = [];
-		foreach ($this->taxonomy->tree() as $category) {
-			foreach ($category['subcategories'] as $subcategory) {
-				$index[$category['slug'] . '/' . $subcategory['slug']] = $subcategory['id'];
-			}
-		}
-
-		return $index;
-	}
 }

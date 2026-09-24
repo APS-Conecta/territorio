@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 /**
  * How well a Feature's coordinate is known — see `CONTEXT.md`.

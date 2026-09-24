@@ -10,6 +10,8 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Db\RevisionLog;
+use OCA\Territorio\Domain\Action;
+use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -227,6 +229,18 @@ class RevertService {
 			return false;
 		}
 
+		// A reassignment sweep's entry: the record's own geometry never moved —
+		// the boundary did — so there is nothing to re-derive from and the
+		// recorded assignment is a fact about where the boundary USED to run.
+		// Writing it back through the write door puts it in history like every
+		// other undo; writing it through apply() would re-derive it from the
+		// geometry, which is the new boundary's answer, not the old one's.
+		if (array_keys($changes) === ['sectorId']
+			|| array_keys($changes) === ['unidadVecinalId']
+			|| array_keys($changes) === ['sectorId', 'unidadVecinalId']) {
+			return $this->restoreAssignment($feature, $changes);
+		}
+
 		$values = $feature->comparable();
 		foreach ($changes as $field => $change) {
 			$values[$field] = $change['from'];
@@ -256,6 +270,36 @@ class RevertService {
 			'notes' => $values['notes'],
 			'sourceRef' => $values['sourceRef'],
 		]);
+
+		return true;
+	}
+
+	/**
+	 * Put back the stored assignment a reassignment sweep overwrote (L1-16).
+	 *
+	 * sectorId/unidadVecinalId are derived at the write door (ADR-0008) — which
+	 * is exactly why the normal path cannot undo a sweep: restoring geometry
+	 * restores the assignment, but a sweep's entry changed NO geometry. The
+	 * "from" side of its diff is the pre-sweep assignment, a recorded fact, and
+	 * this writes it back as one: straight through the mapper, one Revision,
+	 * stamped with the revert's own batch because it runs inside duringImport.
+	 *
+	 * The strict array_keys() routing in restoreValues leans on Feature::
+	 * comparable()'s key order (sectorId before unidadVecinalId) — nothing pins
+	 * it, so this note is the warning to the next editor of comparable() that
+	 * the order is load-bearing here.
+	 *
+	 * @param array<string, array{from: mixed, to: mixed}> $changes
+	 */
+	private function restoreAssignment(Feature $feature, array $changes): bool {
+		if (array_key_exists('sectorId', $changes)) {
+			$feature->setSectorId($changes['sectorId']['from']);
+		}
+		if (array_key_exists('unidadVecinalId', $changes)) {
+			$feature->setUnidadVecinalId($changes['unidadVecinalId']['from']);
+		}
+
+		$this->features->update($feature);
 
 		return true;
 	}

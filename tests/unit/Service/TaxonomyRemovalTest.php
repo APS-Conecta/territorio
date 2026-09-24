@@ -11,8 +11,10 @@ use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidTaxonomyException;
 use OCA\Territorio\Migration\EnsureSeedData;
+use OCA\Territorio\Service\TaxonomyPolicy;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\MockObject\MockObject;
+use OCP\IDBConnection;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -42,6 +44,8 @@ final class TaxonomyRemovalTest extends TestCase {
 		$this->features = $this->createMock(FeatureMapper::class);
 		$this->taxonomy = new TaxonomyService(
 			$this->categories, $this->subcategories, $this->features,
+			new TaxonomyPolicy($this->categories),
+			$this->createStub(IDBConnection::class),
 		);
 	}
 

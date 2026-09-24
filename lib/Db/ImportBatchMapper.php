@@ -44,28 +44,58 @@ class ImportBatchMapper extends QBMapper {
 	/**
 	 * Whether this batch's effects are currently undone.
 	 *
-	 * Two things a plain "has it been reverted?" gets wrong, and both leave a
-	 * batch permanently beyond recovery, which is the opposite of what ADR-0009
-	 * asks of the only undo the app has:
+	 * Two things a plain "has it been reverted?" gets wrong — both spelled in
+	 * the original docblock, unchanged: a revert that undid NOTHING still
+	 * counted, and a revert that was ITSELF undone still counted, and both leave
+	 * a batch permanently beyond recovery.
 	 *
-	 *  - A revert that undid NOTHING still counted. Undo an import whose rows were
-	 *    all later overwritten by a second import and every entry is skipped —
-	 *    yet the batch was marked spent, so once the second import was itself
-	 *    undone, the first could never be.
-	 *  - A revert that was ITSELF undone still counted, so import → undo →
-	 *    redo left the original blocked forever.
+	 * The lineage is resolved with ONE query now (L1-17): every revert row,
+	 * read once, walked in memory. The recursion this replaces took a SELECT
+	 * per chain link — this runs once per entry in the import dialog's list, 25
+	 * times per open, growing with undo depth.
 	 *
-	 * Recursion terminates because a revert always has a higher id than what it
-	 * reverts.
+	 * The walk terminates on the same invariant the recursion did: a revert
+	 * always carries a higher id than what it reverts.
 	 */
 	public function isUndone(int $batchId): bool {
-		$revert = $this->findRevertOf($batchId);
-
-		if ($revert === null || $revert->getUpdated() === 0) {
-			return false;
+		$revertOf = [];
+		foreach ($this->findAllReverts() as $revert) {
+			// Newest wins — the one findRevertOf() used to pick per link.
+			$revertOf[(int)$revert->getRevertsId()] ??= $revert;
 		}
 
-		return !$this->isUndone((int)$revert->getId());
+		// Walk the chain in memory, flipping the answer at each link: undone,
+		// undone-then-redone, undone-then-redone-then-undone — the parity the
+		// recursion computed one SELECT at a time.
+		$undone = false;
+		$current = $batchId;
+		while (isset($revertOf[$current])) {
+			$revert = $revertOf[$current];
+			if ($revert->getUpdated() === 0) {
+				// A no-op link STOPS the walk and keeps the parity accumulated so
+				// far — it is not a global false. The recursion answered `false` AT
+				// THIS NODE and let the caller flip it; `return false` here would
+				// discard those flips (import → undo → no-op redo mis-reads as not
+				// undone). `break` is the faithful translation.
+				break;
+			}
+
+			$undone = !$undone;
+			$current = (int)$revert->getId();
+		}
+
+		return $undone;
+	}
+
+	/** @return ImportBatch[] newest first — every revert row there is (L1-17). */
+	private function findAllReverts(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->isNotNull('reverts_id'))
+			->orderBy('id', 'DESC');
+
+		return $this->findEntities($qb);
 	}
 
 	/** @return ImportBatch[] newest first */

@@ -163,3 +163,16 @@ _Avoid_: audit, download history
 The neighbourhood association — an organisation with members, an address and a president. It is
 a Place, not a boundary, and it is not the same thing as the Unidad Vecinal it is named after.
 _Avoid_: using "unidad vecinal" to mean the organisation
+
+### Failure modes
+
+**Throw at the write door, null at the read helper.**
+A mapper's `find()` that guards a WRITE throws (`FeatureMapper::find()` — writing to a
+record nobody holds must fail loudly). A mapper's read that merely ENRICHES answers
+null (`DuplicateMapper::findMergeOf()`, `ImportBatchMapper::findRevertOf()`) — a read
+helper has a caller that can say "then none". Batch walkers choose the fail mode by
+what the batch is: an import fails HARD (the whole file is refused before a single
+row is written — "imports nothing" is a promise), and a revert fails SOFT (each
+record it cannot put back is left as it is and counted, because a half-undone batch
+that says what it reached is worth more than an aborted one).
+_Avoid_: a try/catch per caller; "it depends" as the whole answer to null-or-throw.

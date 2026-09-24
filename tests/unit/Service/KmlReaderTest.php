@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
+use OCA\Territorio\Domain\Geometry;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\GeoJsonReader;
 use OCA\Territorio\Service\KmlReader;
@@ -135,7 +136,7 @@ final class KmlReaderTest extends TestCase {
 
 		self::assertNotNull($geometry, 'it arrived shapeless, so the import will not count it');
 		self::assertFalse(
-			\OCA\Territorio\Service\Geometry::supports($geometry['type'] ?? null),
+			\OCA\Territorio\Domain\Geometry::supports($geometry['type'] ?? null),
 			'the type must be one the import refuses, so the batch reports it',
 		);
 	}

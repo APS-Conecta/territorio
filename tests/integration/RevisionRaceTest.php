@@ -7,7 +7,7 @@ namespace OCA\Territorio\Tests\Integration;
 use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Service\FeatureService;
 use OCP\Server;
 

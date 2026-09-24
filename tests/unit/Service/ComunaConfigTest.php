@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
-use OCA\Territorio\Service\Comuna;
+use OCA\Territorio\Domain\Comuna;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\IAppConfig;
 use PHPUnit\Framework\TestCase;

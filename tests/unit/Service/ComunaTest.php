@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Exception\InvalidComunaException;
-use OCA\Territorio\Service\Comuna;
+use OCA\Territorio\Domain\Comuna;
 use PHPUnit\Framework\TestCase;
 
 /**

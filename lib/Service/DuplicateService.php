@@ -9,9 +9,12 @@ use OCA\Territorio\Db\Duplicate;
 use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Domain\DuplicateFinder;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IDBConnection;
 use OCP\IUserSession;
+use Throwable;
 
 /**
  * The review queue: which records might be the same place, and what was decided
@@ -33,6 +36,7 @@ class DuplicateService {
 		private FeatureMapper $features,
 		private FeatureService $featureService,
 		private IUserSession $session,
+		private IDBConnection $db,
 	) {
 	}
 
@@ -101,10 +105,9 @@ class DuplicateService {
 	 * @return array{pairs: list<array<string, mixed>>, total: int}
 	 */
 	public function outstanding(): array {
-		$visible = [];
-		foreach ($this->features->findAll() as $feature) {
-			$visible[(int)$feature->getId()] = true;
-		}
+		// The ids, not the Registry: this ran once per queue poll and walked every
+		// live record into a map just to ask "does this id exist" (L1-17).
+		$visible = array_fill_keys($this->features->findLiveIds(), true);
 
 		$pairs = [];
 		foreach ($this->duplicates->findPending() as $pair) {
@@ -134,13 +137,37 @@ class DuplicateService {
 		}
 
 		$loserId = $survivorId === $ids[0] ? $ids[1] : $ids[0];
-		$merged = $this->featureService->merge($loserId, $survivorId);
 
-		$pair->setStatus(Duplicate::MERGED);
-		$pair->setResolvedBy($this->actor());
-		$this->duplicates->update($pair);
+		// One transaction (L1-16): the loser's retirement and the pair's
+		// resolution commit together or not at all. The failure this closes is the
+		// gap between them — a loser retired while the pair sat PENDING, invisible
+		// in outstanding() and never asked again, so the queue forgot a decision it
+		// never finished making. The reads and refusals above stay outside: they
+		// take no locks and write nothing.
+		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
+			$merged = $this->featureService->merge($loserId, $survivorId);
 
-		return $merged;
+			$pair->setStatus(Duplicate::MERGED);
+			$pair->setResolvedBy($this->actor());
+			$this->duplicates->update($pair);
+
+			return $merged;
+		});
+	}
+
+	/** @param callable(): T $work @template T */
+	private function transactionally(callable $work): mixed {
+		$this->db->beginTransaction();
+		try {
+			$written = $work();
+			$this->db->commit();
+
+			return $written;
+		} catch (Throwable $e) {
+			$this->db->rollBack();
+
+			throw $e;
+		}
 	}
 
 	/**
@@ -185,18 +212,16 @@ class DuplicateService {
 	 */
 	private function candidates(): array {
 		$candidates = [];
-		foreach ($this->features->findAll() as $feature) {
-			if ($feature->getKind() !== Kind::Place->value) {
-				continue;
-			}
+		foreach ($this->features->findPlaces() as $feature) {
+			$anchor = $feature->anchor();
 
 			$candidates[] = [
 				'id' => (int)$feature->getId(),
 				'name' => $feature->getName(),
-				// A Place's bounding box IS its coordinate — min and max are the same
-				// point — so this needs no geometry parsing.
-				'lat' => $feature->getMinLat(),
-				'lon' => $feature->getMinLon(),
+				// A Place's bounding box IS its coordinate — the anchor rule,
+				// stated once on the record (L1-20).
+				'lat' => $anchor === null ? null : $anchor[1],
+				'lon' => $anchor === null ? null : $anchor[0],
 			];
 		}
 

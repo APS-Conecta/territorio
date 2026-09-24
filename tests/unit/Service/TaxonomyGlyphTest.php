@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Exception\InvalidTaxonomyException;
+use OCA\Territorio\Service\TaxonomyPolicy;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\TestCase;
 
@@ -45,7 +46,7 @@ final class TaxonomyGlyphTest extends TestCase {
 
 	/** @dataProvider accepted */
 	public function testAPickedNameIsStoredAsItIs(string $picked, ?string $stored): void {
-		self::assertSame($stored, TaxonomyService::glyphName($picked));
+		self::assertSame($stored, TaxonomyPolicy::glyphName($picked));
 	}
 
 	/** @return array<string, array{0: string}> */
@@ -66,7 +67,7 @@ final class TaxonomyGlyphTest extends TestCase {
 	public function testANameThatIsNotShapedLikeAMarkIsRefused(string $picked): void {
 		$this->expectException(InvalidTaxonomyException::class);
 
-		TaxonomyService::glyphName($picked);
+		TaxonomyPolicy::glyphName($picked);
 	}
 
 	/**
@@ -75,7 +76,7 @@ final class TaxonomyGlyphTest extends TestCase {
 	 */
 	public function testTheRefusalSaysWhatWasWrong(): void {
 		try {
-			TaxonomyService::glyphName('park!');
+			TaxonomyPolicy::glyphName('park!');
 			self::fail('a name no Maki icon carries was accepted');
 		} catch (InvalidTaxonomyException $e) {
 			self::assertStringContainsString('pictograma', $e->getMessage());

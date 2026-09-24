@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 /**
  * What a Revision records having happened to a Feature.

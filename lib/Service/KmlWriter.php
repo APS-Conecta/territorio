@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use OCA\Territorio\Domain\OsmAttribution;
+
 /**
  * Geometry and name, for looking at somewhere else (issue #17).
  *

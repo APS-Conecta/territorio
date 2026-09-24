@@ -24,6 +24,7 @@ use OCP\IRequest;
  * shortcoming to fix later.
  */
 class ChangesController extends Controller {
+	use Refuses;
 	public function __construct(
 		IRequest $request,
 		private FeatureService $features,
@@ -32,10 +33,15 @@ class ChangesController extends Controller {
 	}
 
 	/**
-	 * @param int $since the Revision the client last applied
+	 * @param string $since the Revision the client last applied — refused, not
+	 *                      TypeError'd, when it is not a number (L1-01)
 	 */
 	#[NoAdminRequired]
-	public function since(int $since = 0): JSONResponse {
-		return new JSONResponse($this->features->changesSince(max(0, $since)));
+	public function since(string $since = '0'): JSONResponse {
+		if (!ctype_digit($since)) {
+			return $this->missing('La revisión desde la que preguntar tiene que ser un número.');
+		}
+
+		return new JSONResponse($this->features->changesSince(max(0, (int)$since)));
 	}
 }

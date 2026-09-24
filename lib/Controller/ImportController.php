@@ -40,10 +40,10 @@ class ImportController extends Controller {
 
 	#[NoAdminRequired]
 	public function upload(): JSONResponse {
+		// The empty-dataset rule lives in ImportService now (L1-02): this door and
+		// `occ territorio:import` both pass through the one refusal, with the same
+		// sentence, and a third entry point inherits it for free.
 		$dataset = trim((string)$this->request->getParam('dataset', ''));
-		if ($dataset === '') {
-			return $this->refuse('Indique a qué conjunto de datos importar.');
-		}
 
 		// A path means the file is already in the caller's own Files tree (#104),
 		// so there is nothing to upload a second time. It is the ONLY difference:
@@ -63,11 +63,12 @@ class ImportController extends Controller {
 				$contents,
 				$filename,
 				$dataset,
-				// Cast, not normalised: a label the request sent as an array must
-				// not reach a ?string parameter as a TypeError 500 — and
-				// ImportService owns the ""-means-null rule now, so this is the
-				// raw pass.
-				(string)$this->request->getParam('label', ''),
+				// is_string, not a cast (L1-12): `(string)` on a `label[]=x` request
+				// turns garbage into a Dataset labelled "Array" plus an E_WARNING,
+				// against Refuses' own "never a silent 200". The empty label is the
+				// one ImportService already refuses on a NEW dataset with its own
+				// sentence; trim normalises what a form sends as whitespace.
+				is_string($label = $this->request->getParam('label', '')) ? trim($label) : '',
 				$this->userSession->getUser()?->getUID(),
 			)->toClient();
 		});

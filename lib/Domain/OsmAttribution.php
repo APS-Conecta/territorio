@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 /**
  * The line an export has to carry when it holds OpenStreetMap's data (issue #28).

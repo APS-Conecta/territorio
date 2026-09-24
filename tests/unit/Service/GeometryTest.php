@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Exception\InvalidGeometryException;
-use OCA\Territorio\Service\Geometry;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Geometry;
+use OCA\Territorio\Domain\Kind;
 use PHPUnit\Framework\TestCase;
 
 /**

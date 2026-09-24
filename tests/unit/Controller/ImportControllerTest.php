@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Controller;
 
 use OCA\Territorio\Controller\ImportController;
+use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Service\ImportFiles;
 use OCA\Territorio\Service\ImportService;
@@ -207,14 +208,23 @@ final class ImportControllerTest extends TestCase {
 		);
 	}
 
-	/** The Dataset is still required, and asked for before anything is read. */
-	public function testAPathWithoutADatasetIsRefusedBeforeTheFileIsTouched(): void {
+	/**
+	 * The Dataset is still required (L1-02) — refused by the SERVICE now, not
+	 * the door, so `occ` and any future entry point inherit the same sentence.
+	 * The file is read first; that is the change this test watches, on purpose.
+	 */
+	public function testAPathWithoutADatasetIsRefusedWithTheOneSentence(): void {
 		$this->params = ['path' => '/catastro.geojson'];
-		$this->home->expects(self::never())->method('get');
+		$this->home->method('get')->willReturn($this->node(512, 'catastro.geojson', '{}'));
+		$this->import->method('importFile')
+			->willThrowException(new InvalidImportException('Indique a qué conjunto de datos importar.'));
 
+		$response = $this->controller->upload();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 		self::assertSame(
-			Http::STATUS_UNPROCESSABLE_ENTITY,
-			$this->controller->upload()->getStatus(),
+			'Indique a qué conjunto de datos importar.',
+			$response->getData()['message'],
 		);
 	}
 

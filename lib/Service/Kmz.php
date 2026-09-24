@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
-use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidImportException;
+use OCA\Territorio\Exception\ServerFaultException;
 use ZipArchive;
 
 /**
@@ -23,7 +23,8 @@ use ZipArchive;
  * the caller's catch stays the narrow one it is: reading throws
  * `InvalidImportException` (the CLI catches the concrete type; the import
  * controller rides the refusal mapping), writing throws
- * `InvalidFeatureException` (the only thing `ExportController` catches).
+ * `ServerFaultException` (L1-08 — the server-fault half of the
+ * ExportController catch).
  */
 final class Kmz {
 	/**
@@ -96,28 +97,26 @@ final class Kmz {
 	 * file behind unless something removes it, which is exactly the failure
 	 * `ExportServiceTest` injects and the `finally` covers.
 	 *
-	 * The three failures below are the server's, not the caller's, and they are
-	 * still `InvalidFeatureException` — which `ExportController` answers with a
-	 * 422. Said out loud rather than left to be discovered: a full disk is not a
-	 * malformed request, so a monitor counting 422s will file these under the
-	 * caller's fault. The trade is deliberate — the alternative is letting a
-	 * `RuntimeException` reach the framework, which answers 500 and loses the
-	 * Spanish sentence the person is shown. Worth revisiting if this app ever
-	 * grows a way to say "our fault" in the person's language.
+	 * The three failures below are the server's, not the caller's, and now they
+	 * say so (L1-08): `ServerFaultException` is the app's way to say "our
+	 * fault" in the person's language, and ExportController answers it 500 —
+	 * still with the Spanish sentence, which a bare RuntimeException through
+	 * the framework would lose, and no longer mis-filed under the caller in
+	 * every 4xx monitor. The sentences themselves do not move.
 	 *
 	 * @param callable(): string $render writes the KML into the open archive
-	 * @throws InvalidFeatureException
+	 * @throws ServerFaultException
 	 */
 	public static function archive(callable $render): string {
 		$path = tempnam(sys_get_temp_dir(), 'territorio-kmz-');
 		if ($path === false) {
-			throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
+			throw new ServerFaultException('No se pudo preparar el archivo KMZ.');
 		}
 
 		try {
 			$zip = new ZipArchive();
 			if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
-				throw new InvalidFeatureException('No se pudo preparar el archivo KMZ.');
+				throw new ServerFaultException('No se pudo preparar el archivo KMZ.');
 			}
 
 			// Closed only if the entry went in: `close()` on an archive with
@@ -127,7 +126,7 @@ final class Kmz {
 			$written = $zip->addFromString('doc.kml', $render());
 			$body = $written && $zip->close() ? file_get_contents($path) : false;
 			if ($body === false) {
-				throw new InvalidFeatureException('No se pudo escribir el archivo KMZ.');
+				throw new ServerFaultException('No se pudo escribir el archivo KMZ.');
 			}
 
 			return $body;

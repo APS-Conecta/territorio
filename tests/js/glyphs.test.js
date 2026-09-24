@@ -131,7 +131,7 @@ describe('a chosen pictogram', () => {
 	const CHOSEN = 'bakery'
 
 	/**
-	 * The shape `TaxonomyService::glyphName()` enforces, read out of the file
+	 * The shape `TaxonomyPolicy::glyphName()` enforces, read out of the file
 	 * that enforces it.
 	 *
 	 * Not copied here, and that is the whole point of the test below. PHP checks
@@ -146,7 +146,7 @@ describe('a chosen pictogram', () => {
 	 */
 	function serverShape() {
 		const php = readFileSync(
-			fileURLToPath(new URL('../../lib/Service/TaxonomyService.php', import.meta.url)), 'utf8')
+			fileURLToPath(new URL('../../lib/Service/TaxonomyPolicy.php', import.meta.url)), 'utf8')
 		const marks = php.match(/preg_match\('\/\^(\[[^\]]+\])\{1,' \. self::GLYPH_LENGTH/)
 		const length = php.match(/const GLYPH_LENGTH = (\d+);/)
 
@@ -154,8 +154,8 @@ describe('a chosen pictogram', () => {
 		// would leave both of these null, and a shape built from null matches
 		// nothing or everything — either way this file would stop being about the
 		// server and nothing would say so.
-		expect(marks, 'the shape check could not be found in TaxonomyService').not.toBeNull()
-		expect(length, 'GLYPH_LENGTH could not be found in TaxonomyService').not.toBeNull()
+		expect(marks, 'the shape check could not be found in TaxonomyPolicy').not.toBeNull()
+		expect(length, 'GLYPH_LENGTH could not be found in TaxonomyPolicy').not.toBeNull()
 
 		return new RegExp(`^${marks[1]}{1,${length[1]}}$`)
 	}

@@ -12,7 +12,7 @@ use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
-use OCA\Territorio\Service\LocationQuality;
+use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\DB\QueryBuilder\IQueryBuilder;

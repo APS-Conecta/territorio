@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Exception\InvalidImportException;
-use OCA\Territorio\Service\ContactFields;
+use OCA\Territorio\Domain\ContactFields;
 use OCA\Territorio\Service\GeoJsonReader;
 use OCA\Territorio\Service\GeoJsonWriter;
 use PHPUnit\Framework\TestCase;

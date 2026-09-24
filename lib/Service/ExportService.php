@@ -151,26 +151,16 @@ class ExportService {
 	 * the same reason (ADR-0005), and a person exporting what is on their screen
 	 * is not asking for what used to be there.
 	 *
-	 * ponytail: reads the whole Registry and keeps the ids asked for, rather than
-	 * a `findByIds`. One comuna is hundreds of rows and the Datos list already
-	 * loads all of them on every page load, so a second full read at the moment
-	 * somebody presses Exportar is not what will make this app slow. Add
-	 * `FeatureMapper::findByIds()` when a comuna outgrows one page of memory —
 	 * the same threshold `findAll()` itself is waiting on.
 	 *
 	 * @param int[] $ids
 	 * @return list<array<string, mixed>>
 	 */
 	private function rows(array $ids): array {
-		$wanted = array_flip(array_map('intval', $ids));
 		$labels = $this->labelledSubcategories();
 
 		$rows = [];
-		foreach ($this->features->findAll() as $feature) {
-			if (!isset($wanted[(int)$feature->getId()])) {
-				continue;
-			}
-
+		foreach ($this->features->findByIds($ids) as $feature) {
 			$rows[] = $this->row($feature, $labels);
 		}
 
@@ -261,18 +251,17 @@ class ExportService {
 	 * @return array<int, array{slug: string, label: string}>
 	 */
 	private function labelledSubcategories(): array {
-		$index = [];
-		foreach ($this->taxonomy->tree() as $category) {
-			foreach ($category['subcategories'] as $subcategory) {
-				$index[$subcategory['id']] = [
-					'slug' => $category['slug'] . '/' . $subcategory['slug'],
-					// The same "Category · Subcategory" the list and the search show,
-					// so a CSV column reads as the screen does.
-					'label' => $category['label'] . ' · ' . $subcategory['label'],
-				];
-			}
+		$labels = [];
+		// The shared flat index (L1-20) — the third tree-walk gone.
+		foreach ($this->taxonomy->subcategoryIndex() as $id => $pair) {
+			$labels[$id] = [
+				'slug' => $pair['category'] . '/' . $pair['subcategory'],
+				// The same "Category · Subcategory" the list and the search show,
+				// so a CSV column reads as the screen does.
+				'label' => $pair['categoryLabel'] . ' · ' . $pair['subcategoryLabel'],
+			];
 		}
 
-		return $index;
+		return $labels;
 	}
 }

@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Exception\InvalidComunaException;
 use OCA\Territorio\Service\BasemapConfig;
-use OCA\Territorio\Service\Comuna;
+use OCA\Territorio\Domain\Comuna;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\JSONResponse;
@@ -53,14 +52,15 @@ class AdminSettingsController extends Controller {
 	 * Unidad Vecinal file fail later for a reason nobody could see from here.
 	 */
 	public function saveComuna(string $cut = '', string $name = ''): JSONResponse {
-		try {
+		// attempt(), not the manual catch (L1-03): Comuna::of() throws a
+		// RefusedException, and the exception→response mapping lives in exactly
+		// one place. save() is untouched — BasemapConfig::set() throws no
+		// refusal, so there is nothing for attempt() to catch there.
+		return $this->attempt(function () use ($cut, $name): array {
 			$comuna = Comuna::of($cut, $name);
-		} catch (InvalidComunaException $e) {
-			return $this->refuse($e->getMessage());
-		}
+			$this->comunaConfig->set($comuna);
 
-		$this->comunaConfig->set($comuna);
-
-		return new JSONResponse($comuna->jsonSerialize());
+			return $comuna->jsonSerialize();
+		});
 	}
 }

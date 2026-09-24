@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use APS\Common\Csv;
+use OCA\Territorio\Domain\OsmAttribution;
 
 /**
  * The Datos view as a spreadsheet (issue #17).

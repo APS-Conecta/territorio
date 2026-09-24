@@ -6,7 +6,7 @@ namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\RegistryService;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\MockObject\MockObject;

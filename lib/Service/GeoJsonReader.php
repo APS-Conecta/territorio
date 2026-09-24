@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use JsonException;
+use OCA\Territorio\Domain\ContactFields;
 use OCA\Territorio\Exception\InvalidImportException;
 
 /**
@@ -46,12 +47,6 @@ class GeoJsonReader {
 	private const REFUSE_PARTIAL = 'El archivo se exportó sin datos de contacto y volver a importarlo '
 		. 'borraría los teléfonos y correos que ya están guardados. Exporte de nuevo '
 		. 'marcando "Incluir datos de contacto" si quiere volver a importarlo.';
-
-	/** What `ubicacion` says, and what Location quality calls it. */
-	private const QUALITIES = [
-		'exacta' => 'exacta',
-		'aproximada' => 'aproximada',
-	];
 
 	/**
 	 * @return list<array<string, mixed>>
@@ -139,7 +134,13 @@ class GeoJsonReader {
 			'category' => trim((string)($properties['category'] ?? '')) ?: null,
 			'subcategory' => trim((string)($properties['subcategory'] ?? '')) ?: null,
 			'geometry' => $geometry,
-			'locationQuality' => self::QUALITIES[strtolower(trim((string)($properties['ubicacion'] ?? '')))] ?? null,
+			// The raw «ubicación» cell, judged in one place — ImportService::
+			// prepare() (L1-15) — with the same raw-label doctrine the
+			// classification cells got (L1-06): a mirror map here is how a renamed
+			// enum case silently stopped importing that quality (L1-07). Case is
+			// preserved and the judgement folds it, so «EXACTA» behaves the same as
+			// it always did.
+			'locationQuality' => trim((string)($properties['ubicacion'] ?? '')) ?: null,
 			'address' => $this->text($properties['address'] ?? null),
 			'phone' => $this->text($properties['phone'] ?? null),
 			'email' => $this->text($properties['email'] ?? null),

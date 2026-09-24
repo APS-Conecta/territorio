@@ -19,16 +19,63 @@ use OCP\Server;
  * derived from the shape.
  */
 final class LimitTest extends IntegrationTestCase {
+
+	/** Two live boundary streets, imported the way boundaries arrive (L1-21:
+	 *  the Limit's ids are validated against exactly this set). */
+	private function importBoundaries(): array {
+		$slug = 'limites-de-prueba-' . uniqid();
+		Server::get(\OCA\Territorio\Service\ImportService::class)->importFile(
+			<<<'JSON'
+			{"type":"FeatureCollection","features":[
+			  {"type":"Feature","id":"way/4321","geometry":{"type":"LineString","coordinates":[[-70.6,-33.52],[-70.55,-33.52]]},
+			   "properties":{"name":"Avenida Vicuña Mackenna","source":"limites"}},
+			  {"type":"Feature","id":"way/4322","geometry":{"type":"LineString","coordinates":[[-70.55,-33.52],[-70.55,-33.49]]},
+			   "properties":{"name":"Canal San Carlos","source":"limites"}}
+			]}
+			JSON,
+			'datos.geojson',
+			$slug,
+			'Límites de prueba',
+			'prueba',
+			boundary: true,
+		);
+
+		$dataset = Server::get(\OCA\Territorio\Db\DatasetMapper::class)->findBySlug($slug);
+		$byId = [];
+		$mapper = Server::get(FeatureMapper::class);
+		foreach ($mapper->findByDataset((int)$dataset->getId()) as $feature) {
+			$byId[(int)$feature->getId()] = $feature;
+		}
+
+		return $byId;
+	}
+
 	/** Somewhere other than the boundary every Sector fixture starts on. */
 	private const MOVED = [[[-70.59, -33.53], [-70.55, -33.53], [-70.55, -33.49], [-70.59, -33.49], [-70.59, -33.53]]];
 
-	private const LIMIT = [
-		['featureId' => 4321, 'name' => 'Avenida Vicuña Mackenna'],
-		['featureId' => 4322, 'name' => 'Canal San Carlos'],
-		// A stretch no dataset holds, which is half of what a real limit runs
-		// along and the reason a Limit is not just a list of feature ids.
-		['name' => 'por detrás del colegio'],
-	];
+	// The named-only stretch: a real limit runs along parts no dataset holds,
+	// which is the reason a Limit is not just a list of feature ids.
+	private const LOOSE_PART = ['name' => 'por detrás del colegio'];
+
+	/** The Limit with live boundary ids in it — L1-21 validates ids against the
+	 *  live set at write time, so the fixture must name boundaries that exist. */
+	private ?array $limitParts = null;
+
+	private function limit(): array {
+		// Memoised per test: importBoundaries() creates fresh rows each call,
+		// and the assertion must compare against the ids the sector stored.
+		if ($this->limitParts !== null) {
+			return $this->limitParts;
+		}
+		$ids = array_keys($this->importBoundaries());
+		self::assertCount(2, $ids, 'the boundary fixture must yield the two streets');
+
+		return $this->limitParts = [
+			['featureId' => $ids[0], 'name' => 'Avenida Vicuña Mackenna'],
+			['featureId' => $ids[1], 'name' => 'Canal San Carlos'],
+			self::LOOSE_PART,
+		];
+	}
 
 	private FeatureService $features;
 
@@ -41,9 +88,9 @@ final class LimitTest extends IntegrationTestCase {
 	}
 
 	public function testPickingRecordsWhatTheSectorRunsAlong(): void {
-		$id = $this->sector('Sector con límite', ['limit' => self::LIMIT]);
+		$id = $this->sector('Sector con límite', ['limit' => $this->limit()]);
 
-		self::assertSame(self::LIMIT, $this->stored($id)['limit']);
+		self::assertSame($this->limit(), $this->stored($id)['limit']);
 	}
 
 	/**
@@ -54,7 +101,7 @@ final class LimitTest extends IntegrationTestCase {
 	 * they wrote down the first time they nudge a corner.
 	 */
 	public function testTheLimitSurvivesHandAdjustmentOfTheGeometry(): void {
-		$id = $this->sector('Sector que se ajusta', ['limit' => self::LIMIT]);
+		$id = $this->sector('Sector que se ajusta', ['limit' => $this->limit()]);
 
 		$this->features->update($id, [
 			'name' => 'Sector que se ajusta',
@@ -63,7 +110,7 @@ final class LimitTest extends IntegrationTestCase {
 		]);
 
 		$after = $this->stored($id);
-		self::assertSame(self::LIMIT, $after['limit'], 'the Limit is intent, not a copy of the shape');
+		self::assertSame($this->limit(), $after['limit'], 'the Limit is intent, not a copy of the shape');
 		// And the shape really did move, or this would pass by nothing happening.
 		self::assertSame(self::MOVED, $after['geometry']['coordinates']);
 	}
@@ -77,7 +124,7 @@ final class LimitTest extends IntegrationTestCase {
 
 	/** Sending a Limit is how it is changed — including to nothing. */
 	public function testTheLimitCanBeChangedAndCleared(): void {
-		$id = $this->sector('Sector que cambia', ['limit' => self::LIMIT]);
+		$id = $this->sector('Sector que cambia', ['limit' => $this->limit()]);
 
 		$this->features->update($id, [
 			'name' => 'Sector que cambia',
@@ -99,7 +146,7 @@ final class LimitTest extends IntegrationTestCase {
 	 * "quién cambió el límite" is the question history exists to answer.
 	 */
 	public function testChangingTheLimitIsInHistory(): void {
-		$id = $this->sector('Sector con historial', ['limit' => self::LIMIT]);
+		$id = $this->sector('Sector con historial', ['limit' => $this->limit()]);
 
 		$this->features->update($id, [
 			'name' => 'Sector con historial',
@@ -142,9 +189,11 @@ final class LimitTest extends IntegrationTestCase {
 	 * structure, into a column with no length of its own.
 	 */
 	public function testAnAbsurdLimitIsBounded(): void {
+		// Named-only parts since L1-21: ids are validated against the live
+		// boundaries, and the cap this test pins is about parts, not ids.
 		$id = $this->sector('Sector con límite absurdo', ['limit' => [
 			...array_map(
-				static fn (int $n): array => ['featureId' => $n, 'name' => 'Calle ' . $n],
+				static fn (int $n): array => ['name' => 'Calle ' . $n],
 				range(1, 900),
 			),
 			['name' => str_repeat('a', 500)],
@@ -159,7 +208,7 @@ final class LimitTest extends IntegrationTestCase {
 
 	/** The export carries it as a sentence, because a person reads the export. */
 	public function testTheLimitAppearsInExports(): void {
-		$id = $this->sector('Sector que se exporta', ['limit' => self::LIMIT]);
+		$id = $this->sector('Sector que se exporta', ['limit' => $this->limit()]);
 
 		$geojson = json_decode(
 			Server::get(ExportService::class)->export([$id], 'geojson', false)['body'],
@@ -181,10 +230,11 @@ final class LimitTest extends IntegrationTestCase {
 	 * not what anybody said.
 	 */
 	public function testARepeatedNameIsSaidOnceInAnExport(): void {
+		$ids = array_keys($this->importBoundaries());
 		$id = $this->sector('Sector con calle repetida', ['limit' => [
-			['featureId' => 1, 'name' => 'Avenida Vicuña Mackenna'],
-			['featureId' => 2, 'name' => 'Avenida Vicuña Mackenna'],
-			['featureId' => 3, 'name' => 'Canal San Carlos'],
+			['featureId' => $ids[0], 'name' => 'Avenida Vicuña Mackenna'],
+			['featureId' => $ids[0], 'name' => 'Avenida Vicuña Mackenna'],
+			['featureId' => $ids[1], 'name' => 'Canal San Carlos'],
 		]]);
 
 		$geojson = json_decode(

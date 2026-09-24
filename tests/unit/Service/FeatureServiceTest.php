@@ -10,12 +10,14 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
+use OCA\Territorio\Db\ImportBatchMapper;
+use OCP\IUserSession;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Service\FeatureService;
-use OCA\Territorio\Service\Kind;
-use OCA\Territorio\Service\LocationQuality;
+use OCA\Territorio\Domain\Kind;
+use OCA\Territorio\Domain\LocationQuality;
 use OCP\AppFramework\Db\DoesNotExistException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -62,6 +64,8 @@ final class FeatureServiceTest extends TestCase {
 			$this->revisions,
 			$this->createMock(AssignmentService::class),
 			$this->createMock(DuplicateMapper::class),
+			$this->createMock(ImportBatchMapper::class),
+			$this->createStub(IUserSession::class),
 		);
 	}
 

@@ -14,6 +14,16 @@ use OCP\Migration\IRepairStep;
  * Puts the rows an install cannot function without into place, and carries a
  * change to the seeded taxonomy to installs that already have one.
  *
+ * THE CARRIER RULE, stated because it was folklore until L1-22: a change to
+ * seeded data does NOT ride `ensureTaxonomy()`, which returns the moment the
+ * table has any rows — an existing install would never see it. A seeded change
+ * that must reach existing installs is a CARRIER: a guard of its own that
+ * recognises the old state it upgrades, the way `ensureRamp()` does row by row
+ * on the OLD colour. Seed for NEW installs only? Add to TAXONOMY and nothing
+ * else. (The Version* numbering has a gap at 0005 — a step rolled back before
+ * release; the sequence is continuous where it matters, in the database's own
+ * migration table.)
+ *
  * A repair step, NOT a migration's `postSchemaChange`, and the distinction is
  * not academic: `MigrationService::executeStep()` skips both `preSchemaChange`
  * and `postSchemaChange` when it is called with `$schemaOnly`, which is exactly

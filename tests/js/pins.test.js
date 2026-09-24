@@ -80,7 +80,7 @@ describe('isApproximate', () => {
 		// Read out of the enum rather than copied: a rename leaves the literal
 		// behind in exactly this kind of comparison, where nothing fails and the
 		// treatment simply stops appearing.
-		const php = readFileSync(`${ROOT}lib/Service/LocationQuality.php`, 'utf8')
+		const php = readFileSync(`${ROOT}lib/Domain/LocationQuality.php`, 'utf8')
 		const stored = php.match(/case Approximate\s*=\s*'([^']+)'/)?.[1]
 
 		expect(stored).toBeTruthy()

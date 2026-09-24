@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Db\Feature;
-use OCA\Territorio\Service\LocationQuality;
+use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Service\ImportService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;

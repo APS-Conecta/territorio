@@ -6,6 +6,10 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Domain\BoundingBox;
+use OCA\Territorio\Domain\Geometry;
+use OCA\Territorio\Domain\Kind;
+use OCA\Territorio\Domain\PointInPolygon;
 use OCA\Territorio\Exception\InvalidGeometryException;
 
 /**
@@ -58,6 +62,14 @@ class AssignmentService {
 	}
 
 	/** A boundary has changed, so what was read before is no longer true. */
+	/** A boundary has changed, so what was read before is no longer true.
+	 *
+	 * Called ONCE per import now, at batch end (L1-13) — FeatureService::
+	 * flushDeferredReassignments() — and still per boundary write everywhere
+	 * else. The memo this clears is what makes "read once per request" true in
+	 * both worlds: during an import nothing invalidates it, so the file pays one
+	 * registry read, and the flush re-reads once for the sweep.
+	 */
 	public function forget(): void {
 		$this->known = null;
 		$this->registry = null;
@@ -75,7 +87,7 @@ class AssignmentService {
 	 * history entry rather than in a second one.
 	 */
 	public function assign(Feature $feature): void {
-		$point = self::anchorOf($feature);
+		$point = $feature->anchor();
 
 		foreach (self::DIVISIONS as $slug => $setter) {
 			$feature->$setter($point === null ? null : $this->containing($slug, ...$point));
@@ -111,7 +123,7 @@ class AssignmentService {
 			if ((int)$candidate->getId() === (int)$boundary->getId()) {
 				continue;
 			}
-			$point = self::anchorOf($candidate);
+			$point = $candidate->anchor();
 			if ($point === null) {
 				continue;
 			}
@@ -220,35 +232,14 @@ class AssignmentService {
 		}
 
 		$divisions = [];
-		foreach ($this->taxonomy->tree() as $category) {
-			foreach ($category['subcategories'] as $subcategory) {
-				if (isset(self::DIVISIONS[$subcategory['slug']])) {
-					$divisions[$subcategory['id']] = $subcategory['slug'];
-				}
+		// The shared flat index (L1-20) — one taxonomy derivation, not a third
+		// walk of the tree. Same answer, same memo, cheaper by one tree build.
+		foreach ($this->taxonomy->subcategoryIndex() as $id => $subcategory) {
+			if (isset(self::DIVISIONS[$subcategory['subcategory']])) {
+				$divisions[$id] = $subcategory['subcategory'];
 			}
 		}
 
 		return $this->divisions = $divisions;
-	}
-
-	/**
-	 * The single coordinate a record is assigned by, or null where it has none.
-	 *
-	 * Only a Place has one. A Sector is not "in" a Sector, and asking which
-	 * Unidad Vecinal a route running across four of them belongs to has no
-	 * answer worth storing.
-	 *
-	 * @return ?array{float, float} [longitude, latitude]
-	 */
-	private static function anchorOf(Feature $feature): ?array {
-		// A Place's bounding box IS its coordinate — min and max are the same point —
-		// so this needs no parsing; `containing()` and `DuplicateService` already read
-		// it this way. Keyed off the box, not the geometry: `setBoundingBox()` is what
-		// nulls those columns, and the two are written and cleared together.
-		if ($feature->getKind() !== Kind::Place->value || $feature->getMinLon() === null) {
-			return null;
-		}
-
-		return [(float)$feature->getMinLon(), (float)$feature->getMinLat()];
 	}
 }

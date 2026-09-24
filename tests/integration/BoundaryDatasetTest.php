@@ -9,7 +9,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Service\BoundaryService;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Kind;
 use OCP\IDBConnection;
 use OCP\Server;
 

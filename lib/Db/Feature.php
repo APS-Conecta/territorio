@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Db;
 
-use OCA\Territorio\Service\BoundingBox;
+use OCA\Territorio\Domain\BoundingBox;
+use OCA\Territorio\Domain\Kind;
 use OCP\AppFramework\Db\Entity;
 
 /**
@@ -263,5 +264,28 @@ class Feature extends Entity {
 			'sectorId' => $this->getSectorId(),
 			'unidadVecinalId' => $this->getUnidadVecinalId(),
 		];
+	}
+
+	/**
+	 * The single coordinate a record is assigned by, or null where it has none.
+	 *
+	 * Only a Place has one. A Sector is not "in" a Sector, and asking which
+	 * Unidad Vecinal a route running across four of them belongs to has no
+	 * answer worth storing.
+	 *
+	 * THE ANCHOR RULE, stated once (L1-20): "A Place's bounding box IS its
+	 * coordinate — min and max are the same point — so this needs no parsing."
+	 * Keyed off the box, not the geometry: `setBoundingBox()` is what nulls
+	 * those columns, and the two are written and cleared together. Formerly
+	 * AssignmentService::anchorOf(), duplicated in DuplicateService's comment.
+	 *
+	 * @return ?array{float, float} [longitude, latitude]
+	 */
+	public function anchor(): ?array {
+		if ($this->getKind() !== Kind::Place->value || $this->getMinLon() === null) {
+			return null;
+		}
+
+		return [(float)$this->getMinLon(), (float)$this->getMinLat()];
 	}
 }

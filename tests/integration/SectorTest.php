@@ -8,7 +8,7 @@ use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Kind;
 use OCP\Server;
 
 /**

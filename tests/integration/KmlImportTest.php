@@ -9,7 +9,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IDBConnection;

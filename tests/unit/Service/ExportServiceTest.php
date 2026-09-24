@@ -11,7 +11,7 @@ use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\CsvWriter;
 use OCA\Territorio\Service\ExportService;
 use OCA\Territorio\Service\GeoJsonWriter;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\KmlWriter;
 use OCA\Territorio\Service\TaxonomyService;
 use OCP\IUserSession;
@@ -37,7 +37,7 @@ final class ExportServiceTest extends TestCase {
 
 	protected function setUp(): void {
 		$this->features = $this->createMock(FeatureMapper::class);
-		$this->features->method('findAll')->willReturn([self::feature()]);
+		$this->features->method('findByIds')->willReturn([self::feature()]);
 		$this->log = $this->createMock(ExportRecordMapper::class);
 	}
 
@@ -60,6 +60,7 @@ final class ExportServiceTest extends TestCase {
 	private function service(?KmlWriter $kml = null): ExportService {
 		$taxonomy = $this->createMock(TaxonomyService::class);
 		$taxonomy->method('tree')->willReturn([]);
+		$taxonomy->method('subcategoryIndex')->willReturn([]);
 
 		return new ExportService(
 			$this->features,

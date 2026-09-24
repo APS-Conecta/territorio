@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
-use OCA\Territorio\Service\PointInPolygon;
+use OCA\Territorio\Domain\PointInPolygon;
 use PHPUnit\Framework\TestCase;
 
 /**

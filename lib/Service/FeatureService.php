@@ -4,15 +4,23 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use JsonException;
 use OCA\Territorio\Db\Duplicate;
 use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
+use OCA\Territorio\Db\ImportBatch;
+use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
+use OCA\Territorio\Domain\Geometry;
+use OCA\Territorio\Domain\Kind;
+use OCA\Territorio\Domain\LocationQuality;
+use OCA\Territorio\Domain\Provenance;
 use OCA\Territorio\Exception\InvalidFeatureException;
-use JsonException;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IUserSession;
+use DateTime;
 
 /**
  * Turns what a person typed into a Feature that is safe to store.
@@ -42,16 +50,23 @@ class FeatureService {
 	public const LIMIT_PARTS = 500;
 	private const LIMIT_NAME = 200;
 
-	/** Optional free-text columns, all handled identically: trim, blank becomes null. */
+	/**
+	 * Optional free-text columns, all handled identically: trim, blank becomes
+	 * null — and a value the column cannot store is refused with the app's own
+	 * sentence instead of the database's error through a 500 (L1-21). Each cap
+	 * is its column's own VARCHAR width (Version000200), so the sentence names
+	 * the field to fix and the number to fix it to. `notes` carries no cap: its
+	 * column is TEXT, and no length of note has ever been a storage problem.
+	 */
 	private const OPTIONAL_TEXT = [
-		'address' => 'setAddress',
-		'phone' => 'setPhone',
-		'email' => 'setEmail',
-		'contactPerson' => 'setContactPerson',
-		'contactRole' => 'setContactRole',
-		'openingHours' => 'setOpeningHours',
-		'notes' => 'setNotes',
-		'sourceRef' => 'setSourceRef',
+		'address' => ['setAddress', 'La dirección', 255],
+		'phone' => ['setPhone', 'El teléfono', 64],
+		'email' => ['setEmail', 'El correo', 255],
+		'contactPerson' => ['setContactPerson', 'La persona de contacto', 128],
+		'contactRole' => ['setContactRole', 'El cargo', 128],
+		'openingHours' => ['setOpeningHours', 'El horario', 255],
+		'notes' => ['setNotes', null, null],
+		'sourceRef' => ['setSourceRef', 'La fuente', 255],
 	];
 
 	public function __construct(
@@ -60,6 +75,11 @@ class FeatureService {
 		private RevisionLog $revisions,
 		private AssignmentService $assignments,
 		private DuplicateMapper $duplicates,
+		// The sweep's own machinery (L1-13/L1-16): batches for the synthetic
+		// reassignment-sweep row, session for who swept. FeatureService was
+		// already the write door; the sweep is a write-door consequence.
+		private ImportBatchMapper $batches,
+		private IUserSession $session,
 	) {
 	}
 
@@ -295,8 +315,34 @@ class FeatureService {
 			return;
 		}
 
+		// An import collects its boundary events and sweeps once at batch end
+		// (L1-13); everybody else sweeps here and now, stamped with a batch of its
+		// own so a crash mid-sweep is revertible like an import (L1-16).
+		if ($this->deferredReassignments !== null) {
+			$this->deferredReassignments[(int)$boundary->getId()] = [$boundary, $before];
+
+			return;
+		}
+
 		// What was read before this write no longer describes the Registry.
 		$this->assignments->forget();
+		$this->sweepAround($boundary, $before, stamp: true);
+	}
+
+	/**
+	 * One boundary's reassignment sweep. The write of each record it moved,
+	 * stamped with the sweep's own batch when it is not already inside an
+	 * import's (L1-16): every Revision the sweep takes carries the batch's id,
+	 * so the half-finished sweep a crash leaves behind is undone from the batch
+	 * list exactly like an import.
+	 *
+	 * The batch row is created LAZILY, on the first record the sweep actually
+	 * rewrites: a rename that moves nobody writes no batch, and the import dialog
+	 * fills with imports, not with noise.
+	 */
+	private function sweepAround(Feature $boundary, ?string $before, bool $stamp): void {
+		$batch = null;
+		$rewritten = 0;
 
 		foreach ($this->assignments->affectedBy($boundary, $before) as $affected) {
 			$was = [$affected->getSectorId(), $affected->getUnidadVecinalId()];
@@ -305,9 +351,93 @@ class FeatureService {
 			// Only where it really changed: the box around a redrawn Sector holds
 			// plenty of records whose answer is the same as before, and writing
 			// those would fill history with entries whose diff is empty.
-			if ($was !== [$affected->getSectorId(), $affected->getUnidadVecinalId()]) {
-				$this->features->update($affected);
+			if ($was === [$affected->getSectorId(), $affected->getUnidadVecinalId()]) {
+				continue;
 			}
+
+			if ($stamp) {
+				$batch ??= $this->newSweepBatch();
+				$affected = $this->revisions->duringImport(
+					(int)$batch->getId(),
+					fn (): Feature => $this->features->update($affected),
+				);
+			} else {
+				$affected = $this->features->update($affected);
+			}
+			$rewritten++;
+		}
+
+		if ($batch !== null) {
+			$batch->setUpdated($rewritten);
+			$batch->setRevisionTo($this->revisions->current());
+			$this->batches->update($batch);
+		}
+	}
+
+	/** A reassignment sweep's batch row: no Dataset — the null is what marks it
+	 *  (L1-16; the migration relaxes the column), and recentBatches() labels it
+	 *  «reasignación de límite» so the person reading the batch list knows what
+	 *  kind of undo this one is. */
+	private function newSweepBatch(): ImportBatch {
+		$batch = new ImportBatch();
+		$batch->setDatasetId(null);
+		$batch->setActor($this->session->getUser()?->getUID());
+		$batch->setStartedAt(new DateTime());
+		$batch->setRevisionFrom($this->revisions->current());
+		$batch->setRevisionTo($this->revisions->current());
+
+		return $this->batches->insert($batch);
+	}
+
+	/** Boundary events collected during an import, keyed by record id — null
+	 *  whenever no import is running (L1-13). */
+	private ?array $deferredReassignments = null;
+
+	/**
+	 * Run $work with boundary reassignment DEFERRED (L1-13).
+	 *
+	 * The import's one way in wraps its run in this: reassignAround() collects
+	 * instead of sweeping, and flushDeferredReassignments() — called by the
+	 * importer inside its batch stamp — sweeps once for the whole file. The
+	 * set/restore pair is the same ambient-scope pattern RevisionLog::
+	 * duringImport() uses, correct for the same per-request reason.
+	 *
+	 * @template T
+	 * @param callable(): T $work
+	 * @return T
+	 */
+	public function deferringReassignments(callable $work): mixed {
+		$previous = $this->deferredReassignments;
+		$this->deferredReassignments = [];
+		try {
+			return $work();
+		} finally {
+			$this->deferredReassignments = $previous;
+		}
+	}
+
+	/**
+	 * The one sweep an import owes, run inside its batch stamp (L1-13).
+	 *
+	 * Boundaries created or edited by the batch, keyed by record — one write per
+	 * record per import, so the last write's before/after is the one that counts.
+	 * The union of old and new boxes in affectedBy() is what heals the rows whose
+	 * own assign() ran against the pre-import memo: a Place written before the
+	 * boundary that will cover it is inside that boundary's new box, and the
+	 * sweep reaches it exactly as the per-row sweep used to.
+	 */
+	public function flushDeferredReassignments(): void {
+		$deferred = $this->deferredReassignments ?? [];
+		if ($deferred === []) {
+			return;
+		}
+
+		// Once, for the whole file: this is the invalidation the per-row sweep
+		// used to pay M times.
+		$this->assignments->forget();
+
+		foreach ($deferred as [$boundary, $before]) {
+			$this->sweepAround($boundary, $before, stamp: false);
 		}
 	}
 
@@ -378,13 +508,38 @@ class FeatureService {
 	}
 
 	/** @param array<string, mixed> $input */
+	/** @param array<string, mixed> $input */
 	private function apply(Feature $feature, array $input, bool $whole): Feature {
+		$this->applyName($feature, $input);
+		$this->applySubcategory($feature, $input);
+		$this->applyText($feature, $input);
+		$this->applyColour($feature, $input);
+		$this->applyLimit($feature, $input);
+
+		$this->applyGeometry($feature, $input, $whole);
+		$this->applyQuality($feature, $input);
+
+		// Derived here, at the one door every write comes through, so no caller can
+		// save a record whose stored Sector disagrees with where it now is
+		// (ADR-0008). It lands in this save's Revision and history entry rather
+		// than a second one.
+		$this->assignments->assign($feature);
+
+		return $feature;
+	}
+
+	/** The record's name — first, as at HEAD, so a request carrying two
+	 *  problems hears about the name before anything else (L1-19: same door,
+	 *  same order, same sentences). */
+	private function applyName(Feature $feature, array $input): void {
 		$name = trim((string)($input['name'] ?? ''));
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
 		$feature->setName($name);
+	}
 
+	private function applySubcategory(Feature $feature, array $input): void {
 		$subcategoryId = (int)($input['subcategoryId'] ?? 0);
 		try {
 			$this->subcategories->find($subcategoryId);
@@ -394,72 +549,78 @@ class FeatureService {
 			);
 		}
 		$feature->setSubcategoryId($subcategoryId);
+	}
 
+	/** The optional free-text fields — the text policy, one home (L1-19, L1-21). */
+	private function applyText(Feature $feature, array $input): void {
 		// Only fields actually submitted are written. A request that omits one
 		// leaves it alone rather than blanking it: history can now say what a
 		// field used to hold, but silently blanking it would still be a change
 		// nobody asked for. Clearing a field is possible — send it empty.
-		foreach (self::OPTIONAL_TEXT as $key => $setter) {
+		foreach (self::OPTIONAL_TEXT as $key => [$setter, $label, $cap]) {
 			if (!array_key_exists($key, $input)) {
 				continue;
 			}
 			$value = trim((string)$input[$key]);
+			if ($cap !== null && mb_strlen($value) > $cap) {
+				throw new InvalidFeatureException(sprintf(
+					'%s no puede pasar de %d caracteres.', $label, $cap,
+				));
+			}
 			$feature->$setter($value === '' ? null : $value);
 		}
+	}
 
+	private function applyColour(Feature $feature, array $input): void {
 		if (array_key_exists('colour', $input)) {
 			$feature->setColour(self::colour($input['colour']));
 		}
+	}
 
+	private function applyLimit(Feature $feature, array $input): void {
 		// Omitted leaves it alone, like every optional field above — and that is
 		// what makes the Limit survive hand-adjustment (issue #15). A client
 		// dragging a vertex sends the geometry; it must not have to remember to
 		// send the Limit back unchanged in order to keep it.
 		if (array_key_exists('limit', $input)) {
-			$feature->setBoundaryLimit(self::limit($input['limit']));
+			$feature->setBoundaryLimit($this->limit($input['limit']));
+		}
+	}
+
+	/** Location quality's own door (issue #83): the with-geometry case stays
+	 *  inside applyGeometry, the one home of the four columns it measures, so
+	 *  this helper runs only when no geometry was submitted.
+	 *
+	 *  Both conditions carry their weight. `!array_key_exists('geometry')` keeps
+	 *  the with-geometry case in one place instead of two that can disagree; and
+	 *  reading `locationQuality` with `array_key_exists` rather than applying it
+	 *  unconditionally is the rule stated for every optional field, which
+	 *  matters most here: `locationQuality()` reads an absent value as `exacta`,
+	 *  so an unconditional write would reset a stored `aproximada` on every
+	 *  update that never mentioned the field — issue #63 again, by another name.
+	 *
+	 *  Refused rather than ignored when nothing is stored: `Absent` is derived
+	 *  from having no geometry and never chosen, so a quality for a coordinate
+	 *  that does not exist has to be a 4xx the caller can read, not a silent 200.
+	 *
+	 *  One deliberate disagreement with the optional-text rule, where a field
+	 *  submitted empty CLEARS it: submitted empty here means `exacta`, not
+	 *  cleared, because `locationQuality()` defaults that way and a record that
+	 *  has a coordinate has no null state for how well it is known. The default
+	 *  belongs to the helper applyGeometry shares, so it is stated here rather
+	 *  than forked. */
+	private function applyQuality(Feature $feature, array $input): void {
+		if (!array_key_exists('locationQuality', $input) || array_key_exists('geometry', $input)) {
+			return;
 		}
 
-		$this->applyGeometry($feature, $input, $whole);
-
-		// Location quality's own door (issue #83). It is a judgement about a shape
-		// that is already stored, so `applyGeometry` — which owns it whenever a
-		// geometry IS submitted, along with the three other columns it measures —
-		// left no way to correct it without re-sending the shape byte-for-byte.
-		//
-		// Both conditions carry their weight. `!array_key_exists('geometry')` keeps
-		// the with-geometry case in one place instead of two that can disagree; and
-		// reading `locationQuality` with `array_key_exists` rather than applying it
-		// unconditionally is the rule stated above for every optional field, which
-		// matters most here: `locationQuality()` reads an absent value as `exacta`,
-		// so an unconditional write would reset a stored `aproximada` on every
-		// update that never mentioned the field — issue #63 again, by another name.
-		//
-		// Refused rather than ignored when nothing is stored: `Absent` is derived
-		// from having no geometry and never chosen, so a quality for a coordinate
-		// that does not exist has to be a 4xx the caller can read, not a silent 200.
-		//
-		// One deliberate disagreement with the optional-text rule above, where a
-		// field submitted empty CLEARS it: submitted empty here means `exacta`,
-		// not cleared, because `locationQuality()` defaults that way and a record
-		// that has a coordinate has no null state for how well it is known. The
-		// default belongs to the helper `applyGeometry` shares, so it is stated
-		// here rather than forked.
-		if (array_key_exists('locationQuality', $input) && !array_key_exists('geometry', $input)) {
-			if ($feature->getGeometry() === null) {
-				throw new InvalidFeatureException(
-					'La Exactitud describe una coordenada: el registro no tiene ninguna.',
-				);
-			}
-			$feature->setLocationQuality($this->locationQuality($input));
+		if ($feature->getGeometry() === null) {
+			throw new InvalidFeatureException(
+				'La Exactitud describe una coordenada: el registro no tiene ninguna.',
+			);
 		}
 
-		// Derived here, at the one door every write comes through, so no caller can
-		// save a record whose stored Sector disagrees with where it now is
-		// (ADR-0008). It lands in this save's Revision and history entry rather
-		// than a second one.
-		$this->assignments->assign($feature);
-
-		return $feature;
+		$feature->setLocationQuality($this->locationQuality($input));
 	}
 
 	/**
@@ -474,9 +635,16 @@ class FeatureService {
 	 * Limit at all (ADR-0007), and "[]" and "no answer" reading differently in
 	 * history would be a distinction with nothing behind it.
 	 *
+	 * The ids a Limit names are validated against the live-boundary set at write
+	 * time (L1-21): `findLiveAmong()` is the same read the picker's door uses, so
+	 * what a Limit points at is always something the app will resolve — a
+	 * reference to a boundary somebody retired between picking and saving is
+	 * refused with the sentence naming how many parts to drop, not stored as a
+	 * dangling id the editor quietly renders as a gap.
+	 *
 	 * @return ?string JSON
 	 */
-	private static function limit(mixed $value): ?string {
+	private function limit(mixed $value): ?string {
 		if (!is_array($value)) {
 			return null;
 		}
@@ -523,6 +691,22 @@ class FeatureService {
 
 		if ($parts === []) {
 			return null;
+		}
+
+		$ids = [];
+		foreach ($parts as $part) {
+			if (isset($part['featureId'])) {
+				$ids[] = $part['featureId'];
+			}
+		}
+		$dangling = array_values(array_diff($ids, $this->features->findLiveAmong($ids)));
+		if ($dangling !== []) {
+			throw new InvalidFeatureException(sprintf(
+				'El límite nombra %d frontera%s que ya no %s en el mapa; quite esas partes.',
+				count($dangling),
+				count($dangling) === 1 ? '' : 's',
+				count($dangling) === 1 ? 'está' : 'están',
+			));
 		}
 
 		try {

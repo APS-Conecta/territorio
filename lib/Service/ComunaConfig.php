@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Service;
 
 use OCA\Territorio\AppInfo\Application;
+use OCA\Territorio\Domain\Comuna;
 use OCA\Territorio\Exception\InvalidComunaException;
 use OCP\IAppConfig;
 

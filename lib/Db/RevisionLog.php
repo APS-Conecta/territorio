@@ -6,7 +6,7 @@ namespace OCA\Territorio\Db;
 
 use BadFunctionCallException;
 use DateTime;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IUserSession;
@@ -51,6 +51,15 @@ class RevisionLog {
 
 	/**
 	 * Run $work with every Revision it takes attributed to $importId.
+	 *
+	 * Ambient context, kept deliberately (L1-14): threading a batch id through
+	 * every mapper write would touch six signatures to avoid one instance field,
+	 * and the field is correct under Nextcloud's per-request container — this
+	 * service is never shared across requests, and the set/restore pair below is
+	 * what makes nesting honest. This is the IMPORT-RUN scope: set by the one way
+	 * in (ImportService::apply), by a revert, and by a reassignment sweep's own
+	 * synthetic batch (L1-16) — a Revision stamped here belongs to a batch that
+	 * can be undone, which is the whole reason the field exists.
 	 *
 	 * @template T
 	 * @param callable(): T $work

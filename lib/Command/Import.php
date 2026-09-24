@@ -58,12 +58,11 @@ class Import extends Command {
 		$path = (string)$input->getArgument('archivo');
 		$dataset = (string)($input->getOption('dataset') ?? '');
 
-		if ($dataset === '') {
-			$output->writeln('<error>Indique --dataset</error>');
-
-			return Command::INVALID;
-		}
-
+		// The empty-dataset rule lives in ImportService now (L1-02): with no
+		// --dataset the service refuses with the same sentence the browser door
+		// always used, caught by the InvalidImportException arm below and answered
+		// as Command::FAILURE — the exit code moves one bucket from INVALID,
+		// deliberately: one rule, one exit code.
 		if (!is_readable($path)) {
 			$output->writeln(sprintf('<error>No se puede leer %s</error>', $path));
 

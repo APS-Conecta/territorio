@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
-use OCA\Territorio\Service\Basemap;
+use OCA\Territorio\Domain\Basemap;
 use PHPUnit\Framework\TestCase;
 
 /**

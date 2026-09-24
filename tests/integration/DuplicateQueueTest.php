@@ -8,7 +8,7 @@ use OCA\Territorio\Db\Duplicate;
 use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Service\DuplicateService;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;

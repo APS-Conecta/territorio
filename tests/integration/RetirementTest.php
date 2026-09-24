@@ -8,7 +8,7 @@ use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Db\SubcategoryMapper;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\FeatureService;
 use OCP\Server;

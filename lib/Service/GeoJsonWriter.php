@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Service;
 
+use OCA\Territorio\Domain\ContactFields;
+use OCA\Territorio\Domain\OsmAttribution;
+
 /**
  * Writes rows back out as the FeatureCollection `GeoJsonReader` reads (issue #17).
  *

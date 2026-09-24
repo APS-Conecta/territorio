@@ -6,10 +6,12 @@ namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Exception\InvalidFeatureException;
+use OCA\Territorio\Exception\ServerFaultException;
 use OCA\Territorio\Service\ExportService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\PasswordConfirmationRequired;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -80,7 +82,15 @@ class ExportController extends Controller {
 				(string)$this->request->getParam('scope', ''),
 			);
 		} catch (InvalidFeatureException $e) {
+			// Not the status mapping — that is Refuses' one home (L1-03). This
+			// catch exists because the SUCCESS type is a download rather than the
+			// array attempt() answers with, and narrowing it is the one thing it does.
 			return $this->refuse($e->getMessage());
+		} catch (ServerFaultException $e) {
+			// The server's own failure, answered as one (L1-08): a full disk is a
+			// 500 carrying the Spanish sentence — not a 422 a monitor files under
+			// the caller's fault.
+			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 
 		return new DataDownloadResponse($file['body'], $file['filename'], $file['mime']);

@@ -23,8 +23,8 @@ use OCP\AppFramework\Db\Entity;
  * reverted if it recorded exactly which Revisions were its own", which is not
  * how revert works and contradicted the schema comment three files away.
  *
- * @method int getDatasetId()
- * @method void setDatasetId(int $datasetId)
+ * @method ?int getDatasetId()
+ * @method void setDatasetId(?int $datasetId)
  * @method ?string getActor()
  * @method void setActor(?string $actor)
  * @method \DateTime getStartedAt()
@@ -49,6 +49,10 @@ use OCP\AppFramework\Db\Entity;
  * @method void setRevertsId(?int $revertsId)
  */
 class ImportBatch extends Entity {
+	// Null exactly on a reassignment sweep's batch (L1-16) — no Dataset, no
+	// counts but `updated`, labelled «reasignación de límite» in recentBatches().
+	// Keeps the 0 default: Entity::setter early-returns on ===, and 0 → null
+	// must be a real write the one time it happens.
 	protected $datasetId = 0;
 	protected $actor = null;
 	protected $startedAt = null;

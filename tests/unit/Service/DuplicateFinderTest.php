@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Unit\Service;
 
-use OCA\Territorio\Service\DuplicateFinder;
+use OCA\Territorio\Domain\DuplicateFinder;
 use PHPUnit\Framework\TestCase;
 
 /**

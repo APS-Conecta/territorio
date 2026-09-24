@@ -9,7 +9,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Exception\InvalidImportException;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;

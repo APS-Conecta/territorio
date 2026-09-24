@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Tools;
 
 use InvalidArgumentException;
+use OCA\Territorio\Domain\Comuna;
 use PHPUnit\Framework\TestCase;
 
 use function Territorio\Tools\Comuna\cutComuna;

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\Territorio\Db;
 
 use BadFunctionCallException;
-use OCA\Territorio\Service\Action;
+use OCA\Territorio\Domain\Action;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
@@ -115,6 +115,80 @@ class FeatureMapper extends QBMapper {
 	 *
 	 * @return Feature[]
 	 */
+	/**
+	 * The requested live records, by id (L1-17).
+	 *
+	 * The export's read: the browser sends ids and nothing else, and the whole
+	 * Registry was walked to keep a handful. The same world findAll() answers —
+	 * no retired records, no Boundary-feature rows — ordered the same way, so
+	 * the writers' output order does not move.
+	 *
+	 * @param int[] $ids
+	 * @return Feature[]
+	 */
+	public function findByIds(array $ids): array {
+		if ($ids === []) {
+			return [];
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->orderBy('id', 'DESC');
+		$this->withoutBoundaries($qb);
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Every live Place (L1-17) — the duplicate scan's candidate set.
+	 *
+	 * Places only, for the reason DuplicateService::candidates() states: a
+	 * boundary has an extent rather than a coordinate, and "the same place" for
+	 * two of them is a different question. Retired records and Boundary-feature
+	 * rows are absent for the same reasons findAll() leaves them out — the scan
+	 * filtered exactly this set in PHP until now.
+	 *
+	 * @return Feature[]
+	 */
+	public function findPlaces(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->andWhere($qb->expr()->eq('kind', $qb->createNamedParameter('place')))
+			->orderBy('id', 'DESC');
+		$this->withoutBoundaries($qb);
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * The ids of everything still visible (L1-17) — the duplicate queue's
+	 * visibility check, which walked the whole Registry into a map per poll to
+	 * ask "does this id exist".
+	 *
+	 * @return list<int>
+	 */
+	public function findLiveIds(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)));
+		$this->withoutBoundaries($qb);
+
+		$ids = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$ids[] = (int)$row['id'];
+		}
+		$result->closeCursor();
+
+		return $ids;
+	}
+
 	public function findAll(): array {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 use APS\Common\Text;
 

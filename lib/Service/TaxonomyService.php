@@ -14,6 +14,8 @@ use OCA\Territorio\Exception\InvalidTaxonomyException;
 use OCA\Territorio\Migration\EnsureSeedData;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\DB\Exception as DbException;
+use OCP\IDBConnection;
+use Throwable;
 
 /**
  * The Category tree, as the client needs it.
@@ -34,17 +36,12 @@ class TaxonomyService {
 
 	/** Deleted — private const SLUG_LENGTH: sole referencing site was the
 	 *  slugFor body that now lives in Text. */
-	/**
-	 * `territorio_category.glyph` is `VARCHAR(64)`. Nobody types one — it is
-	 * picked out of a grid of the marks the app vendors — so this is about what
-	 * arrives on an open route (ADR-0005), not about what somebody meant.
-	 */
-	private const GLYPH_LENGTH = 64;
-
 	public function __construct(
 		private CategoryMapper $categories,
 		private SubcategoryMapper $subcategories,
 		private FeatureMapper $features,
+		private TaxonomyPolicy $policy,
+		private IDBConnection $db,
 	) {
 	}
 
@@ -136,52 +133,12 @@ class TaxonomyService {
 	 */
 	public function setCategoryGlyph(string $slug, string $glyph): array {
 		$category = $this->categories->findBySlug($slug);
-		$category->setGlyph(self::glyphName($glyph));
+		$category->setGlyph(TaxonomyPolicy::glyphName($glyph));
 		$this->categories->update($category);
 
 		return $this->tree();
 	}
 
-	/**
-	 * The Maki name to store, or null when nothing was picked.
-	 *
-	 * Checks the SHAPE of the name and not whether the app can draw it: the
-	 * inventory belongs to `@mapbox/maki` and lives in `src/glyphs.js`, and a
-	 * second copy of 215 names in PHP is exactly the drift `nextColour()` refuses
-	 * to introduce for colours. `glyphFor()` draws the neutral for a name it does
-	 * not know, which is the same fallback ADR-0017 already requires for a
-	 * Category nobody has picked for — so an unknown name degrades to the state
-	 * the Category was already in rather than to a blank.
-	 *
-	 * ponytail: the shape check is the ceiling. A name shaped like a Maki icon
-	 * that Maki does not have is stored and silently falls back; the upgrade is to
-	 * ship the inventory as seeded data the way `SPARES` is shipped, which is
-	 * worth its weight when something other than the picker can write here.
-	 *
-	 * Public and static because it is pure, like `slugFor()` — the taxonomy's
-	 * rules with no database in them are the ones with no screen to notice them
-	 * going wrong (`TaxonomyGlyphTest`).
-	 *
-	 * @throws InvalidTaxonomyException when the name is not shaped like one
-	 */
-	public static function glyphName(string $glyph): ?string {
-		$clean = trim($glyph);
-		if ($clean === '') {
-			return null;
-		}
-		// Letters, digits and hyphens: every Maki name — thirteen of the 215 are
-		// the `-JP` variants, whose suffix is capitalised — and nothing that could
-		// be a path, an underscore-separated slug, or markup, since this string is
-		// inlined into the map pin unescaped, as a bundled asset would be. Read
-		// back out of this file by `glyphs.test.js`, which fails when the picker
-		// offers a mark this line would refuse: a shape check is still a
-		// description of Maki's inventory, and it was a narrower one.
-		if (preg_match('/^[A-Za-z0-9-]{1,' . self::GLYPH_LENGTH . '}$/', $clean) !== 1) {
-			throw new InvalidTaxonomyException('Ese pictograma no existe en esta aplicación.');
-		}
-
-		return $clean;
-	}
 
 	/**
 	 * Rename a Subcategory, addressed within its Category.
@@ -248,7 +205,7 @@ class TaxonomyService {
 		$clean = $this->cleanLabel($label);
 		// Before the insert, so a name this app will not store refuses the whole
 		// add rather than leaving a Category behind with no mark on it.
-		$mark = self::glyphName($glyph);
+		$mark = TaxonomyPolicy::glyphName($glyph);
 		$slug = self::slugFor($clean);
 		if ($slug === '') {
 			throw new InvalidTaxonomyException('El nombre necesita alguna letra o algún número.');
@@ -257,11 +214,28 @@ class TaxonomyService {
 		$category = new Category();
 		$category->setSlug($slug);
 		$category->setLabel($clean);
-		$category->setColor($this->nextColour());
+		$category->setColor($this->policy->nextColour());
 		$category->setGlyph($mark);
 
+		// One transaction (L1-16) — the ceiling the ponytail note below this block
+		// used to name, paid off: the Category and its «Otro» land together or not
+		// at all, and the recovery paragraph ("removeCategory() can take it away")
+		// is no longer needed. On a unique violation the statement aborts, the
+		// wrapper rolls the transaction back, and the catch OUTSIDE it converts
+		// to the sentence — rollback first, conversion second, so the conversion
+		// never runs inside a doomed transaction.
 		try {
-			$category = $this->categories->insert($category);
+			return $this->transactionally(function () use ($category): array {
+				$inserted = $this->categories->insert($category);
+
+				$subcategory = new Subcategory();
+				$subcategory->setCategoryId((int)$inserted->getId());
+				$subcategory->setSlug(self::FIRST_SUBCATEGORY['slug']);
+				$subcategory->setLabel(self::FIRST_SUBCATEGORY['label']);
+				$this->subcategories->insert($subcategory);
+
+				return $this->tree();
+			});
 		} catch (DbException $e) {
 			if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
 				throw $e;
@@ -271,70 +245,6 @@ class TaxonomyService {
 			// would describe something the person never typed.
 			throw new InvalidTaxonomyException('Ya existe una categoría con ese nombre.');
 		}
-
-		// ponytail: two inserts, no transaction — the ceiling no write path in
-		// this service has ever raised. If the «Otro» fails after the Category
-		// row lands, the Category reaches neither the picker nor Análisis and
-		// nothing can be filed under it. It needs a database failure between two
-		// statements, and the recovery is `removeCategory()` below: nothing is
-		// filed under it, so the panel lets the person take it away and its
-		// spare colour comes back with it.
-		$subcategory = new Subcategory();
-		$subcategory->setCategoryId((int)$category->getId());
-		$subcategory->setSlug(self::FIRST_SUBCATEGORY['slug']);
-		$subcategory->setLabel(self::FIRST_SUBCATEGORY['label']);
-		$this->subcategories->insert($subcategory);
-
-		return $this->tree();
-	}
-
-	/**
-	 * The colour a new Category is given: the first spare no Category holds.
-	 *
-	 * "Assigning a colour becomes taking the next unused spare" (ADR-0017). No
-	 * counter and no new state — the answer is derived from the Categories that
-	 * exist, so a Category removed (#47) hands its spare back, and two adds one
-	 * after the other cannot take the same one because the first is a row by the
-	 * time the second looks.
-	 *
-	 * Two SIMULTANEOUS adds can: this reads `findAll()` and then inserts with no
-	 * lock, and there is no unique index on `color`. Accepted rather than fixed,
-	 * and it is the one rule here `addCategory()` does not hand to the database —
-	 * because a duplicate hue is cosmetic. Hue only groups Categories and the
-	 * glyph identifies them (ADR-0013), so two Categories sharing one is the same
-	 * thing that already happens the moment the spares run out and both take the
-	 * neutral. A duplicate SLUG is not cosmetic, which is why that one is an
-	 * index and this one is a comment.
-	 *
-	 * No colour arithmetic here on purpose. The OKLab separation, the WCAG
-	 * contrast and the three dichromacy transforms live in `tools/ramp-check.py`,
-	 * which derives `EnsureSeedData::SPARES` and re-checks every one of them on
-	 * `make lint`; a second implementation in PHP is exactly the drift that check
-	 * exists to prevent.
-	 *
-	 * Compared case-insensitively because a stored colour is a hex somebody may
-	 * have typed — `RampRepaintTest` writes one directly, and `#C27B72` is the
-	 * same colour as `#c27b72`.
-	 *
-	 * With the spares gone it answers the neutral, and that is not an error: hue
-	 * only groups Categories into families and the glyph identifies them
-	 * (ADR-0013), so a Category without a distinct hue is doing what that ADR says
-	 * every Category does anyway. The panel says so, on `color === the neutral`,
-	 * which is why nothing extra is returned to flag it.
-	 */
-	private function nextColour(): string {
-		$taken = array_map(
-			static fn (Category $category): string => strtolower($category->getColor()),
-			$this->categories->findAll(),
-		);
-
-		foreach (EnsureSeedData::SPARES as $spare) {
-			if (!in_array(strtolower($spare), $taken, true)) {
-				return $spare;
-			}
-		}
-
-		return EnsureSeedData::NEUTRAL;
 	}
 
 	/**
@@ -417,17 +327,11 @@ class TaxonomyService {
 	 * every screen at once, because `tree()` groups them under the Categories
 	 * `findAll()` answers with — and stay in the table forever.
 	 *
-	 * ponytail: no transaction and no lock, like `addCategory()`'s two inserts.
-	 * Two ceilings, both named because neither is free to raise. A database
-	 * failure between two of these statements leaves a Category holding fewer
-	 * empty Subcategories than it did, which the same click completes on a
-	 * retry — nothing is filed under any of them, which is the condition that got
-	 * this far. And a Feature saved in the gap between the count and the delete
-	 * is orphaned: it is the whole width of one HTTP request against a person who
-	 * is removing a layer nobody has used, and the schema carries no foreign key
-	 * that would catch it. The upgrade for the first is an `IDBConnection` on this
-	 * service and one `beginTransaction`; the second needs that transaction to
-	 * also LOCK what it counted, or the foreign key this schema does not have.
+	 * One transaction (L1-16), the first of the two ceilings this note used to
+	 * name: a failure mid-delete no longer leaves a Category holding some of its
+	 * Subcategories. The second ceiling — the count-then-delete race against a
+	 * concurrent save — stays named and open: closing it needs the transaction to
+	 * also LOCK what it counted, or the foreign key this schema does not carry.
 	 *
 	 * @return list<array{id: int, slug: string, label: string, color: string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws DoesNotExistException when no Category carries that slug
@@ -443,12 +347,14 @@ class TaxonomyService {
 			$category->getLabel(),
 		);
 
-		foreach ($subcategories as $subcategory) {
-			$this->subcategories->delete($subcategory);
-		}
-		$this->categories->delete($category);
+		return $this->transactionally(function () use ($category, $subcategories): array {
+			foreach ($subcategories as $subcategory) {
+				$this->subcategories->delete($subcategory);
+			}
+			$this->categories->delete($category);
 
-		return $this->tree();
+			return $this->tree();
+		});
 	}
 
 	/**
@@ -637,6 +543,60 @@ class TaxonomyService {
 	 */
 	public static function slugFor(string $label): string {
 		return Text::slugFor($label);
+	}
+
+	/** @var ?array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}> */
+	private ?array $subcategoryIndex = null;
+
+	/**
+	 * The taxonomy as one flat index, built once per request (L1-20).
+	 *
+	 * Three services used to walk the tree into their own shape — Import to
+	 * match on it, Export to label from it, Assignment to find its divisions in
+	 * it — each re-paying the two-table read per call. Keyed by Subcategory id
+	 * because that is what a Feature carries; each entry carries both slugs AND
+	 * both labels, so the flattest consumer does not come back for a label. The
+	 * memo is safe for the same reason AssignmentService's divisions memo is:
+	 * nothing writes the taxonomy in-request outside the install-time repair —
+	 * and the writes this service owns happen behind the routes that re-read the
+	 * tree through tree(), which stays unmemoised deliberately (the ramp repair's
+	 * own lesson, recorded at AssignmentService::divisions()).
+	 *
+	 * @return array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}>
+	 */
+	public function subcategoryIndex(): array {
+		if ($this->subcategoryIndex !== null) {
+			return $this->subcategoryIndex;
+		}
+
+		$index = [];
+		foreach ($this->tree() as $category) {
+			foreach ($category['subcategories'] as $subcategory) {
+				$index[$subcategory['id']] = [
+					'category' => $category['slug'],
+					'categoryLabel' => $category['label'],
+					'subcategory' => $subcategory['slug'],
+					'subcategoryLabel' => $subcategory['label'],
+				];
+			}
+		}
+
+		return $this->subcategoryIndex = $index;
+	}
+
+	/** @param callable(): T $work @template T */
+	private function transactionally(callable $work): mixed {
+		$this->db->beginTransaction();
+		try {
+			$written = $work();
+			$this->db->commit();
+
+			return $written;
+		} catch (Throwable $e) {
+			$this->db->rollBack();
+
+			throw $e;
+		}
 	}
 
 	/**

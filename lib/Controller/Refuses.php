@@ -15,10 +15,13 @@ use OCP\AppFramework\Http\JSONResponse;
  * a 404 — never a silent 200 and never a 500 a person reading the screen cannot
  * see.
  *
- * Every controller answers through this trait, so no two can drift and a future
- * refusal is one catch away from correct. Per-method catches stay where a
- * controller deliberately narrows (ExportController keeps its
- * InvalidFeatureException, which is the only thing ExportService throws).
+ * Adopters, named because "every controller answers through this trait" was
+ * never quite true (L1-01): Feature, Boundary, Duplicate, Category, Import,
+ * Export, AdminSettings — and Changes, for its `since` guard alone. Page is
+ * the one outside, because a page render has nothing to refuse. Per-method
+ * catches stay where a controller deliberately narrows: ExportController keeps
+ * its InvalidFeatureException for the response type and catches
+ * ServerFaultException for the 500 split (L1-08).
  */
 trait Refuses {
 	/**

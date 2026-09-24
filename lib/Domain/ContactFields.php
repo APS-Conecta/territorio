@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 /**
  * Which fields describe a person rather than a place (ADR-0006).

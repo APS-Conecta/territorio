@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\Territorio\Service;
+namespace OCA\Territorio\Domain;
 
 /**
  * The shape a Feature takes on the map — see `CONTEXT.md`.

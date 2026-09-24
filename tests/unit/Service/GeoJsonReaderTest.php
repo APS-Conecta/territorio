@@ -46,10 +46,13 @@ final class GeoJsonReaderTest extends TestCase {
 		self::assertSame(['type' => 'Point', 'coordinates' => [-70.5800318, -33.5159937]], $row['geometry']);
 	}
 
-	public function testUbicacionBecomesLocationQuality(): void {
-		self::assertSame('exacta', $this->read(self::JDV)[0]['locationQuality']);
+	public function testUbicacionPassesThroughRawForPrepareToJudge(): void {
+		// Raw since L1-07/L1-15: the reader carries the cell as the file spelled
+		// it and ImportService::prepare() folds and judges it — the same
+		// raw-label doctrine the classification cells got.
+		self::assertSame('Exacta', $this->read(self::JDV)[0]['locationQuality']);
 		self::assertSame(
-			'aproximada',
+			'Aproximada',
 			$this->read(str_replace('"Exacta"', '"Aproximada"', self::JDV))[0]['locationQuality'],
 		);
 	}

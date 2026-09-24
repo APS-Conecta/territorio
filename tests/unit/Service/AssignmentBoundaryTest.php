@@ -7,8 +7,8 @@ namespace OCA\Territorio\Tests\Unit\Service;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Service\AssignmentService;
-use OCA\Territorio\Service\BoundingBox;
-use OCA\Territorio\Service\Kind;
+use OCA\Territorio\Domain\BoundingBox;
+use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\TaxonomyService;
 use PHPUnit\Framework\TestCase;
 
@@ -45,6 +45,14 @@ final class AssignmentBoundaryTest extends TestCase {
 		],
 	]];
 
+	/** The same tree as TaxonomyService::subcategoryIndex() flattens it (L1-20:
+	 *  Assignment reads the flat index now, not the tree). */
+	private const FLAT_INDEX = [
+		11 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'sector', 'subcategoryLabel' => 'Sector'],
+		12 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad Vecinal'],
+		13 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'otro', 'subcategoryLabel' => 'Otro'],
+	];
+
 	private function feature(int $subcategoryId): Feature {
 		$feature = new Feature();
 		$feature->setSubcategoryId($subcategoryId);
@@ -55,7 +63,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	/** A Place with a coordinate, so assign() gets as far as reading the boundaries. */
 	private function placeAt(float $lat, float $lon): Feature {
 		$feature = $this->feature(13);
-		// All three, or anchorOf() returns null and assign() never asks: the Kind is
+		// All three, or anchor() returns null and assign() never asks: the Kind is
 		// what says this record can be inside something, and the stored box is where.
 		// The geometry is set too because that is what a real record carries — the two
 		// are written together by FeatureService::applyGeometry(), and a fixture that
@@ -86,7 +94,7 @@ final class AssignmentBoundaryTest extends TestCase {
 
 	public function testTheTreeIsReadOnceHoweverManyRecordsAreAsked(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->expects(self::once())->method('tree')->willReturn(self::TREE);
+		$taxonomy->expects(self::once())->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
 
@@ -103,7 +111,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	 */
 	public function testTheTreeIsReadOnceAcrossRepeatedBoundaryWrites(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->expects(self::once())->method('tree')->willReturn(self::TREE);
+		$taxonomy->expects(self::once())->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$features = $this->createMock(FeatureMapper::class);
 		$features->method('findAll')->willReturn([]);
@@ -132,7 +140,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	 */
 	public function testTheRegistryIsReadOncePerBoundaryWrite(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->method('tree')->willReturn(self::TREE);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$place = $this->placeAt(-33.5, -70.6);
 		$place->setId(2);
@@ -153,7 +161,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	/** And the memo is dropped when a boundary is written, or it would serve stale rows. */
 	public function testForgetDropsTheRegistryToo(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->method('tree')->willReturn(self::TREE);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$features = $this->createMock(FeatureMapper::class);
 		$features->expects(self::exactly(2))->method('findAll')->willReturn([]);
@@ -181,7 +189,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	 */
 	public function testOnlyABoundaryThatContainsTheRecordClaimsIt(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->method('tree')->willReturn(self::TREE);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$features = $this->createMock(FeatureMapper::class);
 		$features->method('findAll')->willReturn([
@@ -214,7 +222,7 @@ final class AssignmentBoundaryTest extends TestCase {
 	/** And the answer stays the answer — a cache that changes it is worse than none. */
 	public function testABoundaryIsStillRecognisedAndAPlaceIsNot(): void {
 		$taxonomy = $this->createMock(TaxonomyService::class);
-		$taxonomy->method('tree')->willReturn(self::TREE);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
 
 		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
 

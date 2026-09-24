@@ -36,6 +36,7 @@
     },
     "require-dev": {
         "nextcloud/ocp": "^34",
-        "phpunit/phpunit": "^10"
+        "phpunit/phpunit": "^10",
+        "doctrine/dbal": "^4.0"
     }
 }

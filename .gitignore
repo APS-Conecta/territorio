@@ -40,4 +40,9 @@ tools/.browser-check/
 
 # tools/browser-check.py imports tools/ramp-check.py, so Python caches it here.
 __pycache__/
+
+# openapi tooling (scripts/openapi.sh) — scoped: the tracked tools/ scripts
+# (ramp-check.py, notices.sh, browser-check.py) stay tracked.
+/tools/composer.phar
+/tools/openapi/
 graphify-out/

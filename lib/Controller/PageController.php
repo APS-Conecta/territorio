@@ -11,6 +11,7 @@ use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCA\Territorio\Service\Basemap;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -29,6 +30,7 @@ use OCP\Util;
  * #[NoAdminRequired] is deliberate — the map is for everyone who can open the
  * app, and most clinic staff are not administrators.
  */
+#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class PageController extends Controller {
 	public function __construct(
 		IRequest $request,

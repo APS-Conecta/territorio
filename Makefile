@@ -14,7 +14,7 @@ DOCKER := docker run --rm -v "$(CURDIR)":/app -v "$(APS)":/aps-common -w /app $(
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
 
-.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean aps-sync aps-drift
+.PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean aps-sync aps-drift openapi
 
 test-image:
 	docker build -q -f Dockerfile.test -t $(IMG) . >/dev/null
@@ -76,6 +76,12 @@ build:
 # CI runs it in the js job, right after the drift check that has already built them.
 notices: build
 	tools/notices.sh
+
+# Regenerate openapi.json from ApiController's attributes and docblocks
+# (farmacia's script, adapted). The extractor is fetched into tools/ on first
+# run; the file is committed and never hand-edited.
+openapi:
+	scripts/openapi.sh
 
 watch:
 	npm run watch

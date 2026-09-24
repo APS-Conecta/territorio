@@ -20,20 +20,51 @@ final class RoutesTest extends TestCase {
 	}
 
 	/**
-	 * Issue #18: "No OCS route and no externally-reachable API route is
-	 * registered."
+	 * Every ApiRoute attribute on ApiController, as [verb, url] — the surface
+	 * that registers by attribute, which routes.php cannot see.
 	 *
-	 * Territorio answers other apps on this instance by injection
-	 * (`RegistryService`), which needs no route at all. An `ocs` section is the
-	 * mechanism that would put those reads on the public internet, and adding one
-	 * should be a decision somebody takes deliberately — not something that
-	 * arrives by copying a route block.
+	 * @return list<array{0: string, 1: string}>
 	 */
-	public function testNoOcsSectionIsRegistered(): void {
+	private static function apiRoutes(): array {
+		$routes = [];
+		$controller = new \ReflectionClass(\OCA\Territorio\Controller\ApiController::class);
+		foreach ($controller->getMethods() as $method) {
+			foreach ($method->getAttributes(\OCP\AppFramework\Http\Attribute\ApiRoute::class) as $attribute) {
+				// getArguments(), not newInstance(): the promoted $verb/$url are
+				// protected, and the raw named arguments carry the same two facts
+				// this tripwire asserts.
+				$args = $attribute->getArguments();
+				$routes[] = [$args['verb'], $args['url']];
+			}
+		}
+		sort($routes);
+
+		return $routes;
+	}
+
+	/**
+	 * ADR-0020: the OCS surface is exactly ApiController's three ApiRoute
+	 * routes — counts, features/{id}, subcategories/{category}/{subcategory}/
+	 * features — registered by attribute, never through routes.php. Issue #18
+	 * said "no OCS route at all"; ADR-0020 amends that to "exactly these three,
+	 * on purpose", and this tripwire keeps it that way: anything else appearing
+	 * as an attribute, or an `ocs` section arriving in routes.php, fails here.
+	 */
+	public function testOcsSurfaceIsExactlyThePublishedThree(): void {
 		self::assertArrayNotHasKey(
 			'ocs',
 			self::routes(),
-			'an OCS section exposes routes outside the instance; #18 says there are none',
+			"an OCS section in routes.php bypasses ApiController's attribute registration; ADR-0020 says the surface is the three ApiRoute routes",
+		);
+
+		self::assertSame(
+			[
+				['GET', '/api/v1/counts'],
+				['GET', '/api/v1/features/{id}'],
+				['GET', '/api/v1/subcategories/{category}/{subcategory}/features'],
+			],
+			self::apiRoutes(),
+			'the published OCS surface changed — ADR-0020 names exactly these three',
 		);
 	}
 

@@ -136,10 +136,13 @@ final class RegistryServiceTest extends TestCase {
 		self::assertSame(['Taller de Prueba', 'Otro taller'], array_column($talleres, 'name'));
 	}
 
-	public function testAnUnknownSubcategoryListsNothingRatherThanEverything(): void {
+	public function testAnUnknownSubcategoryNamesNothingRatherThanEverything(): void {
 		$this->features->method('findAll')->willReturn([self::feature(1, 11)]);
 
-		self::assertSame([], $this->registry->inSubcategory('salud', 'no_existe'));
+		// Null, not []: the pair names nothing, which is a different answer
+		// than "real pair, nothing filed under it" — the OCS door 404s the
+		// first and 200s the second (L0-05).
+		self::assertNull($this->registry->inSubcategory('salud', 'no_existe'));
 	}
 
 	private static function feature(int $id, int $subcategoryId, string $name = 'Registro'): Feature {

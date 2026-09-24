@@ -1,5 +1,7 @@
 # Territorio
 
+Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo citations stay bare. The org-wide contracts index lives in `gestion/docs/CONTRACTS.md`.
+
 ## Building an issue
 
 `/slice <issue-number>` — the whole loop, in order: pin the ticket, `/tdd`, then

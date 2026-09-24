@@ -139,11 +139,13 @@ class RegistryService {
 
 	/**
 	 * Every record filed under one Subcategory, named the way a caller would say
-	 * it: "organizacion_social", "taller".
+	 * it: "organizacion_social", "taller". Null when the pair names nothing —
+	 * distinct from [], which means the pair is real and nothing is filed
+	 * under it. The distinction is the OCS door's 404 (L0-05).
 	 *
-	 * @return list<array<string, mixed>>
+	 * @return ?list<array<string, mixed>>
 	 */
-	public function inSubcategory(string $categorySlug, string $subcategorySlug): array {
+	public function inSubcategory(string $categorySlug, string $subcategorySlug): ?array {
 		$named = $this->named();
 
 		$wanted = null;
@@ -153,7 +155,7 @@ class RegistryService {
 			}
 		}
 		if ($wanted === null) {
-			return [];
+			return null;
 		}
 
 		$found = [];

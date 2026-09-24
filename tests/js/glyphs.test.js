@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
-import { CATALOGUE, GLYPH_SLUGS, glyphFor } from '../../src/glyphs.js'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { CATALOGUE, GLYPH_SLUGS, glyphFor, loadCatalogue } from '../../src/glyphs.js'
 
 /**
  * The Category → pictogram mapping (issue #20, ADR-0013).
@@ -131,6 +131,14 @@ describe('a chosen pictogram', () => {
 	const CHOSEN = 'bakery'
 
 	/**
+	 * The catalogue is lazy now (L1-34): the eleven seeded marks ship inline and
+	 * the other 204 arrive with the chunk. Everything this describe says about
+	 * CATALOGUE runs against the loaded set; the seeded assertions above keep
+	 * running against the synchronously-available eleven.
+	 */
+	beforeAll(() => loadCatalogue())
+
+	/**
 	 * The shape `TaxonomyPolicy::glyphName()` enforces, read out of the file
 	 * that enforces it.
 	 *
@@ -217,6 +225,19 @@ describe('a chosen pictogram', () => {
 		for (const inherited of ['constructor', 'toString', 'valueOf']) {
 			expect(glyphFor('salud', inherited), `${inherited} reached the catalogue`)
 				.toBe(glyphFor('salud'))
+		}
+	})
+
+	it('ships the seeded marks as the same bytes the package ships', async () => {
+		// The inline subset cannot drift from its source (L1-34): each seeded
+		// Category draws exactly what a direct import of the package ships under
+		// the name this test's own slug→name table resolves to — no SEEDED_MARKS
+		// export is invented for the pin, `glyphFor()` is the pin.
+		const { layouts, svgArray } = await import('@mapbox/maki/browser.esm.js')
+
+		for (const [slug, name] of Object.entries(CHOSEN_BY_SLUG)) {
+			const shipped = svgArray[layouts.indexOf(name)]
+			expect(glyphFor(slug), `${slug}'s inline mark drifted from the package`).toBe(shipped)
 		}
 	})
 

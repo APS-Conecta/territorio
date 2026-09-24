@@ -150,3 +150,37 @@ describe('taxonomy.js slug constants against EnsureSeedData.php', () => {
 		expect(phpFallback).not.toBeNull()
 	})
 })
+
+describe('the js slug constants against the seed that names them', () => {
+	/**
+	 * Phase 2's twins entry pinned the SEED side (DIVISIONS_SLUG, the FALLBACK
+	 * pair — L1-27). What no pin held is the other half: taxonomy.js's OWN
+	 * constant declarations. 'sector' and 'unidad_vecinal' are not consts in
+	 * EnsureSeedData.php — they are values inside the DIVISIONS array's
+	 * subcategories — so the honest pin reads the array's keys out of the seed
+	 * and asserts the js declarations spell the same slugs.
+	 */
+	function seedDivisionSlugs() {
+		const php = readFileSync(`${ROOT}lib/Migration/EnsureSeedData.php`, 'utf8')
+		const divisions = php.match(/const DIVISIONS_SLUG = '([^']+)'/)
+		expect(divisions, 'DIVISIONS_SLUG could not be read from EnsureSeedData').not.toBeNull()
+		// The two subcategory keys under the divisions Category: 'sector' and
+		// 'unidad_vecinal', read out of the DIVISIONS const's own array shape.
+		const block = php.slice(php.indexOf('const DIVISIONS'))
+		const slugs = [...block.matchAll(/'(sector|unidad_vecinal)'\s*=>/g)].map((match) => match[1])
+		expect(slugs, 'the division subcategory slugs could not be read').toHaveLength(2)
+
+		return { divisions: divisions[1], slugs }
+	}
+
+	it('declares the same division slugs the seed names', () => {
+		const { divisions, slugs } = seedDivisionSlugs()
+		const taxonomy = readFileSync(`${ROOT}src/taxonomy.js`, 'utf8')
+
+		// By their own declarations, not a copy here: a PHP-side rename breaks
+		// the `toContain` before isSectorSubcategory breaks silently everywhere.
+		expect(taxonomy).toContain(`const DIVISIONS_SLUG = '${divisions}'`)
+		expect(taxonomy).toContain(`export const SECTOR_SLUG = '${slugs[0]}'`)
+		expect(taxonomy).toContain(`export const UNIDAD_VECINAL_SLUG = '${slugs[1]}'`)
+	})
+})

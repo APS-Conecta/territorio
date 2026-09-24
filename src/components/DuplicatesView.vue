@@ -5,7 +5,25 @@
 			{{ pairs.length === 1 ? 'par por revisar' : 'pares por revisar' }}
 		</h2>
 
-		<NcEmptyContent v-if="pairs.length === 0"
+		<!-- Three states, not two (L1-28): a queue that failed to load is not a
+		     queue with nothing in it — «Nada por revisar» over a network failure
+		     read as the pairs having been resolved. -->
+		<NcEmptyContent v-if="failed && pairs.length === 0"
+			name="No se pudo cargar la cola"
+			description="Revise la conexión e inténtelo de nuevo.">
+			<template #icon>
+				<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
+					<path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" />
+				</svg>
+			</template>
+			<template #action>
+				<NcButton @click="$emit('retry')">
+					Reintentar
+				</NcButton>
+			</template>
+		</NcEmptyContent>
+
+		<NcEmptyContent v-else-if="pairs.length === 0"
 			name="Nada por revisar"
 			description="No hay registros que parezcan ser el mismo lugar.">
 			<template #icon>
@@ -78,9 +96,11 @@ export default {
 		taxonomy: { type: Array, required: true },
 		/** The pair currently being resolved, so its buttons cannot be pressed twice. */
 		busy: { type: Number, default: null },
+		// A failed load is not an empty queue (L1-28).
+		failed: { type: Boolean, default: false },
 	},
 
-	emits: ['merge', 'dismiss', 'show'],
+	emits: ['merge', 'dismiss', 'retry', 'show'],
 
 	data() {
 		return { WHY }

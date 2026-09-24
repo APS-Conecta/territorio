@@ -2,7 +2,17 @@
 	<section class="territorio-history">
 		<h4>Historial</h4>
 
-		<p v-if="entries.length === 0" class="territorio-history__empty">
+		<!-- Three states, not two (L1-28): a history that failed to load is not a
+		     history that says nothing happened — «Sin movimientos» over a network
+		     failure read as the record having no past. -->
+		<p v-if="failed" class="territorio-history__empty">
+			No se pudo cargar el historial.
+			<button type="button" class="territorio-history__retry" @click="$emit('retry')">
+				Reintentar
+			</button>
+		</p>
+
+		<p v-else-if="entries.length === 0" class="territorio-history__empty">
 			Sin movimientos registrados.
 		</p>
 
@@ -94,7 +104,10 @@ export default {
 	props: {
 		entries: { type: Array, required: true },
 		taxonomy: { type: Array, default: () => [] },
+		failed: { type: Boolean, default: false },
 	},
+
+	emits: ['retry'],
 
 	data() {
 		return { ACTIONS, FIELDS }
@@ -169,6 +182,18 @@ export default {
 .territorio-history__who {
 	color: var(--color-text-maxcontrast);
 	font-size: 0.9em;
+}
+
+/* A link-styled button — the empty-state pattern the basemap banner uses. */
+.territorio-history__retry {
+	background: none;
+	border: none;
+	padding: 0;
+	margin-inline-start: 6px;
+	font: inherit;
+	color: var(--color-primary-element);
+	cursor: pointer;
+	text-decoration: underline;
 }
 
 .territorio-history__list {

@@ -176,3 +176,16 @@ row is written — "imports nothing" is a promise), and a revert fails SOFT (eac
 record it cannot put back is left as it is and counted, because a half-undone batch
 that says what it reached is worth more than an aborted one).
 _Avoid_: a try/catch per caller; "it depends" as the whole answer to null-or-throw.
+
+### Two-way state
+
+**The draft box**: one open record, one draft object; App.vue owns it and the
+record form mutates it in place (`v-model` straight onto the prop). Not an
+anti-pattern here — it is the deliberate convention for RECORD state: copying
+draft↔parent would only add a second place for the two to disagree, and there
+is one draft at a time.
+**The immutable update**: view state (`v-model:view`, filter objects) always
+travels as a NEW object through `update:*` emits — IndiceView's pattern. Never
+copy one pattern into the other's context: mutating view state silently breaks
+reactivity, and eventifying the draft box adds machinery nobody asked for.
+_Avoid_: "props down events up" recited at the draft box; deep-cloning a draft.

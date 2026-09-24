@@ -113,10 +113,11 @@ export default {
 		// map, the Análisis counts and Exportar describing one set (#105).
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
-		// The Sectores and Unidades Vecinales the app holds, so a stored assignment
+		// The territorial divisions the app holds, so a stored assignment
 		// id can be shown as the name somebody would recognise — the same list the
-		// sidebar resolves them through.
-		boundaries: { type: Array, default: () => [] },
+		// sidebar resolves them through. `divisions` (L1-33), matching
+		// taxonomy.js's `divisionsOf` vocabulary.
+		divisions: { type: Array, default: () => [] },
 		selectedId: { type: Number, default: null },
 		// Which columns are hidden and how the rows are ordered, owned by App.vue
 		// for the reason the filter is: this pane is rebuilt on every switch, and
@@ -151,7 +152,7 @@ export default {
 
 		rows() {
 			return sortRows(
-				rowsFor(this.features, this.subcategories, this.boundaries),
+				rowsFor(this.features, this.subcategories, this.divisions),
 				this.view.key,
 				this.view.ascending,
 			)
@@ -161,6 +162,9 @@ export default {
 	methods: {
 		/** First click on a header sorts ascending; clicking the same one flips it. */
 		sortBy(key) {
+			// The immutable pattern — new object, always, never a mutation — is
+			// the VIEW-state half of the two-way convention named in CONTEXT.md
+			// (L1-30); the draft box is the other half and lives in FeatureDetail.
 			this.$emit('update:view', {
 				...this.view,
 				key,

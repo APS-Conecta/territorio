@@ -21,6 +21,7 @@
 
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon'
 import { polygonize } from '@turf/polygonize'
+import { safeError } from './api.js'
 
 /** GeoJSON types that carry line work; anything else a Dataset holds is not one. */
 const LINES = ['LineString', 'MultiLineString']
@@ -76,7 +77,7 @@ export function faceAround(lines, seed) {
 		// refused input this built, which is a bug in this file rather than
 		// anything the person did. Said out loud, then treated as no face: the
 		// editor still works and hand-drawing is still there (ADR-0007).
-		console.error('territorio: could not polygonize the picked lines', exception)
+		safeError('could not polygonize the picked lines', exception)
 
 		return null
 	}

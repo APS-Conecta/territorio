@@ -175,17 +175,23 @@ describe('the size a pin draws its mark at', () => {
 
 	it('is the only place the map keeps those numbers', () => {
 		const map = source('TerritorioMap.vue')
+		const pins = readFileSync(`${ROOT}src/pins.js`, 'utf8')
 		const pin = map.slice(map.indexOf('.territorio-pin__dot {'))
 
 		// The USE, not the token: `expect(map).toMatch(/PIN_DOT_SIZE/)` is
 		// satisfied by the import line at the top of the file alone, so it
 		// cannot fail while that import stands — even if nothing in the
 		// component read either name.
-		expect(map).toMatch(/iconSize: \[PIN_DOT_SIZE, PIN_DOT_SIZE\]/)
-		expect(map).toMatch(/--territorio-pin:\$\{PIN_DOT_SIZE\}px/)
-		expect(map).toMatch(/--territorio-pin-mark:\$\{PIN_GLYPH_SIZE\}px/)
+		//
+		// The custom-property interpolations followed the markup they size into
+		// pins.js (L1-32); the wrapper in TerritorioMap derives its Leaflet
+		// shape from the size the builder answers, so `iconSize` is [size, size]
+		// there and not a second copy of the number.
+		expect(map).toMatch(/iconSize: \[size, size\]/)
+		expect(pins).toMatch(/--territorio-pin:\$\{PIN_DOT_SIZE\}px/)
+		expect(pins).toMatch(/--territorio-pin-mark:\$\{PIN_GLYPH_SIZE\}px/)
 		// The dot's own geometry, in the rule that draws it. A literal here is
-		// the drift: the divIcon already declared `iconSize` in JS, so 26 was
+		// the drift: the builder already declared the size in JS, so 26 was
 		// written twice in this one component before #46.
 		expect(pin.slice(0, pin.indexOf('}'))).not.toMatch(/\b26px\b/)
 		expect(pin).not.toMatch(/\b19px\b/)

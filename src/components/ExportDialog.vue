@@ -71,6 +71,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import { messageFrom } from '../api.js'
 
 const FORMATS = [
 	{ value: 'geojson', label: 'GeoJSON — completo, se puede volver a importar' },
@@ -175,31 +176,10 @@ export default {
 				// exported as a constant, so this is checked against the installed
 				// version and pinned by the test below it in tests/js.
 				if (exception?.message !== 'Dialog closed') {
-					this.error = await this.reasonFrom(exception)
+					this.error = await messageFrom(exception, 'No se pudo exportar. Inténtelo de nuevo.')
 				}
 			} finally {
 				this.working = false
-			}
-		},
-
-		/**
-		 * What the server said, out of a response we asked for as a Blob.
-		 *
-		 * `responseType: 'blob'` applies to the error body too, so
-		 * `error.response.data.message` is always undefined and every Spanish
-		 * message the controller writes would go unread — the caller would be
-		 * told "inténtelo de nuevo" about a file that will never work.
-		 */
-		async reasonFrom(exception) {
-			const body = exception.response?.data
-			const fallback = 'No se pudo exportar. Inténtelo de nuevo.'
-
-			try {
-				return JSON.parse(await body.text()).message ?? fallback
-			} catch {
-				// Not JSON, not a Blob, or no response at all — a dropped
-				// connection looks like this.
-				return fallback
 			}
 		},
 

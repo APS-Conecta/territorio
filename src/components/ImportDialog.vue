@@ -135,6 +135,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { messageFrom, warnError } from '../api.js'
 
 export default {
 	name: 'ImportDialog',
@@ -223,7 +224,7 @@ export default {
 				const { data } = await axios.get(generateUrl('/apps/territorio/import/batches'))
 				this.batches = data
 			} catch (exception) {
-				console.warn('territorio: could not list import batches', exception)
+				warnError('could not list import batches', exception)
 			}
 		},
 
@@ -237,7 +238,7 @@ export default {
 				await this.loadBatches()
 				this.$emit('imported')
 			} catch (exception) {
-				this.error = exception.response?.data?.message ?? 'No se pudo deshacer el lote.'
+				this.error = await messageFrom(exception, 'No se pudo deshacer el lote.')
 			} finally {
 				this.working = false
 			}
@@ -315,8 +316,7 @@ export default {
 				// than being told separately — one mechanism, not two (ADR-0002).
 				this.$emit('imported')
 			} catch (exception) {
-				this.error = exception.response?.data?.message
-					?? 'No se pudo importar el archivo.'
+				this.error = await messageFrom(exception, 'No se pudo importar el archivo.')
 			} finally {
 				this.working = false
 			}

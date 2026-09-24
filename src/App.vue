@@ -26,12 +26,14 @@
 						:taxonomy="taxonomy"
 						:selected-id="selectedId"
 						:show-retired="showRetired"
+						:retired-failed="retiredFailed"
 						:query="filter.query"
 						@select="select"
 						@create="startNew"
 						@import="importing = true"
 						@export="exporting = true"
 						@update:show-retired="toggleRetired"
+						@retry="loadRetired"
 						@update:query="search" />
 				</div>
 			</template>
@@ -95,7 +97,7 @@
 						:draft-subcategory-id="draft?.subcategoryId ?? null"
 						:draft-name="draft?.name ?? ''"
 						:placing="placing"
-						:boundaries="editingLimit ? boundaryFeatures : []"
+						:cadastre-lines="editingLimit ? cadastreLines : []"
 						:picked-ids="draft?.picked ?? []"
 						@pick="togglePicked"
 						@view-changed="onViewChanged"
@@ -122,7 +124,7 @@
 						v-model:view="indice"
 						:features="liveFiltered"
 						:taxonomy="taxonomy"
-						:boundaries="boundaries"
+						:divisions="divisions"
 						:selected-id="selectedId"
 						:filtered="isFiltered(filter)"
 						@select="select" />
@@ -142,8 +144,10 @@
 						:features="features"
 						:taxonomy="taxonomy"
 						:busy="resolving"
+						:failed="duplicatesFailed"
 						@merge="mergePair"
 						@dismiss="dismissPair"
+						@retry="loadDuplicates"
 						@show="select" />
 				</div>
 			</ErrorBoundary>
@@ -190,13 +194,15 @@
 			-->
 			<FeatureDetail :draft="draft"
 				:taxonomy="taxonomy"
-				:boundaries="boundaries"
+				:divisions="divisions"
 				:saving="saving"
 				:error="error"
 				:history="history"
+				:history-failed="historyFailed"
 				:retired="selectedIsRetired"
 				@save="save"
-				@retire="retire">
+				@retire="retire"
+				@retry="loadHistory(selectedId)">
 				<BoundaryPicker v-if="editingLimit"
 					:suggestions="boundarySuggestions"
 					:picked-ids="draft.picked"
@@ -235,8 +241,19 @@ import ExportDialog from './components/ExportDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import IndiceView from './components/IndiceView.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
-import { suggestions, toggleGroup, togglePick } from './boundaries.js'
-import { groups, partsFrom, readable, sectorFields, withNote, without } from './limit.js'
+import { messageFrom, safeError, warnError } from './api.js'
+import { suggestions } from './boundaries.js'
+import { mergeInto } from './composables/useChanges.js'
+import {
+	addLimitNote,
+	keepPickedGeometry,
+	recordLimit,
+	removeLimitPart,
+	togglePicked,
+	togglePickedGroup,
+} from './composables/useLimitEditor.js'
+import { blankDraft, draftFrom, payload } from './draft.js'
+import { groups, readable, sectorFields } from './limit.js'
 import { canPolygonize, faceAround } from './sectors.js'
 import {
 	countsFor,
@@ -254,7 +271,6 @@ import {
 	defaultSubcategoryId,
 	divisionsOf,
 	indexSubcategories,
-	isSectorSubcategory,
 	sectorSubcategoryId,
 } from './taxonomy.js'
 
@@ -264,16 +280,6 @@ import {
  * most of them answered by one indexed read.
  */
 const POLL_INTERVAL_MS = 5000
-
-/** Chilean keyboards produce a decimal comma; Leaflet and GeoJSON want a dot. */
-const toNumber = (value) => {
-	const text = String(value ?? '').trim().replace(',', '.')
-	if (text === '') {
-		return null
-	}
-	const parsed = Number(text)
-	return Number.isFinite(parsed) ? parsed : null
-}
 
 export default {
 	name: 'App',
@@ -345,9 +351,18 @@ export default {
 			taxonomyNotice: '',
 			pollTimer: null,
 			pollFailed: false,
+			// The three reads that can fail while their surface stays up: a failed
+			// load is not an empty list (L1-28), so each surface says it could not
+			// load and offers Reintentar, rather than claiming nothing is there.
+			historyFailed: false,
+			duplicatesFailed: false,
+			retiredFailed: false,
 			// Loaded only while a Sector's Limit is being built, and thrown away
 			// when it is not: a comuna is around eleven thousand lines (issue #12).
-			boundaryFeatures: [],
+			// `cadastreLines` (L1-33): the street lines a Limit runs along, fetched
+			// from /boundaries — «divisions» are the Sectores and Unidades
+			// Vecinales themselves, and neither word may stand in for the other.
+			cadastreLines: [],
 			// Which of the Limit's cited ids are no longer live Boundary features
 			// (issue #51). It has to come from the server: this list only ever holds
 			// what is in view and never a retired row, so "not here" means
@@ -356,6 +371,7 @@ export default {
 			boundaryQuery: '',
 			view: null,
 			viewTimer: null,
+			searchTimer: null,
 		}
 	},
 
@@ -452,12 +468,14 @@ export default {
 
 		/**
 		 * The Sectores and Unidades Vecinales the app holds, so the sidebar can turn
-		 * a stored assignment id into the name somebody would recognise.
+		 * a stored assignment id into the name somebody would recognise. Named
+		 * `divisions`, matching taxonomy.js's `divisionsOf` vocabulary (L1-33) —
+		 * «boundary» names the /boundaries resource alone.
 		 */
-		boundaries() {
-			const divisions = new Set(divisionsOf(this.taxonomy).map((division) => division.id))
+		divisions() {
+			const ids = new Set(divisionsOf(this.taxonomy).map((division) => division.id))
 
-			return this.features.filter((feature) => divisions.has(feature.subcategoryId))
+			return this.features.filter((feature) => ids.has(feature.subcategoryId))
 		},
 
 		/**
@@ -482,7 +500,7 @@ export default {
 		},
 
 		boundarySuggestions() {
-			return suggestions(this.boundaryFeatures, this.boundaryQuery)
+			return suggestions(this.cadastreLines, this.boundaryQuery)
 		},
 
 		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
@@ -514,6 +532,7 @@ export default {
 
 	beforeUnmount() {
 		clearTimeout(this.viewTimer)
+		clearTimeout(this.searchTimer)
 		this.stopPolling()
 		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 	},
@@ -539,9 +558,17 @@ export default {
 		 * Typing narrows the same set the toggles narrow. A new object rather than
 		 * a mutation, like every other filter change, so nothing downstream has to
 		 * wonder who else might be holding it.
+		 *
+		 * Debounced (~150ms, L1-36): every keystroke rebuilt the whole marker and
+		 * shape layer groups — the watcher's own comment counted the cost — and a
+		 * burst collapses to one redraw. Toggles stay immediate: they are discrete
+		 * clicks, and the same timer would only add latency to them.
 		 */
 		search(query) {
-			this.filter = { ...this.filter, query }
+			clearTimeout(this.searchTimer)
+			this.searchTimer = setTimeout(() => {
+				this.filter = { ...this.filter, query }
+			}, 150)
 		},
 
 		startPolling() {
@@ -593,67 +620,36 @@ export default {
 				// loses its connection for an hour would otherwise fill the console.
 				if (!this.pollFailed) {
 					this.pollFailed = true
-					console.warn('territorio: change polling failed, will keep trying', exception)
+					warnError('change polling failed, will keep trying', exception)
 				}
 			}
 		},
 
 		/**
 		 * Apply one record from the change feed to whichever list it belongs in.
-		 *
-		 * A retirement reaches us as an ordinary change carrying retired:true;
-		 * moving the record between the two lists here is what takes it off
-		 * everyone else's map. Both lists are kept, not just the live one —
-		 * otherwise a colleague's restore leaves a stale row in the retired list
-		 * still offering to restore what is already back.
+		 * The decision core is `mergeInto` (useChanges.js, L1-31) — vitest-reachable;
+		 * `this` supplies the four fields it reads: features, retiredFeatures,
+		 * selectedId, showRetired.
 		 */
 		mergeFeature(incoming) {
-			const from = incoming.retired ? this.features : this.retiredFeatures
-			const into = incoming.retired ? this.retiredFeatures : this.features
-
-			const stale = from.findIndex((feature) => feature.id === incoming.id)
-			if (stale !== -1) {
-				from.splice(stale, 1)
-			}
-
-			const existing = into.findIndex((feature) => feature.id === incoming.id)
-			if (existing === -1) {
-				into.unshift(incoming)
-			} else {
-				into.splice(existing, 1, incoming)
-			}
-
-			// The sidebar may now be showing a record that has left the screen: it
-			// was retired, and retired records are not being shown. Not "differs
-			// from the toggle" — that also caught a LIVE record open while the
-			// retired list was on show, which is an ordinary thing to be looking at
-			// since #67, and closing it on the record's own save is what made the
-			// save look like it had failed.
-			if (this.selectedId === incoming.id && incoming.retired && !this.showRetired) {
+			const { features, retiredFeatures, closeOpen } = mergeInto(this, incoming)
+			this.features = features
+			this.retiredFeatures = retiredFeatures
+			if (closeOpen) {
 				this.closeDraft()
 			}
-		},
-
-		/**
-		 * A Sector, and not merely any territorial division.
-		 *
-		 * A Unidad Vecinal is read from the national cadastre and never drawn
-		 * (CONTEXT.md), so it has no Limit to say anything about — opening the
-		 * picker over one would offer to edit a boundary this app does not own.
-		 */
-		isSector(subcategoryId) {
-			return isSectorSubcategory(this.taxonomy, subcategoryId)
 		},
 
 		select(id) {
 			this.stopSeeding()
 			this.selectedId = id
 			const feature = featureById(this.features, this.retiredFeatures, id)
-			this.draft = feature === undefined ? null : this.draftFrom(feature)
+			this.draft = feature === undefined ? null : draftFrom(feature, this.taxonomy)
 			this.error = ''
 			this.history = []
+			this.historyFailed = false
 			this.boundaryQuery = ''
-			this.boundaryFeatures = []
+			this.cadastreLines = []
 			this.goneIds = []
 			if (this.editingLimit) {
 				this.loadBoundaries()
@@ -664,6 +660,7 @@ export default {
 		},
 
 		async loadHistory(id) {
+			this.historyFailed = false
 			try {
 				const { data } = await axios.get(
 					generateUrl(`/apps/territorio/features/${id}/history`),
@@ -674,7 +671,8 @@ export default {
 					this.history = data
 				}
 			} catch (exception) {
-				console.warn('territorio: could not load the history', exception)
+				warnError('could not load the history', exception)
+				this.historyFailed = true
 			}
 		},
 
@@ -695,19 +693,20 @@ export default {
 		 * on open and after each of those two events instead.
 		 */
 		async loadDuplicates() {
+			this.duplicatesFailed = false
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/duplicates'))
 				this.duplicates = data.pairs
 			} catch (exception) {
 				// The queue failing to load must not take the Registry down with it.
-				console.warn('territorio: could not load the duplicate queue', exception)
+				warnError('could not load the duplicate queue', exception)
+				this.duplicatesFailed = true
 			}
 		},
 
 		/** An import is the one moment new pairs appear. */
 		async afterImport() {
-			await this.poll()
-			await this.loadDuplicates()
+			await Promise.all([this.poll(), this.loadDuplicates()])
 		},
 
 		/**
@@ -731,23 +730,26 @@ export default {
 			this.resolving = pairId
 			try {
 				await axios.post(generateUrl(url), body)
-				await this.poll()
-				await this.loadDuplicates()
+				// Independent endpoints, nothing consumes the other's result — so
+				// the resolving flag the buttons wait on no longer spans two serial
+				// round trips (L1-35).
+				await Promise.all([this.poll(), this.loadDuplicates()])
 				this.error = ''
 			} catch (exception) {
-				this.error = exception.response?.data?.message
-					?? 'No se pudo resolver el par. Inténtelo de nuevo.'
+				this.error = await messageFrom(exception, 'No se pudo resolver el par. Inténtelo de nuevo.')
 			} finally {
 				this.resolving = null
 			}
 		},
 
 		async loadRetired() {
+			this.retiredFailed = false
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/features/retired'))
 				this.retiredFeatures = data
 			} catch (exception) {
-				console.warn('territorio: could not load retired records', exception)
+				warnError('could not load retired records', exception)
+				this.retiredFailed = true
 			}
 		},
 
@@ -759,7 +761,7 @@ export default {
 				this.mergeFeature(data)
 				this.closeDraft()
 			} catch (exception) {
-				this.error = exception.response?.data?.message ?? 'No se pudo retirar el registro.'
+				this.error = await messageFrom(exception, 'No se pudo retirar el registro.')
 			}
 		},
 
@@ -791,8 +793,8 @@ export default {
 				this.clearTaxonomyMessage()
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
-				this.taxonomyError = exception.response?.data?.message
-					?? 'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.'
+				this.taxonomyError = await messageFrom(exception,
+					'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -818,8 +820,8 @@ export default {
 				this.taxonomy = data
 				this.clearTaxonomyMessage()
 			} catch (exception) {
-				this.taxonomyError = exception.response?.data?.message
-					?? 'No se pudo cambiar el pictograma. Revise la conexión e inténtelo de nuevo.'
+				this.taxonomyError = await messageFrom(exception,
+					'No se pudo cambiar el pictograma. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -870,8 +872,8 @@ export default {
 						+ 'pictograma, como todas las categorías.'
 				}
 			} catch (exception) {
-				this.taxonomyError = exception.response?.data?.message
-					?? 'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.'
+				this.taxonomyError = await messageFrom(exception,
+					'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -921,8 +923,8 @@ export default {
 				// 422 carries the refusal — how many records and where to see
 				// them (ADR-0016). Anything else does not, and a generic sentence
 				// in its place must not pretend to.
-				this.taxonomyError = exception.response?.data?.message
-					?? 'No se pudo quitar. Revise la conexión e inténtelo de nuevo.'
+				this.taxonomyError = await messageFrom(exception,
+					'No se pudo quitar. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -977,8 +979,8 @@ export default {
 				this.taxonomy = data
 				this.clearTaxonomyMessage()
 			} catch (exception) {
-				this.taxonomyError = exception.response?.data?.message
-					?? 'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.'
+				this.taxonomyError = await messageFrom(exception,
+					'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -991,7 +993,7 @@ export default {
 				this.mergeFeature(data)
 				this.closeDraft()
 			} catch (exception) {
-				this.error = exception.response?.data?.message ?? 'No se pudo restaurar el registro.'
+				this.error = await messageFrom(exception, 'No se pudo restaurar el registro.')
 			}
 		},
 
@@ -999,7 +1001,7 @@ export default {
 			this.stopSeeding()
 			this.selectedId = null
 			this.error = ''
-			this.draft = { ...this.blankDraft(), subcategoryId: defaultSubcategoryId(this.taxonomy) }
+			this.draft = { ...blankDraft(), subcategoryId: defaultSubcategoryId(this.taxonomy) }
 		},
 
 		/**
@@ -1021,7 +1023,7 @@ export default {
 			this.selectedId = null
 			this.error = ''
 			this.draft = {
-				...this.blankDraft(),
+				...blankDraft(),
 				subcategoryId,
 				geometry,
 				colour: DEFAULT_SECTOR_COLOUR,
@@ -1032,117 +1034,48 @@ export default {
 				...sectorFields(),
 			}
 			this.boundaryQuery = ''
-			this.boundaryFeatures = []
+			this.cadastreLines = []
 			this.goneIds = []
 			this.loadBoundaries()
 		},
 
 		/** Clicking a line on the map is the same pick as choosing its name. */
 		togglePicked(id) {
-			if (this.draft?.picked !== undefined) {
-				this.draft.picked = togglePick(this.draft.picked, id)
-				this.keepPickedGeometry([id])
-				this.recordLimit()
-			}
+			togglePicked(this.draft, this.cadastreLines, id)
 		},
 
+		/** A whole named group, as the picker's checkbox means it. */
 		togglePickedGroup(ids) {
-			if (this.draft?.picked !== undefined) {
-				this.draft.picked = toggleGroup(this.draft.picked, ids)
-				this.keepPickedGeometry(ids)
-				this.recordLimit()
-			}
+			togglePickedGroup(this.draft, this.cadastreLines, ids)
 		},
 
 		/**
 		 * The Limit follows what is picked, keeping what is already written down.
-		 *
-		 * Names are taken from the lines on screen at the moment of picking and
-		 * then kept, because a Limit outlives the picker: the lines load only
-		 * while the editor is open and only for the part of the comuna in view
-		 * (issue #12), so a Limit holding bare ids would read as blanks as soon as
-		 * anybody scrolled away.
+		 * The rule lives in useLimitEditor.js (L1-31), beside its tests.
 		 */
 		recordLimit() {
-			this.draft.limit = partsFrom(
-				this.draft.picked,
-				this.boundaryFeatures,
-				this.draft.limit ?? [],
-			)
+			recordLimit(this.draft, this.cadastreLines)
 		},
 
 		/** A stretch that follows nothing anybody could pick. */
 		addLimitNote(text) {
-			if (this.draft?.limit !== undefined) {
-				this.draft.limit = withNote(this.draft.limit, text)
-			}
+			addLimitNote(this.draft, text)
 		},
 
 		/**
 		 * One name dropped from the Limit, and everything it stood for unpicked.
-		 *
-		 * By name and not by row: a street is dozens of ways, so "Quitar Vicuña
-		 * Mackenna" means all of them. Dropping one way would change nothing the
-		 * person can read — the sentence says each name once — while unticking the
-		 * street in the picker, and the next pick would put it back.
+		 * The by-name-not-by-row reasoning lives in useLimitEditor.js (L1-31).
 		 */
 		removeLimitPart(name) {
-			if (this.draft?.limit === undefined) {
-				return
-			}
-
-			const dropped = this.draft.limit
-				.filter((part) => part.name === name && part.featureId !== undefined)
-				.map((part) => part.featureId)
-
-			this.draft.limit = without(this.draft.limit, name)
-			this.draft.picked = this.draft.picked.filter((id) => !dropped.includes(id))
-			// And forget their shapes. keepPickedGeometry() holds exactly what is
-			// picked — clicking a line on the map goes through it either way — and
-			// this path dropped the ids without it, so a shape outlived its pick.
-			this.keepPickedGeometry(dropped)
+			removeLimitPart(this.draft, this.cadastreLines, name)
 		},
 
 		/**
-		 * Keep the shapes of the picked lines on the draft — as they are picked,
-		 * and again as they come back into view.
-		 *
-		 * `boundaryFeatures` is what is ON SCREEN: it is replaced wholesale every
-		 * time the map settles, and capped at three thousand rows against a
-		 * comuna's eleven thousand. Building a Sector from four avenues means
-		 * panning along them, and zooming out to click inside the block refetches
-		 * — so a line picked five minutes ago is very often not in that list any
-		 * more.
-		 *
-		 * Re-deriving the geometries from it at generate time therefore dropped
-		 * picks silently, and the two ways that shows are both bad: "las calles no
-		 * cierran" about lines that do, or a LARGER face accepted as the Sector
-		 * because the line that would have closed the small one was missing. The
-		 * second is silent and wrong, which is the kind this app has been bitten
-		 * by before.
+		 * Keep the shapes of the picked lines on the draft. The
+		 * shapes-survive-the-pan rule (#49) lives in useLimitEditor.js (L1-31).
 		 */
 		keepPickedGeometry(ids) {
-			const kept = { ...(this.draft.pickedGeometry ?? {}) }
-			const onScreen = new Map(this.boundaryFeatures.map((each) => [each.id, each]))
-
-			ids.forEach((id) => {
-				if (!this.draft.picked.includes(id)) {
-					// Unpicked: forget it, or a line removed on purpose would keep
-					// shaping the polygon.
-					delete kept[id]
-					return
-				}
-				const geometry = onScreen.get(id)?.geometry
-				// `!= null`, matching canPolygonize: a Boundary row whose geometry is
-				// empty or corrupt arrives decoded to null, and once this runs on
-				// every settle rather than once per pick, writing that would overwrite
-				// a shape already held with nothing.
-				if (geometry != null) {
-					kept[id] = geometry
-				}
-			})
-
-			this.draft.pickedGeometry = kept
+			keepPickedGeometry(this.draft, this.cadastreLines, ids)
 		},
 
 		/**
@@ -1185,8 +1118,8 @@ export default {
 					// out, because they are the only ones the answer can be about.
 					params: { ...this.view, ids: this.draft.picked.join(',') },
 				})
-				this.boundaryFeatures = data.features
-				// Never merged into `boundaryFeatures`: that one array feeds the
+				this.cadastreLines = data.features
+				// Never merged into `cadastreLines`: that one array feeds the
 				// autocomplete, the clickable layer on the map and keepPickedGeometry,
 				// so a gone line with a name and a shape would be pickable again.
 				this.goneIds = data.gone
@@ -1201,7 +1134,7 @@ export default {
 					this.keepPickedGeometry(this.draft.picked)
 				}
 			} catch (exception) {
-				console.warn('territorio: could not load the boundary features', exception)
+				warnError('could not load the boundary features', exception)
 			}
 		},
 
@@ -1288,94 +1221,6 @@ export default {
 			this.seeding = false
 		},
 
-		blankDraft() {
-			return {
-				id: null,
-				name: '',
-				subcategoryId: null,
-				// Set only for a drawn shape. A Place carries lat/lon instead, which
-				// is what the form offers when this is null.
-				geometry: null,
-				colour: null,
-				sectorId: null,
-				unidadVecinalId: null,
-				lat: '',
-				lon: '',
-				locationQuality: 'exacta',
-				address: '',
-				phone: '',
-				email: '',
-				contactPerson: '',
-				contactRole: '',
-				openingHours: '',
-				notes: '',
-				sourceRef: '',
-			}
-		},
-
-		draftFrom(feature) {
-			const isPoint = feature.geometry?.type === 'Point'
-			const [lon, lat] = isPoint ? feature.geometry.coordinates : [null, null]
-
-			return {
-				id: feature.id,
-				name: feature.name,
-				subcategoryId: feature.subcategoryId,
-				geometry: isPoint ? null : (feature.geometry ?? null),
-				colour: feature.colour ?? null,
-				// Read-only, shown rather than edited (ADR-0008). Carried on the draft
-				// so the sidebar can name them without asking the server again.
-				sectorId: feature.sectorId ?? null,
-				unidadVecinalId: feature.unidadVecinalId ?? null,
-				// Which Dataset this record came from, or null for one made here.
-				// Read-only too, and carried for one reason: a Sector's provenance
-				// sentence must not call an imported boundary hand-drawn, and the
-				// two look identical in history (issue #50, ADR-0018). Only an
-				// import sets it, so it is the record's own answer.
-				datasetId: feature.datasetId ?? null,
-				// A Sector opened for editing gets the picker too, not only one being
-				// drawn — and it comes back with what it was built from (issue #15).
-				//
-				// `picked` is derived from the Limit rather than stored twice: the
-				// Limit is the record, and the ticks in the picker are a view of it.
-				// The geometries are NOT reloaded — they arrive as the map brings
-				// each line into view — so a Limit reopened and saved untouched keeps
-				// its names either way.
-				...(this.isSector(feature.subcategoryId)
-					? sectorFields(feature.limit ?? [])
-					: {}),
-				lat: lat === null ? '' : String(lat),
-				lon: lon === null ? '' : String(lon),
-				// Revisited for #23, now that the map draws the Exactitud, and kept.
-				//
-				// `sin_coordenada` is derived from having no geometry and never
-				// chosen (`LocationQuality`, `FeatureService::applyGeometry`), so the
-				// picker offers two options and NcSelect already falls back to
-				// «Exacta» when it is handed a third. The draft has to agree with
-				// what the sidebar is showing, because `payload()` spreads the whole
-				// draft: left as `sin_coordenada`, the first coordinate a person types
-				// into this record would be posted alongside a quality the server
-				// refuses outright — «Exactitud desconocida» — while the screen said
-				// «Exacta». The record that keeps no coordinate is unaffected either
-				// way: an empty geometry re-derives `sin_coordenada` on the server.
-				//
-				// #83 gave the Exactitud a door of its own, but not to this caller:
-				// it opens only when `geometry` is absent from the request, and
-				// `payload()` always sends the key.
-				locationQuality: feature.locationQuality === 'sin_coordenada'
-					? 'exacta'
-					: (feature.locationQuality ?? 'exacta'),
-				address: feature.address ?? '',
-				phone: feature.phone ?? '',
-				email: feature.email ?? '',
-				contactPerson: feature.contactPerson ?? '',
-				contactRole: feature.contactRole ?? '',
-				openingHours: feature.openingHours ?? '',
-				notes: feature.notes ?? '',
-				sourceRef: feature.sourceRef ?? '',
-			}
-		},
-
 		/**
 		 * Clicking the map fills in the open draft's coordinates — unless the draft
 		 * is a drawn shape, which has no single coordinate to fill in and is edited
@@ -1405,43 +1250,11 @@ export default {
 			this.history = []
 			// Unloaded on leaving the editor, which is the other half of loading
 			// them only inside it: eleven thousand lines are not the map.
-			this.boundaryFeatures = []
+			this.cadastreLines = []
 			this.goneIds = []
 			this.boundaryQuery = ''
 			// Or the next draft opens already waiting for a click nobody asked for.
 			this.stopSeeding()
-		},
-
-		payload() {
-			const lat = toNumber(this.draft.lat)
-			const lon = toNumber(this.draft.lon)
-
-			// The URL addresses the record, so the body never says `id`: NC 34's
-			// dispatcher binds body parameters onto controller arguments by name,
-			// and an integer `id` colliding with the route's `string $id` is a
-			// TypeError on the invocation line — a bare 400 no log at Warning
-			// level ever explains. The draft keeps its id; only the wire is silent.
-			// eslint-disable-next-line no-unused-vars -- omitting the key is the point
-			const { id, ...record } = this.draft
-
-			return {
-				...record,
-				colour: this.draft.colour ?? '',
-				// Sent only for something that is a Sector RIGHT NOW. `draft.limit`
-				// is set when the editor opens and survives a change of
-				// Subcategory, so a Sector re-classified as a colegio would
-				// otherwise post a Limit onto a record that cannot have one.
-				...(this.draft.limit === undefined || !this.isSector(this.draft.subcategoryId)
-					? {}
-					: { limit: this.draft.limit }),
-				// A drawn shape wins over the coordinate fields, which the form does
-				// not even show for one. GeoJSON orders positions [longitude,
-				// latitude] — the reverse of how they are said out loud, and of the
-				// form's field order.
-				geometry: this.draft.geometry ?? (lat === null || lon === null
-					? null
-					: { type: 'Point', coordinates: [lon, lat] }),
-			}
 		},
 
 		async save() {
@@ -1451,10 +1264,11 @@ export default {
 			try {
 				const isNew = this.draft.id === null
 				const { data } = isNew
-					? await axios.post(generateUrl('/apps/territorio/features'), this.payload())
+					? await axios.post(generateUrl('/apps/territorio/features'),
+						payload(this.draft, this.taxonomy))
 					: await axios.put(
 						generateUrl(`/apps/territorio/features/${this.draft.id}`),
-						this.payload(),
+						payload(this.draft, this.taxonomy),
 					)
 
 				// Read before the merge, never after: mergeFeature() can close the
@@ -1477,7 +1291,7 @@ export default {
 				//
 				// ponytail: they live in the draft and die with it, so closing the
 				// sidebar still loses them. #15 is what gives a Limit somewhere to be.
-				this.draft = this.draftFrom(data)
+				this.draft = draftFrom(data, this.taxonomy)
 				if (picked !== undefined) {
 					this.draft.picked = picked
 					// The shapes too, not only the ids. Carrying half of it left the
@@ -1495,9 +1309,9 @@ export default {
 				this.loadHistory(data.id)
 			} catch (exception) {
 				// 422 carries a message naming what to fix; anything else does not.
-				this.error = exception.response?.data?.message
-					?? 'No se pudo guardar. Revise la conexión e inténtelo de nuevo.'
-				console.error('territorio: could not save the feature', exception)
+				this.error = await messageFrom(exception,
+					'No se pudo guardar. Revise la conexión e inténtelo de nuevo.')
+				safeError('could not save the feature', exception)
 			} finally {
 				this.saving = false
 			}

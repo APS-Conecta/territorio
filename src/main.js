@@ -1,3 +1,8 @@
+// Chunks resolve against this, and only Nextcloud knows whether this install
+// serves the app from apps/ or custom_apps/ — the Maki chunk (L1-34) is the
+// first code split this app has shipped, which is why nothing set it before.
+__webpack_public_path__ = window.OC?.linkTo('territorio', 'js/')
+
 import axios from '@nextcloud/axios'
 import { addPasswordConfirmationInterceptors } from '@nextcloud/password-confirmation'
 import '@nextcloud/password-confirmation/style.css'

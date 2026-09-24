@@ -110,6 +110,7 @@
 					<button class="territorio-capas__swatch"
 						type="button"
 						:style="{ background: category.color }"
+						:disabled="glyphsLoading"
 						:title="`Elegir pictograma de «${category.label}»`"
 						:aria-label="`Elegir pictograma de «${category.label}»`"
 						@click.stop.prevent="startPicking(category)">
@@ -296,6 +297,7 @@
 						:style="{ background: NEUTRAL }"
 						title="Elegir pictograma de la nueva categoría"
 						aria-label="Elegir pictograma de la nueva categoría"
+						:disabled="glyphsLoading"
 						@mousedown.prevent
 						@click.stop.prevent="startPicking(null)">
 						<NcIconSvgWrapper :svg="glyphFor(null, draftGlyph)" :size="11" />
@@ -389,7 +391,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import { CATALOGUE, glyphFor } from '../glyphs.js'
+import { CATALOGUE, glyphFor, loadCatalogue } from '../glyphs.js'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
 import { PIN_DOT_SIZE, PIN_GLYPH_SIZE } from '../marks.js'
 import { DEFAULT_SECTOR_COLOUR, divisionsOf, treeOf } from '../taxonomy.js'
@@ -471,6 +473,12 @@ export default {
 			 * goes up with the label on the POST.
 			 */
 			draftGlyph: null,
+			/**
+			 * The Maki chunk is on its way (L1-34): the swatches stay inert while
+			 * it loads, so a slow chunk reads as a pressed button rather than as
+			 * a grid that opened empty.
+			 */
+			glyphsLoading: false,
 			CATALOGUE,
 			PIN_DOT_SIZE,
 			PIN_GLYPH_SIZE,
@@ -551,7 +559,7 @@ export default {
 		 * «Cerrar» button would be a second control saying what the first already
 		 * says.
 		 */
-		startPicking(category) {
+		async startPicking(category) {
 			this.$emit('clear-taxonomy-message')
 			if (category !== null) {
 				this.editing = null
@@ -562,6 +570,12 @@ export default {
 
 				return
 			}
+			// The catalogue loads on first open (L1-34), and the grid opens only
+			// once it is whole: `v-for="mark in CATALOGUE"` renders the full list
+			// or nothing-yet, never half of it.
+			this.glyphsLoading = true
+			await loadCatalogue()
+			this.glyphsLoading = false
 			this.picking = category === null
 				? { slug: null, label: 'la nueva categoría', color: DEFAULT_SECTOR_COLOUR }
 				: { slug: category.slug, label: category.label, color: category.color }

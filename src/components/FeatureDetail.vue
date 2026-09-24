@@ -142,7 +142,11 @@
 		<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
 
-		<FeatureHistory v-if="draft.id !== null" :entries="history" :taxonomy="taxonomy" />
+		<FeatureHistory v-if="draft.id !== null"
+			:entries="history"
+			:taxonomy="taxonomy"
+			:failed="historyFailed"
+			@retry="$emit('retry')" />
 
 		<!--
 			The Limit editor goes here, not beside this component (issue #35).
@@ -187,20 +191,28 @@ export default {
 
 	props: {
 		history: { type: Array, default: () => [] },
+		// A failed history load is not an empty history (L1-28): threaded down to
+		// FeatureHistory as `failed`, and its Reintentar re-emitted upward.
+		historyFailed: { type: Boolean, default: false },
 		retired: { type: Boolean, default: false },
 		// The draft is owned by App.vue and mutated in place: the sidebar edits
 		// one record at a time, and copying it back and forth would only add a
-		// second place for the two to disagree.
+		// second place for the two to disagree. THE DRAFT BOX CONVENTION
+		// (CONTEXT.md): one open record, one draft, App.vue owns it and this form
+		// mutates it in place. IndiceView's immutable `update:view` pattern is the
+		// rule for VIEW state — never copy one pattern into the other's context.
 		draft: { type: Object, required: true },
 		taxonomy: { type: Array, required: true },
-		// The Sectores and Unidades Vecinales the app holds, so a stored id can be
-		// shown as the name a person would recognise.
-		boundaries: { type: Array, default: () => [] },
+		// The territorial divisions the app holds, so a stored id can be shown as
+		// the name a person would recognise. `divisions`, matching taxonomy.js's
+		// `divisionsOf` vocabulary (L1-33) — «boundary» names the /boundaries
+		// resource alone: the cadastre street lines a Limit runs along.
+		divisions: { type: Array, default: () => [] },
 		saving: { type: Boolean, default: false },
 		error: { type: String, default: '' },
 	},
 
-	emits: ['save', 'retire'],
+	emits: ['save', 'retire', 'retry'],
 
 	data() {
 		return { confirmingRetire: false }
@@ -328,7 +340,7 @@ export default {
 	methods: {
 		/** The shared resolver (boundaries.js), so this and the Índice say one thing. */
 		nameOf(id) {
-			return boundaryName(this.boundaries, id)
+			return boundaryName(this.divisions, id)
 		},
 
 		clearCoordinates() {

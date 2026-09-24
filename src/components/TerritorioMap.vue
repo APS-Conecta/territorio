@@ -16,6 +16,14 @@
 		</NcNoteCard>
 
 		<div ref="container" class="territorio-map__canvas" data-testid="map-canvas" />
+
+		<!--
+			The locate control, mounted only once the map handle exists: the
+			handle is deliberately non-reactive (created() below), and a child's
+			mounted() runs BEFORE this component's own — so `mapReady` gates the
+			child until this one has finished building the map it hands over.
+		-->
+		<LocateControl v-if="mapReady" :map="map" @notice="onLocateNotice" />
 	</div>
 </template>
 
@@ -35,12 +43,11 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
+import { addBasemap, OSM_ATTRIBUTION } from '../basemap.js'
 import { glyphFor } from '../glyphs.js'
-import { PIN_DOT_SIZE, PIN_GLYPH_SIZE, labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
-import { accuracyLabel, isFixTrustworthy, locateErrorMessage } from '../locate.js'
-import { clusterRing, isApproximate } from '../pins.js'
-import { leafletLayer } from 'protomaps-leaflet'
-import { retryTile } from '../tiles.js'
+import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { clusterIcon, escapeHtml, isApproximate, pinIcon } from '../pins.js'
+import LocateControl from './LocateControl.vue'
 import {
 	boundsOf,
 	colourOf,
@@ -48,14 +55,6 @@ import {
 	UNIDAD_VECINAL_SLUG,
 	UNKNOWN_COLOUR,
 } from '../taxonomy.js'
-
-/**
- * OpenStreetMap's own credit, as markup, from here and never from configuration.
- * Leaflet writes attribution with innerHTML, so a stored string is escaped
- * before it goes anywhere near the control (see attributionHtml).
- */
-const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
-	+ ' target="_blank" rel="noreferrer noopener">OpenStreetMap</a> contributors'
 
 /**
  * Where the map opens before there is anything to open on.
@@ -67,57 +66,13 @@ const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright"'
  */
 const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
 
-/** How far the map lets a person zoom, whichever basemap is drawing it. */
-const MAX_ZOOM = 19
-
-/**
- * The deepest zoom the Protomaps archive actually holds (ADR-0019).
- *
- * Its own header says `max zoom 15`, and Protomaps document z15 as sufficient
- * for street-level mapping. Past it a vector layer OVERZOOMS — it keeps scaling
- * the z15 data instead of asking for a z16 tile that is not in the file — so the
- * map still zooms to 19 and simply stops fetching. Leaving this unset makes it
- * ask for tiles the archive does not have, at every zoom past 15.
- */
-const PMTILES_MAX_DATA_ZOOM = 15
-
-/**
- * The first seven bytes of a PMTiles archive spell its own name.
- *
- * Checked because a 206 is not proof: a proxy or an error page can answer a
- * range request with something that is not an archive, and the failure then
- * looks like an empty map rather than a bad URL.
- */
-const PMTILES_MAGIC = 'PMTiles'
-
-/**
- * The «you are here» blue.
- *
- * Deliberately outside the Category ramp: in this app hue GROUPS Categories
- * (ADR-0013), so a dot in one of those hues would read as a record somebody
- * filed rather than as the device's own position. This is the one mark on the
- * map that means nothing about the territory.
- */
-const LOCATION_COLOUR = '#1a73e8'
-
 /** Between overlayPane (400) and markerPane (600): above shapes, below pins. */
 const PICKABLE_PANE = 'territorio-pickable'
-
-const escapeHtml = (value) => String(value).replace(
-	/[&<>"']/g,
-	(character) => ({
-		'&': '&amp;',
-		'<': '&lt;',
-		'>': '&gt;',
-		'"': '&quot;',
-		"'": '&#39;',
-	}[character]),
-)
 
 export default {
 	name: 'TerritorioMap',
 
-	components: { NcNoteCard },
+	components: { LocateControl, NcNoteCard },
 
 	props: {
 		features: { type: Array, required: true },
@@ -143,10 +98,11 @@ export default {
 		// permanent label — «a Sector carries a permanent label at its centroid»
 		// (#21) being false for precisely the record being worked on.
 		draftName: { type: String, default: '' },
-		// The Boundary features on screen while a Sector is being built, and which
-		// of them are picked. Empty at every other moment: a comuna is around
-		// eleven thousand lines and they are not the map (issue #12).
-		boundaries: { type: Array, default: () => [] },
+		// Cadastre street lines, loaded only while a Sector's Limit is being
+		// built — NOT the divisions; «boundary» names the /boundaries resource
+		// alone (L1-33). Empty at every other moment: a comuna is around eleven
+		// thousand lines and they are not the map (issue #12).
+		cadastreLines: { type: Array, default: () => [] },
 		pickedIds: { type: Array, default: () => [] },
 		// Whether the open draft is waiting for a coordinate. While it is, a click
 		// anywhere places that coordinate — including on top of a Sector or a
@@ -197,11 +153,14 @@ export default {
 			// reopening a saved Sector produces.
 			reported: '',
 
-			// «¿Dónde estoy?». `locating` is the control's own state, so the button
-			// can say whether pressing it again stops following.
-			locating: false,
+			// The locate control's notices, kept here because this template is
+			// the only place they are drawn; the control itself (and its
+			// `locating` flag) lives in LocateControl.vue and emits them.
 			locateNotice: '',
 			locateNoticeType: 'warning',
+			// Flipped at the END of mounted(), once `map` exists: gates
+			// <LocateControl v-if="mapReady"> — see the template.
+			mapReady: false,
 		}
 	},
 
@@ -284,7 +243,7 @@ export default {
 		// Not deep: this array is replaced wholesale by a fetch, never edited in
 		// place, and walking a few thousand geometries on every change to notice
 		// that costs more than the redraw.
-		boundaries() {
+		cadastreLines() {
 			this.drawPickable()
 		},
 		pickedIds() {
@@ -316,10 +275,6 @@ export default {
 			zoomOutTitle: 'Alejar',
 		}).addTo(this.map)
 
-		this.addLocateControl()
-		this.map.on('locationfound', this.onLocationFound)
-		this.map.on('locationerror', this.onLocationError)
-
 		// A pane of its own for the lines a Limit can follow, above the Sectores
 		// and below the pins. Without it they share overlayPane with the Sector
 		// polygons, which are translucent-FILLED and so clickable across their
@@ -345,7 +300,11 @@ export default {
 			this.map.fitBounds(comuna, { padding: [16, 16], animate: false })
 		}
 
-		this.addBasemap()
+		addBasemap(this.map, this.basemap, {
+			attribution: this.attributionHtml,
+			onLoaded: () => { this.tileLoaded = true },
+			onFailed: () => { this.tileFailed = true },
+		})
 
 		// Shapes live in Leaflet's overlayPane and markers in its markerPane, which
 		// is what puts a Sector's fill beneath the pins standing on it. Nothing
@@ -371,276 +330,19 @@ export default {
 		// animates the sidebar and navigation, so observe rather than guess.
 		this.resizeObserver = new ResizeObserver(() => this.map.invalidateSize())
 		this.resizeObserver.observe(this.$refs.container)
+
+		// Last, so every handle above exists before the child mounts for it.
+		this.mapReady = true
 	},
 
 	beforeUnmount() {
 		this.resizeObserver?.disconnect()
-		// Before `remove()`, and explicitly: `map.remove()` tears down the map but
-		// a watch started with `locate({ watch: true })` is a
-		// `navigator.geolocation` subscription held by the browser, which would
-		// otherwise keep waking the GPS after the map it fed is gone.
-		this.map?.stopLocate()
+		// The geolocation watch is stopped in LocateControl's own beforeUnmount
+		// — the control that started it owns stopping it.
 		this.map?.remove()
 	},
 
 	methods: {
-		/**
-		 * Draw the basemap, in whichever of its two forms this install serves.
-		 *
-		 * ADR-0019: a PMTiles archive is one file the browser reads with Range
-		 * requests, and a raster URL is a directory of images. They need different
-		 * Leaflet layers, different failure handling and different CSP directives
-		 * (`PageController` owns that last one), so the fork is here and once.
-		 */
-		addBasemap() {
-			if (this.basemap.kind === 'pmtiles') {
-				this.addPmtilesBasemap()
-				return
-			}
-
-			this.addRasterBasemap()
-		},
-
-		/**
-		 * The Protomaps vector basemap, drawn to canvas by `protomaps-leaflet`.
-		 *
-		 * That library is in maintenance mode and its own docs point new projects
-		 * at MapLibre. It is still the right one here for the reason those docs
-		 * give for keeping it: this map is Leaflet all the way down — geoman draws
-		 * on it, markercluster clusters on it, and `PICKABLE_PANE` orders it — and
-		 * MapLibre would mean rewriting every one of those. The same docs call it
-		 * suited to non-interactive layers, which is exactly what a basemap under
-		 * our own overlays is: nothing here is ever clicked.
-		 */
-		addPmtilesBasemap() {
-			leafletLayer({
-				url: this.basemap.url,
-				attribution: this.attributionHtml,
-				// Spanish labels from the archive itself, so place names match the
-				// rest of the interface instead of arriving in English.
-				lang: 'es',
-				// `light`, and the brightness that goes with it is not decoration:
-				// see the `--vector` filter at the bottom of this file. Bare
-				// `light` earth is darker than the raster land every ratio in
-				// map-legibility § 2 was measured over, which drops the worst
-				// dot-on-tint pair to 2.65:1 — below WCAG 1.4.11's floor and worse
-				// than the 3.04:1 it replaced. `white` would clear it at 3.44:1 but
-				// renders a basemap so pale the street grid is hard to read, and
-				// reading the street grid is how a Sector gets drawn at all.
-				flavor: 'light',
-				maxZoom: MAX_ZOOM,
-				maxDataZoom: PMTILES_MAX_DATA_ZOOM,
-			})
-				.on('tileload', () => {
-					this.tileLoaded = true
-				})
-				.addTo(this.map)
-
-			// And NOT a `tileerror` handler, because there is no such event here:
-			// `protomaps-leaflet` calls Leaflet's done callback as `done(undefined,
-			// tile)` unconditionally, so a tile that never rendered is
-			// indistinguishable from one that did. Without the check below a
-			// wrong URL is a blank map with no warning and nothing in the console.
-			this.reportArchiveReachable()
-		},
-
-		/**
-		 * Say whether the archive is actually there, once, at mount.
-		 *
-		 * Reads the first seven bytes rather than trusting a status: a 206 only
-		 * says something answered. What has to be true is that the server honours
-		 * Range AND that what comes back is an archive — a server that ignores
-		 * Range would make the reader pull a gigabyte for every tile, and an error
-		 * page can arrive with a perfectly good status code.
-		 */
-		async reportArchiveReachable() {
-			try {
-				const response = await fetch(this.basemap.url, { headers: { Range: `bytes=0-${PMTILES_MAGIC.length - 1}` } })
-
-				if (response.status !== 206) {
-					// Not an error to read the body of: if Range was ignored this is
-					// the whole archive, and reading it would do the damage the
-					// check exists to prevent.
-					response.body?.cancel()
-					this.tileFailed = true
-					return
-				}
-
-				if (new TextDecoder().decode(await response.arrayBuffer()) !== PMTILES_MAGIC) {
-					this.tileFailed = true
-					return
-				}
-
-				this.tileLoaded = true
-			} catch {
-				// Offline, blocked, or a name that does not resolve. The map, the
-				// pins and everything drawn on top keep working without it.
-				this.tileFailed = true
-			}
-		},
-
-		/**
-		 * The «¿Dónde estoy?» button, under the zoom control.
-		 *
-		 * A real `<button>` inside a Leaflet control rather than a div with a
-		 * click handler, so it is focusable, announced and operable from the
-		 * keyboard without any of `a11y.js` — that helper exists for SVG layers,
-		 * which have no such element to borrow.
-		 */
-		addLocateControl() {
-			const control = L.control({ position: 'topright' })
-
-			control.onAdd = () => {
-				const container = L.DomUtil.create('div', 'leaflet-bar territorio-locate')
-				const button = L.DomUtil.create('a', '', container)
-				button.href = '#'
-				button.role = 'button'
-				button.textContent = '◎'
-				button.title = '¿Dónde estoy?'
-				button.setAttribute('aria-label', '¿Dónde estoy?')
-
-				// Or the click pans the map underneath and the href scrolls the page.
-				L.DomEvent.disableClickPropagation(container)
-				L.DomEvent.on(button, 'click', (event) => {
-					L.DomEvent.preventDefault(event)
-					this.toggleLocate(button)
-				})
-
-				this.locateButton = button
-				return container
-			}
-
-			control.addTo(this.map)
-		},
-
-		/**
-		 * Start or stop following the device's position.
-		 *
-		 * `watch`, not a single reading: somebody using this is walking a sector
-		 * with a phone, and a one-shot fix is stale by the next corner. Stopping
-		 * is half the feature — a watch nobody turns off keeps the GPS awake.
-		 */
-		toggleLocate(button) {
-			if (this.locating) {
-				this.map.stopLocate()
-				this.locating = false
-				this.locationLayer?.remove()
-				this.locationLayer = null
-				this.locateNotice = ''
-				button?.setAttribute('aria-pressed', 'false')
-				return
-			}
-
-			this.locating = true
-			this.locateNotice = ''
-			button?.setAttribute('aria-pressed', 'true')
-			this.map.locate({
-				watch: true,
-				enableHighAccuracy: true,
-				// Not `setView`: this map may be mid-draw, and Leaflet moving the
-				// view under a hand placing a vertex is the same class of problem
-				// the animated zoom caused. The first fix recentres, later ones do
-				// not — see below.
-				setView: false,
-			})
-		},
-
-		/**
-		 * Draw where the person is, and say how sure we are.
-		 *
-		 * The accuracy circle is not decoration. This app decides which Sector a
-		 * point falls in (ADR-0008), and a fix taken indoors is routinely loose
-		 * enough to sit on either side of a boundary while looking exactly as
-		 * confident as a good one. So a loose fix is drawn as the circle it really
-		 * is, and says so in words.
-		 */
-		onLocationFound(event) {
-			const accuracy = event.accuracy
-			const trustworthy = isFixTrustworthy(accuracy)
-
-			this.locationLayer?.remove()
-			this.locationLayer = L.layerGroup([
-				// The area the reading actually covers, always — at a good fix it is
-				// a small ring around the dot, which reads as precision rather than
-				// as a claim.
-				L.circle(event.latlng, {
-					radius: Math.max(accuracy || 0, 1),
-					interactive: false,
-					weight: 1,
-					color: LOCATION_COLOUR,
-					fillColor: LOCATION_COLOUR,
-					fillOpacity: 0.12,
-				}),
-				// A dot, not a pin: a pin here would read as a Place somebody filed,
-				// and hue in this app means a Category (ADR-0013). The white ring is
-				// what keeps it legible over both the earth and the water of the
-				// basemap.
-				L.circleMarker(event.latlng, {
-					radius: 6,
-					interactive: false,
-					weight: 3,
-					color: '#ffffff',
-					fillColor: LOCATION_COLOUR,
-					fillOpacity: 1,
-				}),
-			]).addTo(this.map)
-
-			if (!this.locatedOnce) {
-				this.locatedOnce = true
-				this.map.setView(event.latlng, Math.max(this.map.getZoom(), 16), { animate: false })
-			}
-
-			this.locateNoticeType = 'warning'
-			this.locateNotice = trustworthy
-				? ''
-				: `Su ubicación es aproximada (${accuracyLabel(accuracy)}). Puede no coincidir con el sector que se muestra.`
-		},
-
-		onLocationError(event) {
-			this.locating = false
-			this.locateButton?.setAttribute('aria-pressed', 'false')
-			this.locationLayer?.remove()
-			this.locationLayer = null
-			this.locateNoticeType = 'error'
-			this.locateNotice = locateErrorMessage(event?.code)
-		},
-
-		/** A directory of `{z}/{x}/{y}` images — OpenStreetMap's shape, and any clone of it. */
-		addRasterBasemap() {
-			L.tileLayer(this.basemap.url, {
-				attribution: this.attributionHtml,
-				maxZoom: MAX_ZOOM,
-				// Nextcloud serves every page with `Referrer-Policy: no-referrer`, so
-				// without this a tile request carries no `Referer` at all — measured.
-				// A browser also supplies its own `User-Agent`, which names Chrome and
-				// not this app, so the two things OpenStreetMap's Tile Usage Policy
-				// asks an application to identify itself by are both absent and the
-				// traffic is indistinguishable from anonymous scraping. That is the
-				// profile they rate-limit and then answer `403`.
-				//
-				// `origin` and not the browser default: it sends the scheme, host and
-				// port and never a path, so a third party learns which instance asked
-				// and never which page of it, nor which record was open.
-				referrerPolicy: 'origin',
-			})
-				// Tiles failing is not an error the app should die on: the clinic may
-				// be offline, or the tile host firewalled. Pan, zoom and everything
-				// drawn on top keep working, so we note it and carry on.
-				.on('tileerror', (event) => {
-					this.tileFailed = true
-
-					// Leaflet stamps a failed tile as finished and never asks for it
-					// again, so without this the grey square stays for the life of the
-					// page — no pan, resize or poll brings it back. A bounded few
-					// retries heal a 429 or a lost second of network (`tiles.js`).
-					retryTile(event.tile)
-				})
-				.on('tileload', () => {
-					this.tileLoaded = true
-				})
-				.addTo(this.map)
-		},
-
 		/**
 		 * Rebuild the whole marker layer rather than diffing it. One comuna is
 		 * hundreds of markers, where clearing and re-adding costs nothing and a
@@ -865,7 +567,7 @@ export default {
 
 			const next = L.featureGroup()
 
-			this.boundaries.forEach((boundary) => {
+			this.cadastreLines.forEach((boundary) => {
 				// Lines only. A Boundary Dataset can hold a Point — a KML import will
 				// put one there — and geometryToLayer hands back a Marker, which has
 				// no setStyle and would take the whole layer down with it.
@@ -969,6 +671,12 @@ export default {
 			this.draftLayer = layer
 		},
 
+		/** The locate control's notices arrive here; the template above draws them. */
+		onLocateNotice({ text, type }) {
+			this.locateNotice = text
+			this.locateNoticeType = type
+		},
+
 		report(layer) {
 			const geometry = layer.toGeoJSON().geometry
 			this.reported = JSON.stringify(geometry)
@@ -995,51 +703,28 @@ export default {
 			)
 		},
 
+		/**
+		 * A record's pin: the pure markup+size comes from pins.js (L1-32) and this
+		 * wraps it in the one Leaflet shape — the builders answer markup so the js
+		 * suite can reach them, and `L.divIcon` stays here, beside the map. The
+		 * anchor is derived from the size the builder answers, per the
+		 * CLUSTER_DISC lesson below: a mark resized without its anchor draws every
+		 * marker off its coordinate in silence.
+		 */
 		iconFor(feature) {
-			const colour = colourOf(feature, this.subcategories)
-			const selected = feature.id === this.selectedId
-			// What the pin actually says. Hue only groups Categories into six
-			// families; this is what tells a colegio from a farmacia, and it is the
-			// half a dichromacy cannot take away (ADR-0013).
-			//
-			// Interpolated unescaped, unlike the colour beside it. What is STORED
-			// since #46 is the mark's NAME, not its markup: `glyphFor()` looks that
-			// name up in the vendored catalogue and answers a bundled asset or the
-			// neutral, so nothing that arrived from the database reaches this
-			// string. The colour is a hex a person typed into a picker and is
-			// written out as it was stored, which is why that one goes through
-			// escapeHtml.
 			const category = this.subcategories.get(feature.subcategoryId)
-			const glyph = glyphFor(category?.categorySlug, category?.categoryGlyph)
+			const { html, size } = pinIcon({
+				colour: colourOf(feature, this.subcategories),
+				glyph: glyphFor(category?.categorySlug, category?.categoryGlyph),
+				selected: feature.id === this.selectedId,
+				approximate: isApproximate(feature),
+			})
 
-			// The ring the pin already wears goes dashed when the Registry only
-			// knows the coordinate approximately (#23). A modifier and a
-			// `border-style`, because the ring is already there and costs no
-			// footprint — which is what settled it against a halo and an edge
-			// badge, with #37 simultaneously arguing the pin is too small and La
-			// Florida holding ~865 places. Dashed means one thing across this app:
-			// the app is not asserting this precisely (ADR-0015).
-			const classes = ['territorio-pin__dot']
-			if (selected) {
-				classes.push('territorio-pin__dot--selected')
-			}
-			if (isApproximate(feature)) {
-				classes.push('territorio-pin__dot--approximate')
-			}
-
-			// The geometry travels as custom properties rather than as a second
-			// copy of the numbers in the stylesheet below: `iconSize` is JS and
-			// the dot's width is CSS, so 26 used to be written twice in this one
-			// component — and #46's picker previews at the mark size, which would
-			// have made a third copy in a third file (marks.js).
 			return L.divIcon({
 				className: 'territorio-pin',
-				html: `<span class="${classes.join(' ')}"`
-					+ ` style="--territorio-pin:${PIN_DOT_SIZE}px;`
-					+ `--territorio-pin-mark:${PIN_GLYPH_SIZE}px;`
-					+ `background:${escapeHtml(colour)}">${glyph}</span>`,
-				iconSize: [PIN_DOT_SIZE, PIN_DOT_SIZE],
-				iconAnchor: [PIN_DOT_SIZE / 2, PIN_DOT_SIZE / 2],
+				html,
+				iconSize: [size, size],
+				iconAnchor: [size / 2, size / 2],
 			})
 		},
 
@@ -1071,17 +756,11 @@ export default {
 			// outright. A `??` here would have stood in for a bug it cannot happen
 			// without, and would have drawn a plausible bubble over it.
 			const members = cluster.getAllChildMarkers().map((marker) => marker.options.territorio)
-			const { stops, approximate } = clusterRing(members)
-			const ring = stops
-				.map((stop) => `${escapeHtml(stop.colour)} ${stop.from}% ${stop.to}%`)
-				.join(', ')
+			const { html } = clusterIcon(members, cluster.getChildCount())
 
 			return L.divIcon({
 				className: 'territorio-cluster',
-				html: `<span class="territorio-cluster__ring${approximate ? ' territorio-cluster__ring--approximate' : ''}"`
-					+ ` style="background-image:conic-gradient(${ring})">`
-					+ `<span class="territorio-cluster__count">${cluster.getChildCount()}</span>`
-					+ '</span>',
+				html,
 				// 36, where a pin is 26: a bubble has to read as more than one
 				// record before the count inside it is read at all. Written here
 				// and in the stylesheet, so the gate measures what was drawn

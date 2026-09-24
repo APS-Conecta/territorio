@@ -57,6 +57,27 @@
 			</template>
 		</NcEmptyContent>
 
+		<!--
+			Three states, not two (L1-28): a retired list that failed to load is
+			not a retired list that is empty — «No hay registros retirados» over a
+			network failure read as the retirings having been undone.
+		-->
+		<NcEmptyContent v-else-if="retiredFailed && showRetired && features.length === 0"
+			name="No se pudo cargar los registros retirados"
+			description="Revise la conexión e inténtelo de nuevo.">
+			<template #icon>
+				<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
+					<path fill="currentColor"
+						d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+				</svg>
+			</template>
+			<template #action>
+				<NcButton @click="$emit('retry')">
+					Reintentar
+				</NcButton>
+			</template>
+		</NcEmptyContent>
+
 		<NcEmptyContent v-else-if="features.length === 0"
 			:name="showRetired ? 'No hay registros retirados' : 'Todavía no hay registros'"
 			:description="showRetired
@@ -109,12 +130,15 @@ export default {
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
 		showRetired: { type: Boolean, default: false },
+		// A failed load of the retired list is not an empty one (L1-28): shown
+		// only while the retired list is the one on screen.
+		retiredFailed: { type: Boolean, default: false },
 		// Owned by App.vue and part of the one filter, so the map and Análisis
 		// narrow with the list rather than beside it.
 		query: { type: String, default: '' },
 	},
 
-	emits: ['select', 'create', 'import', 'export', 'update:showRetired', 'update:query'],
+	emits: ['select', 'create', 'import', 'export', 'retry', 'update:showRetired', 'update:query'],
 
 	computed: {
 		subcategories() {

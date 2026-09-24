@@ -128,6 +128,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { messageFrom, safeError, warnError } from './api.js'
 
 export default {
 	name: 'AdminSettings',
@@ -173,7 +174,7 @@ export default {
 				const { data } = await axios.get(generateUrl('/apps/territorio/export/history'))
 				this.exports = data
 			} catch (error) {
-				console.error('territorio: could not read the export log', error)
+				warnError('could not read the export log', error)
 				this.exportsFailed = true
 			}
 		},
@@ -198,8 +199,8 @@ export default {
 			} catch (error) {
 				// A 422 names the typo; anything else does not, and silence would
 				// leave the page looking exactly as if nobody pressed the button.
-				this.comunaFailed = error.response?.data?.message
-					?? 'No se pudo guardar. Revise la conexión e inténtelo de nuevo.'
+				this.comunaFailed = await messageFrom(error,
+					'No se pudo guardar. Revise la conexión e inténtelo de nuevo.')
 			} finally {
 				this.savingComuna = false
 			}
@@ -224,7 +225,7 @@ export default {
 			} catch (error) {
 				// Without this, a 500 or a dropped connection leaves every flag
 				// false and the page looks exactly as if nobody pressed the button.
-				console.error('territorio: could not save the basemap setting', error)
+				safeError('could not save the basemap setting', error)
 				this.failed = true
 			} finally {
 				this.saving = false

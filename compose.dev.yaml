@@ -26,7 +26,10 @@ services:
       retries: 10
 
   nextcloud:
-    image: nextcloud:34-apache
+    # Pinned, not floating: the 34-apache tag drifted under a running instance once
+    # already (2026-09: patch began binding body params onto controller args by
+    # name — territorio#138). Bump deliberately, with the gate run after.
+    image: nextcloud:34.0.4-apache
     restart: "no"
     ports:
       - "127.0.0.1:8083:80"

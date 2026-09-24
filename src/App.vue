@@ -1421,6 +1421,7 @@ export default {
 			// and an integer `id` colliding with the route's `string $id` is a
 			// TypeError on the invocation line — a bare 400 no log at Warning
 			// level ever explains. The draft keeps its id; only the wire is silent.
+			// eslint-disable-next-line no-unused-vars -- omitting the key is the point
 			const { id, ...record } = this.draft
 
 			return {

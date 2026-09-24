@@ -1416,8 +1416,15 @@ export default {
 			const lat = toNumber(this.draft.lat)
 			const lon = toNumber(this.draft.lon)
 
+			// The URL addresses the record, so the body never says `id`: NC 34's
+			// dispatcher binds body parameters onto controller arguments by name,
+			// and an integer `id` colliding with the route's `string $id` is a
+			// TypeError on the invocation line — a bare 400 no log at Warning
+			// level ever explains. The draft keeps its id; only the wire is silent.
+			const { id, ...record } = this.draft
+
 			return {
-				...this.draft,
+				...record,
 				colour: this.draft.colour ?? '',
 				// Sent only for something that is a Sector RIGHT NOW. `draft.limit`
 				// is set when the editor opens and survives a change of

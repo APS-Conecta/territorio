@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-23
-- Amends: [ADR-0014](0014-injection-for-cross-app-reads.md)
+- Amends: [ADR-0014](0014-the-cross-app-surface-is-injection-not-rest.md)
 - Deciders: developer
 - Tags: api, ocs, org
 

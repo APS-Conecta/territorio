@@ -10,6 +10,10 @@
 # Both need `make instance-up` — a whole Nextcloud 34 + PostgreSQL 18 stack — which is
 # an order of magnitude heavier than the rest, for checks whose value is precisely that
 # they run against a REAL instance. They stay manual, and README.md says so.
+# The openapi no-drift arm is the one exception, added by the docs-canon wave (org Phase
+# 12, landing Phase 3's deferral): the spec is the published contract (ADR-0020), so a
+# spec that drifted from ApiController is exactly the kind of defect CI exists to catch,
+# and it needs the same throwaway instance the smoke suites do.
 name: CI
 
 # `main` and pull requests, NOT every push. Deliberate, not a narrowing: a commit on a
@@ -99,3 +103,29 @@ jobs:
       # It re-runs `make build` — seconds, on a bundle the step above just built.
       - name: Every shipped package is attributed
         run: make notices
+
+  openapi:
+    name: OpenAPI no-drift — the committed spec is the contract (ADR-0020)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: aps-common sibling
+        run: git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      # openapi.sh docker-execs into the dev container: the generator (and its
+      # composer.phar fetch) run INSIDE it — the runner needs only Docker + node.
+      - name: The throwaway instance
+        run: make instance-up
+      - name: Regenerate the spec from ApiController
+        run: scripts/openapi.sh
+      - name: The committed spec must match
+        run: |
+          git diff --exit-code openapi.json || { echo "::error::openapi.json drifted from ApiController — regenerate and commit (ADR-0020: the spec is generated, never hand-edited)"; exit 1; }
+      - name: Tear down
+        if: always()
+        run: make instance-clean

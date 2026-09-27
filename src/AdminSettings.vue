@@ -90,6 +90,9 @@
 		description="Quién ha exportado nombres, teléfonos o correos de personas, cuándo y cuántos registros. Este registro no se borra.">
 		<NcNoteCard v-if="exportsFailed" type="error">
 			No se pudo leer el registro de exportaciones.
+			<NcButton variant="tertiary" @click="loadExports">
+				Reintentar
+			</NcButton>
 		</NcNoteCard>
 
 		<p v-else-if="exports.length === 0">
@@ -170,6 +173,7 @@ export default {
 
 	methods: {
 		async loadExports() {
+			this.exportsFailed = false
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/export/history'))
 				this.exports = data

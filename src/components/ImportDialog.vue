@@ -91,9 +91,17 @@
 				backup feature and that reverting a run is the answer instead, so it
 				has to be somewhere a person will actually find it.
 			-->
-			<section v-if="batches.length > 0" class="territorio-import__batches">
+			<section v-if="batchesFailed || batches.length > 0" class="territorio-import__batches">
 				<h4>Importaciones recientes</h4>
-				<ul>
+				<!-- Three states, not two (L1-28): a list that failed to load is not
+				     «no imports yet» — that hid Deshacer exactly when it was needed. -->
+				<p v-if="batchesFailed" class="territorio-import__hint">
+					No se pudieron cargar las importaciones recientes.
+					<NcButton variant="tertiary" @click="loadBatches">
+						Reintentar
+					</NcButton>
+				</p>
+				<ul v-else>
 					<li v-for="batch in batches" :key="batch.id" class="territorio-import__batch">
 						<span class="territorio-import__batch-what">
 							<strong>{{ batch.isRevert ? 'Deshacer' : 'Importación' }} #{{ batch.id }}</strong>
@@ -155,6 +163,7 @@ export default {
 			error: '',
 			result: null,
 			batches: [],
+			batchesFailed: false,
 		}
 	},
 
@@ -220,11 +229,13 @@ export default {
 
 	methods: {
 		async loadBatches() {
+			this.batchesFailed = false
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/import/batches'))
 				this.batches = data
 			} catch (exception) {
 				warnError('could not list import batches', exception)
+				this.batchesFailed = true
 			}
 		},
 

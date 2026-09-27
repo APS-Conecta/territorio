@@ -211,6 +211,8 @@
 					:can-generate="canGenerate"
 					:limit="groups(draft.limit, goneIds)"
 					:limit-said="readable(draft.limit)"
+					:failed="boundariesFailed"
+					@retry="loadBoundaries"
 					@add-note="addLimitNote"
 					@remove-part="removeLimitPart"
 					@generate="startSeeding"
@@ -357,6 +359,7 @@ export default {
 			historyFailed: false,
 			duplicatesFailed: false,
 			retiredFailed: false,
+			boundariesFailed: false,
 			// Loaded only while a Sector's Limit is being built, and thrown away
 			// when it is not: a comuna is around eleven thousand lines (issue #12).
 			// `cadastreLines` (L1-33): the street lines a Limit runs along, fetched
@@ -1112,6 +1115,7 @@ export default {
 				return
 			}
 
+			this.boundariesFailed = false
 			try {
 				const { data } = await axios.get(generateUrl('/apps/territorio/boundaries'), {
 					// The ids the draft cites ride along on a request that already goes
@@ -1134,7 +1138,11 @@ export default {
 					this.keepPickedGeometry(this.draft.picked)
 				}
 			} catch (exception) {
+				// Said in the picker (L0-04): an empty picker over a failed load
+				// read as a comuna with no streets, and Generar stayed disabled
+				// with nothing to explain why.
 				warnError('could not load the boundary features', exception)
+				this.boundariesFailed = true
 			}
 		},
 

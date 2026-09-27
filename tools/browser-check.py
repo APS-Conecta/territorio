@@ -167,9 +167,10 @@ def the_basemap_production_runs_is_painted(page, failures):
     escaped control is the exact line that crashed — and the unreachable
     banner must be absent once a tile has painted.
 
-    Skipped, not failed, on an instance deliberately pointed at OSM; the
-    hard-fail posture is deferred to a clean fresh install (#141). A skip is
-    not a pass, and the summary says so.
+    Failed, not skipped, on an instance pointed at OSM (#141): the finding is
+    that the gate must exercise the branch production runs, and a skip would
+    have recreated the blind spot under a nicer name. `make instance-up`
+    provisions the archive, so a gate against OSM is a provisioning mistake.
     """
     served = page.evaluate(
         """() => {
@@ -185,9 +186,10 @@ def the_basemap_production_runs_is_painted(page, failures):
         return
 
     if served["kind"] != "pmtiles":
-        skip(
+        failures.append(
             f"the instance serves a {served['kind']} basemap ({served['url']}), not the "
-            f"PMTiles archive production runs — the custom-basemap branch is unchecked (L1-03)",
+            f"PMTiles archive production runs — the branch the clinic runs went unchecked; "
+            f"provision it with `make instance-up` (L1-03, #141)",
         )
         return
 

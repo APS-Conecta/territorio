@@ -129,9 +129,14 @@ clean:
 # ── Throwaway Nextcloud instance (compose.dev.yaml) ────────────────────────────────────────────
 # First run pulls images and installs Nextcloud; a couple of minutes. After that, seconds.
 # http://localhost:8083 — admin / dev.
-# The restart after the setting is not optional: APCu is per-process (README,
-# "Two traps"), so a value written by occ is invisible to the web process until
-# it restarts — provisioning owns that step rather than leaving it to memory.
+# The restart after the setting is not optional, for two reasons: APCu is
+# per-process (README, "Two traps"), so a value written by occ is invisible to
+# the web process until it restarts; and `up --wait` warms the web workers via
+# status.php BEFORE `app:enable`, so on a FRESH instance they hold a route
+# collection and an enabled-apps state without this app for an hour (CachingRouter,
+# 3600 s) — every /apps/territorio/ page answers 404 until they restart
+# (measured on farmacia-dev, farmacia#2). Provisioning owns the step rather
+# than leaving it to memory.
 instance-up:
 	$(COMPOSE) up -d --wait
 	$(OCC) app:enable territorio

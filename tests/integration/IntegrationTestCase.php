@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Integration;
 
+use OCA\Territorio\Db\DatasetMapper;
+use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Service\FeatureService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -36,7 +38,18 @@ abstract class IntegrationTestCase extends TestCase {
 	/** @var int[] rows this test made, to be removed afterwards */
 	protected array $created = [];
 
+	/** @var string[] Dataset slugs this test made, to be forgotten afterwards */
+	protected array $datasets = [];
+
 	protected function tearDown(): void {
+		// Datasets first, and before the guard: imported rows are not tracked by
+		// `$created`, so the sweep below must not be skipped for a test that
+		// imported a Dataset without creating a single Feature of its own (#122).
+		foreach ($this->datasets as $slug) {
+			$this->forgetDataset($slug);
+		}
+		$this->datasets = [];
+
 		if ($this->created === []) {
 			return;
 		}
@@ -54,6 +67,49 @@ abstract class IntegrationTestCase extends TestCase {
 		}
 
 		$this->created = [];
+	}
+
+	/**
+	 * Forget one imported Dataset and everything it brought in (#122).
+	 *
+	 * Five tests carried a private copy of this body, differing only in how
+	 * each resolved its mappers; the statements were the same five every time.
+	 * Imported rows are not tracked by `$created`, so a Dataset is cleaned by
+	 * slug: the Revisions of its Features first — they reference the Feature —
+	 * then the Features, the Import batches and the Dataset itself by id. Raw
+	 * SQL for the reason the `$created` sweep gives: tidying up after a test
+	 * run is not the app.
+	 *
+	 * Idempotent, and quiet about a slug that never landed: forgetting a
+	 * Dataset that does not exist — a test that imported nothing, or one that
+	 * already cleaned up after itself — is the usual case, not an error.
+	 */
+	protected function forgetDataset(string $slug): void {
+		$db = Server::get(IDBConnection::class);
+
+		try {
+			$id = (int)Server::get(DatasetMapper::class)->findBySlug($slug)->getId();
+		} catch (\Throwable) {
+			return;
+		}
+
+		foreach (Server::get(FeatureMapper::class)->findByDataset($id) as $feature) {
+			$qb = $db->getQueryBuilder();
+			$qb->delete('territorio_revision')
+				->where($qb->expr()->eq('feature_id', $qb->createNamedParameter(
+					(int)$feature->getId(), IQueryBuilder::PARAM_INT,
+				)))->executeStatement();
+		}
+		foreach (['territorio_feature' => 'dataset_id', 'territorio_import' => 'dataset_id'] as $table => $column) {
+			$qb = $db->getQueryBuilder();
+			$qb->delete($table)
+				->where($qb->expr()->eq($column, $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+				->executeStatement();
+		}
+		$qb = $db->getQueryBuilder();
+		$qb->delete('territorio_dataset')
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+			->executeStatement();
 	}
 
 	/** Any Subcategory will do where the test is not about the taxonomy. */

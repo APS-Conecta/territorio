@@ -11,10 +11,8 @@ use OCA\Territorio\Service\ImportFiles;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Http;
-use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
-use OCP\IDBConnection;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
@@ -53,12 +51,12 @@ final class FilesImportTest extends IntegrationTestCase {
 		$this->root = Server::get(IRootFolder::class);
 		$this->features = Server::get(FeatureMapper::class);
 		$this->removeFile();
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 	}
 
 	protected function tearDown(): void {
 		$this->removeFile();
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 		parent::tearDown();
 	}
 
@@ -131,35 +129,5 @@ final class FilesImportTest extends IntegrationTestCase {
 		} catch (NotFoundException) {
 			// Nothing to clean up, which is the usual case.
 		}
-	}
-
-	/** Imported rows are not tracked by $created, so clean by Dataset. */
-	private function forgetDataset(): void {
-		$db = Server::get(IDBConnection::class);
-
-		try {
-			$dataset = Server::get(DatasetMapper::class)->findBySlug(self::DATASET);
-		} catch (\Throwable) {
-			return;
-		}
-		$id = (int)$dataset->getId();
-
-		foreach ($this->features->findByDataset($id) as $feature) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete('territorio_revision')
-				->where($qb->expr()->eq('feature_id', $qb->createNamedParameter(
-					(int)$feature->getId(), IQueryBuilder::PARAM_INT,
-				)))->executeStatement();
-		}
-		foreach (['territorio_feature' => 'dataset_id', 'territorio_import' => 'dataset_id'] as $table => $column) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete($table)
-				->where($qb->expr()->eq($column, $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-				->executeStatement();
-		}
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_dataset')
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-			->executeStatement();
 	}
 }

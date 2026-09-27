@@ -28,6 +28,20 @@ use ZipArchive;
  */
 final class Kmz {
 	/**
+	 * The KML inside a KMZ is inflated into a string in memory, and a few KB
+	 * of archive can declare gigabytes of it — a zip bomb (#129). A comuna's
+	 * real KML is well under this: La Florida's 865 features are 567 KB, so
+	 * the cap is ~14× the real thing. The const is the knob.
+	 */
+	private const MAX_KML_BYTES = 8 * 1024 * 1024;
+
+	/**
+	 * One sentence for the refusal, named so the guard and the test that pins
+	 * it agree on what the person reads.
+	 */
+	private const KML_TOO_BIG = 'El archivo .kml dentro del KMZ supera los 8 MB al descomprimir.';
+
+	/**
 	 * The KML held by an archive's first `.kml` entry.
 	 *
 	 * **The document is the FIRST `.kml` entry, not `doc.kml`.** That name is
@@ -37,6 +51,12 @@ final class Kmz {
 	 * told their perfectly valid KMZ held no map. The entries are walked in
 	 * order, and anything ahead of the KML — an icon, an overlay image, a
 	 * directory entry — is simply not a `.kml`.
+	 *
+	 * The entry's declared size is checked BEFORE it is inflated (#129): a zip
+	 * bomb refuses for the price of one `statIndex` call instead of the memory
+	 * its inflation would claim. The declared size is trusted — an archive
+	 * lying low in its central directory is not covered, and every real bomb,
+	 * written by a real zipper, declares its true size.
 	 *
 	 * @throws InvalidImportException
 	 */
@@ -66,6 +86,20 @@ final class Kmz {
 					$name = (string)$zip->getNameIndex($entry);
 					if (!str_ends_with(strtolower($name), '.kml')) {
 						continue;
+					}
+
+					// #129: read the central directory's declared size and refuse
+					// BEFORE inflating — and a stat that fails is not permission to
+					// inflate either.
+					$stat = $zip->statIndex($entry);
+					if ($stat === false) {
+						throw new InvalidImportException(sprintf(
+							'No se pudo leer «%s» dentro del KMZ.',
+							$name,
+						));
+					}
+					if ($stat['size'] > self::MAX_KML_BYTES) {
+						throw new InvalidImportException(self::KML_TOO_BIG);
 					}
 
 					$kml = $zip->getFromIndex($entry);

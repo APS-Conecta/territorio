@@ -49,7 +49,12 @@
 
 		<h5 v-if="limit.length > 0">Tramos del límite</h5>
 		<ul v-if="limit.length > 0" class="territorio-picker__parts">
-			<li v-for="row in limit" :key="row.name">
+			<!--
+				`key` and the Quitar payload are the ROW, never the name (#99):
+				picked parts fold by name into one row, and a described stretch
+				stands beside a street saying the same words as its own row.
+			-->
+			<li v-for="row in limit" :key="row.key">
 				<span>
 					{{ row.name }}
 					<!-- How much of the comuna that name stands for, like the
@@ -72,7 +77,7 @@
 				</span>
 				<NcButton variant="tertiary"
 					:aria-label="`Quitar ${row.name} del límite`"
-					@click="$emit('remove-part', row.name)">
+					@click="$emit('remove-part', row)">
 					Quitar
 				</NcButton>
 			</li>

@@ -101,3 +101,18 @@ raster refetched on every level.
   tile that never rendered is indistinguishable from one that did. The archive's reachability is
   therefore checked directly, once, by reading its first seven bytes — which also catches a server
   that ignores Range and an error page served with a good status code.
+
+## Addendum (2026-09-26): the default stays public OpenStreetMap raster
+
+`Basemap::DEFAULT_URL` — a fresh install's default, and the fallback when a configured URL is
+refused — remains `tile.openstreetmap.org`, exactly what ADR-0004 set. Asked straight out against
+this ADR's thesis ("not somebody else's public service"), the answer is that no archive ships
+with the app: a default has to draw a map on a machine this repo has never seen, and public OSM
+raster needs no account, key or configuration to do it. A default archive URL would point at a
+host that does not exist, and a refused setting must still leave a working map on screen — a
+settings page that says «not accepted» over a blank canvas has traded a warning for an outage.
+
+The 403 that started this ADR is a rate-limit profile, not a hard block, and it is managed where
+it is met: the bounded tile retry (`src/tiles.js`) and `referrerPolicy: 'origin'`, both of which
+the raster form keeps. OSM remains one tile option among others, and nothing here reopens its
+data APIs — ADR-0004's "tiles and offline imports only" still stands.

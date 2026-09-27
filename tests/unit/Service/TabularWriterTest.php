@@ -165,6 +165,46 @@ final class TabularWriterTest extends TestCase {
 	}
 
 	/**
+	 * The assignment columns, in the Índice's order: the names a person reads,
+	 * not the ids the record stores (ADR-0008).
+	 */
+	public function testTheAssignmentColumnsComeAfterTheClassification(): void {
+		$header = $this->parse((new CsvWriter())->write([self::ROW], false))[0];
+
+		$at = array_search('Clasificación', $header, true);
+		self::assertNotFalse($at, 'the «Clasificación» column is missing');
+		self::assertSame('Sector', $header[$at + 1]);
+		self::assertSame('Unidad Vecinal', $header[$at + 2]);
+	}
+
+	/** A record inside a Sector says so by name, in each column's own cell. */
+	public function testARowCarryingTheAssignmentShowsTheNames(): void {
+		$rows = $this->parse((new CsvWriter())->write([array_merge(self::ROW, [
+			'sectorName' => 'Sector Norte',
+			'unidadVecinalName' => 'UV 12',
+		])], false));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertSame('Sector Norte', $row['Sector']);
+		self::assertSame('UV 12', $row['Unidad Vecinal']);
+	}
+
+	/**
+	 * And a record without an assignment says so with empty cells.
+	 *
+	 * Empty, never "null" and never the id: a cell holding a number is a column
+	 * somebody will sort a spreadsheet by, and the ids mean nothing outside the
+	 * install that minted them.
+	 */
+	public function testARowWithoutAnAssignmentLeavesTheCellsEmpty(): void {
+		$rows = $this->parse((new CsvWriter())->write([self::ROW], false));
+		$row = array_combine($rows[0], $rows[1]);
+
+		self::assertSame('', $row['Sector']);
+		self::assertSame('', $row['Unidad Vecinal']);
+	}
+
+	/**
 	 * The separator injection a spreadsheet export is famous for.
 	 *
 	 * A Chilean address has commas in it and a note can have anything in it. If
@@ -322,8 +362,11 @@ final class TabularWriterTest extends TestCase {
 	 * there was one. A notice listing what a file omits is only useful while it
 	 * is complete, and nothing else would notice it going stale.
 	 */
-	public function testTheKmlNoticeMentionsTheLimit(): void {
-		self::assertStringContainsString('límite', mb_strtolower((new KmlWriter())->write([])));
+	public function testTheKmlNoticeMentionsTheLimitAndTheAssignment(): void {
+		$notice = mb_strtolower((new KmlWriter())->write([]));
+
+		self::assertStringContainsString('límite', $notice);
+		self::assertStringContainsString('sector ni unidad vecinal', $notice);
 	}
 
 	/**

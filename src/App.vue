@@ -410,18 +410,18 @@ export default {
 		},
 
 		/**
-		 * What an export would carry: the list as shown, minus retired records.
+		 * What an export would carry: the live filtered set — the same set the
+		 * map and the Índice draw, whatever the retired toggle is saying. Under
+		 * «Ver retirados» the Datos list shows retired records instead (#130),
+		 * but an export is not asking for what used to be there.
 		 *
-		 * `listed` is the honest answer to "what is on screen", and it includes
-		 * retired ones when somebody has ticked to see them. An export is not
-		 * asking for what used to be there, and the server leaves them out anyway
-		 * (ADR-0005) — sending them would make the dialog promise a count it
-		 * cannot deliver.
+		 * No retired filter is needed: `liveFiltered` derives from `features`,
+		 * and `mergeInto` moves a record out of `features` the moment it is
+		 * retired, so the set updates on its own. The server refuses retired ids
+		 * anyway (`FeatureMapper::findByIds`, ADR-0005).
 		 */
 		exportableIds() {
-			return this.listed
-				.filter((feature) => !feature.retired)
-				.map((feature) => feature.id)
+			return this.liveFiltered.map((feature) => feature.id)
 		},
 
 		/**
@@ -1066,8 +1066,8 @@ export default {
 		 * One name dropped from the Limit, and everything it stood for unpicked.
 		 * The by-name-not-by-row reasoning lives in useLimitEditor.js (L1-31).
 		 */
-		removeLimitPart(name) {
-			removeLimitPart(this.draft, this.cadastreLines, name)
+		removeLimitPart(row) {
+			removeLimitPart(this.draft, this.cadastreLines, row)
 		},
 
 		/**

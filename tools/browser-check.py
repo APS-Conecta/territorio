@@ -928,6 +928,73 @@ def an_export_of_osm_data_names_the_licence(page, failures):
     page.wait_for_timeout(400)
 
 
+def the_export_offers_the_live_set_with_retirados_on(page, failures):
+    """#130: with «Ver retirados» on, Exportar offers the live set, not nothing.
+
+    The Datos list holds only retired records once that toggle is on — it is
+    the recovery screen, and it is why a search reaches them at all — so an
+    export derived from the list offered «0 registros» with its button disabled
+    while the map kept drawing a full live Registry. `exportableIds` follows
+    `liveFiltered` now, the same set the map and the Índice draw, so the toggle
+    no longer changes what a download carries.
+
+    Two records of this run's own, one retired: the search then matches exactly
+    one live and one retired, so every wrong count says something distinct — 0
+    is the bug as filed, 2 would be counting the retired record too.
+    """
+    live = f"Exportable {RUN} Vivo"
+    gone = f"Exportable {RUN} Retirado"
+    for name, offset in ((gone, 600), (live, 700)):
+        page.get_by_role("button", name="Agregar", exact=True).click()
+        page.get_by_label("Nombre").fill(name)
+        page.get_by_label("Latitud").fill(f"-33.5{offset + NUDGE}")
+        page.get_by_label("Longitud").fill(f"-70.5{offset + NUDGE}")
+        save(page, failures, f"the exportable record {name!r}")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+
+    retire_the_runs_record(page, gone)
+
+    page.get_by_role("button", name="Ver retirados", exact=True).click()
+    if not settles(page, lambda: page.get_by_role("button", name="Ver activos", exact=True).count() > 0):
+        failures.append("«Ver retirados» did not switch the list, so the export check did not run")
+        page.locator(SEARCH).fill("")
+        return
+
+    # Both names carry «Exportable» and the run stamp, so one search matches the
+    # retired record in the list and the live record the export must still offer.
+    page.locator(SEARCH).fill(f"Exportable {RUN}")
+    page.wait_for_timeout(600)
+    if not settles(page, lambda: page.locator(ROWS).count() > 0):
+        failures.append(
+            "the retired record was not listed under «Ver retirados», so the export check did not run",
+        )
+        page.locator(SEARCH).fill("")
+        page.get_by_role("button", name="Ver activos", exact=True).click()
+        page.wait_for_timeout(600)
+        return
+
+    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.wait_for_timeout(600)
+
+    said = page.locator(".territorio-export__count").inner_text()
+    if "1 registro" not in said:
+        failures.append(f"with «Ver retirados» on, the export did not offer the live set: {said!r} (#130)")
+    if "2 registro" in said:
+        failures.append(f"the export offered the retired record too: {said!r} (#130)")
+    if not page.get_by_role("button", name="Exportar", exact=True).last.is_enabled():
+        failures.append("with «Ver retirados» on, the dialog's Exportar button was disabled (#130)")
+
+    # The export dialog is an NcDialog: Escape does not dismiss it and its
+    # modal mask keeps intercepting clicks, so close through Cancelar (r18).
+    page.get_by_role("button", name="Cancelar", exact=True).first.click()
+    page.wait_for_timeout(300)
+    page.get_by_role("button", name="Ver activos", exact=True).click()
+    page.wait_for_timeout(600)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def the_administrator_can_read_the_export_log(page, failures):
     """ADR-0006: "An administrator can read that list as a report."
 
@@ -1250,7 +1317,9 @@ def a_gone_line_says_so_and_keeps_its_name(page, failures):
     Retired through the app's own DELETE — ADR-0005 retires rather than destroys,
     and that is what «gone» means here — because a Boundary feature is in no list
     to click. A re-import does NOT retire what a newer file stopped publishing,
-    so there is no import path to drive this from.
+    so there is no import path to drive this from. Restored again at the end,
+    because a save re-sending a Limit that names a retired line is refused by
+    design, and every later save of this run's Sector walks through that refusal.
     """
     sector = registry_feature(page, f"Sector Navegador {RUN}")
     cited = [part["featureId"] for part in (sector or {}).get("limit") or [] if "featureId" in part]
@@ -1310,6 +1379,26 @@ def a_gone_line_says_so_and_keeps_its_name(page, failures):
     if not [text for text in said if "a mano" in text]:
         failures.append(f"the hand-typed tramo stopped saying «a mano»: {said}")
 
+    # And put the line back. The dead reference is this check's own making,
+    # and the app refuses a save that re-sends a Limit naming a retired line by
+    # design (L1-21: «quite esas partes») — so leaving it retired makes every
+    # later save of this run's Sector fail, starting with the 30-tramos PUT the
+    # retire-control check below grows the sidebar with. Restored through the
+    # door the screen offers, the same fetch shape the retire two screens up
+    # used, so the cleanup proves that door too.
+    restored = page.evaluate(
+        """async (id) => {
+            const response = await fetch(
+                `/index.php/apps/territorio/features/${id}/restore`,
+                { method: 'POST', headers: { requesttoken: window.OC.requestToken } },
+            )
+            return response.status
+        }""",
+        cited[0],
+    )
+    if restored != 200:
+        failures.append(f"could not restore the line this check retired: HTTP {restored}")
+
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -1346,6 +1435,105 @@ def retire_the_runs_record(page, name):
     page.keyboard.press("Escape")
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
+
+
+def reclaim_the_runs_category(page, category, *names):
+    """Take one of the run's Categories off the instance again (#131).
+
+    The other half of `retire_the_runs_record`: a retired record still counts
+    under its Category (ADR-0016), so retiring the run's records alone leaves
+    the Category behind — one per run, each spending a spare colour, until the
+    instance walks into the neutral branch and `TaxonomyColourTest` can no
+    longer see a walk to measure (#134). This walks the refusal sentence's own
+    route: restore each record (a retired record cannot be saved — the Guardar
+    group is `v-if="!retired"`), reclassify it to «Sin clasificar · Otro»
+    through the Subcategoría picker, retire it again (ADR-0005: retire, not
+    delete), then remove the now-empty Category through the Capas bin two-step.
+
+    App doors only — the same doors a person has. A fetch or an occ call here
+    would tidy the instance while proving nothing about the doors, and a
+    teardown that bypassed them could hide a broken one for good.
+
+    Best-effort and silent like `retire_the_runs_record`: a teardown stumble
+    must not fail a passing run, and a Category stranded by a crashed run must
+    not make every later run fail at the same removal. Anything that cannot be
+    found is left for `make instance-clean`, the way RUN's own note says.
+    """
+    for name in names:
+        # A search filters the retired list too (listFor()), so the list must be
+        # in active mode before an empty result may be read as "retired".
+        if page.get_by_role("button", name="Ver retirados", exact=True).count() == 0:
+            back = page.get_by_role("button", name="Ver activos", exact=True)
+            if back.count() > 0:
+                back.first.click()
+                settles(page, lambda: page.get_by_role(
+                    "button", name="Ver retirados", exact=True).count() > 0, timeout=6_000)
+
+        page.locator(SEARCH).fill(name)
+        page.wait_for_timeout(700)
+        if page.locator(ROWS).count() == 0:
+            # Absent from the active list: retired, or gone with a crashed run.
+            # Retired must be restored first — the Guardar group is hidden while
+            # the record is retired, and restoring closes the draft, so the
+            # sequence is forced: restore, back to «Ver activos», reopen below.
+            page.get_by_role("button", name="Ver retirados", exact=True).first.click()
+            settled = settles(page, lambda: page.get_by_role(
+                "button", name="Ver activos", exact=True).count() > 0, timeout=6_000)
+            page.locator(SEARCH).fill(name)
+            page.wait_for_timeout(700)
+            if not settled or page.locator(ROWS).count() == 0:
+                page.locator(SEARCH).fill("")
+                continue  # gone, not retired: nothing to reclassify
+
+            page.locator(ROWS).first.click()
+            page.wait_for_timeout(1200)
+            restore = page.get_by_role("button", name="Restaurar", exact=True)
+            if restore.count() > 0:
+                restore.first.click()
+                page.wait_for_timeout(1500)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            page.get_by_role("button", name="Ver activos", exact=True).first.click()
+            settles(page, lambda: page.get_by_role(
+                "button", name="Ver retirados", exact=True).count() > 0, timeout=6_000)
+            page.wait_for_timeout(400)
+
+            page.locator(SEARCH).fill(name)
+            page.wait_for_timeout(700)
+            if page.locator(ROWS).count() == 0:
+                page.locator(SEARCH).fill("")
+                continue  # the restore never landed; leave it for instance-clean
+
+        # Reclassified through the door the refusal sentence itself names
+        # («Reclasifíquelos y vuelva a intentarlo»). «Sin clasificar» is
+        # structural (#47) — it can never itself be removed — so a record parked
+        # there can never orphan a Category again.
+        page.locator(ROWS).first.click()
+        page.wait_for_timeout(1200)
+        # Reclassified through the door the refusal sentence itself names
+        # («Reclasifíquelos y vuelva a intentarlo»). «Sin clasificar» is
+        # structural (#47) — it can never itself be removed — so a record parked
+        # there can never orphan a Category again. A pick that never offered its
+        # option is this helper's own kind of stumble — silent, and the record
+        # goes back retired where it was found, its Category left for
+        # instance-clean like any other it strands.
+        if not _pick(page, "Subcategoría", "Sin clasificar · Otro", [], f"{name!r}"):
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+            retire_the_runs_record(page, name)
+            continue
+        save(page, [], f"{name!r}")  # a throwaway list: teardown stays silent
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+
+        retire_the_runs_record(page, name)
+
+    # Empty now — every record the run filed under it is retired under «Sin
+    # clasificar». The bin two-step is the door #47 asserts; the throwaway
+    # failures list keeps a refused removal from failing a passing run.
+    row = _capas_category(page, category)
+    if row.count() > 0:
+        _remove_in_capas(page, row, f"«{category}»", [])
 
 
 def exported_corners(page, name, failures):
@@ -1938,6 +2126,11 @@ def the_indice_reads_the_registry(page, failures):
     Asserted against the Registry as the change feed hands it back, not against
     the screen: a Sector column is the whole criterion when it holds a name and
     worthless when it holds the id that was stored, and both look like a table.
+
+    Readability at comuna scale rides here too: every cell says its full text
+    through a native `title`, the first SHOWN column stays pinned under
+    horizontal scroll, and hiding «Nombre» moves that pin — and the open
+    button — to the next shown column.
     """
     box = page.locator(SEARCH)
 
@@ -2053,6 +2246,110 @@ def the_indice_reads_the_registry(page, failures):
     page.wait_for_timeout(200)
     if "phone" not in _indice_table(page)["columns"]:
         failures.append("ticking «Teléfono» back did not bring the column back")
+
+    # A clipped cell still says everything it holds: the native `title` carries
+    # the full text, and an empty cell carries no attribute at all — a tooltip
+    # on nothing is noise on a table where most cells ARE nothing.
+    cells = page.evaluate(
+        """() => {
+            const table = document.querySelector('[data-testid="indice-table"]')
+            if (table === null) {
+                return []
+            }
+            return [...table.querySelectorAll('tbody tr')].map((tr) => Object.fromEntries(
+                [...tr.querySelectorAll('td')].map((td) => [
+                    td.dataset.key,
+                    { text: td.innerText.trim(), title: td.getAttribute('title') },
+                ]),
+            ))
+        }"""
+    ) or []
+    for row in cells:
+        name = row["name"]["text"] if "name" in row else "?"
+        for key, cell in row.items():
+            if cell["text"] != "" and cell["title"] != cell["text"]:
+                failures.append(
+                    f"{name!r} shows {key} {cell['text']!r} under title {cell['title']!r}",
+                )
+            if cell["text"] == "" and cell["title"] is not None:
+                failures.append(f"{name!r} carries a title on its empty {key} cell")
+
+    # The first shown column stays at the pane's left edge under horizontal
+    # scroll: a comuna's table is wider than the pane, and a row whose first
+    # cell scrolled away is a row nobody can name. The viewport is narrowed
+    # first because a pin nothing scrolled past proves nothing — at 1400px
+    # every column can fit.
+    page.set_viewport_size({"width": 800, "height": 900})
+    page.wait_for_timeout(400)
+    pinned = page.evaluate(
+        """() => {
+            const table = document.querySelector('[data-testid="indice-table"]')
+            if (table === null) {
+                return null
+            }
+            const pane = document.querySelector('.territorio-indice')
+            pane.scrollLeft = pane.scrollWidth
+            const corner = table.querySelector('thead th')
+            const second = table.querySelector('tbody td:nth-child(2)')
+            return {
+                scrolled: pane.scrollLeft,
+                paneLeft: pane.getBoundingClientRect().left,
+                corner: corner === null ? null : corner.getBoundingClientRect().left,
+                firsts: [...table.querySelectorAll('tbody td:first-child')]
+                    .map((td) => td.getBoundingClientRect().left),
+                second: second === null ? null : second.getBoundingClientRect().left,
+            }
+        }"""
+    ) or {"scrolled": 0}
+    if pinned["scrolled"] <= 0:
+        failures.append(
+            "the Índice pane would not scroll sideways at 800px — the pin went unproved",
+        )
+    else:
+        if pinned["corner"] is None or pinned["corner"] < pinned["paneLeft"] - 1:
+            failures.append("the pinned header scrolled off the pane's left edge")
+        loose = [left for left in pinned["firsts"] if abs(left - pinned["corner"]) > 1]
+        if loose:
+            failures.append(f"{len(loose)} rows let their first cell off the pinned column")
+        if pinned["second"] is not None and pinned["second"] >= pinned["corner"] - 1:
+            failures.append("scrolling sideways moved nothing under the pinned column")
+    page.evaluate("() => { document.querySelector('.territorio-indice').scrollLeft = 0 }")
+    page.set_viewport_size({"width": 1400, "height": 900})
+    page.wait_for_timeout(400)
+
+    # Hiding «Nombre» moves the pin — and the open button — to the next shown
+    # column: a row must stay named and openable whatever columns a person
+    # keeps, not because one fixed column is special.
+    page.locator(INDICE_COLUMNS).get_by_text("Nombre", exact=True).click()
+    page.wait_for_timeout(200)
+    if _indice_table(page)["columns"][0] != "category":
+        failures.append("hiding «Nombre» did not make «Categoría» the first shown column")
+    moved = page.evaluate(
+        """() => {
+            const table = document.querySelector('[data-testid="indice-table"]')
+            if (table === null) {
+                return null
+            }
+            const corner = table.querySelector('thead th')
+            return {
+                key: corner === null ? null : corner.dataset.key,
+                pinned: corner !== null
+                    && corner.classList.contains('territorio-indice__cell--first'),
+                buttons: table.querySelectorAll(
+                    'tbody td:first-child .territorio-indice__open',
+                ).length,
+                rows: table.querySelectorAll('tbody tr').length,
+            }
+        }"""
+    ) or {"key": None, "pinned": False, "buttons": -1, "rows": 0}
+    if moved["key"] != "category" or not moved["pinned"]:
+        failures.append(f"hiding «Nombre» left the pin on {moved['key']!r}")
+    if moved["buttons"] != moved["rows"]:
+        failures.append("the open button did not follow the first shown column")
+    page.locator(INDICE_COLUMNS).get_by_text("Nombre", exact=True).click()
+    page.wait_for_timeout(200)
+    if _indice_table(page)["columns"][0] != "name":
+        failures.append("ticking «Nombre» back did not bring the column back")
 
     # Capas narrows the table, the Datos list and the Análisis counts together —
     # the criterion, and the reason there is no per-column filter here.
@@ -2613,16 +2910,11 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 
     # NcSelect labels its options "Category · Subcategory", because "Otro"
     # appears in nearly every Category and means something different in each.
-    #
-    # `exact=True` or this matches twelve elements: get_by_label is a substring
-    # match, and #44 gave every Category a «+» named "Agregar subcategoría en
-    # «X»". The accessible names are right — a person hears one picker and
-    # twelve add buttons — so it is the locator that had to say which it means.
-    page.get_by_label("Subcategoría", exact=True).click()
-    page.get_by_label("Subcategoría", exact=True).fill("Salud · CESFAM")
-    page.wait_for_timeout(500)
-    page.keyboard.press("Enter")
-    page.wait_for_timeout(300)
+    # The exact-matching of the locator itself is _pick's, for the «+» reason it
+    # states.
+    if not _pick(page, "Subcategoría", "Salud · CESFAM", failures, "the Salud place"):
+        page.keyboard.press("Escape")
+        return
 
     save(page, failures, "the Salud place")
     page.keyboard.press("Escape")
@@ -2751,13 +3043,12 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
     for label, option in (("Subcategoría", subcategory), ("Exactitud", quality)):
         if option is None:
             continue
-        # exact=True: "Subcategoría" is a substring of the accessible name of
-        # each of #44's twelve «+» buttons ("Agregar subcategoría en «X»").
-        page.get_by_label(label, exact=True).click()
-        page.get_by_label(label, exact=True).fill(option)
-        page.wait_for_timeout(500)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(300)
+        if not _pick(page, label, option, failures, f"{name!r}"):
+            # Not saved: a record the pick never filed would land under «Sin
+            # clasificar» and fail the map checks far from this cause.
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+            return
 
     save(page, failures, f"{name!r}")
     page.keyboard.press("Escape")
@@ -2768,6 +3059,56 @@ def _only_on_the_map(page, query):
     """Narrow the Registry to one search, which narrows the map with it."""
     page.locator(SEARCH).fill(query)
     page.wait_for_timeout(1200)
+
+
+def _pick(page, label, option, failures, what):
+    """Commit an NcSelect choice through the keyboard, once its option is offered.
+
+    The fill-and-Enter this replaces committed nothing whenever the dropdown
+    had not rendered its options yet, and the record then filed under «Sin
+    clasificar» with no refusal — the race that drew a grey marker in run
+    6a57c7's cluster bubble, whose bands said one Salud record that the
+    Registry held as «Sin clasificar · Otro».
+
+    The offer is read out of the rendered rows by textContent — the same idiom
+    `_picker_options()` states the wrap reason for — and NOT by accessible
+    name: NcSelect paints option labels as `name-parts` spans, and the
+    accessibility tree's name for those is not the label's text (probed:
+    "Salud · Prueba 20f1af" offered verbatim, role-name match count 0 — while
+    "Salud · CESFAM" matched, which is why only the just-added-subcategory
+    filings failed). Enter on the FIELD rather than a click on the option, for
+    the same reason: the drawer re-renders under the map's churn and vue-select
+    rebuilds its menu between frames, so an option that is present can be
+    forever unclickable, but the keyboard is not an element. The commitment is
+    verified in `.vs__selected` and retried, so a pick that never lands fails
+    loudly at the cause instead of misfiling the record.
+
+    `exact=True` on the field for the reason the checks below state: the label
+    "Subcategoría" is a substring of the accessible name of each of #44's
+    twelve «+» buttons.
+    """
+    field = page.get_by_label(label, exact=True)
+    rows = page.locator(".vs__dropdown-option")
+
+    def offered():
+        return any(option in said for said in rows.all_text_contents())
+
+    for _ in range(3):
+        field.click()
+        field.fill(option)
+        if settles(page, offered, timeout=5_000):
+            field.press("Enter")
+            page.wait_for_timeout(300)
+            if any(option in said for said in page.locator(".vs__selected").all_text_contents()):
+                return True
+        # The dropdown's state is unknown here (a failed Enter may have closed
+        # it), and an Escape pressed on a closed select bubbles into the
+        # caller's draft — so close it only while it is really open.
+        if rows.count() > 0:
+            field.press("Escape")
+            page.wait_for_timeout(300)
+    failures.append(f"«{label}» never offered {option!r}, so {what} could not be filed")
+    return False
 
 
 def _ring_segments(gradient):
@@ -2807,6 +3148,14 @@ def _ring_segments(gradient):
     return bands
 
 
+# The ring every pin and cluster bubble wears: one fixed dark ink, not a theme
+# variable. The basemap tiles are light in both themes, and this ink measures
+# >= 10.6:1 over every surface and >= 3:1 over every legal fill
+# (tools/ramp-check.py, map-legibility.md §2.2) — which is why the colour is
+# asserted identical across both themes below.
+PIN_RING_INK = "#171717"
+
+
 def the_exactitud_is_drawn_on_the_pin(page, failures):
     """#23: an `aproximada` coordinate wears a dashed ring, an `exacta` one does not.
 
@@ -2817,11 +3166,12 @@ def the_exactitud_is_drawn_on_the_pin(page, failures):
 
     Measured as computed style rather than as a screenshot, because remote OSM
     tiles under every picture would flake this into being ignored
-    (`docs/design/map-legibility.md` § 6). Run in both themes because the ring is
-    `--color-main-background` in both and the treatment must not depend on which
-    one is on — the border COLOUR is asserted against that variable for the same
-    reason: a dash is a pattern, and if it ever became a hue it would be joining
-    the one channel this map already overloads (ADR-0013).
+    (`docs/design/map-legibility.md` § 6). Run in both themes because the
+    treatment must not depend on which one is on — the tiles the ring sits on
+    are light in both, so the border COLOUR is one fixed ink, asserted
+    identical across both themes (§2.2): a dash is a pattern, and if the ink
+    ever became a theme hue it would be joining the one channel this map
+    already overloads (ADR-0013).
 
     The quality is read back out of the Registry first. That the sidebar can
     show «Aproximada» proves nothing about what was written, which is this
@@ -2873,11 +3223,12 @@ def the_exactitud_is_drawn_on_the_pin(page, failures):
                     f"an «{quality}» pin draws a {ring['style']} ring in the {scheme} theme, "
                     f"expected {wanted} — #23 is that the two look identical",
                 )
-            if _as_hex(ring["colour"]) != backgrounds[scheme]:
+            if _as_hex(ring["colour"]) != PIN_RING_INK:
                 failures.append(
-                    f"the {scheme}-theme ring on {name!r} is {ring['colour']}, not the theme's "
-                    f"{backgrounds[scheme]} — the treatment has become a hue, which is the "
-                    f"channel ADR-0013 says it must not use",
+                    f"the {scheme}-theme ring on {name!r} is {ring['colour']}, not the fixed "
+                    f"{PIN_RING_INK} both themes share — the tiles are light in both "
+                    f"(map-legibility.md §2.2), and a theme variable here would be the "
+                    f"channel ADR-0013 says a treatment must not use",
                 )
 
             if quality == "aproximada":
@@ -5069,9 +5420,10 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
     about which note card it lands in. The integration suite proves the write,
     the derived slug and the unique index against the real schema; none of that
     says a person can see any of it. The walk down the spare list moved to
-    `TaxonomyColourTest` in #134: this check leaves a Category behind on every
-    run — see the note below — so the instance holds every spare before long, and
-    on that instance the integration suite can no longer see a walk to measure.
+    `TaxonomyColourTest` in #134 — and #131 put every spare back within reach:
+    the Category is taken away again at the end of
+    `a_category_can_be_given_a_pictogram` (see the note below), so a run spends
+    one spare and returns it rather than holding every spare before long.
 
     What was written is asserted against the Registry per SKILL.md § 5, through
     `served_taxonomy()` — the read a second browser does. The colour is pinned to
@@ -5083,13 +5435,11 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
     itself away, so a fixed name would be added by the first run and refused as a
     duplicate by every run after it.
     """
-    # ponytail: the Category this adds is left behind, one per run, and each one
-    # spends a spare colour — so this instance walks toward the neutral branch
-    # below, which is a real ADR-0017 case rather than a broken check. #47's
-    # removal cannot be used on it: the record it files below is retired at the
-    # end, and a retired record still counts (ADR-0016). `make instance-clean` is
-    # the reset. `a_category_can_be_removed_without_a_reload` adds one with
-    # nothing under it and does take that one away.
+    # The Category cannot be taken away here: `a_category_can_be_given_a_pictogram`
+    # runs on it next, so this finally retires the record only and that check's
+    # teardown reclaims the Category itself (`reclaim_the_runs_category`, #131).
+    # A run killed between the two still spends the spare — `make instance-clean`
+    # remains the reset for that.
     added = f"Comité {RUN}"
     slug = f"comite_{RUN}"
     filed = f"Registro {RUN} en Comité"
@@ -5357,8 +5707,9 @@ def a_category_can_be_given_a_pictogram(page, failures):
     which arrives with no mark of its own — so this check watches it go from the
     neutral fallback to a pictogram somebody chose, which is the whole of the
     slice. Reusing that Category rather than adding one is what keeps this run
-    spending one vetted spare instead of two (ADR-0017, and #47 is what would
-    give the app a way back).
+    spending one vetted spare instead of two (ADR-0017) — and this check's
+    teardown is what gives the spare back: it reclaims the Category (#131), so
+    neither check leaves anything behind.
 
     What was chosen is asserted against the REGISTRY through `served_taxonomy()`,
     per SKILL.md § 5, before anything is said about the screen: a mark that is
@@ -5525,7 +5876,11 @@ def a_category_can_be_given_a_pictogram(page, failures):
         page.locator(SEARCH).fill("")
         page.wait_for_timeout(600)
     finally:
-        retire_the_runs_record(page, filed)
+        # Both records and then the Category itself: this is the teardown that
+        # takes «Comité {RUN}» off the instance, because this check is the last
+        # to need it — the add check above retires its own record only, for this
+        # check's sake (#131).
+        reclaim_the_runs_category(page, added, f"Registro {RUN} en Comité", filed)
 
 
 def _the_same_category_name_twice_is_refused(page, label, slug, errors, failures):
@@ -6014,13 +6369,12 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
     saying where they are leaves a person stuck with a number, which is the half
     of ADR-0016 that is easiest to drop.
     """
-    # ponytail: the Category this adds is left behind, one per run, and it spends
-    # a spare colour. It cannot clean up after itself and that is the behaviour
-    # under test — the record it files is retired at the end, and ADR-0016 counts
-    # retired records, so the removal is correctly refused. Emptying it would mean
-    # reclassifying the record through the sidebar first; worth doing the day this
-    # instance runs out of spares, which is a real ADR-0017 case rather than a
-    # broken check. `make instance-clean` is the reset until then.
+    # The two refusals are the behaviour under test, so the Category cannot be
+    # removed mid-check: ADR-0016 counts the retired record too, and both
+    # removals are correctly refused. The finally is where the #131 leak closed
+    # — `reclaim_the_runs_category` empties the Category the way the refusal
+    # sentence itself prescribes and takes it away, so the run spends its spare
+    # and puts it back instead of walking the instance into the neutral branch.
     before = len(errors)
     added = f"En uso {RUN}"
     filed = f"Registro {RUN} en uso"
@@ -6039,53 +6393,61 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
         )
         return
 
-    for state in ("live", "retired"):
-        if state == "retired":
-            retire_the_runs_record(page, filed)
+    try:
+        for state in ("live", "retired"):
+            if state == "retired":
+                retire_the_runs_record(page, filed)
 
-        if not _remove_in_capas(page, _capas_category(page, added), f"«{added}»", failures):
-            return
+            if not _remove_in_capas(page, _capas_category(page, added), f"«{added}»", failures):
+                return
 
-        said = page.locator(".territorio-capas .notecard--error")
-        if said.count() == 0 or not said.first.is_visible():
-            failures.append(
-                f"removing «{added}» with a {state} record filed under it said nothing: either "
-                f"it was allowed and the record is orphaned, or the refusal never reached the "
-                f"panel",
-            )
-            return
+            said = page.locator(".territorio-capas .notecard--error")
+            if said.count() == 0 or not said.first.is_visible():
+                failures.append(
+                    f"removing «{added}» with a {state} record filed under it said nothing: either "
+                    f"it was allowed and the record is orphaned, or the refusal never reached the "
+                    f"panel",
+                )
+                return
 
-        text = said.first.text_content() or ""
-        if "1 registro" not in text:
-            failures.append(
-                f"the refusal for «{added}» ({state} record) does not say how many records are "
-                f"filed under it: {text!r}",
-            )
-        if "Capas" not in text:
-            failures.append(
-                f"the refusal for «{added}» ({state} record) says a number and not where to go "
-                f"and see them, so it is a dead end (ADR-0016): {text!r}",
-            )
-        if _capas_category(page, added).count() == 0 or _served_category(
-            page, f"en_uso_{RUN}",
-        ) is None:
-            failures.append(
-                f"«{added}» was removed anyway with a {state} record filed under it — the "
-                f"record now points at a Subcategory nothing answers to, and no foreign key "
-                f"would have caught it",
-            )
-            return
+            text = said.first.text_content() or ""
+            if "1 registro" not in text:
+                failures.append(
+                    f"the refusal for «{added}» ({state} record) does not say how many records are "
+                    f"filed under it: {text!r}",
+                )
+            if "Capas" not in text:
+                failures.append(
+                    f"the refusal for «{added}» ({state} record) says a number and not where to go "
+                    f"and see them, so it is a dead end (ADR-0016): {text!r}",
+                )
+            if _capas_category(page, added).count() == 0 or _served_category(
+                page, f"en_uso_{RUN}",
+            ) is None:
+                failures.append(
+                    f"«{added}» was removed anyway with a {state} record filed under it — the "
+                    f"record now points at a Subcategory nothing answers to, and no foreign key "
+                    f"would have caught it",
+                )
+                return
 
-        if state == "live":
-            # Scrolled to, for the same reason as the divisions shot above: the
-            # note card is asserted visible in Playwright's sense (it has a box),
-            # which does not put it inside the panel's scroll box, and the shot
-            # is what a person reads this refusal off.
-            said.first.scroll_into_view_if_needed()
-            page.wait_for_timeout(300)
-            page.locator(".territorio-capas").screenshot(
-                path=str(SHOTS / "47-refusal.png"),
-            )
+            if state == "live":
+                # Scrolled to, for the same reason as the divisions shot above: the
+                # note card is asserted visible in Playwright's sense (it has a box),
+                # which does not put it inside the panel's scroll box, and the shot
+                # is what a person reads this refusal off.
+                said.first.scroll_into_view_if_needed()
+                page.wait_for_timeout(300)
+                page.locator(".territorio-capas").screenshot(
+                    path=str(SHOTS / "47-refusal.png"),
+                )
+    finally:
+        # The #131 leak closed here: this Category used to stay behind, one per
+        # run, because the in-check removals are (correctly) refused and nothing
+        # emptied it afterwards. The reclaim walks the refusal sentence's own
+        # route, so the check proves both refusals and still leaves nothing
+        # behind — including on the early returns above.
+        reclaim_the_runs_category(page, added, filed)
 
     # The refusal IS an HTTP 422 and the browser logs every failed response as a
     # console error, which main()'s run-wide gate would then report. Exactly the
@@ -6193,6 +6555,7 @@ def main():
         the_duplicate_queue_works(page, failures)
         exports_ask_for_a_password_only_when_earned(page, failures)
         an_export_of_osm_data_names_the_licence(page, failures)
+        the_export_offers_the_live_set_with_retirados_on(page, failures)
         # The failure case first: the check that succeeds retires the Sector both
         # of them open, because a four-kilometre Sector left on a shared instance
         # reassigns half the Registry to itself.
@@ -6268,8 +6631,10 @@ def main():
         a_pictogram_can_be_picked_while_a_category_is_named(page, failures)
         # #47, after every check that ADDS to the taxonomy: this one reads the
         # panel with the divisions block on screen, and the two below add
-        # Categories of their own — the first takes its own away again, which
-        # makes it the only taxonomy check here that leaves nothing behind.
+        # Categories of their own — and take their own away again (the first
+        # through the empty removal; #45/#46 and the second through
+        # `reclaim_the_runs_category`, #131), so no taxonomy check here leaves
+        # anything behind.
         the_territorial_division_says_it_cannot_be_removed(page, failures)
         a_category_can_be_removed_without_a_reload(page, errors, failures)
         a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures)

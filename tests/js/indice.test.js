@@ -79,6 +79,7 @@ describe('the columns the Índice offers', () => {
 			'Dirección',
 			'Teléfono',
 			'Correo',
+			'Persona de contacto',
 			'Exactitud',
 			'Revisión',
 		])
@@ -148,6 +149,16 @@ describe('what a row says', () => {
 
 	it('turns a null field into an empty cell, never «null»', () => {
 		expect(cellsOf({ phone: null, email: null })).toMatchObject({ phone: '', email: '' })
+	})
+
+	/**
+	 * The column FeatureDetail itself offers in this position, after «Correo»:
+	 * the table reads its cells the way the form offers them. Mostly empty on a
+	 * catastro — the same reason the empties-sink sort exists.
+	 */
+	it('carries the contact person as text, and an absent one as an empty cell', () => {
+		expect(cellsOf({ contactPerson: 'Violeta Fuentes' }).contactPerson).toBe('Violeta Fuentes')
+		expect(cellsOf({ contactPerson: null }).contactPerson).toBe('')
 	})
 })
 

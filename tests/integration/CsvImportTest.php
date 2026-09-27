@@ -15,8 +15,6 @@ use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Service\RevertService;
 use OCP\AppFramework\Db\DoesNotExistException;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\Server;
 
 /**
@@ -72,11 +70,11 @@ final class CsvImportTest extends IntegrationTestCase {
 		. "229112233;cesfam@ejemplo.cl;Marcela Ríos;Directora;Lunes a viernes;Sin novedad;exacta\n";
 
 	protected function setUp(): void {
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 	}
 
 	protected function tearDown(): void {
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 		parent::tearDown();
 	}
 
@@ -217,40 +215,5 @@ final class CsvImportTest extends IntegrationTestCase {
 		}
 
 		return $subcategory->getLabel();
-	}
-
-	/**
-	 * Imported rows are not tracked by `$created`, so the Dataset is cleaned by
-	 * hand — the same raw-SQL tidy-up `ImportTest` does, and for the same reason
-	 * `IntegrationTestCase` gives: tidying up after a test run is not the app.
-	 */
-	private function forgetDataset(): void {
-		$db = Server::get(IDBConnection::class);
-		$features = Server::get(FeatureMapper::class);
-
-		try {
-			$dataset = Server::get(DatasetMapper::class)->findBySlug(self::DATASET);
-		} catch (\Throwable) {
-			return;
-		}
-		$id = (int)$dataset->getId();
-
-		foreach ($features->findByDataset($id) as $feature) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete('territorio_revision')
-				->where($qb->expr()->eq('feature_id', $qb->createNamedParameter(
-					(int)$feature->getId(), IQueryBuilder::PARAM_INT,
-				)))->executeStatement();
-		}
-		foreach (['territorio_feature' => 'dataset_id', 'territorio_import' => 'dataset_id'] as $table => $column) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete($table)
-				->where($qb->expr()->eq($column, $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-				->executeStatement();
-		}
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_dataset')
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-			->executeStatement();
 	}
 }

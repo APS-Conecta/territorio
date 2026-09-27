@@ -159,9 +159,15 @@ class ExportService {
 	private function rows(array $ids): array {
 		$labels = $this->labelledSubcategories();
 
+		$features = $this->features->findByIds($ids);
+		// Once per export, not per row: every record inside one Sector repeats
+		// the same id, and a comuna's export is hundreds of records over a
+		// handful of divisions.
+		$divisions = $this->divisionNames($features);
+
 		$rows = [];
-		foreach ($this->features->findByIds($ids) as $feature) {
-			$rows[] = $this->row($feature, $labels);
+		foreach ($features as $feature) {
+			$rows[] = $this->row($feature, $labels, $divisions);
 		}
 
 		return $rows;
@@ -169,9 +175,10 @@ class ExportService {
 
 	/**
 	 * @param array<int, array{slug: string, label: string}> $labels
+	 * @param array<int, string> $divisions
 	 * @return array<string, mixed>
 	 */
-	private function row(Feature $feature, array $labels): array {
+	private function row(Feature $feature, array $labels, array $divisions): array {
 		$classification = $labels[$feature->getSubcategoryId()] ?? null;
 
 		return [
@@ -180,6 +187,12 @@ class ExportService {
 			'categorySlug' => $classification === null ? null : explode('/', $classification['slug'])[0],
 			'subcategorySlug' => $classification === null ? null : explode('/', $classification['slug'])[1],
 			'categoryLabel' => $classification['label'] ?? null,
+			// The assignment as the person reads it, not the ids it is stored as
+			// (ADR-0008): the CSV's «Sector» and «Unidad Vecinal» cells, and empty
+			// wherever the record points at nothing — or at a division nobody can
+			// name any more.
+			'sectorName' => $divisions[$feature->getSectorId()] ?? null,
+			'unidadVecinalName' => $divisions[$feature->getUnidadVecinalId()] ?? null,
 			'geometry' => $feature->getGeometry() === null
 				? null
 				: json_decode($feature->getGeometry(), true),
@@ -204,6 +217,28 @@ class ExportService {
 			// not have is not (issue #15).
 			'limit' => self::readableLimit($feature->getBoundaryLimit()),
 		];
+	}
+
+	/**
+	 * The names of the divisions this export's records point at.
+	 *
+	 * The same shape as `labelledSubcategories()` — one map read per export —
+	 * because the ids repeat and the names change never.
+	 *
+	 * @param Feature[] $features
+	 * @return array<int, string>
+	 */
+	private function divisionNames(array $features): array {
+		$ids = [];
+		foreach ($features as $feature) {
+			foreach ([$feature->getSectorId(), $feature->getUnidadVecinalId()] as $id) {
+				if ($id !== null) {
+					$ids[$id] = true;
+				}
+			}
+		}
+
+		return $this->features->namesAmong(array_keys($ids));
 	}
 
 	/**

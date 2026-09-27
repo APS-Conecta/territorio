@@ -15,9 +15,11 @@
 				<NcButton variant="tertiary" @click="$emit('import')">
 					Importar / deshacer
 				</NcButton>
-				<!-- Exports what this list is showing, filters and search included
+				<!-- Exports the live filtered set — filters and search included
 				     (issue #17), which is why it lives beside the search and not in
-				     a settings menu somewhere. -->
+				     a settings menu. With «Ver retirados» on this list shows the
+				     retired records, but the export still carries the live set
+				     (#130): what the map is drawing, not what used to be there. -->
 				<NcButton variant="tertiary" @click="$emit('export')">
 					Exportar
 				</NcButton>

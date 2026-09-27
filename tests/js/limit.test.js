@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groups, partsFrom, provenance, readable, sectorFields, withNote, without } from '../../src/limit.js'
+import { groups, partsFrom, provenance, readable, sectorFields, withNote, without, withoutNote } from '../../src/limit.js'
 
 /**
  * A Sector's Limit — what somebody says out loud when asked where the sector
@@ -109,8 +109,23 @@ describe('readable', () => {
 })
 
 describe('withNote', () => {
-	it('adds a stretch nobody could pick', () => {
-		expect(withNote([], '  por el canal  ')).toEqual([{ name: 'por el canal' }])
+	it('adds a stretch nobody could pick, stamped as its own occurrence', () => {
+		expect(withNote([], '  por el canal  ')).toEqual([
+			{ uid: expect.stringMatching(/^tramo-\d+$/), name: 'por el canal' },
+		])
+	})
+
+	/**
+	 * The stamp is the stretch's identity, never its name (#99): two
+	 * stretches typing the same words — or one typing a name a street already
+	 * carries — are two occurrences, removable one at a time.
+	 */
+	it('stamps a fresh identity on every stretch, never one per name', () => {
+		const twice = withNote(withNote([], 'Canal San Carlos'), 'Canal San Carlos')
+
+		expect(twice).toHaveLength(2)
+		expect(twice[0].uid).toMatch(/^tramo-\d+$/)
+		expect(twice[1].uid).not.toBe(twice[0].uid)
 	})
 
 	it('refuses to add nothing', () => {
@@ -131,14 +146,31 @@ describe('groups', () => {
 			{ featureId: 8, name: 'Avenida Vicuña Mackenna' },
 			{ name: 'por el canal' },
 		])).toEqual([
-			{ name: 'Avenida Vicuña Mackenna', parts: 2, picked: true, gone: 0 },
-			{ name: 'por el canal', parts: 1, picked: false, gone: 0 },
+			{ name: 'Avenida Vicuña Mackenna', parts: 2, picked: true, gone: 0, key: 'Avenida Vicuña Mackenna' },
+			{ name: 'por el canal', parts: 1, picked: false, gone: 0, uid: undefined, key: 'tramo:por el canal#1' },
 		])
 	})
 
 	it('is empty for an empty Limit', () => {
 		expect(groups([])).toEqual([])
 		expect(groups(null)).toEqual([])
+	})
+
+	/**
+	 * Issue #99. A stretch typed with a street's own words is not the street:
+	 * folding the two into one row swallowed the «a mano» badge, read the
+	 * count as the street's ways, and made Quitar all-or-nothing. The two are
+	 * two rows — the street folded by name as it always was, the typed
+	 * stretch standing beside it with its own identity.
+	 */
+	it('keeps a described stretch apart from a street that says the same words', () => {
+		expect(groups([
+			{ featureId: 7, name: 'Canal San Carlos' },
+			{ name: 'Canal San Carlos' },
+		])).toEqual([
+			{ name: 'Canal San Carlos', parts: 1, picked: true, gone: 0, key: 'Canal San Carlos' },
+			{ name: 'Canal San Carlos', parts: 1, picked: false, gone: 0, uid: undefined, key: 'tramo:Canal San Carlos#1' },
+		])
 	})
 
 	/**
@@ -157,13 +189,13 @@ describe('groups', () => {
 			{ featureId: 8, name: 'Avenida Vicuña Mackenna' },
 			{ featureId: 9, name: 'Avenida Vicuña Mackenna' },
 		], [8, 9])).toEqual([
-			{ name: 'Avenida Vicuña Mackenna', parts: 3, picked: true, gone: 2 },
+			{ name: 'Avenida Vicuña Mackenna', parts: 3, picked: true, gone: 2, key: 'Avenida Vicuña Mackenna' },
 		])
 	})
 
 	it('says nothing is gone when the server named none', () => {
 		expect(groups([{ featureId: 7, name: 'Calle Uno' }])).toEqual([
-			{ name: 'Calle Uno', parts: 1, picked: true, gone: 0 },
+			{ name: 'Calle Uno', parts: 1, picked: true, gone: 0, key: 'Calle Uno' },
 		])
 	})
 
@@ -174,8 +206,40 @@ describe('groups', () => {
 	 */
 	it('never calls a hand-typed stretch gone, whatever ids are missing', () => {
 		expect(groups([{ name: 'por el canal' }], [7, 8])).toEqual([
-			{ name: 'por el canal', parts: 1, picked: false, gone: 0 },
+			{ name: 'por el canal', parts: 1, picked: false, gone: 0, uid: undefined, key: 'tramo:por el canal#1' },
 		])
+	})
+
+	/**
+	 * `key` is what the picker's list and its Quitar buttons hang off, so no
+	 * two rows may share one: a picked street and a same-named typed stretch
+	 * coexist, and two raw described parts — nothing has stamped them yet —
+	 * still get distinct, deterministic keys by position among their name.
+	 */
+	it('gives every row a key no other row shares', () => {
+		const keys = groups([
+			{ featureId: 7, name: 'Canal San Carlos' },
+			{ name: 'Canal San Carlos' },
+			{ name: 'Canal San Carlos' },
+			{ name: 'por el canal' },
+		]).map((row) => row.key)
+
+		expect(keys).toEqual([
+			'Canal San Carlos',
+			'tramo:Canal San Carlos#1',
+			'tramo:Canal San Carlos#2',
+			'tramo:por el canal#1',
+		])
+		expect(new Set(keys).size).toBe(keys.length)
+	})
+
+	/** A stamp is the stretch's identity wherever the list splices it (#99). */
+	it('keys a stamped stretch by its stamp, wherever it sits', () => {
+		expect(groups([{ uid: 'tramo-2', name: 'dos' }, { uid: 'tramo-1', name: 'uno' }]))
+			.toEqual([
+				{ name: 'dos', parts: 1, picked: false, gone: 0, uid: 'tramo-2', key: 'tramo-2' },
+				{ name: 'uno', parts: 1, picked: false, gone: 0, uid: 'tramo-1', key: 'tramo-1' },
+			])
 	})
 })
 
@@ -188,7 +252,7 @@ describe('without', () => {
 	 * the tick in the picker flipped off, so the screen would disagree with
 	 * itself and the next click would put it back.
 	 */
-	it('removes every part of one name', () => {
+	it('removes every picked part of one name', () => {
 		const parts = [
 			{ featureId: 7, name: 'Vicuña Mackenna' },
 			{ featureId: 8, name: 'Vicuña Mackenna' },
@@ -198,10 +262,51 @@ describe('without', () => {
 		expect(without(parts, 'Vicuña Mackenna')).toEqual([{ name: 'por el canal' }])
 	})
 
+	/**
+	 * #99: a described stretch saying a street's words is not one of its ways.
+	 * Unpicking the street drops the ways and leaves what somebody typed
+	 * standing — the picker shows the two as two rows, and this is the half
+	 * that keeps them apart when one goes.
+	 */
+	it('leaves a same-named described stretch standing', () => {
+		const typed = { uid: 'tramo-1', name: 'Canal San Carlos' }
+
+		expect(without([
+			{ featureId: 7, name: 'Canal San Carlos' },
+			typed,
+		], 'Canal San Carlos')).toEqual([typed])
+	})
+
 	it('leaves everything else alone', () => {
 		const parts = [{ featureId: 7, name: 'Uno' }, { name: 'dos' }]
 
 		expect(without(parts, 'no existe')).toEqual(parts)
+	})
+})
+
+describe('withoutNote', () => {
+	/**
+	 * The other half of #99: a described stretch is removed by the identity it
+	 * was stamped with, one occurrence at a time — never by the words it says,
+	 * which a second stretch may be saying too.
+	 */
+	it('removes exactly the one occurrence the stamp names', () => {
+		const parts = [
+			{ uid: 'tramo-1', name: 'por el canal' },
+			{ uid: 'tramo-2', name: 'por el canal' },
+			{ uid: 'tramo-3', name: 'por detrás del colegio' },
+		]
+
+		expect(withoutNote(parts, 'tramo-2')).toEqual([
+			{ uid: 'tramo-1', name: 'por el canal' },
+			{ uid: 'tramo-3', name: 'por detrás del colegio' },
+		])
+	})
+
+	it('removes nothing when no part carries the stamp, and keeps the order', () => {
+		const parts = [{ uid: 'tramo-1', name: 'uno' }, { featureId: 7, name: 'Dos' }]
+
+		expect(withoutNote(parts, 'tramo-9')).toEqual(parts)
 	})
 })
 
@@ -230,10 +335,31 @@ describe('the fields a Sector draft carries', () => {
 		]
 
 		expect(sectorFields(limit)).toEqual({
-			limit,
+			limit: [
+				limit[0],
+				{ ...limit[1], uid: expect.stringMatching(/^tramo-\d+$/) },
+				limit[2],
+			],
 			picked: [7, 9],
 			pickedGeometry: {},
 		})
+	})
+
+	/**
+	 * Stored parts come back bare — the server's normalizer keeps `featureId`
+	 * and `name` and nothing else — so this is the reopened-draft door
+	 * (`draftFrom`): every described stretch arrives without an identity and
+	 * gets a fresh one (#99). Picked parts need none: their `featureId` is an
+	 * identity already.
+	 */
+	it('stamps described parts coming back from the server, and picked parts never', () => {
+		const fields = sectorFields([
+			{ featureId: 7, name: 'Avenida Vicuña Mackenna' },
+			{ name: 'por el canal' },
+		])
+
+		expect(fields.limit[1].uid).toMatch(/^tramo-\d+$/)
+		expect(fields.limit[0].uid).toBeUndefined()
 	})
 
 	/**

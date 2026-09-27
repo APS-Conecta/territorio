@@ -428,6 +428,43 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
+	 * The live names of these ids — the export's division column (issue #17).
+	 *
+	 * A record stores its Sector and Unidad Vecinal as ids, and a spreadsheet
+	 * cell holding a number is not something a person reads. One bulk read
+	 * answering all of an export's records at once, mirroring
+	 * `labelledSubcategories()` on the service side.
+	 *
+	 * No dataset filter, because the question is only "can this id still be
+	 * named": a division a person drew and one a cadastre imported answer it
+	 * the same. Absent from the map — retired or gone — is the caller's empty
+	 * cell, never an id.
+	 *
+	 * @param int[] $ids
+	 * @return array<int, string>
+	 */
+	public function namesAmong(array $ids): array {
+		if ($ids === []) {
+			return [];
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'name')
+			->from($this->getTableName())
+			->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)));
+
+		$names = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$names[(int)$row['id']] = (string)$row['name'];
+		}
+		$result->closeCursor();
+
+		return $names;
+	}
+
+	/**
 	 * Leave out everything belonging to a Boundary-feature Dataset.
 	 *
 	 * Applied to the ordinary reads and to no others. `findByDataset()` must see

@@ -30,7 +30,7 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	private const SLUG = 'limites-prueba';
 
 	/** @var int[] datasets this test made */
-	private array $datasets = [];
+	private array $datasetIds = [];
 
 	protected function tearDown(): void {
 		// The features first, through the shared cleanup, then the Datasets they
@@ -38,9 +38,9 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 		// findOrCreate return a boundary Dataset nobody asked for.
 		parent::tearDown();
 
-		if ($this->datasets !== []) {
+		if ($this->datasetIds !== []) {
 			$db = Server::get(IDBConnection::class);
-			foreach ($this->datasets as $id) {
+			foreach ($this->datasetIds as $id) {
 				$qb = $db->getQueryBuilder();
 				$qb->delete('territorio_import')
 					->where($qb->expr()->eq('dataset_id', $qb->createNamedParameter($id)))
@@ -51,7 +51,7 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 					->where($qb->expr()->eq('id', $qb->createNamedParameter($id)))
 					->executeStatement();
 			}
-			$this->datasets = [];
+			$this->datasetIds = [];
 		}
 	}
 
@@ -376,7 +376,7 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 			boundary: true,
 		);
 
-		$this->datasets[] = $this->datasetId();
+		$this->datasetIds[] = $this->datasetId();
 		foreach (Server::get(FeatureMapper::class)->findByDataset($this->datasetId()) as $feature) {
 			$this->created[] = (int)$feature->getId();
 		}

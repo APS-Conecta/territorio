@@ -60,9 +60,9 @@ export function isApproximate(feature) {
  * Category (ADR-0013).
  *
  * Segments are ordered by size and then by hex, never by the order the markers
- * arrived in: `drawMarkers` rebuilds the whole group on every poll, and a ring
- * that followed marker order would spin on screen for no reason a person could
- * name.
+ * arrived in: markers join and leave the group one record at a time (the
+ * diff-apply draw), so arrival order differs delivery to delivery, and a ring
+ * that followed it would spin on screen for no reason a person could name.
  *
  * Percentages, not degrees, because `conic-gradient()` takes either and the
  * count of records is what they are a proportion of. The last stop is pinned to

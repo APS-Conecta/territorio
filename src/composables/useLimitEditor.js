@@ -10,7 +10,7 @@
  * choreography moves.
  */
 import { toggleGroup, togglePick } from '../boundaries.js'
-import { partsFrom, withNote, without } from '../limit.js'
+import { partsFrom, withNote, without, withoutNote } from '../limit.js'
 
 /** Clicking a line on the map is the same pick as choosing its name. */
 export function togglePicked(draft, onScreen, id) {
@@ -38,23 +38,33 @@ export function addLimitNote(draft, text) {
 }
 
 /**
- * One name dropped from the Limit, and everything it stood for unpicked.
+ * One row of the picker's list dropped from the Limit.
  *
- * By name and not by row: a street is dozens of ways, so "Quitar Vicuña
- * Mackenna" means all of them. Dropping one way would change nothing the
- * person can read — the sentence says each name once — while unticking the
- * street in the picker, and the next pick would put it back.
+ * A picked row is one name and means all of its ways — by name and not by
+ * row, because a street is dozens of ways, so "Quitar Vicuña Mackenna"
+ * means all of them. Dropping one way would change nothing the person can
+ * read — the sentence says each name once — while unticking the street in
+ * the picker, and the next pick would put it back.
+ *
+ * A described row is ONE stretch (#99): removed by the identity it was
+ * stamped with, never by its words, which a same-named street beside it —
+ * or a second stretch saying the same thing — is still saying.
  */
-export function removeLimitPart(draft, onScreen, name) {
+export function removeLimitPart(draft, onScreen, row) {
 	if (draft?.limit === undefined) {
 		return
 	}
 
+	if (!row.picked) {
+		draft.limit = withoutNote(draft.limit, row.uid)
+		return
+	}
+
 	const dropped = draft.limit
-		.filter((part) => part.name === name && part.featureId !== undefined)
+		.filter((part) => part.name === row.name && part.featureId !== undefined)
 		.map((part) => part.featureId)
 
-	draft.limit = without(draft.limit, name)
+	draft.limit = without(draft.limit, row.name)
 	draft.picked = draft.picked.filter((id) => !dropped.includes(id))
 	// And forget their shapes. keepPickedGeometry() holds exactly what is
 	// picked — clicking a line on the map goes through it either way — and

@@ -38,7 +38,7 @@ final class ComunaUvTest extends IntegrationTestCase {
 	private const ELSEWHERE = '13101';
 
 	/** @var int[] */
-	private array $datasets = [];
+	private array $datasetIds = [];
 	private ?Comuna $before = null;
 
 	protected function setUp(): void {
@@ -54,7 +54,7 @@ final class ComunaUvTest extends IntegrationTestCase {
 		}
 
 		$db = Server::get(IDBConnection::class);
-		foreach ($this->datasets as $id) {
+		foreach ($this->datasetIds as $id) {
 			foreach (['territorio_import' => 'dataset_id', 'territorio_dataset' => 'id'] as $table => $column) {
 				$qb = $db->getQueryBuilder();
 				$qb->delete($table)
@@ -62,7 +62,7 @@ final class ComunaUvTest extends IntegrationTestCase {
 					->executeStatement();
 			}
 		}
-		$this->datasets = [];
+		$this->datasetIds = [];
 	}
 
 	public function testTheSeedLeavesSomewhereToFileAUnidadVecinal(): void {
@@ -176,7 +176,7 @@ final class ComunaUvTest extends IntegrationTestCase {
 
 	private function track(): void {
 		$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
-		$this->datasets[] = $id;
+		$this->datasetIds[] = $id;
 		foreach (Server::get(FeatureMapper::class)->findByDataset($id) as $feature) {
 			$this->created[] = (int)$feature->getId();
 		}

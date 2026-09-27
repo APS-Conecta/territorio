@@ -39,6 +39,10 @@ export const QUALITY_LABELS = {
  * live — the header row, the show/hide checkboxes and the cells of every row all
  * read this one list.
  *
+ * `Persona de contacto` sits where FeatureDetail offers the field, after
+ * «Correo» — reading down the table meets the fields in the order the form
+ * shows them.
+ *
  * `Revisión` and not a «fecha de modificación»: a Feature carries no timestamp
  * to the client, only its integer revision. The date lives in the revision log,
  * one request per row, and is its own issue.
@@ -52,6 +56,7 @@ export const COLUMNS = [
 	{ key: 'address', label: 'Dirección' },
 	{ key: 'phone', label: 'Teléfono' },
 	{ key: 'email', label: 'Correo' },
+	{ key: 'contactPerson', label: 'Persona de contacto' },
 	{ key: 'quality', label: 'Exactitud' },
 	{ key: 'revision', label: 'Revisión' },
 ]
@@ -97,6 +102,7 @@ export function rowsFor(features, subcategories, boundaries) {
 				address: text(feature.address),
 				phone: text(feature.phone),
 				email: text(feature.email),
+				contactPerson: text(feature.contactPerson),
 				quality: QUALITY_LABELS[feature.locationQuality] ?? '',
 				revision: text(feature.revision),
 			},
@@ -105,14 +111,22 @@ export function rowsFor(features, subcategories, boundaries) {
 }
 
 /**
+ * One collation built once rather than a fresh one per comparison: a comuna is
+ * hundreds of rows by eleven columns and every settled change re-sorts, so the
+ * module builds the rule itself and `sortRows` only calls it.
+ */
+const ES_COLLATOR = new Intl.Collator('es', { numeric: true, sensitivity: 'base' })
+
+/**
  * The rows in the order a clicked header asks for.
  *
  * Pure and returning a new array: the component re-derives this from the
  * filtered prop on every change, and sorting the prop's own array in place would
  * reorder the set the map and Análisis read.
  *
- * `localeCompare` in Spanish rather than `<`: «Ñuñoa» sorts after «Norte» only
- * under Spanish collation, `numeric` is what puts "Sector 2" before "Sector 10"
+ * Spanish collation rather than `<`, through `ES_COLLATOR` rather than a
+ * `localeCompare` call per comparison: «Ñuñoa» sorts after «Norte» only under
+ * Spanish collation, `numeric` is what puts "Sector 2" before "Sector 10"
  * — a clinic names its sectores "words, numbers or colours" (CONTEXT.md) — and
  * `sensitivity: 'base'` is the same accent- and case-blindness the search
  * already folds for, so the two agree about what is "the same letter".
@@ -145,6 +159,6 @@ export function sortRows(rows, key, ascending) {
 			return -1
 		}
 
-		return direction * left.localeCompare(right, 'es', { numeric: true, sensitivity: 'base' })
+		return direction * ES_COLLATOR.compare(left, right)
 	})
 }

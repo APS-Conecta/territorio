@@ -76,10 +76,15 @@ describe('draftFrom', () => {
 		const draft = draftFrom(stored, DIVISIONS)
 
 		// `picked` is derived from the Limit (#15), geometries arrive as the map
-		// brings each line into view (#49), and `limit` is the record itself.
+		// brings each line into view (#49), and `limit` is the record itself —
+		// with described stretches stamped a fresh session identity, because
+		// the stored form carries none (#99).
 		expect(draft.picked).toEqual([5])
 		expect(draft.pickedGeometry).toEqual({})
-		expect(draft.limit).toEqual(stored.limit)
+		expect(draft.limit).toEqual([
+			stored.limit[0],
+			{ ...stored.limit[1], uid: expect.stringMatching(/^tramo-\d+$/) },
+		])
 	})
 
 	it('gives a Place draft none of the picker fields', () => {

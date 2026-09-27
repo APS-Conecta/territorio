@@ -27,8 +27,9 @@
 		<NcNoteCard v-if="kmlFamily" type="warning">
 			Un archivo {{ format.toUpperCase() }} lleva solamente el nombre y la
 			ubicación. No lleva teléfono, correo, persona de contacto, cargo,
-			dirección, horario, notas, fuente, categoría ni el límite de un sector.
-			Para un archivo completo, use GeoJSON.
+			dirección, horario, notas, fuente, categoría, sector ni unidad
+			vecinal, ni el límite de un sector. Para un archivo completo, use
+			GeoJSON.
 		</NcNoteCard>
 
 		<NcCheckboxRadioSwitch v-if="!kmlFamily"

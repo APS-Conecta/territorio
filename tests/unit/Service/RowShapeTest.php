@@ -74,12 +74,14 @@ final class RowShapeTest extends TestCase {
 
 	public function testTheReaderSharesEveryKeySomeWriterMaps(): void {
 		// The mirror of the pin above: a writer key that is NOT part of the
-		// shared core is one of the four known extras — categorySlug,
-		// subcategorySlug, categoryLabel (DB-fed writer input, not reader rows —
-		// Phase 2's seam note) and limit (the export's sentence, deliberately not
-		// read back on import). A FIFTH extra is a new role someone introduced
-		// silently, and this fails until it is either shared or named here.
-		$knownExtras = ['categorySlug', 'subcategorySlug', 'categoryLabel', 'limit'];
+		// shared core is one of the six known extras — categorySlug,
+		// subcategorySlug, categoryLabel, sectorName and unidadVecinalName
+		// (DB-fed writer input, not reader rows — Phase 2's seam note) and limit
+		// (the export's sentence, deliberately not read back on import). A
+		// SEVENTH extra is a new role someone introduced silently, and this
+		// fails until it is either shared or named here.
+		$knownExtras = ['categorySlug', 'subcategorySlug', 'categoryLabel',
+			'sectorName', 'unidadVecinalName', 'limit'];
 
 		foreach (array_diff($this->writerKeys(), self::SHARED) as $key) {
 			self::assertContains($key, $knownExtras, sprintf(

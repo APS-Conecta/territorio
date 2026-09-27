@@ -22,6 +22,15 @@ use JsonSerializable;
  * tests in bare PHP. Reading the setting is `BasemapConfig`'s job.
  */
 final class Basemap implements JsonSerializable {
+	/**
+	 * The fresh-install default and the refusal fallback, settled 2026-09-26
+	 * as still OpenStreetMap's public raster — see ADR-0019's addendum for the
+	 * reasoning. No archive ships with the app, public OSM needs no account,
+	 * key or configuration, and a URL this app refused must still leave a
+	 * working map on screen. The rate-limit profile is managed where it is
+	 * met: the bounded raster retry and `referrerPolicy: 'origin'`
+	 * (src/tiles.js, src/basemap.js).
+	 */
 	public const DEFAULT_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 	/**

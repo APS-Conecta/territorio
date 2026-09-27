@@ -13,8 +13,6 @@ use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\Server;
 
 /**
@@ -44,39 +42,12 @@ final class RevertTest extends IntegrationTestCase {
 		$this->import = Server::get(ImportService::class);
 		$this->revert = Server::get(RevertService::class);
 		$this->features = Server::get(FeatureMapper::class);
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 	}
 
 	protected function tearDown(): void {
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 		parent::tearDown();
-	}
-
-	private function forgetDataset(): void {
-		$db = Server::get(IDBConnection::class);
-		try {
-			$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId();
-		} catch (\Throwable) {
-			return;
-		}
-
-		foreach ($this->features->findByDataset($id) as $feature) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete('territorio_revision')
-				->where($qb->expr()->eq('feature_id', $qb->createNamedParameter(
-					(int)$feature->getId(), IQueryBuilder::PARAM_INT,
-				)))->executeStatement();
-		}
-		foreach (['territorio_feature', 'territorio_import'] as $table) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete($table)
-				->where($qb->expr()->eq('dataset_id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-				->executeStatement();
-		}
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_dataset')
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-			->executeStatement();
 	}
 
 	private function importTwo(string $json = self::TWO): ImportBatch {

@@ -5,7 +5,7 @@
 			type="warning"
 			class="territorio-map__notice">
 			No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta
-			la imagen de fondo.
+			{{ basemap.kind === 'pmtiles' ? 'el dibujo de fondo' : 'la imagen de fondo' }}.
 		</NcNoteCard>
 
 		<NcNoteCard v-if="locateNotice"
@@ -46,6 +46,7 @@ import { makeOperable } from '../a11y.js'
 import { addBasemap, OSM_ATTRIBUTION } from '../basemap.js'
 import { glyphFor } from '../glyphs.js'
 import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
 import { clusterIcon, escapeHtml, isApproximate, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
 import {
@@ -132,6 +133,12 @@ export default {
 		this.map = null
 		this.markers = null
 		this.outlines = null
+		// The drawn layers by record id, beside the signature they were drawn
+		// from: what drawMarkers/drawShapes diff against and what they remove
+		// through. Non-reactive for the reason every handle here is — a proxied
+		// Leaflet layer is the original bug this block exists to prevent.
+		this.pointLayers = new Map()
+		this.shapeLayers = new Map()
 		this.draftLayer = null
 		this.pickable = null
 		this.resizeObserver = null
@@ -140,8 +147,14 @@ export default {
 	data() {
 		return {
 			basemap: loadState('territorio', 'basemap'),
-			tileFailed: false,
-			tileLoaded: false,
+			// The basemap's latest reachability verdict, announced by basemap.js
+			// only when it changes. Raster keeps its old latch — only «no tile
+			// has ever loaded» is a verdict, a mid-session blip is retryTile's
+			// business and not the banner's. A PMTiles archive is probed on a
+			// retrying ladder and re-checked as the view moves, so this can
+			// clear without a reload. The map, the pins and everything drawn on
+			// top keep working whichever way it points.
+			basemapUnreachable: false,
 			// The reshape we last told the parent about, cleared as soon as it comes
 			// back: redrawing on our own edit would tear the layer out from under the
 			// hand still dragging its vertex.
@@ -174,15 +187,6 @@ export default {
 			return this.basemap.usesOpenStreetMap
 				? OSM_ATTRIBUTION
 				: escapeHtml(this.basemap.attribution)
-		},
-
-		/**
-		 * Only warn when the basemap is genuinely unreachable — no tile has ever
-		 * loaded. A healthy server still 404s tiles at the edge of coverage, and
-		 * latching on the first of those would pin the banner forever.
-		 */
-		basemapUnreachable() {
-			return this.tileFailed && !this.tileLoaded
 		},
 
 		/** Shared with the list, so a marker can never disagree with its legend. */
@@ -260,11 +264,11 @@ export default {
 			zoomControl: false,
 			// No animated zoom. This was a guess at the null-map error — the third
 			// of three — and it is kept now that created() has the actual cause,
-			// because it is still true that this map rebuilds layer groups from
-			// three separate causes (a five-second poll, a filter change, and the
-			// Limit picker reloading as the view moves) and an animated zoom is the
-			// widest window for a rebuild to land in. A smooth zoom is worth less
-			// than the fourth occurrence would cost to find.
+			// because it is still true that layers join and leave these groups
+			// from three separate causes (a five-second poll, a filter change, and
+			// the Limit picker reloading as the view moves) and an animated zoom
+			// is the widest window for a layer swap to land in. A smooth zoom is
+			// worth less than the fourth occurrence would cost to find.
 			zoomAnimation: false,
 		})
 		// Leaflet's own titles are English, and they are the only text on the map
@@ -302,13 +306,31 @@ export default {
 
 		addBasemap(this.map, this.basemap, {
 			attribution: this.attributionHtml,
-			onLoaded: () => { this.tileLoaded = true },
-			onFailed: () => { this.tileFailed = true },
+			onLoaded: () => { this.basemapUnreachable = false },
+			onFailed: () => { this.basemapUnreachable = true },
 		})
 
 		// Shapes live in Leaflet's overlayPane and markers in its markerPane, which
 		// is what puts a Sector's fill beneath the pins standing on it. Nothing
 		// here sets a z-index: the panes already order themselves.
+		//
+		// The two persistent groups, created and map-added HERE — before the
+		// first draw — and kept for the page's life: every later redraw diffs
+		// into them instead of swapping in a new one. Map-added first because a
+		// layer's element exists only once its group is on the map (`_initPath`
+		// runs on add), and drawShapes hands that element to makeOperable the
+		// moment it adds a shape.
+		this.markers = L.markerClusterGroup({
+			showCoverageOnHover: false,
+			animate: false,
+			// An arrow rather than the method itself: markercluster calls this
+			// with the cluster as its only argument and no `this` of ours.
+			iconCreateFunction: (cluster) => this.clusterIconFor(cluster),
+		})
+		this.map.addLayer(this.markers)
+		this.outlines = L.featureGroup()
+		this.map.addLayer(this.outlines)
+
 		this.setUpDrawing()
 		this.drawMarkers()
 		this.drawShapes()
@@ -344,35 +366,50 @@ export default {
 
 	methods: {
 		/**
-		 * Rebuild the whole marker layer rather than diffing it. One comuna is
-		 * hundreds of markers, where clearing and re-adding costs nothing and a
-		 * diff would be a second source of truth to keep correct.
+		 * The registries' signature half, as diffLayers wants it: the rows hold
+		 * the live layer beside the signature it was drawn from, and the diff
+		 * sees only the strings.
+		 */
+		signaturesOf(registry) {
+			return new Map([...registry].map(([id, row]) => [id, row.signature]))
+		},
+
+		/**
+		 * Draw the markers by diff: a record whose drawn inputs are unchanged
+		 * keeps its marker, and only added, changed and removed records touch
+		 * the cluster group.
 		 *
-		 * ponytail: full redraw; diff only if a real catastro makes it stutter.
+		 * The whole-group swap this replaced was a workaround from when reactive
+		 * Leaflet handles could leave a listener pointing at a layer whose map
+		 * was already gone — see created() for the history. The handles are
+		 * non-reactive by construction now, so removing from the group the map
+		 * is still using is safe, and the five-second poll stops rebuilding
+		 * hundreds of identical markers on every delivery.
 		 */
 		drawMarkers() {
 			if (this.map === null) {
 				return
 			}
 
-			// A NEW cluster group each time, swapped in whole, rather than emptying
-			// the live one. Removing markers from a group the map is still using
-			// left Leaflet repositioning a marker whose map was already gone
-			// ("latLngToLayerPoint of null") and the pins never came back. The old
-			// group is discarded in one move instead, which it cannot be caught
-			// half-way through.
-			//
-			// ponytail: still a full rebuild, now of a throwaway group. Diff the
-			// markers if a real catastro makes this stutter — it no longer breaks.
-			const next = L.markerClusterGroup({
-				showCoverageOnHover: false,
-				animate: false,
-				// An arrow rather than the method itself: markercluster calls this
-				// with the cluster as its only argument and no `this` of ours.
-				iconCreateFunction: (cluster) => this.clusterIconFor(cluster),
-			})
+			const next = this.points.map((feature) => ({
+				id: feature.id,
+				signature: pointSignature(feature, this),
+				feature,
+			}))
+			const { added, changed, removed } = diffLayers(this.signaturesOf(this.pointLayers), next)
 
-			this.points.forEach((feature) => {
+			// Changed is remove-then-add, never an in-place setIcon: the
+			// `territorio` payload on marker.options is every cluster bubble's only
+			// view of its records (clusterIconFor below), and rebuilding the marker
+			// keeps that payload single-sourced — one builder, one shape of marker,
+			// whether the record is new or merely different.
+			const dropped = [...removed, ...changed.map(({ id }) => id)]
+			if (dropped.length > 0) {
+				this.markers.removeLayers(dropped.map((id) => this.pointLayers.get(id).layer))
+				dropped.forEach((id) => this.pointLayers.delete(id))
+			}
+
+			const fresh = [...added, ...changed].map(({ id, signature, feature }) => {
 				const [lon, lat] = feature.geometry.coordinates
 				// snapIgnore keeps the pins out of geoman's snap list. A Sector's
 				// limit runs along boundaries — a street, a river, another Sector —
@@ -383,52 +420,58 @@ export default {
 				// and never their Features: `getAllChildMarkers()` returns
 				// `L.Marker`s, so what the bubble has to say about the records
 				// under it has to be on the marker by the time it is clustered.
-				L.marker([lat, lon], {
+				const marker = L.marker([lat, lon], {
 					icon: this.iconFor(feature),
 					snapIgnore: true,
 					territorio: {
 						colour: colourOf(feature, this.subcategories),
 						approximate: isApproximate(feature),
 					},
-				})
-					.on('click', () => this.$emit('select', feature.id))
-					.addTo(next)
-			})
+				}).on('click', () => this.$emit('select', feature.id))
 
-			const previous = this.markers
-			this.markers = next
-			this.map.addLayer(next)
-			if (previous !== null) {
-				this.map.removeLayer(previous)
+				return [id, { layer: marker, signature }]
+			})
+			if (fresh.length > 0) {
+				// addLayers, the bulk door: the first draw is one call and a poll
+				// that adds three records does not re-cluster per marker.
+				this.markers.addLayers(fresh.map(([, row]) => row.layer))
+				fresh.forEach(([id, row]) => this.pointLayers.set(id, row))
 			}
 		},
 
 		/**
-		 * The Sectores and other Zones, redrawn wholesale like the markers.
+		 * The Sectores and other Zones, drawn by diff like the markers.
 		 *
-		 * The one being edited is skipped: the draft layer is already showing that
-		 * shape, and drawing both would leave the user dragging the vertices of one
-		 * polygon while looking at another sitting exactly on top of it.
+		 * The one being edited is never in the diff's next set — excluded below —
+		 * so opening a draft on a drawn shape takes the map's copy down as a
+		 * removal and closing the draft brings it back as an add. The draft
+		 * layer is already showing that shape, and drawing both would leave the
+		 * user dragging the vertices of one polygon while looking at another
+		 * sitting exactly on top of it.
 		 */
 		drawShapes() {
 			if (this.map === null) {
 				return
 			}
 
-			// Swapped whole, for the reason drawMarkers() swaps: emptying a group the
-			// map is still using leaves Leaflet holding layers whose map is gone.
-			const next = L.featureGroup()
-			// Each shape with the callback its click runs, so the keyboard can be
-			// given the same one below — after the group joins the map, because
-			// `_initPath` builds the SVG element only then and `getElement()` is
-			// null until it does.
-			const operable = []
+			const next = this.shapes
+				.filter((feature) => this.draftGeometry === null || feature.id !== this.selectedId)
+				.map((feature) => ({
+					id: feature.id,
+					signature: shapeSignature(feature, this),
+					feature,
+				}))
+			const { added, changed, removed } = diffLayers(this.signaturesOf(this.shapeLayers), next)
 
-			this.shapes.forEach((feature) => {
-				if (this.draftGeometry !== null && feature.id === this.selectedId) {
-					return
-				}
+			const dropped = [...removed, ...changed.map(({ id }) => id)]
+			if (dropped.length > 0) {
+				dropped.forEach((id) => {
+					this.outlines.removeLayer(this.shapeLayers.get(id).layer)
+					this.shapeLayers.delete(id)
+				})
+			}
 
+			;[...added, ...changed].forEach(({ id, signature, feature }) => {
 				// What a record IS decides how it is drawn: a Unidad Vecinal is read
 				// from the cadastre and never drawn by the clinic, so it is ground
 				// (#21). The Subcategory slug is the stable identifier — ids differ per
@@ -473,25 +516,21 @@ export default {
 				}
 
 				layer.on('click', select)
-				operable.push({ layer, feature, select })
-				next.addLayer(layer)
-			})
+				this.outlines.addLayer(layer)
+				this.shapeLayers.set(id, { layer, signature })
 
-			const previous = this.outlines
-			this.outlines = next
-			this.map.addLayer(next)
-			if (previous !== null) {
-				this.map.removeLayer(previous)
-			}
-
-			// Leaflet gives a Marker a tab stop and a Path nothing, so this is the
-			// only way a Sector is reachable without a mouse (issue #25).
-			//
-			// Nothing to unbind: every redraw above builds a NEW group with NEW
-			// elements and drops the old one whole, so a handler bound here dies
-			// with the element it was bound to and is never bound twice. Do not add
-			// a teardown for it — there is nothing that survives to tear down.
-			operable.forEach(({ layer, feature, select }) => {
+				// Leaflet gives a Marker a tab stop and a Path nothing, so this is the
+				// only way a Sector is reachable without a mouse (issue #25).
+				//
+				// The element exists here because the persistent group joined the map
+				// in mounted(), before the first draw: `_initPath` runs the moment a
+				// layer is added to an on-map group, so getElement() answers the path
+				// as soon as addLayer returns.
+				//
+				// Nothing to unbind when a layer leaves: makeOperable binds to the
+				// element, the element leaves the DOM with its layer, and a layer is
+				// built and bound exactly once — a changed shape gets a NEW layer,
+				// never a patched one. Do not add a teardown for it.
 				makeOperable(layer.getElement?.(), feature.name, select)
 			})
 		},
@@ -877,6 +916,18 @@ export default {
 $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 
 /*
+ * The ring every pin dot and cluster bubble wears against the basemap. One
+ * fixed dark ink, not a theme variable: the tiles are light in both themes —
+ * §2's label rule (docs/design/map-legibility.md) binds a ring sitting on
+ * those tiles as surely as a label — and the white this replaces measured
+ * 1.15–1.69:1 against them, under the 3:1 contour floor of WCAG 1.4.11 in
+ * both themes. The ink clears 10.58:1 at its floor (park_b, bare) and 3:1
+ * over every legal fill — measured, not asserted, by tools/ramp-check.py,
+ * which fails if this declaration or its wearers drift.
+ */
+$pin-ring: 2px solid #171717;
+
+/*
  * Where the keyboard currently is, on a map made of shapes a mouse could always
  * find and nothing else could (issue #25).
  *
@@ -907,7 +958,7 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	width: var(--territorio-pin);
 	height: var(--territorio-pin);
 	border-radius: 50%;
-	border: 2px solid var(--color-main-background, #fff);
+	border: $pin-ring;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 
 	/*
@@ -941,9 +992,10 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	 * A dash and not an opacity: opacity is hue and alpha, which is the one
 	 * channel a dichromacy takes away and the one this map already overloads
 	 * (ADR-0013). A dash is a pattern, it survives both themes because the ring
-	 * is `--color-main-background` in both, and it already means exactly this
-	 * across the app — the app is not asserting this precisely (ADR-0015), as a
-	 * Unidad Vecinal's hairline does.
+	 * is one fixed dark ink on a basemap that is light in both themes (§2's
+	 * label rule), and it already means exactly this across the app — the app
+	 * is not asserting this precisely (ADR-0015), as a Unidad Vecinal's hairline
+	 * does.
 	 */
 	&--approximate {
 		border-style: dashed;
@@ -973,7 +1025,7 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 	width: 36px;
 	height: 36px;
 	border-radius: 50%;
-	border: 2px solid var(--color-main-background, #fff);
+	border: $pin-ring;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 
 	/* The same dash, for the same reason, when any record under it is approximate. */

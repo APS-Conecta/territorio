@@ -10,8 +10,6 @@ use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\Server;
 
 /**
@@ -52,43 +50,12 @@ final class ImportTest extends IntegrationTestCase {
 		$this->import = Server::get(ImportService::class);
 		$this->features = Server::get(FeatureMapper::class);
 		$this->revisions = Server::get(RevisionLog::class);
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 	}
 
 	protected function tearDown(): void {
-		$this->forgetDataset();
+		$this->forgetDataset(self::DATASET);
 		parent::tearDown();
-	}
-
-	/** Imported rows are not tracked by $created, so clean by Dataset. */
-	private function forgetDataset(): void {
-		$db = Server::get(IDBConnection::class);
-		$datasets = Server::get(DatasetMapper::class);
-
-		try {
-			$dataset = $datasets->findBySlug(self::DATASET);
-		} catch (\Throwable) {
-			return;
-		}
-		$id = (int)$dataset->getId();
-
-		foreach ($this->features->findByDataset($id) as $feature) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete('territorio_revision')
-				->where($qb->expr()->eq('feature_id', $qb->createNamedParameter(
-					(int)$feature->getId(), IQueryBuilder::PARAM_INT,
-				)))->executeStatement();
-		}
-		foreach (['territorio_feature' => 'dataset_id', 'territorio_import' => 'dataset_id'] as $table => $column) {
-			$qb = $db->getQueryBuilder();
-			$qb->delete($table)
-				->where($qb->expr()->eq($column, $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-				->executeStatement();
-		}
-		$qb = $db->getQueryBuilder();
-		$qb->delete('territorio_dataset')
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
-			->executeStatement();
 	}
 
 	private function import(string $json): \OCA\Territorio\Db\ImportBatch {

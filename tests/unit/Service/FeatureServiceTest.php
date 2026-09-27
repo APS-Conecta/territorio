@@ -16,8 +16,10 @@ use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Domain\Geometry;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
+use OCA\Territorio\Domain\Provenance;
 use OCP\AppFramework\Db\DoesNotExistException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -33,18 +35,26 @@ final class FeatureServiceTest extends TestCase {
 	private FeatureMapper&MockObject $features;
 	private SubcategoryMapper&MockObject $subcategories;
 	private RevisionLog&MockObject $revisions;
+	private AssignmentService&MockObject $assignments;
 	private FeatureService $service;
+
+	/** The Subcategory ids the mapper stub resolves — every test uses 7, and
+	 *  the #109 reclassify case adds a second so one save can carry a record
+	 *  out of its division (the mapper must accept where the save is going,
+	 *  not only where the record has been). */
+	private array $subcategoryIds = [7];
 
 	protected function setUp(): void {
 		$this->features = $this->createMock(FeatureMapper::class);
 		$this->subcategories = $this->createMock(SubcategoryMapper::class);
 		$this->revisions = $this->createMock(RevisionLog::class);
+		$this->assignments = $this->createMock(AssignmentService::class);
 
 		$subcategory = new Subcategory();
 		$subcategory->setId(7);
 		$this->subcategories->method('find')->willReturnCallback(
-			static function (int $id) use ($subcategory): Subcategory {
-				if ($id !== 7) {
+			function (int $id) use ($subcategory): Subcategory {
+				if (!in_array($id, $this->subcategoryIds, true)) {
 					throw new DoesNotExistException('no such subcategory');
 				}
 				return $subcategory;
@@ -62,7 +72,7 @@ final class FeatureServiceTest extends TestCase {
 			$this->features,
 			$this->subcategories,
 			$this->revisions,
-			$this->createMock(AssignmentService::class),
+			$this->assignments,
 			$this->createMock(DuplicateMapper::class),
 			$this->createMock(ImportBatchMapper::class),
 			$this->createStub(IUserSession::class),
@@ -125,6 +135,45 @@ final class FeatureServiceTest extends TestCase {
 			'type' => 'Polygon',
 			'coordinates' => [[[-70.6, -33.5], [-70.5, -33.5], [-70.5, -33.4], [-70.6, -33.5]]],
 		];
+	}
+
+	/** The stored form of the ring above — what applyGeometry normalizes any
+	 *  submission of it to, so both sides of the #109 compare read the same
+	 *  bytes and a re-sent unchanged polygon is "unchanged". */
+	private static function storedPolygon(): string {
+		return Geometry::fromArray(self::polygon())->toJson();
+	}
+
+	/** The ring with a corner dragged elsewhere — a redraw, in the shape
+	 *  geoman hands one over after a drag. */
+	private static function redrawnPolygon(): array {
+		return [
+			'type' => 'Polygon',
+			'coordinates' => [[[-70.7, -33.6], [-70.5, -33.5], [-70.5, -33.4], [-70.7, -33.6]]],
+		];
+	}
+
+	/** A division record as the registry hands it over: Subcategory 7 resolves
+	 *  to $division, with the stub answering the way the real service does —
+	 *  off the record's own Subcategory — so a save that reclassifies the
+	 *  record sees the answer change, which is what the #109 bypass case
+	 *  proves on. The polygon is stored in its normalized form. Single-use:
+	 *  a refused save still mutates this record in memory (the guard throws
+	 *  after apply()), so each test builds its own. */
+	private function boundary(string $division): Feature {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('UV 12');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::storedPolygon());
+		$existing->setKind(Kind::Zone->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+		$this->assignments->method('divisionOf')->willReturnCallback(
+			static fn (Feature $feature): ?string => $feature->getSubcategoryId() === 7 ? $division : null,
+		);
+
+		return $existing;
 	}
 
 	public function testItCreatesAPlaceFromAPoint(): void {
@@ -358,6 +407,168 @@ final class FeatureServiceTest extends TestCase {
 		self::assertEqualsWithDelta(-70.5, $updated->getMaxLon(), 1e-9);
 		self::assertSame(Kind::Zone->value, $updated->getKind());
 		self::assertSame(LocationQuality::Exact->value, $updated->getLocationQuality());
+	}
+
+	/**
+	 * #109: a Unidad Vecinal's shape comes from a cadastral Dataset and the
+	 * clinic never draws it, so a person's save cannot redraw it either. The
+	 * refusal is the whole transaction — no row, no Revision, no ADR-0008
+	 * reassignment sweep — because the guard throws after apply() has built
+	 * the record but before anything persists it: the in-memory entity
+	 * apply() already touched is discarded with the request, and must stay
+	 * discarded (reordering it "clean" would move the throw onto a path that
+	 * has already written).
+	 */
+	public function testARedrawnUnidadVecinalIsRefusedRatherThanSaved(): void {
+		$this->boundary('unidad_vecinal');
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessageMatches('/Unidad Vecinal/');
+
+		$this->service->update(3, $this->valid([
+			'name' => 'UV 12 Norte',
+			'geometry' => self::redrawnPolygon(),
+		]));
+	}
+
+	/**
+	 * Clearing IS redrawing, to nothing — and it arrives in the two shapes a
+	 * client sends for "no shape": `null` from the JSON door, `[]` from the
+	 * form-encoded one. Either branch that clears the four geometry columns
+	 * (#63's map) refuses; one test each, because a refused save still mutates
+	 * the in-memory record it read, and a second update() through the same
+	 * stub would see a record whose polygon is already gone.
+	 */
+	public function testClearingAUnidadVecinalWithANullGeometryIsRefused(): void {
+		$this->boundary('unidad_vecinal');
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessageMatches('/Unidad Vecinal/');
+
+		$this->service->update(3, $this->valid(['geometry' => null]));
+	}
+
+	public function testClearingAUnidadVecinalWithAnEmptyGeometryArrayIsRefused(): void {
+		$this->boundary('unidad_vecinal');
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessageMatches('/Unidad Vecinal/');
+
+		$this->service->update(3, $this->valid(['geometry' => []]));
+	}
+
+	/**
+	 * The save that must keep flowing: payload() always sends the geometry key
+	 * (src/draft.js), so every UV rename arrives carrying the polygon it was
+	 * opened with. It re-normalizes to the identical stored bytes, the
+	 * stored-form compare reads "unchanged", and the save lands — key-presence
+	 * would have refused every one of them, which is #63's bug by another name.
+	 */
+	public function testAUnidadVecinalRenameCarryingThePolygonUnchangedFlows(): void {
+		$this->boundary('unidad_vecinal');
+
+		$updated = $this->service->update(3, $this->valid([
+			'name' => 'UV 12 Norte',
+			'geometry' => self::polygon(),
+		]));
+
+		self::assertSame('UV 12 Norte', $updated->getName());
+		self::assertSame(self::storedPolygon(), $updated->getGeometry());
+	}
+
+	/** The other half of the same guarantee: a save that never mentions the
+	 *  geometry at all — applyGeometry's absent branch — leaves it alone, so
+	 *  the compare cannot see a change. */
+	public function testAUnidadVecinalRenameThatOmitsTheGeometryFlows(): void {
+		$this->boundary('unidad_vecinal');
+
+		$updated = $this->service->update(3, ['name' => 'UV 12 Norte', 'subcategoryId' => 7]);
+
+		self::assertSame('UV 12 Norte', $updated->getName());
+		self::assertSame(self::storedPolygon(), $updated->getGeometry());
+	}
+
+	/**
+	 * A revert is the undoing of a batch, not a person redrawing the line —
+	 * it is the door the catastro's own earlier geometry comes back through,
+	 * so it carries the old shape without ceremony.
+	 */
+	public function testARevertPutsAUnidadVecinalsShapeBackUnchallenged(): void {
+		$this->boundary('unidad_vecinal');
+
+		$reverted = $this->service->revertTo(3, $this->valid([
+			'name' => 'UV 12 (catastro)',
+			'geometry' => self::redrawnPolygon(),
+		]));
+
+		self::assertSame(
+			Geometry::fromArray(self::redrawnPolygon())->toJson(),
+			$reverted->getGeometry(),
+		);
+	}
+
+	/**
+	 * An import is the authority on its own shape: update() carrying a
+	 * Provenance is the import door (markOverride stays false), so it may
+	 * reshape a UV — and the write it performs is a provenance write, not the
+	 * local override a person's edit would mark (ADR-0003).
+	 */
+	public function testAnImportReshapesAUnidadVecinalAndMarksNoOverride(): void {
+		$this->boundary('unidad_vecinal');
+
+		$imported = $this->service->update(
+			3,
+			$this->valid(['name' => 'UV 12 (catastro)', 'geometry' => self::redrawnPolygon()]),
+			new Provenance(5, 'mch-uv-12', ['name' => 'UV 12']),
+		);
+
+		self::assertSame(
+			Geometry::fromArray(self::redrawnPolygon())->toJson(),
+			$imported->getGeometry(),
+		);
+		self::assertNotTrue($imported->getOverridden());
+	}
+
+	/**
+	 * A Sector's shape is the clinic's own to draw (ADR-0007's whole
+	 * subject); only the Unidad Vecinal comes from the catastro. The same
+	 * redraw through the other division flows.
+	 */
+	public function testASectorRedrawnByHandFlows(): void {
+		$this->boundary('sector');
+
+		$updated = $this->service->update(3, $this->valid([
+			'name' => 'Sector Norte',
+			'geometry' => self::redrawnPolygon(),
+		]));
+
+		self::assertSame(
+			Geometry::fromArray(self::redrawnPolygon())->toJson(),
+			$updated->getGeometry(),
+		);
+	}
+
+	/**
+	 * The door's own bypass attempt: reclassify the record out of the UV
+	 * Subcategory and redraw it in the same save. The guard reads the division
+	 * the record WAS — captured before apply() reclassifies it — so this save
+	 * is refused too; reading it after would let every reshape through by
+	 * attaching a reclassify to it.
+	 */
+	public function testReclassifyingAUnidadVecinalAndReshapingInOneSaveIsRefused(): void {
+		$this->boundary('unidad_vecinal');
+		$this->subcategoryIds[] = 8;
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+
+		$this->service->update(3, $this->valid([
+			'subcategoryId' => 8,
+			'geometry' => self::redrawnPolygon(),
+		]));
 	}
 
 	/**

@@ -45,8 +45,8 @@
 			announces as one. `aria-sort` on the header cell is how the sort is
 			announced — it is the platform's own attribute for exactly this.
 
-			Drawn only while a column is on: unticking all ten would otherwise leave
-			a header with no cells and one blank row per record — `rows.length` is
+			Drawn only while a column is on: unticking all eleven would otherwise
+			leave a header with no cells and one blank row per record — `rows.length` is
 			still what it was, so the empty state above does not catch it. The
 			checkbox row stays, which is the way back.
 		-->
@@ -57,6 +57,7 @@
 						:key="column.key"
 						:data-key="column.key"
 						scope="col"
+						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }"
 						:aria-sort="sortedBy(column.key)">
 						<!--
 							A button, not a click handler on the <th>: a header that can
@@ -82,9 +83,15 @@
 						first-class feature of this pane, and binding the only focusable
 						control to a column a person can take away is how the table
 						becomes mouse-only. The click on the <tr> stays, because a
-						person reading across a row clicks wherever they are.
+						person reading across a row clicks wherever they are. The same
+						first-shown rule pins the column (the styles below), so a row
+						scrolled sideways still says who it is.
 					-->
-					<td v-for="column in shown" :key="column.key" :data-key="column.key">
+					<td v-for="column in shown"
+						:key="column.key"
+						:data-key="column.key"
+						:title="row.cells[column.key] || null"
+						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }">
 						<button v-if="column.key === shown[0].key" type="button" class="territorio-indice__open">
 							{{ row.cells[column.key] }}
 						</button>
@@ -262,6 +269,34 @@ export default {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/*
+ * The first SHOWN column, pinned to the left edge of the horizontal scroll: at
+ * comuna scale the table is wider than the pane, and a row whose first cell
+ * scrolled away is a row nobody can name. Opaque, because the cells scrolling
+ * under it must never read through — and the two repaint rules below keep hover
+ * and selection saying on the pinned cell what they say on every other one. No
+ * `z-index` here: the sticky header row keeps its own, and a pinned cell must
+ * stay under it.
+ */
+.territorio-indice__cell--first {
+	position: sticky;
+	left: 0;
+	background: var(--color-main-background);
+}
+
+/* The corner cell is pinned both ways, so it sits above its row and its column. */
+.territorio-indice__table th.territorio-indice__cell--first {
+	z-index: 2;
+}
+
+.territorio-indice__table tbody tr:hover .territorio-indice__cell--first {
+	background: var(--color-background-hover);
+}
+
+.territorio-indice__row--selected .territorio-indice__cell--first {
+	background: var(--color-primary-element-light, var(--color-background-dark));
 }
 
 .territorio-indice__table tbody tr:hover {

@@ -318,6 +318,38 @@ final class KmlReaderTest extends TestCase {
 		);
 	}
 
+	/**
+	 * A few kilobytes of archive can declare a KML of gigabytes — a zip bomb
+	 * (#129). Nine MiB of spaces deflate to almost nothing, and the refusal
+	 * must come from the declared size in the central directory, BEFORE the
+	 * entry is inflated: an over-cap bomb costs the import a sentence, not
+	 * this process's memory.
+	 */
+	public function testAKmlTooBigToInflateIsRefusedBeforeItIsInflated(): void {
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('supera los 8 MB al descomprimir');
+
+		$this->reader->readArchive(
+			self::kmz(['doc.kml' => str_repeat(' ', 9 * 1024 * 1024)]),
+			'prueba',
+		);
+	}
+
+	/**
+	 * The cap refuses nothing legitimate, and the boundary is exclusive: the
+	 * KML padded with trailing spaces to exactly 8 MiB imports to the same rows
+	 * as the unpadded one (#129) — a `>=` guard would refuse this file.
+	 */
+	public function testAKmlPaddedToTheCapImportsTheSameRows(): void {
+		self::assertSame(
+			$this->reader->read(self::KML, 'prueba'),
+			$this->reader->readArchive(
+				self::kmz(['doc.kml' => str_pad(self::KML, 8 * 1024 * 1024)]),
+				'prueba',
+			),
+		);
+	}
+
 	/** An archive holding no KML is refused, in the language the person reads. */
 	public function testAnArchiveWithNoKmlEntryIsRefusedInSpanish(): void {
 		$this->expectException(InvalidImportException::class);

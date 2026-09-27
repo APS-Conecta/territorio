@@ -481,6 +481,26 @@ class FeatureService {
 		$this->apply($feature, $input, whole: false);
 		$this->applyProvenance($feature, $provenance);
 
+		// #109: a Unidad Vecinal's polygon comes from the catastro, and a
+		// person's save carrying a redrawn one would silently move the line
+		// every assignment in the comuna is derived from (ADR-0008). Refused
+		// here, at the one door a person's edit comes through. The compare is
+		// stored-form, not key-presence: the client always sends the geometry
+		// key (payload(), src/draft.js), so key-presence would make every UV
+		// uneditable — and a polygon re-sent unchanged re-normalizes to the
+		// identical bytes, so a rename flows (#63 is the bug this must not
+		// repeat). $wasDivision is the division the record WAS, read before
+		// apply(), so reclassifying a UV and reshaping it in one save cannot
+		// slip past. Imports and reverts pass markOverride: false — they are
+		// the doors that may legitimately reshape one.
+		if ($markOverride && $wasDivision === 'unidad_vecinal'
+			&& $feature->getGeometry() !== $before) {
+			throw new InvalidFeatureException(
+				'La forma de una Unidad Vecinal viene del catastro y no se puede redibujar aquí. '
+				. 'Corrija el dato en el catastro y vuelva a importarlo.',
+			);
+		}
+
 		// A person editing an imported record is what ADR-0003 calls a local
 		// override: it states what is true on the ground, so it outranks whatever
 		// the authority publishes next. Only a person's edit sets this — an import

@@ -41,6 +41,11 @@ final class LimitTest extends IntegrationTestCase {
 		);
 
 		$dataset = Server::get(\OCA\Territorio\Db\DatasetMapper::class)->findBySlug($slug);
+		// Registered for tearDown: boundary rows arrive by import, not through
+		// `place()`/`sector()`, so `$created` never sees them — the Dataset is
+		// forgotten with everything it brought in (#122). Both callers (the
+		// memoised `limit()` and the repeated-name test) route through here.
+		$this->datasets[] = $slug;
 		$byId = [];
 		$mapper = Server::get(FeatureMapper::class);
 		foreach ($mapper->findByDataset((int)$dataset->getId()) as $feature) {

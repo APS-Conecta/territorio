@@ -106,6 +106,15 @@ The basemap stops being somebody else's public service.
   definition from `filters.js` now, and `tests/js/twins.test.js` reads the PHP source and fails
   loudly when either side's rule moves — the same doctrine as the map pins and the glyph tests.
 
+- **The ring every pin and cluster bubble wears is one fixed dark ink, `#171717`, in both themes.**
+  It was the theme's `--color-main-background` — white in the light theme — which measures
+  **1.15–1.69:1** against the basemap tiles the ring actually sits on: under the 3:1 contour
+  floor of WCAG 1.4.11, in both themes, since the first release. The tiles are light whatever
+  the Nextcloud theme is doing, so the ring now follows the tile: `#171717` measures **≥ 10.6:1**
+  over every raster and Protomaps surface and **≥ 3:1** over every legal pin fill — gated by
+  `tools/ramp-check.py`, asserted identical across themes by the browser gate, measured rows
+  recorded in `docs/design/map-legibility.md` § 2.2.
+
 ### Added
 
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom

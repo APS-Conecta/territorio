@@ -28,17 +28,17 @@ final class KmlImportTest extends IntegrationTestCase {
 	private const SLUG = 'mymaps-prueba';
 
 	/** @var int[] */
-	private array $datasets = [];
+	private array $datasetIds = [];
 
 	protected function tearDown(): void {
 		parent::tearDown();
 
-		if ($this->datasets === []) {
+		if ($this->datasetIds === []) {
 			return;
 		}
 
 		$db = Server::get(IDBConnection::class);
-		foreach ($this->datasets as $id) {
+		foreach ($this->datasetIds as $id) {
 			foreach (['territorio_import' => 'dataset_id', 'territorio_dataset' => 'id'] as $table => $column) {
 				$qb = $db->getQueryBuilder();
 				$qb->delete($table)
@@ -46,7 +46,7 @@ final class KmlImportTest extends IntegrationTestCase {
 					->executeStatement();
 			}
 		}
-		$this->datasets = [];
+		$this->datasetIds = [];
 	}
 
 	/** The criterion: Points, LineStrings and Polygons all arrive. */
@@ -101,7 +101,7 @@ final class KmlImportTest extends IntegrationTestCase {
 
 		Server::get(ImportService::class)->importFile($json, 'inventada.geojson', self::SLUG, null, 'prueba');
 		$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
-		$this->datasets[] = $id;
+		$this->datasetIds[] = $id;
 		$stored = Server::get(FeatureMapper::class)->findByDataset($id)['geo/1'];
 		$this->created[] = (int)$stored->getId();
 
@@ -136,7 +136,7 @@ final class KmlImportTest extends IntegrationTestCase {
 
 		Server::get(ImportService::class)->importFile($kml, 'folders.kml', self::SLUG, null, 'prueba');
 		$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
-		$this->datasets[] = $id;
+		$this->datasetIds[] = $id;
 
 		$labels = [];
 		foreach (Server::get(FeatureMapper::class)->findByDataset($id) as $feature) {
@@ -322,7 +322,7 @@ final class KmlImportTest extends IntegrationTestCase {
 	private function track(): void {
 		try {
 			$id = (int)Server::get(DatasetMapper::class)->findBySlug(self::SLUG)->getId();
-			$this->datasets[] = $id;
+			$this->datasetIds[] = $id;
 			foreach (Server::get(FeatureMapper::class)->findByDataset($id) as $feature) {
 				$this->created[] = (int)$feature->getId();
 			}

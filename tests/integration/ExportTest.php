@@ -432,4 +432,98 @@ final class ExportTest extends IntegrationTestCase {
 
 		self::assertStringContainsString(' · ', $csv, 'the CSV should carry "Categoría · Subcategoría"');
 	}
+
+	/**
+	 * The assignment columns: a Sector's NAME in the cell, never its id.
+	 *
+	 * The fixtures mirror `RevertAssignmentTest`: a Sector imported through the
+	 * import door, its ring around where `place()` puts a record, so the
+	 * assignment in the export is the derived one the app actually stores
+	 * (ADR-0008) rather than one typed in by a test.
+	 */
+	public function testTheCsvCarriesTheDivisionNames(): void {
+		$dataset = 'export-sector-' . uniqid();
+		// Registered so teardown forgets the whole import (the base class's
+		// dataset seam) — no row of it survives this test.
+		$this->datasets[] = $dataset;
+		$sector = $this->importSector($dataset);
+
+		$inside = $this->place('Sede dentro del sector');
+		$unassigned = $this->place('Sede sin asignar', ['geometry' => null]);
+		// The fixture must hold before anything else is asserted of it: if the
+		// ring stops claiming the record, the name assertions below would pass
+		// or fail on a cell that was empty for a different reason.
+		self::assertSame($sector, Server::get(FeatureMapper::class)->find($inside)->getSectorId(),
+			'the place inside the ring was not claimed by the imported Sector');
+
+		$claimed = $this->csvRow($this->exports->export([$inside], 'csv', false)['body']);
+		self::assertSame('Sector de exportar', $claimed['Sector']);
+		self::assertSame('', $claimed['Unidad Vecinal'], 'only a Sector was imported');
+
+		$plain = $this->csvRow($this->exports->export([$unassigned], 'csv', false)['body']);
+		self::assertSame('', $plain['Sector']);
+		self::assertSame('', $plain['Unidad Vecinal']);
+
+		// And the two keys ride the row unmapped in the formats that have no
+		// column for them — the `official` precedent.
+		$geojson = $this->exports->export([$inside], 'geojson', false)['body'];
+		$kml = $this->exports->export([$inside], 'kml', false)['body'];
+		self::assertStringNotContainsString('sectorName', $geojson);
+		self::assertStringNotContainsString('unidadVecinalName', $geojson);
+		self::assertStringNotContainsString('sectorName', $kml);
+		self::assertStringNotContainsString('unidadVecinalName', $kml);
+
+		// The drift state no app door can produce: every retirement sweeps the
+		// assignment away (ADR-0008), so a record still pointing at a retired
+		// division is exactly what the export must answer with an empty cell
+		// rather than naming — or numbering — something the app will not show.
+		// Stamped directly, the way this suite's fixtures arrange what no door
+		// can.
+		Server::get(FeatureService::class)->retire($sector);
+		$db = Server::get(IDBConnection::class);
+		$qb = $db->getQueryBuilder();
+		$qb->update('territorio_feature')
+				->set('sector_id', $qb->createNamedParameter($sector, IQueryBuilder::PARAM_INT))
+				->where($qb->expr()->eq('id', $qb->createNamedParameter($inside, IQueryBuilder::PARAM_INT)))
+				->executeStatement();
+
+		$dangling = $this->csvRow($this->exports->export([$inside], 'csv', false)['body']);
+		self::assertSame('', $dangling['Sector'], 'a retired division must not be named');
+		self::assertSame('', $dangling['Unidad Vecinal']);
+	}
+
+	/** The imported Sector — `RevertAssignmentTest`'s fixture, name of its own. */
+	private function importSector(string $dataset): int {
+		$ring = '[[[-70.59,-33.53],[-70.57,-33.53],[-70.57,-33.51],[-70.59,-33.51],[-70.59,-33.53]]]';
+		$file = <<<JSON
+		{"type":"FeatureCollection","features":[
+		  {"type":"Feature","geometry":{"type":"Polygon","coordinates":{$ring}},
+		   "properties":{"uid":"ex:sector","name":"Sector de exportar",
+		     "category":"division_territorial","subcategory":"sector"}}
+		]}
+		JSON;
+
+		Server::get(ImportService::class)->importFile($file, 'datos.geojson', $dataset, 'Prueba', 'tester');
+
+		return (int)Server::get(FeatureMapper::class)->findByDataset(
+			(int)Server::get(DatasetMapper::class)->findOrCreate($dataset, $dataset)->getId(),
+		)['ex:sector']->getId();
+	}
+
+	/**
+	 * One data row of an export, by its column heading — BOM eaten, the way
+	 * `TabularWriterTest` reads the writer's own output.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function csvRow(string $csv): array {
+		$handle = fopen('php://memory', 'r+');
+		fwrite($handle, (string)preg_replace('/^\x{FEFF}/u', '', $csv));
+		rewind($handle);
+		$header = fgetcsv($handle, 0, ',', '"', '');
+		$row = fgetcsv($handle, 0, ',', '"', '');
+		fclose($handle);
+
+		return array_combine($header, $row);
+	}
 }

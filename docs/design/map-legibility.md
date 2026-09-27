@@ -200,8 +200,8 @@ Measured (recompute with `tools/ramp-check.py`'s own functions, not by eye):
   dot-on-tint contrast at **3.04:1** (`deporte_recreacion`). Above 3:1, but only just — and the
   code currently ships `fillOpacity: 0.15` (`TerritorioMap.vue`, `styleFor`), where the same pair measures
   **2.90:1**. Adopting `#949494` as the Sector wash therefore requires adopting 0.10 with it; #21
-  owns both. What keeps this off the defect list today is the pin's 2px `--color-main-background`
-  border, so a dot never relies on fill-vs-tint contrast alone.
+  owns both. What keeps this off the defect list today is the pin's 2px `#171717` ring — one fixed
+  ink, measured over every surface in § 2.2 — so a dot never relies on fill-vs-tint contrast alone.
 - These are composited in **sRGB**, which is what a browser does with CSS alpha. An earlier draft
   of this section computed them in linear light and read ~0.05 high throughout.
 - The tint sits ΔE 0.021 from the bare basemap against ΔE ~0.45 for a dot, so a Sector a clinic
@@ -250,8 +250,8 @@ Three things this table says that § 2 did not:
    it measured. Over raster water the same pair read **2.20:1** and over green **2.60:1**, both
    under the floor, for as long as this app has existed. ADR-0019 did not introduce that; it is the
    first time anyone looked. It stays under the floor, by less than before, and what keeps it off
-   the defect list is unchanged and stated in § 2 itself: the pin's 2px
-   `--color-main-background` border, so a dot never relies on fill-vs-tint contrast alone.
+   the defect list is unchanged and stated in § 2 itself: the pin's 2px `#171717` ring, so a dot
+   never relies on fill-vs-tint contrast alone.
 2. **Bare `light` would have been a real regression** on the one surface that did pass — 3.04 → 2.65
    — and no alpha rescues it. Even a wash of zero reads 2.84:1, because what changed is the
    basemap's own lightness, not the wash over it.
@@ -277,6 +277,28 @@ colour, and **4.07:1** against the basemap. It is deliberately outside the Categ
 this app groups Categories (ADR-0013), so a position dot in a ramp hue would read as a record
 somebody filed. It is also a dot with a white ring rather than a pin, because a pin reads as a
 filed Place.
+
+**The pin ring follows the tile, never the theme (2026-09-26).** § 2's label rule — the tiles are
+light whatever the Nextcloud theme is doing — binds the ring too, and the ring broke it: it was
+`--color-main-background`, white in the light theme, measuring **1.15–1.69:1** over the very
+surfaces the tiles paint. Under the 3:1 floor in both themes, since the first release. The ring is
+now one fixed dark ink — `#171717`, byte-identical to what the dark theme always drew — measured
+over every substrate a pin can sit on:
+
+| surface | raster OSM | Protomaps `light`, bare | Protomaps `light` + `brightness(1.09)` |
+|---|---|---|---|
+| land / earth | 15.62 | 13.49 | 16.20 |
+| green / park_a | 13.75 | 12.77 | 15.35 |
+| green / park_b | — | **10.58** — the floor | 12.66 |
+| water | 11.18 | 11.57 | 13.88 |
+
+The floor clears the requirement more than three times over, and the ink also clears 3:1 against
+every legal fill — eleven Categories, the shipped spares, both greys; the worst is a spare at
+**3.04:1**. Both loops are gated, not asserted: `tools/ramp-check.py` reads the ring out of
+`TerritorioMap.vue` and the surfaces out of the vendored Protomaps source, and fails on drift.
+Recomputing this section's earlier rows with the gate's arithmetic reproduces land exactly and
+sits **≤ 0.08** off the hand-written water/green rows above — they were rounded by hand when
+written; the rows in this table are the gate's own.
 
 ### 2.1 The 0.15 category fill carries no information
 

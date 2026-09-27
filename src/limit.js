@@ -69,23 +69,50 @@ export function readable(parts) {
 	return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
 }
 
+/**
+ * A described stretch's identity while one draft is open (#99).
+ *
+ * Never its name — a second stretch can say the same words, and so can a
+ * street — and never its position, which any splice moves. A counter is
+ * enough because the server's normalizer keeps `featureId` and `name` and
+ * nothing else, so the stamp never survives a save and is only ever needed
+ * within the session that typed it. `tramo-` is what the picker calls one.
+ */
+let stamps = 0
+
+/** The next session identity for a described stretch (#99). */
+function nextUid() {
+	stamps += 1
+	return `tramo-${stamps}`
+}
+
 /** A stretch nobody could have picked, because no dataset holds it. */
 export function withNote(parts, text) {
 	const said = String(text ?? '').trim()
 
-	return said === '' ? parts : [...parts, { name: said }]
+	return said === '' ? parts : [...parts, { uid: nextUid(), name: said }]
 }
 
 /**
- * The Limit as rows a person can read: one per name.
+ * The Limit as rows a person can read: picked parts folded by name, and every
+ * described stretch a row of its own (#99).
  *
  * A comuna holds one street as dozens of separate ways, so picking "Vicuña
  * Mackenna" records dozens of parts. Listing them one per row is thirty
  * identical lines with thirty identical Quitar buttons — the same list #13
- * grouped the suggestions to avoid, for the same reason.
+ * grouped the suggestions to avoid, for the same reason. But the fold was
+ * never meant for described stretches, which have no thirty-ways case: a
+ * stretch typed with a street's own words is a row beside it, «a mano», and
+ * Quitar on either leaves the other standing.
  *
  * `picked` says whether the row stands for Boundary features, because removing
  * one has to unpick them too, and a described stretch has nothing to unpick.
+ *
+ * `key` is the row's identity for the list and its Quitar button: a picked
+ * row's name — unique by construction, the fold — and a described row's
+ * stamp. Parts that reach here unstamped, before `withNote` or
+ * `sectorFields` has seen them, still get distinct, deterministic keys by
+ * position among their own name, so no two rows ever share one.
  *
  * `gone` is how many of the row's parts cite a Boundary feature the cadastre no
  * longer has (issue #51). The server says WHICH ids those are — the client
@@ -101,33 +128,81 @@ export function withNote(parts, text) {
  */
 export function groups(parts, gone = []) {
 	const missing = new Set(gone)
-	const rows = new Map()
+	const rows = []
+	const byName = new Map()
+	const unstamped = new Map()
 
 	;(parts ?? []).forEach((part) => {
-		const row = rows.get(part.name) ?? { name: part.name, parts: 0, picked: false, gone: 0 }
-		row.parts += 1
-		row.picked = row.picked || part.featureId !== undefined
-		// By id, so a part that cites nothing can never be gone: `featureId` is
-		// undefined on a typed stretch and the server only ever names integers.
-		if (missing.has(part.featureId)) {
-			row.gone += 1
+		if (part.featureId !== undefined) {
+			let row = byName.get(part.name)
+			if (row === undefined) {
+				row = { name: part.name, parts: 0, picked: true, gone: 0, key: part.name }
+				byName.set(part.name, row)
+				rows.push(row)
+			}
+			row.parts += 1
+			// By id, so a part that cites nothing can never be gone: `featureId` is
+			// undefined on a typed stretch and the server only ever names integers.
+			if (missing.has(part.featureId)) {
+				row.gone += 1
+			}
+			return
 		}
-		rows.set(part.name, row)
+
+		// A described stretch is one row, never folded into a same-named street
+		// (#99): the «a mano» badge and its own Quitar button are what keep what
+		// somebody typed apart from what the cadastre holds when the two say the
+		// same words.
+		const nth = (unstamped.get(part.name) ?? 0) + 1
+		unstamped.set(part.name, nth)
+		rows.push({
+			name: part.name,
+			parts: 1,
+			picked: false,
+			gone: 0,
+			uid: part.uid,
+			key: part.uid ?? `tramo:${part.name}#${nth}`,
+		})
 	})
 
-	return [...rows.values()]
+	return rows
 }
 
 /**
- * Every part of one name removed — a street that turned out not to be the limit.
+ * Every picked part of one name removed — a street that turned out not to
+ * be the limit.
  *
  * By name rather than by row, because a name is what the person sees and what
  * the sentence says. Removing one of a street's thirty ways would change nothing
  * they can read, while the tick in the picker flipped off: the screen would
  * disagree with itself, and the next pick would put it straight back.
+ *
+ * A described stretch saying the same words stays (#99): it is its own row,
+ * and unpicking a street never took down what somebody typed.
  */
 export function without(parts, name) {
-	return (parts ?? []).filter((part) => part.name !== name)
+	return (parts ?? []).filter((part) => part.name !== name || part.featureId === undefined)
+}
+
+/**
+ * One described stretch removed, by the identity it was stamped with (#99).
+ *
+ * By stamp and not by name, because the name is what a stretch SAYS, not what
+ * it IS: a second stretch can be saying the same words, and removing one has
+ * to leave the other standing. Exactly one occurrence, not every part that
+ * happens to carry the stamp — uniqueness is the stamper's contract, and
+ * this is where it is kept.
+ */
+export function withoutNote(parts, uid) {
+	let removed = false
+
+	return (parts ?? []).filter((part) => {
+		if (!removed && part.uid === uid) {
+			removed = true
+			return false
+		}
+		return true
+	})
 }
 
 /**
@@ -147,9 +222,19 @@ export function without(parts, name) {
  * line into view.
  */
 export function sectorFields(limit = []) {
+	// Stored parts come back bare — the server's normalizer keeps `featureId`
+	// and `name` and nothing else — so every described stretch arrives without
+	// an identity and is stamped one here, the only door a stored Limit comes
+	// back through (`draftFrom`). Picked parts need no stamp: a `featureId` is
+	// an identity nothing here mints twice.
+	const parts = (limit ?? []).map((part) =>
+		part.featureId === undefined && part.uid === undefined
+			? { ...part, uid: nextUid() }
+			: part)
+
 	return {
-		limit,
-		picked: limit
+		limit: parts,
+		picked: parts
 			.filter((part) => part.featureId !== undefined)
 			.map((part) => part.featureId),
 		pickedGeometry: {},

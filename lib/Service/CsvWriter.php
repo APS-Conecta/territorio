@@ -26,6 +26,10 @@ class CsvWriter {
 	private const PLAIN = [
 		'Nombre' => 'name',
 		'Clasificación' => 'categoryLabel',
+		// The assignment, immediately after what a record IS — the same order
+		// the Índice reads its columns in.
+		'Sector' => 'sectorName',
+		'Unidad Vecinal' => 'unidadVecinalName',
 		'Dirección' => 'address',
 		'Horario' => 'openingHours',
 		'Notas' => 'notes',

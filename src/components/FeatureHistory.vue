@@ -47,6 +47,7 @@
 </template>
 
 <script>
+import { nameOf } from '../boundaries.js'
 import { QUALITY_LABELS } from '../indice.js'
 import { readable } from '../limit.js'
 import { indexSubcategories } from '../taxonomy.js'
@@ -91,9 +92,9 @@ const FIELDS = {
 	colour: 'Color',
 	limit: 'Límite',
 	// Derived, and in history because ADR-0008 says a reassignment must be
-	// visible like any other change. The value is a record's id, so the entry
-	// reads "Sector: 41 → 58" — honest, if terse; naming them needs the whole
-	// Registry here, which the history panel does not have.
+	// visible like any other change. The value stored is a record's id;
+	// `format()` says the name through the same resolver the sidebar's derived
+	// Sector/UV line uses, so the entry reads «Sector: Sur → Norte» (L1-07).
 	sectorId: 'Sector',
 	unidadVecinalId: 'Unidad Vecinal',
 }
@@ -104,6 +105,8 @@ export default {
 	props: {
 		entries: { type: Array, required: true },
 		taxonomy: { type: Array, default: () => [] },
+		/** The territorial divisions, so a stored Sector/UV id is said by name. */
+		divisions: { type: Array, default: () => [] },
 		failed: { type: Boolean, default: false },
 	},
 
@@ -133,6 +136,11 @@ export default {
 
 			if (field === 'subcategoryId') {
 				return this.subcategories.get(value)?.label ?? `#${value}`
+			}
+
+			// The sidebar's own wording for an id nothing resolves, one copy (boundaries.js).
+			if (field === 'sectorId' || field === 'unidadVecinalId') {
+				return nameOf(this.divisions, value)
 			}
 
 			if (field === 'geometry') {

@@ -44,6 +44,8 @@ const BROWSER = {
 	// Assigned once in main.js so the Maki chunk resolves from apps/ or
 	// custom_apps/ — webpack's free variable, hence writable.
 	__webpack_public_path__: 'writable',
+	// `process.env.NODE_ENV` only: webpack substitutes it at build time.
+	process: 'readonly',
 }
 
 export default [

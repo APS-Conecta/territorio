@@ -170,55 +170,64 @@
 		<NcAppSidebar v-if="draft !== null"
 			:name="draft.id === null ? 'Nuevo registro' : draft.name || 'Sin nombre'"
 			@close="closeDraft">
-			<NcNoteCard v-if="selectedIsRetired" type="warning">
-				Este registro está retirado: no aparece en el mapa ni en la lista de activos.
-				<NcButton class="territorio-restore" variant="primary" @click="restore">
-					Restaurar
-				</NcButton>
-			</NcNoteCard>
-
 			<!--
-				The record first, the Limit editor after it and INSIDE it (issue #35).
-				The other way round the editor's suggestions, picked groups and limit
-				sentence pushed every one of the form's controls down, and «Retirar del
-				mapa» — the last of them — ended 721px below the bottom of a 620px
-				screen on a real Sector. The Limit editor is also the half that grows
-				without bound, so it belongs where growing costs nothing.
-
-				Inside, because `position: sticky` is bounded by its containing block.
-				The action group's containing block is FeatureDetail's <form>; with the
-				editor a SIBLING of that form the group stopped sticking the moment the
-				form's own height had scrolled past, and the browser gate measured the
-				retire button at y=-420 on a 620px screen. It is the same record
-				either way: the Limit is part of the draft Guardar saves.
+				The second boundary (L0-02). FeatureDetail and BoundaryPicker draw
+				geometry- and limit-derived drafts, and until now a render error there
+				blanked the whole page — including the Capas/Datos navigation the main
+				boundary exists to preserve. Around the CONTENT only: the header and its
+				close button are NcAppSidebar's own, so a crashed sidebar can still be closed.
 			-->
-			<FeatureDetail :draft="draft"
-				:taxonomy="taxonomy"
-				:divisions="divisions"
-				:saving="saving"
-				:error="error"
-				:history="history"
-				:history-failed="historyFailed"
-				:retired="selectedIsRetired"
-				@save="save"
-				@retire="retire"
-				@retry="loadHistory(selectedId)">
-				<BoundaryPicker v-if="editingLimit"
-					:suggestions="boundarySuggestions"
-					:picked-ids="draft.picked"
-					:query="boundaryQuery"
-					:seeding="seeding"
-					:can-generate="canGenerate"
-					:limit="groups(draft.limit, goneIds)"
-					:limit-said="readable(draft.limit)"
-					:failed="boundariesFailed"
-					@retry="loadBoundaries"
-					@add-note="addLimitNote"
-					@remove-part="removeLimitPart"
-					@generate="startSeeding"
-					@toggle-group="togglePickedGroup"
-					@update:query="boundaryQuery = $event" />
-			</FeatureDetail>
+			<ErrorBoundary>
+				<NcNoteCard v-if="selectedIsRetired" type="warning">
+					Este registro está retirado: no aparece en el mapa ni en la lista de activos.
+					<NcButton class="territorio-restore" variant="primary" @click="restore">
+						Restaurar
+					</NcButton>
+				</NcNoteCard>
+
+				<!--
+					The record first, the Limit editor after it and INSIDE it (issue #35).
+					The other way round the editor's suggestions, picked groups and limit
+					sentence pushed every one of the form's controls down, and «Retirar del
+					mapa» — the last of them — ended 721px below the bottom of a 620px
+					screen on a real Sector. The Limit editor is also the half that grows
+					without bound, so it belongs where growing costs nothing.
+
+					Inside, because `position: sticky` is bounded by its containing block.
+					The action group's containing block is FeatureDetail's <form>; with the
+					editor a SIBLING of that form the group stopped sticking the moment the
+					form's own height had scrolled past, and the browser gate measured the
+					retire button at y=-420 on a 620px screen. It is the same record
+					either way: the Limit is part of the draft Guardar saves.
+				-->
+				<FeatureDetail :draft="draft"
+					:taxonomy="taxonomy"
+					:divisions="divisions"
+					:saving="saving"
+					:error="error"
+					:history="history"
+					:history-failed="historyFailed"
+					:retired="selectedIsRetired"
+					@save="save"
+					@retire="retire"
+					@retry="loadHistory(selectedId)">
+					<BoundaryPicker v-if="editingLimit"
+						:suggestions="boundarySuggestions"
+						:picked-ids="draft.picked"
+						:query="boundaryQuery"
+						:seeding="seeding"
+						:can-generate="canGenerate"
+						:limit="groups(draft.limit, goneIds)"
+						:limit-said="readable(draft.limit)"
+						:failed="boundariesFailed"
+						@retry="loadBoundaries"
+						@add-note="addLimitNote"
+						@remove-part="removeLimitPart"
+						@generate="startSeeding"
+						@toggle-group="togglePickedGroup"
+						@update:query="boundaryQuery = $event" />
+				</FeatureDetail>
+			</ErrorBoundary>
 		</NcAppSidebar>
 	</NcContent>
 </template>

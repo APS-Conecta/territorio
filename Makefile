@@ -64,8 +64,13 @@ test-browser:
 # palette's contrast and separation (docs/design/map-legibility.md), which is a
 # cheap standing check that must fail loudly — exactly what this target is for.
 # It runs on the host, not in $(DOCKER): that image is PHP, and this is Python.
+#
+# tools/openapi is pruned: `make openapi` fetches the extractor and its vendor
+# tree there (gitignored, absent on CI), and that tree's own test fixtures do
+# not parse under PHP 8.3 — so `make lint` failed on every box that had ever
+# regenerated the spec, and passed on every box that had not.
 lint: test-image
-	$(DOCKER) sh -c 'find lib tests tools -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
+	$(DOCKER) sh -c 'find lib tests tools -path tools/openapi -prune -o -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
 	python3 tools/ramp-check.py
 
 build:

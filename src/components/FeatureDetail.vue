@@ -293,7 +293,8 @@ export default {
 
 		/** Drawn on the map rather than typed as a coordinate. */
 		hasShape() {
-			return this.draft.geometry !== null && this.draft.geometry !== undefined
+			// `null`, never undefined: blankDraft, draftFrom and payload all coerce it (draft.js).
+			return this.draft.geometry !== null
 		},
 
 		/**

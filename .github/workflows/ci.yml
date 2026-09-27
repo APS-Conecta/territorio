@@ -43,16 +43,23 @@ jobs:
       - name: aps-common sibling
         run: git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
 
+      # vendor/aps/common/src is committed, so it can drift from the package
+      # the way js/ can drift from src/. Same gate, second artifact.
+      #
+      # BEFORE the tests, not after: `make test` runs composer inside the
+      # Dockerfile.test container as root, and its path-repository install
+      # copies aps-common into vendor/aps/common as root — so a drift check
+      # that runs afterwards cannot `rm` what it needs to resync ("Permission
+      # denied" on the runner, never on a root dev box). Measured on the first
+      # run after aps-common went public.
+      - name: aps-common drift
+        run: make aps-drift
+
       # No setup-php: both targets run inside Dockerfile.test, which the Makefile builds.
       # That image carries intl, without which the accent tests pass by not running.
       # `make lint` also runs tools/ramp-check.py on the host — the runner's own python3.
       - name: Unit tests
         run: make test
-
-      # vendor/aps/common/src is committed, so it can drift from the package
-      # the way js/ can drift from src/. Same gate, second artifact.
-      - name: aps-common drift
-        run: make aps-drift
 
       - name: Lint
         run: make lint

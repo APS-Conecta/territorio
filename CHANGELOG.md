@@ -166,6 +166,14 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **A render error in the sidebar loses the sidebar, not the app** (review T1). The
+  ErrorBoundary wrapped the main column only; FeatureDetail and the Limit picker — which draw
+  geometry- and limit-derived drafts — sat outside every boundary, so a bad shape there
+  blanked the whole page including the navigation the boundary exists to preserve. A second
+  boundary wraps the sidebar's content (the header and its close button stay outside, so a
+  crashed sidebar can still be closed), and both boundaries now offer **Reintentar**, which
+  re-renders without a reload; a development build also shows the error's message under the
+  sentence. The error still propagates to the console either way.
 - **Every load that can fail now says so and offers Reintentar** (review T2). The app's own
   rule — a failed load is not an empty list (L1-28) — held for history, duplicates and retired
   records and nowhere else. The catastro lines behind a Limit (an empty picker and a grey

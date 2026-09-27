@@ -11,11 +11,17 @@
 	and this app draws geometry a clinic supplied, which is the part most likely to
 	arrive in a shape nobody anticipated.
 
-	ONE boundary, around `.territorio-main`, and not one per pane. The Capas panel
-	and the Datos list are in NcAppContent's `#list` slot, outside this component
-	entirely, so they keep working as navigation while the main column shows the
-	fallback — that is the whole reason the boundary goes here and not around
-	NcContent.
+	Two boundaries, not one per pane: around `.territorio-main`, and around the
+	sidebar's content (L0-02) — the two subtrees that render stored geometry. The
+	Capas panel and the Datos list are in NcAppContent's `#list` slot, outside
+	both, so they keep working as navigation while a column shows the fallback —
+	that is the whole reason the boundaries go there and not around NcContent.
+
+	Reintentar clears the error and re-renders the slot (L0-06): most render
+	errors here come from one record's shape, and the person has usually moved
+	on from it by the time they click. In a development build the message is
+	shown under the sentence; in production it stays in the console, where the
+	propagation below puts it.
 
 	It does NOT stop propagation. `errorCaptured` returning `false` would keep the
 	error from ever reaching Vue's own handler, so the fallback below would render
@@ -34,7 +40,12 @@
 <template>
 	<NcEmptyContent v-if="error"
 		name="No pudimos mostrar esta sección"
-		description="Algo falló al dibujar esta página. Recargar suele resolverlo. El mapa y los datos siguen guardados.">
+		:description="description">
+		<template #action>
+			<NcButton @click="error = null">
+				Reintentar
+			</NcButton>
+		</template>
 		<template #icon>
 			<svg viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
 				<path fill="currentColor"
@@ -46,15 +57,29 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
+
+const SENTENCE = 'Algo falló al dibujar esta página. Recargar suele resolverlo. '
+	+ 'El mapa y los datos siguen guardados.'
 
 export default {
 	name: 'ErrorBoundary',
 
-	components: { NcEmptyContent },
+	components: { NcButton, NcEmptyContent },
 
 	data() {
 		return { error: null }
+	},
+
+	computed: {
+		/** The sentence, plus the actual message where a developer is reading. */
+		description() {
+			// `process.env.NODE_ENV` is webpack's mode, substituted at build time.
+			return process.env.NODE_ENV === 'production' || !this.error?.message
+				? SENTENCE
+				: `${SENTENCE} (${this.error.message})`
+		},
 	},
 
 	// No `return false`: see the comment at the top of this file. The fallback

@@ -107,15 +107,6 @@ class FeatureMapper extends QBMapper {
 	}
 
 	/**
-	 * Everything a person can still see.
-	 *
-	 * ponytail: unpaginated. One comuna's catastro is hundreds of rows and the
-	 * Datos list, the map and the counts all render from the same set anyway;
-	 * paginate when a real install makes this slow, not before.
-	 *
-	 * @return Feature[]
-	 */
-	/**
 	 * The requested live records, by id (L1-17).
 	 *
 	 * The export's read: the browser sends ids and nothing else, and the whole
@@ -189,6 +180,15 @@ class FeatureMapper extends QBMapper {
 		return $ids;
 	}
 
+	/**
+	 * Everything a person can still see.
+	 *
+	 * ponytail: unpaginated. One comuna's catastro is hundreds of rows and the
+	 * Datos list, the map and the counts all render from the same set anyway;
+	 * paginate when a real install makes this slow, not before.
+	 *
+	 * @return Feature[]
+	 */
 	public function findAll(): array {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')

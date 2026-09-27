@@ -528,7 +528,6 @@ class FeatureService {
 	}
 
 	/** @param array<string, mixed> $input */
-	/** @param array<string, mixed> $input */
 	private function apply(Feature $feature, array $input, bool $whole): Feature {
 		$this->applyName($feature, $input);
 		$this->applySubcategory($feature, $input);

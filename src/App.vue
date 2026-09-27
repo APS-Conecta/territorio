@@ -292,6 +292,14 @@ import {
  */
 const POLL_INTERVAL_MS = 5000
 
+/** `/categories/{slug}` or `/categories/{slug}/subcategories/{slug}` — the two ids every taxonomy write addresses. */
+const categoryUrl = (categorySlug, subcategorySlug = null) => {
+	const category = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
+	return subcategorySlug === null
+		? category
+		: `${category}/subcategories/${encodeURIComponent(subcategorySlug)}`
+}
+
 export default {
 	name: 'App',
 
@@ -794,19 +802,36 @@ export default {
 		 * reads the new label on its next load.
 		 */
 		async rename({ categorySlug, subcategorySlug, label }) {
-			const category = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
-			const url = subcategorySlug === null
-				? category
-				: `${category}/subcategories/${encodeURIComponent(subcategorySlug)}`
+			await this.writeTree('put', categoryUrl(categorySlug, subcategorySlug), { label },
+				'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.')
+		},
 
+		/**
+		 * The one door every taxonomy write goes through (L0-05).
+		 *
+		 * The whole tree comes back and is swapped in, which is what puts the
+		 * change on the map pins, in the Datos list and in the Capas legend at
+		 * once — all three read it out of this one property through
+		 * `indexSubcategories()`, so none of them holds a copy that can disagree.
+		 * Nothing else is refetched and the Revision cursor is not advanced (see
+		 * the dated correction on ADR-0002).
+		 *
+		 * A 422 carries a message naming what to fix — a rename's clash, a
+		 * removal's refusal with how many records and where to see them
+		 * (ADR-0016) — and `messageFrom` says it as is; anything else gets the
+		 * caller's fallback, which must not pretend to know more.
+		 *
+		 * @return {?Array} the new tree, or null when the write was refused
+		 */
+		async writeTree(method, url, body, fallback) {
 			try {
-				const { data } = await axios.put(generateUrl(url), { label })
+				const { data } = await axios[method](generateUrl(url), body)
 				this.taxonomy = data
 				this.clearTaxonomyMessage()
+				return data
 			} catch (exception) {
-				// 422 carries a message naming what to fix; anything else does not.
-				this.taxonomyError = await messageFrom(exception,
-					'No se pudo renombrar. Revise la conexión e inténtelo de nuevo.')
+				this.taxonomyError = await messageFrom(exception, fallback)
+				return null
 			}
 		},
 
@@ -825,16 +850,8 @@ export default {
 		 * advanced, for the reason `rename()` gives.
 		 */
 		async chooseGlyph({ categorySlug, glyph }) {
-			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
-
-			try {
-				const { data } = await axios.put(generateUrl(url), { glyph })
-				this.taxonomy = data
-				this.clearTaxonomyMessage()
-			} catch (exception) {
-				this.taxonomyError = await messageFrom(exception,
-					'No se pudo cambiar el pictograma. Revise la conexión e inténtelo de nuevo.')
-			}
+			await this.writeTree('put', categoryUrl(categorySlug), { glyph },
+				'No se pudo cambiar el pictograma. Revise la conexión e inténtelo de nuevo.')
 		},
 
 		/**
@@ -869,23 +886,19 @@ export default {
 		 * that was created correctly would send somebody looking for the failure.
 		 */
 		async addCategory({ label, glyph }) {
-			try {
-				const { data } = await axios.post(
-					generateUrl('/apps/territorio/categories'), { label, glyph },
-				)
-				const added = data.find((category) => !this.taxonomy
-					.some((existing) => existing.id === category.id))
-				this.taxonomy = data
-				this.clearTaxonomyMessage()
+			const before = this.taxonomy
+			const data = await this.writeTree('post', '/apps/territorio/categories', { label, glyph },
+				'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.')
+			if (data === null) {
+				return
+			}
 
-				if (added?.color === DEFAULT_SECTOR_COLOUR) {
-					this.taxonomyNotice = `Se agregó «${added.label}», pero ya no quedan colores `
-						+ 'que se distingan entre sí: se muestra en gris y se reconoce por su '
-						+ 'pictograma, como todas las categorías.'
-				}
-			} catch (exception) {
-				this.taxonomyError = await messageFrom(exception,
-					'No se pudo agregar la categoría. Revise la conexión e inténtelo de nuevo.')
+			const added = data.find((category) => !before
+				.some((existing) => existing.id === category.id))
+			if (added?.color === DEFAULT_SECTOR_COLOUR) {
+				this.taxonomyNotice = `Se agregó «${added.label}», pero ya no quedan colores `
+					+ 'que se distingan entre sí: se muestra en gris y se reconoce por su '
+					+ 'pictograma, como todas las categorías.'
 			}
 		},
 
@@ -921,22 +934,10 @@ export default {
 		 * record going astray.
 		 */
 		async removeFromTaxonomy({ categorySlug, subcategorySlug }) {
-			const category = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}`
-			const url = subcategorySlug === null
-				? category
-				: `${category}/subcategories/${encodeURIComponent(subcategorySlug)}`
-
-			try {
-				const { data } = await axios.delete(generateUrl(url))
-				this.taxonomy = data
+			const data = await this.writeTree('delete', categoryUrl(categorySlug, subcategorySlug), undefined,
+				'No se pudo quitar. Revise la conexión e inténtelo de nuevo.')
+			if (data !== null) {
 				this.filter = forgetRemoved(this.filter, data)
-				this.clearTaxonomyMessage()
-			} catch (exception) {
-				// 422 carries the refusal — how many records and where to see
-				// them (ADR-0016). Anything else does not, and a generic sentence
-				// in its place must not pretend to.
-				this.taxonomyError = await messageFrom(exception,
-					'No se pudo quitar. Revise la conexión e inténtelo de nuevo.')
 			}
 		},
 
@@ -984,16 +985,8 @@ export default {
 		 * is filed under. Worth an issue, not a silent narrowing of the API.
 		 */
 		async addSubcategory({ categorySlug, label }) {
-			const url = `/apps/territorio/categories/${encodeURIComponent(categorySlug)}/subcategories`
-
-			try {
-				const { data } = await axios.post(generateUrl(url), { label })
-				this.taxonomy = data
-				this.clearTaxonomyMessage()
-			} catch (exception) {
-				this.taxonomyError = await messageFrom(exception,
-					'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.')
-			}
+			await this.writeTree('post', `${categoryUrl(categorySlug)}/subcategories`, { label },
+				'No se pudo agregar la subcategoría. Revise la conexión e inténtelo de nuevo.')
 		},
 
 		async restore() {

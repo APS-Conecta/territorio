@@ -166,6 +166,18 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **Comments and contracts say what the code does, and the five taxonomy writes share one
+  door.** `rename`, `chooseGlyph`, `addCategory`, `addSubcategory` and `removeFromTaxonomy`
+  each repeated the same tree-swap-plus-catch and three of them rebuilt the same URL; one
+  `writeTree()` owns the swap, the message clearing and the 422-or-fallback rule now. The
+  pickable-lines docblock claimed the group was «swapped whole like every other group here»
+  — false since markers and shapes became diffed; it now says why this one still swaps. The
+  sidebar's `hasShape` tested for an `undefined` geometry the draft contract cannot produce.
+  Two PHP docblocks drifted during the perf pass: `findAll()`'s (with its ponytail ceiling)
+  sat orphaned above `findByIds()`, and `apply()` carried its `@param` line twice. And `make
+  lint` no longer parses the openapi extractor's vendor tree that `make openapi` fetches under
+  `tools/` — its own fixtures do not parse under PHP 8.3, so lint failed on every box that had
+  ever regenerated the spec and passed on every box that had not.
 - **A render error in the sidebar loses the sidebar, not the app** (review T1). The
   ErrorBoundary wrapped the main column only; FeatureDetail and the Limit picker — which draw
   geometry- and limit-derived drafts — sat outside every boundary, so a bad shape there

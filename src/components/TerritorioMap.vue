@@ -596,8 +596,11 @@ export default {
 		/**
 		 * The lines a Limit can follow, thin and grey until picked.
 		 *
-		 * Swapped whole like every other group here: emptying one the map is still
-		 * using leaves Leaflet holding layers whose map is already gone.
+		 * Swapped whole, on purpose, unlike the diffed markers and shapes: this
+		 * group is only mounted while a Limit is being built and is replaced on
+		 * every pan, so there is no standing set to diff against — and emptying
+		 * one the map is still using leaves Leaflet holding layers whose map is
+		 * already gone.
 		 */
 		drawPickable() {
 			if (this.map === null) {

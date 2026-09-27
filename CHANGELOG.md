@@ -166,6 +166,10 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **The history panel says «Sector: Sur → Norte», like every other surface** (review T5). A
+  reassignment used to read «Sector: 41 → 58», raw record ids, while the Índice's columns and
+  the sidebar's derived Sector/UV line already resolved them; the sidebar now hands its
+  divisions one component down and the panel resolves through the same `nameOf`.
 - **Comments and contracts say what the code does, and the five taxonomy writes share one
   door.** `rename`, `chooseGlyph`, `addCategory`, `addSubcategory` and `removeFromTaxonomy`
   each repeated the same tree-swap-plus-catch and three of them rebuilt the same URL; one

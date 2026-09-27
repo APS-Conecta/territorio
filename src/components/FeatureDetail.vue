@@ -145,6 +145,7 @@
 		<FeatureHistory v-if="draft.id !== null"
 			:entries="history"
 			:taxonomy="taxonomy"
+			:divisions="divisions"
 			:failed="historyFailed"
 			@retry="$emit('retry')" />
 

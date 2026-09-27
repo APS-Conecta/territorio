@@ -14,7 +14,7 @@ import { UNKNOWN_COLOUR } from './taxonomy.js'
  * something a person typed into a picker, and these are HTML strings, not DOM
  * nodes.
  */
-const escapeHtml = (value) => String(value).replace(
+export const escapeHtml = (value) => String(value).replace(
 	/[&<>"']/g,
 	(character) => ({
 		'&': '&amp;',

@@ -167,6 +167,19 @@ The basemap stops being somebody else's public service.
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
 
+- **The app no longer crashes on load under the self-hosted basemap, and a broken import
+  cannot build again.** `TerritorioMap` imports `escapeHtml` from `pins.js`, and the
+  twelve-hardenings move that put the function there shipped without its `export` — webpack
+  5 reports a missing export as a **warning** and compiled the binding undefined, so the
+  attribution line threw `TypeError` inside `mounted()` and the whole main column fell into
+  the ErrorBoundary. Only the custom-basemap branch calls it, and every automated check
+  runs stock OSM (the branch that short-circuits), so 423 unit / 339 js / 214 integration
+  tests and a twice-green browser gate never noticed. The export lands with
+  `strictExportPresence` (one line in `webpack.config.js`), which makes a missing export a
+  **build error** instead of a warning — the class of defect cannot compile. Shipped as
+  0.75.1 so the rebuilt bundle reaches browsers that had the broken one cached (`?v=` on
+  the script URL comes from `info.xml`).
+
 ## [0.72.0] — unreleased
 
 The Category colour tests stop describing the instance they happen to run on.

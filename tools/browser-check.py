@@ -168,8 +168,8 @@ def the_basemap_production_runs_is_painted(page, failures):
     banner must be absent once a tile has painted.
 
     Skipped, not failed, on an instance deliberately pointed at OSM; the
-    hard-fail posture is deferred to a clean fresh install (issue in the
-    tracker). A skip is not a pass, and the summary says so.
+    hard-fail posture is deferred to a clean fresh install (#141). A skip is
+    not a pass, and the summary says so.
     """
     served = page.evaluate(
         """() => {
@@ -197,8 +197,29 @@ def the_basemap_production_runs_is_painted(page, failures):
             "«territorio-map--vector», so the map is not drawing the branch it was served",
         )
 
+    # Paint, not presence: `protomaps-leaflet` creates the tile canvas and
+    # fills it with the flavor's background whether or not the fetch behind
+    # it succeeded (src/basemap.js records why there is no `tileerror` to
+    # hook). Measured with the archive blocked at the network layer: 24
+    # canvases, every one a single flat colour; healthy, 85–141 colours per
+    # tile. A tile with more than one colour is a tile the archive drew.
+    # Sampled every 97th pixel and polled twice a second: reading every pixel
+    # of every tile at frame rate crashed the renderer on the dev box.
     try:
-        page.wait_for_selector("canvas.leaflet-tile", timeout=10_000)
+        page.wait_for_function(
+            """() => [...document.querySelectorAll('canvas.leaflet-tile')].some((canvas) => {
+                const context = canvas.getContext('2d')
+                if (context === null || canvas.width === 0) return false
+                const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+                const first = data[0] << 16 | data[1] << 8 | data[2]
+                for (let i = 4 * 97; i < data.length; i += 4 * 97) {
+                    if ((data[i] << 16 | data[i + 1] << 8 | data[i + 2]) !== first) return true
+                }
+                return false
+            })""",
+            timeout=10_000,
+            polling=500,
+        )
     except PlaywrightTimeout:
         failures.append(
             f"no vector tile painted within 10 s from {served['url']} — the archive is "

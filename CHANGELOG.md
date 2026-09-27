@@ -166,6 +166,12 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **The browser gate fails, not skips, on an instance that is not on the PMTiles basemap**
+  (#141). The arm landed with a skip for instances deliberately on OpenStreetMap; the review's
+  point (L1-03) was that the gate must exercise the branch production runs, and a skip is a
+  blind spot with a nicer name. `make instance-up` provisions the archive, so a gate run
+  against OSM is a provisioning mistake and is reported as one. Proven on a freshly recreated
+  instance (`make instance-clean && make instance-up && make test-browser`).
 - **The history panel says «Sector: Sur → Norte», like every other surface** (review T5). A
   reassignment used to read «Sector: 41 → 58», raw record ids, while the Índice's columns and
   the sidebar's derived Sector/UV line already resolved them; the sidebar now hands its

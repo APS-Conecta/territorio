@@ -150,6 +150,77 @@ def console_errors(page):
     return found
 
 
+def the_basemap_production_runs_is_painted(page, failures):
+    """The self-hosted PMTiles basemap draws, credited as served (review L1-03).
+
+    Production runs a PMTiles archive, not OpenStreetMap's tile service; every
+    check here ran against stock OSM, so the `usesOpenStreetMap === false`
+    branch — attribution escaping, the CSP `connect-src` derivation, the
+    archive watch — was dead code to 762 tests and a green gate while every
+    load in the clinic died in the ErrorBoundary on a missing export. This is
+    the branch, exercised: served state compared with what the map painted, the
+    way `every_category_reaches_the_browser_with_its_colour` does.
+
+    A painted vector tile is the only direct proof that the CSP lets the
+    archive through: a blocked fetch logs a console error and paints nothing.
+    The attribution is compared as text against the SERVED string — the
+    escaped control is the exact line that crashed — and the unreachable
+    banner must be absent once a tile has painted.
+
+    Skipped, not failed, on an instance deliberately pointed at OSM; the
+    hard-fail posture is deferred to a clean fresh install (issue in the
+    tracker). A skip is not a pass, and the summary says so.
+    """
+    served = page.evaluate(
+        """() => {
+            const element = document.getElementById('initial-state-territorio-basemap')
+            return element === null ? null : JSON.parse(atob(element.value))
+        }""",
+    )
+    if served is None:
+        failures.append(
+            "the page carries no served basemap at #initial-state-territorio-basemap, so "
+            "nothing could be compared with what the map painted",
+        )
+        return
+
+    if served["kind"] != "pmtiles":
+        skip(
+            f"the instance serves a {served['kind']} basemap ({served['url']}), not the "
+            f"PMTiles archive production runs — the custom-basemap branch is unchecked (L1-03)",
+        )
+        return
+
+    if page.locator(".territorio-map.territorio-map--vector").count() == 0:
+        failures.append(
+            "the served basemap is pmtiles but the map root does not carry "
+            "«territorio-map--vector», so the map is not drawing the branch it was served",
+        )
+
+    try:
+        page.wait_for_selector("canvas.leaflet-tile", timeout=10_000)
+    except PlaywrightTimeout:
+        failures.append(
+            f"no vector tile painted within 10 s from {served['url']} — the archive is "
+            f"unreachable from this browser or the page's CSP connect-src does not allow it",
+        )
+
+    attribution = page.locator(".leaflet-control-attribution")
+    painted = attribution.first.inner_text() if attribution.count() > 0 else ""
+    if served["attribution"] not in painted:
+        failures.append(
+            f"the map credits {painted!r} but the app served {served['attribution']!r} — "
+            f"the escaped attribution (TerritorioMap's attributionHtml) did not reach the control",
+        )
+
+    if page.get_by_text("No se pudo cargar el fondo de mapa").count() > 0:
+        failures.append(
+            "the map says «No se pudo cargar el fondo de mapa» over a basemap that painted",
+        )
+
+    page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
+
+
 def save(page, failures, what):
     """Press Guardar and report what the app said if it refused.
 
@@ -6496,6 +6567,11 @@ def main():
 
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+        # First, before anything pans or draws: the basemap production runs
+        # is the branch the clinic's crash lived on, and nothing else here
+        # opens it.
+        the_basemap_production_runs_is_painted(page, failures)
 
         # Hide the cadastre first, which is what a person drawing a boundary does
         # anyway. With a comuna's Unidades Vecinales on screen the whole map is

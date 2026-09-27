@@ -39,6 +39,11 @@ const BROWSER = {
 	TextDecoder: 'readonly',
 	OC: 'readonly',
 	Date: 'readonly',
+	// The export's error body arrives as a Blob (aps-common's messageFrom).
+	Blob: 'readonly',
+	// Assigned once in main.js so the Maki chunk resolves from apps/ or
+	// custom_apps/ — webpack's free variable, hence writable.
+	__webpack_public_path__: 'writable',
 }
 
 export default [
@@ -72,7 +77,7 @@ export default [
 		languageOptions: {
 			ecmaVersion: 2022,
 			sourceType: 'module',
-			globals: { process: 'readonly', URL: 'readonly' },
+			globals: { process: 'readonly', URL: 'readonly', Blob: 'readonly', console: 'readonly' },
 		},
 		rules: {
 			'no-undef': 'error',

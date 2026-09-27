@@ -166,6 +166,17 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **The browser gate runs the basemap production runs.** Every automated check ran stock
+  OpenStreetMap, the one configuration where `attributionHtml` short-circuits — so the branch
+  the clinic actually runs (self-hosted PMTiles: attribution escaping, the CSP `connect-src`
+  derivation, the archive watch) was dead code to 423 unit / 339 js / 214 integration tests and
+  a twice-green gate while every production load crashed on a missing export (0.75.1). Now
+  `make instance-up` points the throwaway instance at the same archive (`TILE_URL`, restarted
+  in because APCu is per-process), and the gate's first check compares the served basemap with
+  what the map painted: a vector tile on canvas, the served attribution in the control, no
+  unreachable banner. An instance deliberately on OSM is reported as skipped, not passed; the
+  hard-fail posture waits for a clean fresh install.
+
 
 - **The app no longer crashes on load under the self-hosted basemap, and a broken import
   cannot build again.** `TerritorioMap` imports `escapeHtml` from `pins.js`, and the

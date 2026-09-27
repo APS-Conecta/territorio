@@ -37,6 +37,15 @@
 			Nada con ese nombre en lo que se ve. Mueva el mapa para cargar otra zona.
 		</p>
 
+		<!-- Three states, not two (L1-28): a catastro that failed to load is not
+		     a comuna with no streets — with nothing said, Generar just stayed grey. -->
+		<p v-if="failed" class="territorio-picker__hint">
+			No se pudieron cargar las calles del catastro.
+			<button type="button" class="territorio-picker__retry" @click="$emit('retry')">
+				Reintentar
+			</button>
+		</p>
+
 		<!--
 			The Limit in one sentence, which is the criterion: what somebody would
 			say out loud when asked where the sector ends. Above the list of parts
@@ -160,9 +169,11 @@ export default {
 		limit: { type: Array, default: () => [] },
 		/** The same thing as one sentence, built by the caller. */
 		limitSaid: { type: String, default: '' },
+		/** The catastro lines could not be loaded; Reintentar is emitted as `retry`. */
+		failed: { type: Boolean, default: false },
 	},
 
-	emits: ['add-note', 'generate', 'remove-part', 'toggle-group', 'update:query'],
+	emits: ['add-note', 'generate', 'remove-part', 'retry', 'toggle-group', 'update:query'],
 
 	data() {
 		return { note: '' }
@@ -193,6 +204,18 @@ export default {
 	color: var(--color-text-maxcontrast);
 	font-size: 0.9em;
 	margin: 8px 0;
+}
+
+/* The history panel's retry, verbatim: a link-shaped button inside the sentence. */
+.territorio-picker__retry {
+	background: none;
+	border: none;
+	padding: 0;
+	margin-inline-start: 6px;
+	font: inherit;
+	color: var(--color-primary-element);
+	text-decoration: underline;
+	cursor: pointer;
 }
 
 .territorio-picker__suggestions,

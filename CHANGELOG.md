@@ -166,6 +166,16 @@ The basemap stops being somebody else's public service.
   to TypeError before the method body ran — a 500 about a request that names no record; all seven
   `{id}` routes now answer the same 404 «no existe» a missing record does. And a merge without a
   `survivorId` answers «Indique cuál registro sobrevive.» instead of pretending one was named.
+- **Every load that can fail now says so and offers Reintentar** (review T2). The app's own
+  rule — a failed load is not an empty list (L1-28) — held for history, duplicates and retired
+  records and nowhere else. The catastro lines behind a Limit (an empty picker and a grey
+  Generar over a network failure), the recent-imports list (a failed list read as «no imports
+  yet», hiding Deshacer exactly when it mattered), the administrator's export log (an error
+  card with no way back but a reload) and the pictogram catalogue all wear the same sentence
+  and retry now. The catalogue was the worst of the four: `loadCatalogue()` cached a rejected
+  chunk import for the whole session, so one blip while opening the picker left every glyph
+  button disabled until a reload, with nothing said. A rejection is forgotten now, and the
+  panel catches it.
 - **The browser gate runs the basemap production runs.** Every automated check ran stock
   OpenStreetMap, the one configuration where `attributionHtml` short-circuits — so the branch
   the clinic actually runs (self-hosted PMTiles: attribution escaping, the CSP `connect-src`

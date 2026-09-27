@@ -36,6 +36,12 @@
 				{{ error }}
 			</NcNoteCard>
 
+			<!-- The catalogue chunk failed to arrive; the swatches are live again
+			     and the next click asks for it afresh (L2-04). -->
+			<NcNoteCard v-if="glyphsFailed" type="error">
+				No se pudo cargar el catálogo de pictogramas. Inténtelo de nuevo.
+			</NcNoteCard>
+
 			<!--
 				`info`, never `error` or `warning`: a Category that took the neutral
 				because the spares ran out was created correctly, and ADR-0017 says
@@ -479,6 +485,7 @@ export default {
 			 * a grid that opened empty.
 			 */
 			glyphsLoading: false,
+			glyphsFailed: false,
 			CATALOGUE,
 			PIN_DOT_SIZE,
 			PIN_GLYPH_SIZE,
@@ -574,8 +581,15 @@ export default {
 			// once it is whole: `v-for="mark in CATALOGUE"` renders the full list
 			// or nothing-yet, never half of it.
 			this.glyphsLoading = true
-			await loadCatalogue()
-			this.glyphsLoading = false
+			try {
+				await loadCatalogue()
+				this.glyphsFailed = false
+			} catch {
+				this.glyphsFailed = true
+				return
+			} finally {
+				this.glyphsLoading = false
+			}
 			this.picking = category === null
 				? { slug: null, label: 'la nueva categoría', color: DEFAULT_SECTOR_COLOUR }
 				: { slug: category.slug, label: category.label, color: category.color }

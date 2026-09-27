@@ -112,6 +112,12 @@ export function loadCatalogue() {
 			CATALOGUE.push(name)
 		})
 		return CATALOGUE
+	}).catch((exception) => {
+		// A chunk lost to one network blip must not be lost for the session:
+		// a cached rejection would answer every later open with the same
+		// failure (L2-04). Forget it, so the next open asks again.
+		loading = null
+		throw exception
 	})
 
 	return loading

@@ -88,6 +88,7 @@ final class RoutesTest extends TestCase {
 			'import#batches',
 			'import#revert',
 			'boundary#inView',
+			'boundary#names',
 			'duplicate#index',
 			'duplicate#merge',
 			'duplicate#dismiss',

@@ -94,4 +94,27 @@ final class BoundaryControllerTest extends TestCase {
 
 		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 	}
+
+	/** The street search's read passes the service's answer through as it is. */
+	public function testNamesIsTheServicesAnswer(): void {
+		$places = [
+			['name' => 'Pasaje Dos', 'south' => -33.52, 'west' => -70.59, 'north' => -33.52, 'east' => -70.589, 'count' => 1],
+		];
+		$this->boundaries->expects(self::once())->method('names')->willReturn($places);
+
+		$response = $this->controller->names();
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame($places, $response->getData());
+	}
+
+	/** No Cadastral Dataset — production today — is an empty list, not a refusal. */
+	public function testNoCadastreIsAnEmptyListNotAnError(): void {
+		$this->boundaries->expects(self::once())->method('names')->willReturn([]);
+
+		$response = $this->controller->names();
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame([], $response->getData());
+	}
 }

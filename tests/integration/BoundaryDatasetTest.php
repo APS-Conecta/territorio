@@ -312,6 +312,50 @@ final class BoundaryDatasetTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * The street search's read against real Postgres: every live line of the
+	 * cadastre, by name, with its box — and no shape (issue #12). The fixture's
+	 * street runs along -33.52 from -70.60 to -70.59.
+	 *
+	 * Membership, not totals, like the editor's read above: the instance may
+	 * hold a comuna's streets beside the fixture.
+	 */
+	public function testTheStreetSearchNamesEveryLineWithItsBoxAndNoShape(): void {
+		$this->importBoundaries();
+
+		$calle = $this->searchRow('Calle de Prueba');
+		self::assertNotNull($calle, 'the imported street is not searchable');
+		self::assertSame(['name', 'south', 'west', 'north', 'east', 'count'], array_keys($calle));
+		self::assertSame(1, $calle['count']);
+		self::assertEqualsWithDelta(-33.52, $calle['south'], 1e-6);
+		self::assertEqualsWithDelta(-70.60, $calle['west'], 1e-6);
+		self::assertEqualsWithDelta(-70.59, $calle['east'], 1e-6);
+
+		self::assertNotNull($this->searchRow('Canal de Prueba'), 'a canal is a line somebody looks for too');
+	}
+
+	/** Retired is gone from the search as it is from the editor (ADR-0005). */
+	public function testARetiredLineIsNotSearchable(): void {
+		$this->importBoundaries();
+		$one = (int)Server::get(FeatureMapper::class)->findByDataset($this->datasetId())['way/101']->getId();
+		self::assertNotNull($this->searchRow('Calle de Prueba'));
+
+		Server::get(FeatureService::class)->retire($one);
+
+		self::assertNull($this->searchRow('Calle de Prueba'));
+	}
+
+	/** @return ?array<string, mixed> the search's row for this name, if it offers one */
+	private function searchRow(string $name): ?array {
+		foreach (Server::get(BoundaryService::class)->names() as $row) {
+			if ($row['name'] === $name) {
+				return $row;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * A Sector whose Limit cites one imported way, by its id from the file.
 	 *
 	 * @return array{int, int} the Sector and the Boundary feature it cites

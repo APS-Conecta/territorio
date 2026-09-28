@@ -14,7 +14,8 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
 /**
- * The Boundary features on screen, for the Sector editor.
+ * The Boundary features: the ones on screen, for the Sector editor, and every
+ * street's name, for the street search.
  *
  * Thin over the service, like every other controller here, so an OCS version
  * later is a new file rather than a rewrite (issue #18).
@@ -59,6 +60,19 @@ class BoundaryController extends Controller {
 			(float)$east,
 			$this->cited($ids),
 		));
+	}
+
+	/**
+	 * Every street the Cadastral Dataset names, once per place — for the street
+	 * search, which fetches this once and matches in the browser from then on.
+	 *
+	 * Open to every user who can open the app, like every other read (ADR-0005).
+	 * No parameters, so nothing to refuse: an install with no Cadastral Dataset
+	 * answers an empty list, and the search says so in words.
+	 */
+	#[NoAdminRequired]
+	public function names(): JSONResponse {
+		return new JSONResponse($this->boundaries->names());
 	}
 
 	/**

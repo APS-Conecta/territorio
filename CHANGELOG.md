@@ -247,7 +247,8 @@ The basemap stops being somebody else's public service.
   the `Feature-Policy` header off the document response and counts `watchPosition`/`clearWatch`
   through a refused click, a granted one and the stop, so either fault can only break loudly:
   on the tree before this entry the gate fails on the header, and with the one line removed it
-  fails on the count.
+  fails on the count. Shipped as 0.76.1 so the rebuilt bundle reaches browsers that have the
+  leaking one cached (`?v=` on the script URL comes from `info.xml`).
 
 ## [0.72.0] — unreleased
 

@@ -12,6 +12,17 @@
 import { fold } from './filters.js'
 
 /**
+ * Which of two street names is the closer match to what somebody typed: the
+ * shorter one, then alphabetical.
+ *
+ * Someone typing "los toros" wants "Los Toros" above "Pasaje Los Toros Norte",
+ * and a shorter name is the closer match to what they typed. Exported because
+ * the street search ranks by the same rule (streets.js): one app, one idea of
+ * which street comes first.
+ */
+export const closerFirst = (a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name)
+
+/**
  * What someone typing has to choose between.
  *
  * Grouped by name, because a comuna holds one street as dozens of separate ways
@@ -34,8 +45,9 @@ export function suggestions(boundaries, query, limit = 12) {
 	// ponytail: grouped by name alone. Two genuinely different streets in one
 	// comuna that share a name collapse into a single row, and picking it picks
 	// both — the map is the way out, since clicking a line toggles it on its own.
-	// Telling them apart means clustering by position, which is a slice of its
-	// own and buys little until somebody hits it.
+	// The street search does tell them apart (BoundaryService::names() splits a
+	// name by place), but this picker holds only the lines in view, where that
+	// collision is rare. Adopt the split here when somebody hits it.
 	const groups = new Map()
 	boundaries.forEach((boundary) => {
 		const key = fold(boundary.name)
@@ -47,11 +59,8 @@ export function suggestions(boundaries, query, limit = 12) {
 		groups.set(key, group)
 	})
 
-	// Shortest name first: someone typing "los toros" wants "Los Toros" above
-	// "Pasaje Los Toros Norte", and a shorter name is the closer match to what
-	// they typed.
 	return [...groups.values()]
-		.sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name))
+		.sort(closerFirst)
 		.slice(0, limit)
 }
 

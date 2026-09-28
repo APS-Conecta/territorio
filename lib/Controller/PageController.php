@@ -14,6 +14,7 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCA\Territorio\Domain\Basemap;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
+use OCP\AppFramework\Http\FeaturePolicy;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
@@ -80,6 +81,38 @@ class PageController extends Controller {
 		}
 		$response->setContentSecurityPolicy($csp);
 
+		// Its sibling, attached the way core attaches the two together: the page
+		// grants geolocation to itself, or «¿Dónde estoy?» is refused before the
+		// browser ever asks. See geolocationPolicy().
+		$response->setFeaturePolicy(self::geolocationPolicy());
+
 		return $response;
+	}
+
+	/**
+	 * The policy that lets «¿Dónde estoy?» ask the browser at all.
+	 *
+	 * Nextcloud attaches a bare FeaturePolicy to every TemplateResponse, and a
+	 * bare one builds `geolocation 'none'`: measured on NC 34, every click on
+	 * the control failed with code 1 — permission granted or not — before the
+	 * browser's own permission was consulted, and three green suites never saw
+	 * it. This page grants geolocation to itself, and only to itself.
+	 *
+	 * `FeaturePolicy`, not `EmptyFeaturePolicy`. Core's FeaturePolicyMiddleware
+	 * merges the response's policy into its defaults UNLESS the class is exactly
+	 * EmptyFeaturePolicy, which it returns untouched — so an empty one here would
+	 * read as this grant and grant nothing. The idea is nextcloud/maps'
+	 * (maps@0cc19b0:lib/Listener/AddFeaturePolicyListener.php:27-28), which
+	 * contributes the same domain through an event; a listener is the wrong size
+	 * for one page, so it lives here, beside the CSP it belongs with.
+	 *
+	 * Public and static so `make test` can assert it without rendering the
+	 * page: index() calls Util::addScript, which wants a running Nextcloud.
+	 */
+	public static function geolocationPolicy(): FeaturePolicy {
+		$policy = new FeaturePolicy();
+		$policy->addAllowedGeoLocationDomain("'self'");
+
+		return $policy;
 	}
 }

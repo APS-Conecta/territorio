@@ -51,9 +51,6 @@ final class DuplicateFinder {
 	 */
 	private const ALIKE = 85.0;
 
-	/** Metres per degree of latitude, near enough anywhere. */
-	private const METRES_PER_DEGREE = 111_320.0;
-
 	/**
 	 * The narrowest a degree of longitude is allowed to get when sizing a cell.
 	 *
@@ -193,7 +190,7 @@ final class DuplicateFinder {
 	 * @return \Generator<int, array{0: array<string, mixed>, 1: array<string, mixed>}>
 	 */
 	private static function neighbours(array $records): \Generator {
-		$tall = self::SAME_BLOCK / self::METRES_PER_DEGREE;
+		$tall = self::SAME_BLOCK / BoundingBox::METRES_PER_DEGREE;
 		$wide = $tall / self::NARROWEST_DEGREE;
 
 		$cells = [];
@@ -234,8 +231,8 @@ final class DuplicateFinder {
 	 * the equator; it would drift near the poles, where this app does not go.
 	 */
 	private static function metresBetween(float $lat, float $lon, float $otherLat, float $otherLon): float {
-		$dLat = ($otherLat - $lat) * self::METRES_PER_DEGREE;
-		$dLon = ($otherLon - $lon) * self::METRES_PER_DEGREE * cos(deg2rad(($lat + $otherLat) / 2));
+		$dLat = ($otherLat - $lat) * BoundingBox::METRES_PER_DEGREE;
+		$dLon = ($otherLon - $lon) * BoundingBox::METRES_PER_DEGREE * cos(deg2rad(($lat + $otherLat) / 2));
 
 		return hypot($dLat, $dLon);
 	}

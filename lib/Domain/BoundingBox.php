@@ -12,6 +12,16 @@ namespace OCA\Territorio\Domain;
  * in view" query filters on before anything looks at the geometry itself.
  */
 final class BoundingBox {
+	/**
+	 * Metres per degree of latitude, near enough anywhere.
+	 *
+	 * Public because it is one fact with two readers: `metresTo()` below, which
+	 * the street search splits same-name ways with, and DuplicateFinder's
+	 * distance between two records. Two private copies of it were one edit away
+	 * from disagreeing.
+	 */
+	public const METRES_PER_DEGREE = 111_320.0;
+
 	private function __construct(
 		private readonly float $minLat,
 		private readonly float $minLon,
@@ -57,5 +67,30 @@ final class BoundingBox {
 
 	public function maxLon(): float {
 		return $this->maxLon;
+	}
+
+	/**
+	 * Metres between this box and another where they come closest — 0 when they
+	 * touch or overlap.
+	 *
+	 * The street search's measure of "one street or two" (BoundaryService::
+	 * names()): the gap BETWEEN two ways rather than between their middles,
+	 * because an avenue is held as a hundred ways laid end to end, each touching
+	 * the next, while their centres are hundreds of metres apart.
+	 *
+	 * ponytail: equirectangular, for the reason DuplicateFinder::metresBetween()
+	 * gives — over a few hundred metres the difference from haversine is
+	 * millimetres. Longitude is scaled at the mean latitude of the four edges,
+	 * so it is right at Santiago's -33° and not only at the equator.
+	 */
+	public function metresTo(self $other): float {
+		$dLat = max(0.0, $other->minLat - $this->maxLat, $this->minLat - $other->maxLat);
+		$dLon = max(0.0, $other->minLon - $this->maxLon, $this->minLon - $other->maxLon);
+		$lat = ($this->minLat + $this->maxLat + $other->minLat + $other->maxLat) / 4;
+
+		return hypot(
+			$dLat * self::METRES_PER_DEGREE,
+			$dLon * self::METRES_PER_DEGREE * cos(deg2rad($lat)),
+		);
 	}
 }

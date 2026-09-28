@@ -6,6 +6,7 @@ namespace OCA\Territorio\Db;
 
 use BadFunctionCallException;
 use OCA\Territorio\Domain\Action;
+use OCA\Territorio\Domain\BoundingBox;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
@@ -387,6 +388,62 @@ class FeatureMapper extends QBMapper {
 			->setMaxResults($limit);
 
 		return $this->findEntities($qb);
+	}
+
+	/**
+	 * The name and box of every live Boundary feature — and never its geometry.
+	 *
+	 * The street search's read (`BoundaryService::names()`), and the one read of
+	 * these rows that no view bounds. That is safe only because of what it does
+	 * not select: issue #12 is eleven thousand GEOMETRIES, and this is five
+	 * narrow columns. `select('*')` here would ship exactly the payload #12 keeps
+	 * off every other read.
+	 *
+	 * No cap, unlike `findBoundariesIn()`: that one is a view and asks again as
+	 * the view moves, while a cap here would drop streets from the search for
+	 * good — the arbitrary-cut problem that read's own ponytail note describes.
+	 *
+	 * ponytail: unpaginated and uncached; one comuna is about eleven thousand
+	 * rows of five columns, read once per session. Cache it per Revision
+	 * (ICache keyed on RevisionLog::current()) when a cadastre makes it hurt.
+	 *
+	 * By id, so "the first spelling filed" is the same spelling every time.
+	 * Unnamed ways are left out: nobody can type what has no name.
+	 *
+	 * @return list<array{name: string, box: BoundingBox}>
+	 */
+	public function boundaryNames(): array {
+		$boundaries = $this->datasets->boundaryIds();
+		if ($boundaries === []) {
+			return [];
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('name', 'min_lat', 'min_lon', 'max_lat', 'max_lon')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('retired', $qb->createNamedParameter(false, IQueryBuilder::PARAM_BOOL)))
+			->andWhere($qb->expr()->in('dataset_id', $qb->createNamedParameter(
+				$boundaries, IQueryBuilder::PARAM_INT_ARRAY,
+			)))
+			->andWhere($qb->expr()->isNotNull('min_lat'))
+			// Leaves out a NULL name as well: NULL <> '' is not true.
+			->andWhere($qb->expr()->neq('name', $qb->createNamedParameter('')))
+			->orderBy('id', 'ASC');
+
+		$ways = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$ways[] = [
+				'name' => (string)$row['name'],
+				'box' => BoundingBox::around([
+					[(float)$row['min_lon'], (float)$row['min_lat']],
+					[(float)$row['max_lon'], (float)$row['max_lat']],
+				]),
+			];
+		}
+		$result->closeCursor();
+
+		return $ways;
 	}
 
 	/**

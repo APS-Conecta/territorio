@@ -28,6 +28,9 @@ return [
 		// while it is open (ADR-0007). Everything else in the app is careful to
 		// leave them out.
 		['name' => 'boundary#inView', 'url' => '/boundaries', 'verb' => 'GET'],
+		// The street search asks for their names and boxes — never their shapes
+		// (issue #12) — once, the first time somebody focuses the search box.
+		['name' => 'boundary#names', 'url' => '/boundaries/names', 'verb' => 'GET'],
 
 		// The review queue (issue #16). Import never merges on similarity, so
 		// deciding is a request of its own — and both decisions it offers are

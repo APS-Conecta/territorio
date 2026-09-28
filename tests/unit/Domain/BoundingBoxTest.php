@@ -63,4 +63,50 @@ final class BoundingBoxTest extends TestCase {
 		$this->expectException(\ValueError::class);
 		BoundingBox::around([]);
 	}
+
+	/**
+	 * `metresTo()` is the street search's "one street or two" (BoundaryService::
+	 * names()), measured edge to edge. North-south a degree is METRES_PER_DEGREE
+	 * anywhere, so a box 0.001° north of another is 111.32 m from it — from
+	 * either side.
+	 */
+	public function testTheGapBetweenTwoBoxesIsMeasuredEdgeToEdge(): void {
+		$south = $this->box();
+		$north = BoundingBox::around([
+			[self::LON - 0.01, self::LAT + 0.011],
+			[self::LON + 0.01, self::LAT + 0.02],
+		]);
+
+		self::assertEqualsWithDelta(111.32, $south->metresTo($north), 0.01);
+		self::assertEqualsWithDelta(111.32, $north->metresTo($south), 0.01, 'the same gap from either side');
+	}
+
+	/** Ways laid end to end touch, and touching is no distance at all. */
+	public function testBoxesThatTouchOrOverlapAreNoDistanceApart(): void {
+		$box = $this->box();
+		$touching = BoundingBox::around([
+			[self::LON + 0.01, self::LAT],
+			[self::LON + 0.02, self::LAT + 0.005],
+		]);
+
+		self::assertSame(0.0, $box->metresTo($box));
+		self::assertSame(0.0, $box->metresTo($touching));
+	}
+
+	/**
+	 * East-west is scaled by cos(latitude): at La Florida a degree of longitude
+	 * is about 92.8 km, not 111.3. Unscaled, two ways 417 m apart east-west would
+	 * read as 500 m and be split as two streets.
+	 */
+	public function testAnEastWestGapIsScaledByLatitude(): void {
+		$west = BoundingBox::around([[self::LON, self::LAT]]);
+		$east = BoundingBox::around([[self::LON + 0.01, self::LAT]]);
+
+		self::assertEqualsWithDelta(
+			0.01 * BoundingBox::METRES_PER_DEGREE * cos(deg2rad(self::LAT)),
+			$west->metresTo($east),
+			0.001,
+		);
+		self::assertLessThan(0.01 * BoundingBox::METRES_PER_DEGREE, $west->metresTo($east));
+	}
 }

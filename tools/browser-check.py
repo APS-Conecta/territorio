@@ -244,6 +244,167 @@ def the_basemap_production_runs_is_painted(page, failures):
     page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
 
 
+# What the gate wraps to count the GPS. `navigator.geolocation` is what Leaflet's
+# `locate({ watch: true })` subscribes to, and a watch nobody clears is a
+# subscription the browser keeps. Installed on the page once, before the app is
+# re-entered, so every document from then on carries the counters.
+GEOLOCATION_COUNTER = """
+(() => {
+    const geolocation = navigator.geolocation
+    const watch = geolocation.watchPosition.bind(geolocation)
+    const clear = geolocation.clearWatch.bind(geolocation)
+    window.__territorioGeolocation = { watch: 0, clear: 0, codes: [] }
+    geolocation.watchPosition = (onFix, onError, options) => {
+        window.__territorioGeolocation.watch += 1
+        return watch(onFix, (error) => {
+            window.__territorioGeolocation.codes.push(error.code)
+            if (onError) onError(error)
+        }, options)
+    }
+    geolocation.clearWatch = (id) => {
+        window.__territorioGeolocation.clear += 1
+        return clear(id)
+    }
+})()
+"""
+
+# La Florida, inside the comuna the install serves, 30 m: a fix the accuracy
+# gate trusts (src/locate.js ACCURACY_LIMIT_M), so a notice after it is a fault.
+LOCATION_FIX = {"latitude": -33.5226, "longitude": -70.5985, "accuracy": 30}
+LOCATE_BUTTON = ".territorio-locate a"
+LOCATE_NOTICE = '[data-testid="locate-notice"]'
+OVERLAY_PATHS = ".leaflet-overlay-pane path"
+
+
+def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
+    """«¿Dónde estoy?» is allowed to ask, and lets go when it is refused (FR-2).
+
+    Dead on every Nextcloud 34 page until the fix this measures: core attaches a
+    bare FeaturePolicy to every TemplateResponse, and a bare one says
+    `geolocation 'none'`, so every click failed with code 1 — permission granted
+    or not — before the browser ever asked. Three green suites and this gate
+    never saw it: nothing in them rendered a page and read its headers. So the
+    header is read HERE, off the document response, after the middleware has had
+    its say. The PHPUnit test proves the factory, not the header, and a policy
+    value can read correct and block silently (78a94e3) — which is why the
+    string is not the end of it.
+
+    Then the effect. Refused: the Spanish notice, and the watch Leaflet started
+    is cleared — measured before the fix, two refused clicks left
+    `watchPosition` ×2 and `clearWatch` ×0, one live GPS subscription per retry.
+    Granted, with a 30 m fix emulated: the button is pressed, the circle and the
+    dot are painted (paint, not the button: c8837c7), no notice; and a second
+    click stops it cleanly. Console errors are read around the clicks, so a
+    permissions-policy violation is attributed to this check and not only to
+    the blanket line at the end of the run.
+
+    Failed, not skipped, whatever is missing (#141): a `'none'` header, no
+    control, no notice — each one is the finding. Runs first, before anything
+    pans or draws: the first fix recentres to zoom 16, and this ends on a
+    reload that puts the view back on the comuna, the way main() does before
+    the cluster checks.
+    """
+    page.add_init_script(GEOLOCATION_COUNTER)
+    response = page.goto(f"{BASE}/apps/territorio/", wait_until="domcontentloaded")
+    policy = response.all_headers().get("feature-policy", "") if response is not None else ""
+    if "geolocation 'self'" not in policy:
+        failures.append(
+            f"the app page's Feature-Policy is {policy!r}, not geolocation 'self' — every "
+            f"«¿Dónde estoy?» click fails with code 1 before the browser is asked "
+            f"(maps-compare research, FR-2)",
+        )
+        return
+
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    button = page.locator(LOCATE_BUTTON)
+    if not settles(page, lambda: button.count() > 0, timeout=10_000):
+        failures.append("the map has no «¿Dónde estoy?» control under the zoom control")
+        return
+
+    def gps():
+        return page.evaluate("() => window.__territorioGeolocation")
+
+    notice = page.locator(LOCATE_NOTICE)
+    paths = page.locator(OVERLAY_PATHS)
+    drawn_before = paths.count()
+    logged_before = len(errors)
+
+    # Refused first. Nothing has been granted to this context, and Playwright
+    # answers an ungranted request the way a person pressing «Bloquear» does:
+    # code 1, PERMISSION_DENIED.
+    page.context.clear_permissions()
+    button.click()
+    if not settles(page, lambda: notice.count() > 0, timeout=6_000):
+        failures.append("refusing the permission showed no notice at all")
+    else:
+        text = notice.first.inner_text().strip()
+        if "No tenemos permiso para usar su ubicación" not in text:
+            failures.append(
+                f"refusing the permission showed {text!r}, not the notice that says where "
+                f"the switch is (src/locate.js locateErrorMessage, code 1)",
+            )
+    if button.get_attribute("aria-pressed") != "false":
+        failures.append("the button stays pressed after the permission was refused")
+
+    refused = gps()
+    if (refused["watch"], refused["clear"]) != (1, 1):
+        failures.append(
+            f"after a refused click the GPS is watch {refused['watch']} / clear "
+            f"{refused['clear']} (codes {refused['codes']}), not 1 / 1 — the error handler "
+            f"left Leaflet's watch alive, and the next click starts a second one on top of it "
+            f"(maps-compare research, FR-2)",
+        )
+
+    # Granted, with a fix the browser hands over at once.
+    page.context.grant_permissions(["geolocation"])
+    page.context.set_geolocation(LOCATION_FIX)
+    button.click()
+    if not settles(page, lambda: paths.count() >= drawn_before + 2, timeout=6_000):
+        failures.append(
+            f"with the permission granted and a 30 m fix, the overlay pane went from "
+            f"{drawn_before} to {paths.count()} paths, not +2 — no accuracy circle and no dot "
+            f"were painted",
+        )
+    if button.get_attribute("aria-pressed") != "true":
+        failures.append("the button is not pressed while the map is following a granted fix")
+    if notice.count() > 0:
+        failures.append(
+            f"a 30 m fix, which the accuracy gate trusts, still showed "
+            f"{notice.first.inner_text().strip()!r}",
+        )
+    page.screenshot(path=str(SHOTS / "locate.png"), full_page=False)
+
+    # And off again: the second click is the stop, so the GPS goes quiet.
+    button.click()
+    if not settles(page, lambda: paths.count() == drawn_before, timeout=6_000):
+        failures.append(
+            f"stopping left {paths.count() - drawn_before} location path(s) on the map",
+        )
+    if button.get_attribute("aria-pressed") != "false":
+        failures.append("the button stays pressed after the second click, which is the stop")
+    stopped = gps()
+    if (stopped["watch"], stopped["clear"]) != (2, 2):
+        failures.append(
+            f"after refuse, follow and stop the GPS is watch {stopped['watch']} / clear "
+            f"{stopped['clear']}, not 2 / 2 — a watch survived the stop",
+        )
+
+    violations = [line for line in errors[logged_before:] if "ermissions policy" in line]
+    if violations:
+        failures.append(
+            f"the header grants geolocation 'self' but the browser still refused it: "
+            f"{violations[:1]} — the policy value reads correct and blocks (78a94e3)",
+        )
+
+    # Back to the neutral context and the comuna view: the first fix recentred
+    # the map to zoom 16, and every check below clicks canvas pixels where the
+    # install's own view puts things.
+    page.context.clear_permissions()
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1000)
+
+
 def save(page, failures, what):
     """Press Guardar and report what the app said if it refused.
 
@@ -6595,6 +6756,9 @@ def main():
         # is the branch the clinic's crash lived on, and nothing else here
         # opens it.
         the_basemap_production_runs_is_painted(page, failures)
+        # Right after it, before anything pans or draws: the first fix recentres
+        # the map to zoom 16, and the check puts the view back with a reload.
+        the_locate_control_can_ask_where_the_person_is(page, errors, failures)
 
         # Hide the cadastre first, which is what a person drawing a boundary does
         # anyway. With a comuna's Unidades Vecinales on screen the whole map is

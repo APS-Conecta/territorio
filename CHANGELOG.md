@@ -230,6 +230,24 @@ The basemap stops being somebody else's public service.
   **build error** instead of a warning — the class of defect cannot compile. Shipped as
   0.75.1 so the rebuilt bundle reaches browsers that had the broken one cached (`?v=` on
   the script URL comes from `info.xml`).
+- **«¿Dónde estoy?» is allowed to ask, and lets go when it is refused.** The control was dead on
+  every Nextcloud 34 page: core attaches a bare `FeaturePolicy` to every `TemplateResponse`, and a
+  bare one says `geolocation 'none'`, so every click failed with code 1 — permission granted or
+  not — before the browser ever asked. Measured on the dev instance; never seen by three green
+  suites and a twice-green gate, because nothing in them rendered a page and read its headers.
+  The page now grants geolocation to itself, and only to itself, set beside the CSP it belongs
+  with. The idea is nextcloud/maps' (`maps@0cc19b0:lib/Listener/AddFeaturePolicyListener.php:27-28`,
+  ADR-0001: adapted, not depended on), expressed as two calls to Nextcloud's public API rather
+  than a listener, because one page needs the grant.
+
+  And an error stops the GPS. Leaflet fires `locationerror` and keeps its watch, so an error
+  handler that only flipped the button left the first `watchPosition` alive and the next click
+  started a second one on top of it — measured: two refused clicks, `watchPosition` ×2,
+  `clearWatch` ×0. `stopLocate()` is now the first line of the handler. The browser gate reads
+  the `Feature-Policy` header off the document response and counts `watchPosition`/`clearWatch`
+  through a refused click, a granted one and the stop, so either fault can only break loudly:
+  on the tree before this entry the gate fails on the header, and with the one line removed it
+  fails on the count.
 
 ## [0.72.0] — unreleased
 

@@ -91,6 +91,7 @@
 					<TerritorioMap v-show="pane === 'mapa'"
 						:features="liveFiltered"
 						:taxonomy="taxonomy"
+						:divisions="divisions"
 						:selected-id="selectedId"
 						:draft-geometry="draftGeometry"
 						:draft-colour="draft?.colour ?? null"

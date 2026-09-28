@@ -180,6 +180,13 @@ export default {
 		},
 
 		onLocationError(event) {
+			// First, before the state flips: Leaflet fires `locationerror` and
+			// keeps `_locationWatchId`, so without this the first watch stays
+			// alive — measured on NC 34: two refused clicks, watchPosition ×2,
+			// clearWatch ×0 — and the next click, `locating` being false again,
+			// starts a second one on top of it. Harmless when nothing is
+			// watching, so no guard. (maps-compare research, FR-2)
+			this.map.stopLocate()
 			this.locating = false
 			this.locateButton?.setAttribute('aria-pressed', 'false')
 			this.locationLayer?.remove()

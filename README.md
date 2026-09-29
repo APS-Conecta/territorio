@@ -175,7 +175,10 @@ from OpenStreetMap through a **repo-side** tool, never from a call the app makes
 `--boundary` is what keeps them off the map. They are Features like any other and go through the
 same import, batch and revert, but a comuna is around eleven thousand of them: the flag marks the
 Dataset, and every ordinary read — the map, the Datos list, the counts, the change feed — leaves
-the whole collection out. They are loaded only while a Sector's boundary is being built.
+the whole collection out. Their shapes are loaded only while a Sector's boundary is being built;
+the one other read is the map's street search ([Finding a street](#finding-a-street)), which takes
+their names and boxes and never a shape (issue #12). One import fills both, and until it runs both
+are empty.
 
 Refreshing them later is just re-running both commands. Ids come from OSM, so a street redrawn
 upstream updates the record it already has, and no Sector already drawn is moved.
@@ -264,6 +267,32 @@ taken indoors is routinely accurate to hundreds of metres while looking exactly 
 good one. Past **100 m** the map says in words that the position is approximate and may not match
 the sector shown. A reading that arrives with no accuracy at all is treated as untrustworthy rather
 than as perfect.
+
+## Finding a street
+
+Under «¿Dónde estoy?» the map has a **«Buscar una calle»** box: type part of a street's name,
+choose one of the places it names, and the map fits to that street, no closer than zoom 17. That is
+street precision, not a house number — enough to find an address and then place a record there
+with the usual click. It searches the [Boundary features](#boundary-features) and nothing else: no
+geocoder, and no request to any host but this server (ADR-0004).
+
+One name in two places is two rows. A comuna holds «Pasaje Dos» in many places, and a row that
+stood for all of them would fit the map to the whole comuna — not a choice anybody can make
+(ADR-0007). So the server splits each name wherever more than **500 m** separates its ways
+(`BoundaryService::SAME_PLACE_M`, whose docblock holds the La Florida measurement behind the
+number), and a long avenue held as a hundred touching ways stays one row. Under each name the row
+says which Unidad Vecinal it falls in, when there is one, and how many tramos it is. Nothing is
+chosen for the person: Enter with no row active does nothing.
+
+The names come from `GET /apps/territorio/boundaries/names` — names and boxes, never geometry —
+fetched once, the first time somebody focuses the box; matching happens in the browser from then
+on. It is a plain route beside the Sector editor's, not OCS: the published surface stays at three
+([ADR-0020](docs/adr/0020-rest-is-the-published-surface.md)).
+
+**Empty until the Boundary features are imported.** Without them the route answers an empty list
+and the box says «No hay calles cargadas en este mapa.» rather than showing nothing. Importing a
+comuna's (`occ territorio:import … --boundary`, above) fills this search and the Sector editor's
+«Buscar una calle, canal o vía» at once.
 
 ## Deploying a version bump
 

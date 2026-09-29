@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "territorio",
-        "version": "0.76.1",
+        "version": "0.77.0",
         "description": "Mapa territorial de un CESFAM",
         "license": {
             "name": "AGPL-3.0-or-later"
@@ -490,7 +490,7 @@
         },
         {
             "name": "boundary",
-            "description": "The Boundary features on screen, for the Sector editor. Thin over the service, like every other controller here, so an OCS version later is a new file rather than a rewrite (issue #18)."
+            "description": "The Boundary features: the ones on screen, for the Sector editor, and every street's name, for the street search. Thin over the service, like every other controller here, so an OCS version later is a new file rather than a rewrite (issue #18)."
         },
         {
             "name": "duplicate",

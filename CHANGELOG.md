@@ -142,6 +142,38 @@ The basemap stops being somebody else's public service.
   draft was voseo — «Podés», «probá» — which is not how anybody is addressed in a Chilean clinic,
   and nothing in the repo would have caught it, so a test now pins the register.
 
+- **«Buscar una calle» finds a street and takes the map there.** A box under «¿Dónde estoy?»:
+  type part of a street's name, choose one of the places it names, and the map fits to it, no
+  closer than zoom 17. Street precision, which is what placing a record by its address needs
+  before the click that places it. It searches the Cadastral Dataset the Sector editor already
+  picks from and nothing else — no geocoder, and no request to any host but this server
+  (ADR-0004).
+
+  **One name in two places is two rows.** La Florida's cadastre holds «Pasaje Dos» in sixteen
+  places, and one row for all of them would fit the map to the whole comuna, which is not a
+  choice anybody can make (ADR-0007). So the server splits every name by place: its ways are one
+  street while each comes within **500 m** of another (`BoundaryService::SAME_PLACE_M`). Measured
+  on La Florida's 11,291 named ways, 416 names split into 1,031 places, while «Avenida La
+  Florida», 128 ways laid end to end, stays one row. Under each name the row says which Unidad
+  Vecinal its centre falls in and how many tramos it is — worked out in the browser from the
+  Unidades Vecinales it already holds, whatever Capas or «Buscar» is hiding. Nothing is chosen
+  for the person: Enter with no row active does nothing.
+
+  **Names and boxes, never shapes.** `GET /boundaries/names` is the one read of the cadastre that
+  no view bounds, and it is safe only because it carries no geometry (issue #12): about 5,100 rows,
+  ~95 KB gzipped, fetched once, the first time somebody focuses the box. A plain route beside the
+  Sector editor's, not OCS — the published surface stays at three (ADR-0020). The ranking is the
+  Sector editor's own (`closerFirst`), so the app's two street lists agree about what comes first.
+
+  **Nothing to find until a cadastre is imported.** Production has no Cadastral Dataset yet, and
+  the box says so in words — «No hay calles cargadas en este mapa.» — rather than showing an empty
+  list. Importing La Florida's (`occ territorio:import … --boundary`) fills this search and the
+  Sector editor's at once. The browser gate imports two lines with one name two kilometres apart,
+  chooses the second from the keyboard and reads where Leaflet actually landed, and measures the
+  box under «¿Dónde estoy?» at 1400 px and at 360 px: with the `fitBounds` line removed, or the
+  two controls mounted the other way round, it fails. Shipped as 0.77.0 (`?v=` on the script URL
+  comes from `info.xml`).
+
 - **The map page and the admin panel show their loading state instead of a blank frame** while the
   bundle boots — spinner + `<noscript>` from the suite theme (`themes/apsconecta`, MAPEO.md §5),
   the same component in every custom app. Vue's container mount replaces the mount's children on

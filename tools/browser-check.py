@@ -150,6 +150,23 @@ def console_errors(page):
     return found
 
 
+def served_basemap(page):
+    """The basemap this page was served, decoded the way `loadState` decodes it,
+    or None when the page carries none.
+
+    Off the page already open, not a fresh fetch like served_taxonomy(): the
+    basemap is fixed for a page's life, and the question every caller asks is
+    what THIS page was told — what the map should have painted, and which one
+    host besides this server the page may ask for anything.
+    """
+    return page.evaluate(
+        """() => {
+            const element = document.getElementById('initial-state-territorio-basemap')
+            return element === null ? null : JSON.parse(atob(element.value))
+        }""",
+    )
+
+
 def the_basemap_production_runs_is_painted(page, failures):
     """The self-hosted PMTiles basemap draws, credited as served (review L1-03).
 
@@ -172,12 +189,7 @@ def the_basemap_production_runs_is_painted(page, failures):
     have recreated the blind spot under a nicer name. `make instance-up`
     provisions the archive, so a gate against OSM is a provisioning mistake.
     """
-    served = page.evaluate(
-        """() => {
-            const element = document.getElementById('initial-state-territorio-basemap')
-            return element === null ? null : JSON.parse(atob(element.value))
-        }""",
-    )
+    served = served_basemap(page)
     if served is None:
         failures.append(
             "the page carries no served basemap at #initial-state-territorio-basemap, so "
@@ -274,6 +286,47 @@ LOCATION_FIX = {"latitude": -33.5226, "longitude": -70.5985, "accuracy": 30}
 LOCATE_BUTTON = ".territorio-locate a"
 LOCATE_NOTICE = '[data-testid="locate-notice"]'
 OVERLAY_PATHS = ".leaflet-overlay-pane path"
+LOCATE_CONTROL = ".territorio-locate"
+# «Buscar una calle» (SearchControl.vue): the control's container, which
+# Leaflet stacks in the same corner as «¿Dónde estoy?».
+STREET_SEARCH = ".territorio-search"
+
+# What the gate installs to read where the map really went. Leaflet fires
+# `moveend` once a move has landed, so the bounds and the zoom at that moment
+# are the map's state — not what the control meant to ask for, which is all a
+# DOM or a source text can say. On the prototype, because the map is
+# TerritorioMap's non-reactive handle and nothing outside the component holds
+# it. Evaluated once the page has loaded rather than installed before it like
+# GEOLOCATION_COUNTER, because `window.L` only exists once Leaflet's bundle has
+# run — and it is the app's own Leaflet: markercluster attaches itself to
+# `window.L`, and TerritorioMap reads `L.markerClusterGroup` off its imported
+# `L`, which only works because the two are one object. Installing it empties
+# the list, so what it holds is every move since. It answers whether it could:
+# without `window.L` there is nothing to wrap, and a ReferenceError out of
+# page.evaluate would end the whole run rather than fail one check.
+VIEW_RECORDER = """
+(() => {
+    if (typeof window.L === 'undefined') {
+        return false
+    }
+    const fire = L.Map.prototype.fire
+    window.__territorioViews = []
+    L.Map.prototype.fire = function (type, data, propagate) {
+        if (type === 'moveend') {
+            const bounds = this.getBounds()
+            window.__territorioViews.push({
+                south: bounds.getSouth(),
+                west: bounds.getWest(),
+                north: bounds.getNorth(),
+                east: bounds.getEast(),
+                zoom: this.getZoom(),
+            })
+        }
+        return fire.call(this, type, data, propagate)
+    }
+    return true
+})()
+"""
 
 
 def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
@@ -403,6 +456,260 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
     page.wait_for_timeout(1000)
+
+
+def _back_on_the_comuna(page):
+    """Reload, which puts the view back where the install's own comuna puts it
+    — where every check that clicks canvas pixels expects it."""
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(1000)
+
+
+def the_street_search_sits_under_the_locate_control(page, failures):
+    """«Buscar una calle» stacks under «¿Dónde estoy?» and stays on the map, on a
+    laptop and on a phone.
+
+    Measured, not read off the order the two are mounted in (search-control.
+    test.js pins that): Leaflet appends a corner's controls in the order they
+    are added, and a box that ran off a 360 px screen would still come second in
+    the DOM. 360 px is under Nextcloud's 1024 px mobile break, where the list
+    and the map stop sharing the screen and the map is built again on its own —
+    so this is the phone's map, not the laptop's squeezed.
+
+    Ends back at 1400x900 on a reload: coming back over the break rebuilds the
+    map a second time, and every check after this one expects the view the
+    install's own comuna gives.
+    """
+    canvas = page.locator('[data-testid="map-canvas"]')
+    locate = page.locator(LOCATE_CONTROL)
+    search = page.locator(STREET_SEARCH)
+
+    for width, height in ((1400, 900), (360, 740)):
+        page.set_viewport_size({"width": width, "height": height})
+        # Crossing the break swaps NcAppContent's layout, which unmounts the
+        # map and mounts another — so this waits before it measures, or the
+        # boxes it reads could be the old map's.
+        page.wait_for_timeout(1000)
+        if not settles(page, lambda: locate.count() > 0 and search.count() > 0, timeout=10_000):
+            failures.append(
+                f"at {width}x{height} the map has no «¿Dónde estoy?» or no «Buscar una calle» "
+                f"({locate.count()} / {search.count()})",
+            )
+            continue
+
+        map_box = canvas.bounding_box()
+        above = locate.first.bounding_box()
+        box = search.first.bounding_box()
+        if map_box is None or above is None or box is None:
+            failures.append(f"at {width}x{height} the map or one of its two controls is not rendered")
+            continue
+
+        if box["y"] < above["y"] + above["height"] - 1:
+            failures.append(
+                f"at {width}x{height} «Buscar una calle» starts at y={round(box['y'])}px, above "
+                f"the bottom of «¿Dónde estoy?» at y={round(above['y'] + above['height'])}px — "
+                f"it is not stacked under it",
+            )
+        if (box["x"] < map_box["x"] - 1
+                or box["x"] + box["width"] > map_box["x"] + map_box["width"] + 1
+                or box["y"] + box["height"] > map_box["y"] + map_box["height"] + 1):
+            failures.append(
+                f"at {width}x{height} «Buscar una calle» spans x={round(box['x'])}.."
+                f"{round(box['x'] + box['width'])}px, y=..{round(box['y'] + box['height'])}px, "
+                f"outside the map at x={round(map_box['x'])}..{round(map_box['x'] + map_box['width'])}px, "
+                f"y=..{round(map_box['y'] + map_box['height'])}px",
+            )
+
+        if width == 360:
+            page.screenshot(path=str(SHOTS / "street-search-phone.png"), full_page=False)
+
+    page.set_viewport_size({"width": 1400, "height": 900})
+    # The settle the loop gives each rebuild, before the reload too: coming back
+    # over the break builds the map again, and a reload while that map is still
+    # reading the basemap archive's header aborts the fetch — every tile waiting
+    # on it then logs «Failed to fetch», 24 console errors that fail the whole
+    # run (measured: net::ERR_ABORTED on bytes=0-16383, nothing else).
+    page.wait_for_timeout(1000)
+    _back_on_the_comuna(page)
+
+
+def _holds(view, line):
+    """Whether a view VIEW_RECORDER saw has the whole of a line in it, given as
+    (latitude, west, east) — the fixture's lines run west to east."""
+    latitude, west, east = line
+    return (view["south"] <= latitude <= view["north"]
+            and view["west"] <= west and east <= view["east"])
+
+
+def the_street_search_goes_where_the_person_chooses(page, failures):
+    """Find-on-map: a street's name typed under «¿Dónde estoy?», one of the
+    places it names chosen from the keyboard, and the map on that place.
+
+    Its own two lines, imported as a Cadastral Dataset the way the Sector
+    editor's square is: one name, two kilometres apart, so the search must
+    offer two rows and the map must land on the one chosen — La Florida's
+    sixteen «Pasaje Dos», in miniature. Named for the run so the count is exact
+    whatever cadastre the instance holds, and typed without the accent or the
+    capitals, the way somebody types on a phone. Left behind like the square's
+    sides: a boundary line claims nothing.
+
+    Where the map went is read off Leaflet itself (VIEW_RECORDER), not off the
+    control: a pick that fits the wrong box, or none, looks the same in the DOM.
+    Enter is pressed once with nothing chosen first, because «the first match»
+    is exactly the guess ADR-0007 refuses to make — and the recorder is what
+    can tell that it was not made.
+
+    The network is read while the list is built, because the search's promise
+    is that it asks nothing of anybody but this server (ADR-0004). The one
+    request to /boundaries/names must be seen — which is also what proves the
+    listener heard anything at all, so an empty list of other hosts means
+    something — and the only other host allowed is the basemap archive this
+    page was served, which may still be streaming tiles.
+
+    Failed, not skipped, when the lines cannot be imported (#141): a search
+    with nothing to find has checked nothing. Ends on a reload, like the
+    locate check, because the pick leaves the map at zoom 17 two kilometres
+    south of everything the checks below click on.
+    """
+    name = f"Pasaje Búsqueda {RUN}"
+    # (latitude, west, east): 460 m each, 0.02° apart — 2.2 km, four times the
+    # gap BoundaryService::SAME_PLACE_M still calls one street — and sited
+    # where no other fixture here puts anything.
+    first, second = (-33.60, -70.66, -70.655), (-33.62, -70.66, -70.655)
+    lines = [
+        {
+            "type": "Feature",
+            "properties": {"id": f"busqueda-{RUN}-{index}", "name": name},
+            "geometry": {"type": "LineString", "coordinates": [[west, latitude], [east, latitude]]},
+        }
+        for index, (latitude, west, east) in enumerate((first, second))
+    ]
+    geojson = json.dumps({"type": "FeatureCollection", "features": lines})
+    if not import_dataset(geojson, f"busqueda-{RUN}", boundary=True):
+        failures.append(
+            "could not import the street search's two lines through occ, so nothing checked "
+            "that the search finds a street and goes there (#141)",
+        )
+        return
+
+    # A fresh page, so the focus below is the control's first and the streets
+    # are fetched then — the count of that request is part of what is checked.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    box = page.get_by_role("combobox", name="Buscar una calle", exact=True)
+    if not settles(page, lambda: box.count() > 0, timeout=10_000):
+        failures.append("the map has no «Buscar una calle» box under «¿Dónde estoy?»")
+        return
+
+    if not page.evaluate(VIEW_RECORDER):
+        failures.append(
+            "the page has no window.L, so nothing could read where the street search took the map",
+        )
+        return
+
+    def views():
+        return page.evaluate("() => window.__territorioViews")
+
+    served = served_basemap(page)
+    allowed = (BASE,) if served is None else (BASE, served["url"])
+    asked = []
+
+    def heard(request):
+        if request.url.startswith(("http://", "https://")):
+            asked.append(request.url)
+
+    # The keyboard only, from here to the pick: focus, then keys.
+    page.on("request", heard)
+    box.focus()
+    page.keyboard.type(f"pasaje busqueda {RUN}")
+    options = page.get_by_role("listbox", name="Calles", exact=True).get_by_role("option")
+    settles(page, lambda: options.count() >= 2, timeout=10_000)
+    page.remove_listener("request", heard)
+
+    loads = [url for url in asked if "/apps/territorio/boundaries/names" in url]
+    if len(loads) != 1:
+        failures.append(
+            f"focusing the box and typing a name asked /boundaries/names {len(loads)} times, "
+            f"not once — the streets are fetched on the first focus and matched in the browser",
+        )
+    elsewhere = [url for url in asked if not url.startswith(allowed)]
+    if elsewhere:
+        failures.append(
+            f"the street search asked another host while it built the list: {elsewhere[:3]} "
+            f"(ADR-0004: nothing leaves the origin)",
+        )
+
+    if options.count() != 2:
+        failures.append(
+            f"typing «pasaje busqueda {RUN}» offered {options.count()} rows, not 2 — one name "
+            f"in two places two kilometres apart is two choices (ADR-0007)",
+        )
+        page.keyboard.press("Escape")
+        return
+
+    if box.get_attribute("aria-expanded") != "true":
+        failures.append("the box shows two rows and says aria-expanded=false — no list is announced")
+    details = [
+        option.locator(".territorio-search__detail").inner_text().strip()
+        for option in options.all()
+    ]
+    # Counted, not all(): all() of nothing is True.
+    if sum(detail.endswith("1 tramo") for detail in details) != 2:
+        failures.append(f"the rows say {details} under the name, not «1 tramo» each (placeDetail)")
+
+    # ADR-0007: Enter with nothing active is not «the first match», even though
+    # the first match is right there. Only the moves after this Enter are read:
+    # a late fit of the map's own first view is not the search's doing.
+    moved = len(views())
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(500)
+    if any(_holds(view, first) for view in views()[moved:]) or options.count() != 2:
+        failures.append(
+            "Enter with no row active took the map to the first «Pasaje Búsqueda», or closed the "
+            "list — the search chose for the person (ADR-0007)",
+        )
+        # Guarded rather than carried on: with the list gone, the questions below
+        # would wait thirty seconds for a row and then raise, and a raise ends
+        # the whole run (see a_sector_can_be_built_from_picked_lines).
+        _back_on_the_comuna(page)
+        return
+
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    wanted = options.nth(1).get_attribute("id")
+    if (box.get_attribute("aria-activedescendant") != wanted
+            or options.nth(1).get_attribute("aria-selected") != "true"):
+        failures.append(
+            f"two ArrowDowns left aria-activedescendant={box.get_attribute('aria-activedescendant')!r}, "
+            f"not the second row {wanted!r} — the keyboard is not where the list says it is",
+        )
+    page.screenshot(path=str(SHOTS / "street-search.png"), full_page=False)
+
+    moved = len(views())
+    page.keyboard.press("Enter")
+    if not settles(page, lambda: len(views()) > moved, timeout=5_000):
+        failures.append("choosing the second «Pasaje Búsqueda» from the keyboard did not move the map")
+        page.keyboard.press("Escape")
+        return
+
+    view = views()[-1]
+    if not _holds(view, second) or _holds(view, first):
+        failures.append(
+            f"the map landed on {view}, which does not hold the chosen street at {second} and "
+            f"only it — the pick went somewhere other than the place chosen",
+        )
+    if view["zoom"] > 17:
+        failures.append(
+            f"the map zoomed to {view['zoom']} on a 460 m street — past 17 a pasaje fills the screen",
+        )
+    if box.get_attribute("aria-expanded") != "false" or box.input_value() != name:
+        failures.append(
+            f"after the pick the box holds {box.input_value()!r} with aria-expanded="
+            f"{box.get_attribute('aria-expanded')!r}, not the chosen name with its list closed",
+        )
+
+    _back_on_the_comuna(page)
 
 
 def save(page, failures, what):
@@ -6759,6 +7066,13 @@ def main():
         # Right after it, before anything pans or draws: the first fix recentres
         # the map to zoom 16, and the check puts the view back with a reload.
         the_locate_control_can_ask_where_the_person_is(page, errors, failures)
+
+        # Beside it, and for the same reasons: its neighbour in the map's corner,
+        # and two checks that move or rebuild the map and end on a reload that
+        # puts the view back. Layout first, so a box that is not on the map at
+        # all is named as that before the search is driven through it.
+        the_street_search_sits_under_the_locate_control(page, failures)
+        the_street_search_goes_where_the_person_chooses(page, failures)
 
         # Hide the cadastre first, which is what a person drawing a boundary does
         # anyway. With a comuna's Unidades Vecinales on screen the whole map is

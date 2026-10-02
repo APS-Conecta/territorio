@@ -167,14 +167,18 @@ class Feature extends Entity {
 	 * (ADR-0008) is the same one `BoundingBox` already implements.
 	 */
 	public function boundingBox(): ?BoundingBox {
-		if ($this->getMinLat() === null) {
+		if ($this->getMinLat() === null || $this->getMinLon() === null || $this->getMaxLat() === null || $this->getMaxLon() === null) {
 			return null;
 		}
 
-		return BoundingBox::around([
-			[$this->getMinLon(), $this->getMinLat()],
-			[$this->getMaxLon(), $this->getMaxLat()],
-		]);
+		// Use fromBounds directly: bounds are already stored on entity columns,
+		// avoiding array allocations and array_column/min/max calls in around().
+		return BoundingBox::fromBounds(
+			$this->getMinLat(),
+			$this->getMinLon(),
+			$this->getMaxLat(),
+			$this->getMaxLon(),
+		);
 	}
 
 	/**

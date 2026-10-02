@@ -52,7 +52,10 @@ final class PointInPolygon {
 
 		// A hole is a ring the point must NOT be in — except on its edge, which is
 		// still the boundary of the polygon and so still inside it.
-		foreach (array_slice($rings, 1) as $hole) {
+		// Avoid array_slice array copy when inspecting holes.
+		$ringCount = count($rings);
+		for ($k = 1; $k < $ringCount; $k++) {
+			$hole = $rings[$k];
 			if (is_array($hole) && count($hole) >= 4
 				&& self::inRing($hole, $lon, $lat)
 				&& !self::onBoundary($hole, $lon, $lat)) {
@@ -115,8 +118,14 @@ final class PointInPolygon {
 
 		// Outside the segment's own box, so not on it — and this is what keeps the
 		// cross-product test below from matching the whole infinite line.
-		if ($lon < min($x1, $x2) - self::ON_THE_LINE || $lon > max($x1, $x2) + self::ON_THE_LINE
-			|| $lat < min($y1, $y2) - self::ON_THE_LINE || $lat > max($y1, $y2) + self::ON_THE_LINE) {
+		// Use ternaries instead of min()/max() to avoid function overhead in segment loop.
+		$minX = $x1 < $x2 ? $x1 : $x2;
+		$maxX = $x1 < $x2 ? $x2 : $x1;
+		$minY = $y1 < $y2 ? $y1 : $y2;
+		$maxY = $y1 < $y2 ? $y2 : $y1;
+
+		if ($lon < $minX - self::ON_THE_LINE || $lon > $maxX + self::ON_THE_LINE
+			|| $lat < $minY - self::ON_THE_LINE || $lat > $maxY + self::ON_THE_LINE) {
 			return false;
 		}
 

@@ -31,6 +31,15 @@ final class BoundingBox {
 	}
 
 	/**
+	 * Direct constructor from min/max coordinates when bounds are already known.
+	 *
+	 * Bypasses array allocations and min/max scans done by around().
+	 */
+	public static function fromBounds(float $minLat, float $minLon, float $maxLat, float $maxLon): self {
+		return new self($minLat, $minLon, $maxLat, $maxLon);
+	}
+
+	/**
 	 * @param list<array{float, float}> $positions each as [longitude, latitude]
 	 */
 	public static function around(array $positions): self {

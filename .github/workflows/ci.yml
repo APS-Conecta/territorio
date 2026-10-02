@@ -41,7 +41,25 @@ jobs:
       # (The repo must exist first: Phase 1 pushes aps-common to APS-Conecta
       # before this job's first post-slice run.)
       - name: aps-common sibling
-        run: git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+        # aps-common is PRIVATE: the anonymous clone dies with 'could not read Username'.
+        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: Jules pushes
+        # branches here nightly and this job runs on them, so the secret it can reach
+        # reads one repo and writes nothing. GitHub's host key is pinned from api/meta.
+        # Without the secret the step degrades to that loud anonymous failure.
+        env:
+          APS_COMMON_DEPLOY_KEY: ${{ secrets.APS_COMMON_DEPLOY_KEY }}
+        run: |
+          if [ -n "${APS_COMMON_DEPLOY_KEY:-}" ]; then
+            dir="$(mktemp -d)"
+            trap 'rm -rf "$dir"' EXIT
+            printf '%s\n' "$APS_COMMON_DEPLOY_KEY" >"$dir/key"
+            chmod 600 "$dir/key"
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >"$dir/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts -o StrictHostKeyChecking=yes"
+            git clone --depth 1 git@github.com:APS-Conecta/aps-common.git ../aps-common
+          else
+            git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+          fi
 
       # vendor/aps/common/src is committed, so it can drift from the package
       # the way js/ can drift from src/. Same gate, second artifact.
@@ -128,7 +146,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: aps-common sibling
-        run: git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+        # aps-common is PRIVATE: the anonymous clone dies with 'could not read Username'.
+        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: Jules pushes
+        # branches here nightly and this job runs on them, so the secret it can reach
+        # reads one repo and writes nothing. GitHub's host key is pinned from api/meta.
+        # Without the secret the step degrades to that loud anonymous failure.
+        env:
+          APS_COMMON_DEPLOY_KEY: ${{ secrets.APS_COMMON_DEPLOY_KEY }}
+        run: |
+          if [ -n "${APS_COMMON_DEPLOY_KEY:-}" ]; then
+            dir="$(mktemp -d)"
+            trap 'rm -rf "$dir"' EXIT
+            printf '%s\n' "$APS_COMMON_DEPLOY_KEY" >"$dir/key"
+            chmod 600 "$dir/key"
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >"$dir/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts -o StrictHostKeyChecking=yes"
+            git clone --depth 1 git@github.com:APS-Conecta/aps-common.git ../aps-common
+          else
+            git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json

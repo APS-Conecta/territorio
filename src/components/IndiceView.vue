@@ -92,7 +92,10 @@
 						:data-key="column.key"
 						:title="row.cells[column.key] || null"
 						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }">
-						<button v-if="column.key === shown[0].key" type="button" class="territorio-indice__open">
+						<button v-if="column.key === shown[0].key"
+							type="button"
+							class="territorio-indice__open"
+							:aria-label="`Abrir registro «${row.cells[column.key]}»`">
 							{{ row.cells[column.key] }}
 						</button>
 						<template v-else>{{ row.cells[column.key] }}</template>

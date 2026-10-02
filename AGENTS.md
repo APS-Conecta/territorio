@@ -12,8 +12,10 @@ Claude reviews every PR. The rules below are this repo's own facts, and they bin
 - **Journals** live only in lowercase `.jules/` (`breaker.md`, `tracer.md`, `bolt.md`, `simplifier.md`,
   `janitor.md`, `palette.md`, `scribe.md`, `lexicon.md`) — never create `.Jules/`.
   Date each entry with today's `date +%F`, never a remembered or copied date.
-- **Names:** code is English, but domain vocabulary keeps the spelling `CONTEXT.md` gives it
-  (`createPregunta`, not `createQuestion`). Rename existing names only inside code a change already touches.
+- **Names:** code is English, but a domain term keeps the spelling `CONTEXT.md` gives it (`saveComuna` and
+  `unidadVecinalId`, not `saveMunicipality` or `neighbourhoodUnitId`). Rename an existing name only inside
+  code a change already touches, and never a table, column, route, controller action (an OpenAPI operation
+  id) or API field.
 - **Threat model:** read `docs/threat-model.md` before any security work.
 - **Gate before opening a PR** — what `ci.yml` and `docs.yml` run. This repo uses **npm**, not pnpm:
   `git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common` if it is missing — aps-common is
@@ -33,5 +35,5 @@ Claude reviews every PR. The rules below are this repo's own facts, and they bin
 - **One concern per PR**, under 50 lines of hand-written source (rebuilt bundle excluded), and it contains every change
   its description claims — a journal-only PR is invalid. Nothing worthwhile → no PR. Never repeat a change an open or
   recently closed PR already proposes.
-- **PR text:** keep your preset's title prefix (`⚡ Bolt:` / `🛡️ Sentinel:` / `🎨 Palette:`) and its body format;
+- **PR text:** keep the title prefix and body format your agent's prompt gives (emoji and name as above);
   the maintainer gives the squash commit its Conventional Commits title and adds the `ai-assisted` label.

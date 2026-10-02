@@ -10,6 +10,7 @@ the same fact, the one named here as its authority wins and the other should lin
 | [`README.md`](../README.md) | What this app is, its status, how to run it, install it and configure it |
 | [`CONTEXT.md`](../CONTEXT.md) | **The vocabulary.** Comuna, Territorio, Sector, Feature, Limit, Dataset, and the words to avoid |
 | [`adr/`](adr/) | Decisions, and the reasoning that was live when each was taken |
+| [`threat-model.md`](threat-model.md) | What an attacker wants, the entry points and their guards; the Breaker agent starts here |
 | [`CLAUDE.md`](../CLAUDE.md) | Which agent skill runs what, and what is not enforced by anything |
 
 The organisation's contributing doctrine and security policy are not here: they are **to be** served to every

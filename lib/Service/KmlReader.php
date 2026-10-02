@@ -63,7 +63,9 @@ class KmlReader {
 	 */
 	private function asCollection(string $xml): array {
 		$previous = libxml_use_internal_errors(true);
-		$document = simplexml_load_string($xml);
+		// Disable network access during XML parsing (LIBXML_NONET) to protect
+		// against external entity resolution attempts in untrusted KML imports.
+		$document = simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET);
 		libxml_clear_errors();
 		libxml_use_internal_errors($previous);
 

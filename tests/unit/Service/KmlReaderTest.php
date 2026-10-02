@@ -276,6 +276,29 @@ final class KmlReaderTest extends TestCase {
 		$this->reader->read('no soy kml', 'prueba');
 	}
 
+	public function testExternalNetworkEntitiesAreIgnoredDuringParsing(): void {
+		$kml = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<!DOCTYPE kml [
+		  <!ENTITY % xxe SYSTEM "http://127.0.0.1:9999/nonexistent.dtd">
+		  %xxe;
+		]>
+		<kml xmlns="http://www.opengis.net/kml/2.2">
+		  <Document>
+		    <Placemark>
+		      <name>Placemark Seguro</name>
+		      <Point><coordinates>-70.58,-33.52</coordinates></Point>
+		    </Placemark>
+		  </Document>
+		</kml>
+		XML;
+
+		$rows = $this->reader->read($kml, 'prueba');
+
+		self::assertCount(1, $rows);
+		self::assertSame('Placemark Seguro', $rows[0]['name']);
+	}
+
 	/** A description is the one extra thing MyMaps does carry, when someone typed one. */
 	public function testADescriptionBecomesTheNotes(): void {
 		$rows = $this->reader->read(self::LOOSE, 'prueba');

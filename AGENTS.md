@@ -2,12 +2,19 @@
 
 Full project guidance — skills, the review loop, CI and the docs gate — lives in [`CLAUDE.md`](CLAUDE.md); read it first.
 
-## Scheduled Jules agents (Bolt ⚡ / Sentinel 🛡️ / Palette 🎨)
+## Scheduled Jules agents
 
-Nightly Jules presets — Sentinel (security), Bolt (performance), Palette (UX/a11y). Claude reviews every PR.
+One Jules agent visits this repo each night at 02:00 (Chile): Mon 🗡️ Breaker, Tue 🐞 Tracer,
+Wed ⚡ Bolt / ✂️ Simplifier (alternate weeks), Thu 🧹 Janitor, Fri 🎨 Palette, Sat 📚 Scribe,
+Sun 🔤 Lexicon. Their prompts and the code standards live in the private `APS-Conecta/agents` repo;
+Claude reviews every PR. The rules below are this repo's own facts, and they bind every agent.
 
-- **Journals** live only in lowercase `.jules/` (`bolt.md`, `sentinel.md`, `palette.md`) — never create `.Jules/`.
+- **Journals** live only in lowercase `.jules/` (`breaker.md`, `tracer.md`, `bolt.md`, `simplifier.md`,
+  `janitor.md`, `palette.md`, `scribe.md`, `lexicon.md`) — never create `.Jules/`.
   Date each entry with today's `date +%F`, never a remembered or copied date.
+- **Names:** code is English, but domain vocabulary keeps the spelling `CONTEXT.md` gives it
+  (`createPregunta`, not `createQuestion`). Rename existing names only inside code a change already touches.
+- **Threat model:** read `docs/threat-model.md` before any security work.
 - **Gate before opening a PR** — what `ci.yml` and `docs.yml` run. This repo uses **npm**, not pnpm:
   `git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common` if it is missing — aps-common is
   private, so if the clone fails, skip the steps that need it and list them as not run; never edit a workflow to work around it;

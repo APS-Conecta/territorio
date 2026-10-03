@@ -20,7 +20,7 @@ Contains no patient information.
 
 ## Status — 2026-08-08
 
-Version 0.27.0. `appinfo/info.xml` is where the version lives; nothing else declares one.
+Version 0.77.0. `appinfo/info.xml` is where the version lives; nothing else declares one.
 
 Working: the app shell and the map; Places created, edited, retired and restored, with history and
 a polled change cursor behind them; the Capas panel and text search driving map, Datos and Análisis

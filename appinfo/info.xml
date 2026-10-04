@@ -15,6 +15,10 @@ No contiene información de pacientes.
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Territorio</namespace>
+    <documentation>
+        <admin>https://github.com/APS-Conecta/territorio/blob/main/README.md#configuration</admin>
+        <developer>https://github.com/APS-Conecta/territorio/blob/main/README.md#working-on-it</developer>
+    </documentation>
     <category>tools</category>
     <dependencies>
         <php min-version="8.1"/>

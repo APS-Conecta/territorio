@@ -83,6 +83,64 @@ Four settings, all app config under the `territorio` app id, all reachable at
 The dev instance caches app config in APCu, which is per-process: see **Two traps worth knowing**
 below before you trust `occ config:app:set`.
 
+## Deploying a version bump
+
+Bumping `appinfo/info.xml` puts the whole Nextcloud instance into **"requires upgrade"** — every
+page answers `503`, not just this app — until the upgrade runs:
+
+```
+docker compose exec -u www-data nextcloud php occ upgrade
+```
+
+Measured here on 2026-09-18: the bump to 0.73.0 took the login page to 503, and `occ upgrade`
+restored it and reported `Updated <territorio> to 0.73.0`. Bump the version and run the upgrade as
+one step, never as two.
+
+The instance must have `appstoreenabled=0` first (this stack sets `NC_appstoreenabled: "0"` in
+`compose.yaml`): `occ upgrade` will otherwise fetch from the app store, which is how a pinned,
+vendored app silently becomes whatever is newest. Both behaviours are Nextcloud's own — the
+[`occ` console](https://docs.nextcloud.com/server/34/admin_manual/occ_command.html) and
+[apps management](https://docs.nextcloud.com/server/34/admin_manual/apps_management.html) — pinned
+here to server 34, the version this app ships on.
+
+## Where you are
+
+The map has a **«¿Dónde estoy?»** control under the zoom buttons: Leaflet's own geolocation watch, no
+dependency, and it needs HTTPS.
+
+It draws the accuracy, not just the position, and that is the point. This app decides which Sector
+and which Unidad Vecinal a point falls in (ADR-0008), and those boundaries are streets apart — a fix
+taken indoors is routinely accurate to hundreds of metres while looking exactly as confident as a
+good one. Past **100 m** the map says in words that the position is approximate and may not match
+the sector shown. A reading that arrives with no accuracy at all is treated as untrustworthy rather
+than as perfect.
+
+## Finding a street
+
+Under «¿Dónde estoy?» the map has a **«Buscar una calle»** box: type part of a street's name,
+choose one of the places it names, and the map fits to that street, no closer than zoom 17. That is
+street precision, not a house number — enough to find an address and then place a record there
+with the usual click. It searches the [Boundary features](#boundary-features) and nothing else: no
+geocoder, and no request to any host but this server (ADR-0004).
+
+One name in two places is two rows. A comuna holds «Pasaje Dos» in many places, and a row that
+stood for all of them would fit the map to the whole comuna — not a choice anybody can make
+(ADR-0007). So the server splits each name wherever more than **500 m** separates its ways
+(`BoundaryService::SAME_PLACE_M`, whose docblock holds the La Florida measurement behind the
+number), and a long avenue held as a hundred touching ways stays one row. Under each name the row
+says which Unidad Vecinal it falls in, when there is one, and how many tramos it is. Nothing is
+chosen for the person: Enter with no row active does nothing.
+
+The names come from `GET /apps/territorio/boundaries/names` — names and boxes, never geometry —
+fetched once, the first time somebody focuses the box; matching happens in the browser from then
+on. It is a plain route beside the Sector editor's, not OCS: the published surface stays at three
+([ADR-0020](docs/adr/0020-rest-is-the-published-surface.md)).
+
+**Empty until the Boundary features are imported.** Without them the route answers an empty list
+and the box says «No hay calles cargadas en este mapa.» rather than showing nothing. Importing a
+comuna's (`occ territorio:import … --boundary`, above) fills this search and the Sector editor's
+«Buscar una calle, canal o vía» at once.
+
 ## Working on it
 
     make test             # PHP unit tests in a bare container — no Nextcloud needed
@@ -255,61 +313,6 @@ Serve it from anything that honours **Range** requests and sets CORS; this stack
 at z12, 863 KB at z14, 952 KB at z15, and 2.3 MB to work the whole comuna across all three — a ratio
 of about 1:460. Vector tiles re-render at any zoom, so z15 data serves z16–19 with no further
 fetches.
-
-## Where you are
-
-The map has a **«¿Dónde estoy?»** control under the zoom buttons: Leaflet's own geolocation watch, no
-dependency, and it needs HTTPS.
-
-It draws the accuracy, not just the position, and that is the point. This app decides which Sector
-and which Unidad Vecinal a point falls in (ADR-0008), and those boundaries are streets apart — a fix
-taken indoors is routinely accurate to hundreds of metres while looking exactly as confident as a
-good one. Past **100 m** the map says in words that the position is approximate and may not match
-the sector shown. A reading that arrives with no accuracy at all is treated as untrustworthy rather
-than as perfect.
-
-## Finding a street
-
-Under «¿Dónde estoy?» the map has a **«Buscar una calle»** box: type part of a street's name,
-choose one of the places it names, and the map fits to that street, no closer than zoom 17. That is
-street precision, not a house number — enough to find an address and then place a record there
-with the usual click. It searches the [Boundary features](#boundary-features) and nothing else: no
-geocoder, and no request to any host but this server (ADR-0004).
-
-One name in two places is two rows. A comuna holds «Pasaje Dos» in many places, and a row that
-stood for all of them would fit the map to the whole comuna — not a choice anybody can make
-(ADR-0007). So the server splits each name wherever more than **500 m** separates its ways
-(`BoundaryService::SAME_PLACE_M`, whose docblock holds the La Florida measurement behind the
-number), and a long avenue held as a hundred touching ways stays one row. Under each name the row
-says which Unidad Vecinal it falls in, when there is one, and how many tramos it is. Nothing is
-chosen for the person: Enter with no row active does nothing.
-
-The names come from `GET /apps/territorio/boundaries/names` — names and boxes, never geometry —
-fetched once, the first time somebody focuses the box; matching happens in the browser from then
-on. It is a plain route beside the Sector editor's, not OCS: the published surface stays at three
-([ADR-0020](docs/adr/0020-rest-is-the-published-surface.md)).
-
-**Empty until the Boundary features are imported.** Without them the route answers an empty list
-and the box says «No hay calles cargadas en este mapa.» rather than showing nothing. Importing a
-comuna's (`occ territorio:import … --boundary`, above) fills this search and the Sector editor's
-«Buscar una calle, canal o vía» at once.
-
-## Deploying a version bump
-
-Bumping `appinfo/info.xml` puts the whole Nextcloud instance into **"requires upgrade"** — every
-page answers `503`, not just this app — until the upgrade runs:
-
-```
-docker compose exec -u www-data nextcloud php occ upgrade
-```
-
-Measured here on 2026-09-18: the bump to 0.73.0 took the login page to 503, and `occ upgrade`
-restored it and reported `Updated <territorio> to 0.73.0`. Bump the version and run the upgrade as
-one step, never as two.
-
-The instance must have `appstoreenabled=0` first (this stack sets `NC_appstoreenabled: "0"` in
-`compose.yaml`): `occ upgrade` will otherwise fetch from the app store, which is how a pinned,
-vendored app silently becomes whatever is newest.
 
 ## Licence
 

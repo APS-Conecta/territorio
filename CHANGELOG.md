@@ -3,12 +3,16 @@
 All notable changes to Territorio are recorded here. Decisions behind them live in
 [`docs/adr/`](docs/adr/).
 
-## [0.73.0] — unreleased
+## [Unreleased]
 
 The basemap stops being somebody else's public service.
 
 ### Changed
 
+- **Documentation aligns with the org-wide standard.** `docs/index.md` becomes one Document ×
+  Mode × Reader × Authority table, the README puts the operator chapters (install, configuration,
+  deploying) ahead of the developer ones, and `appinfo/info.xml` gains a `<documentation>`
+  element (admin and developer).
 - **The basemap is a PMTiles archive this stack serves itself, not OpenStreetMap's tile service**
   (ADR-0019). One file, all of Chile, read straight from the browser over HTTP Range requests.
 

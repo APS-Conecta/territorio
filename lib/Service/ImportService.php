@@ -215,9 +215,9 @@ class ImportService {
 
 				return $batch->toClient() + [
 					// A null dataset is a reassignment sweep's batch (L1-16) — not a
-				// deleted Dataset, which is what 'conjunto eliminado' says.
-				'dataset' => $dataset?->getLabel()
-					?? ($batch->getDatasetId() === null ? 'reasignación de límite' : 'conjunto eliminado'),
+					// retired Dataset, which is what 'conjunto retirado' says.
+					'dataset' => $dataset?->getLabel()
+						?? ($batch->getDatasetId() === null ? 'reasignación de límite' : 'conjunto retirado'),
 					'undone' => $this->batches->isUndone((int)$batch->getId()),
 				];
 			},

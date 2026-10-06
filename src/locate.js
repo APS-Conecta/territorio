@@ -41,7 +41,7 @@ export function isFixTrustworthy(accuracyMetres) {
  * made.
  */
 export function accuracyLabel(accuracyMetres) {
-	if (typeof accuracyMetres !== 'number' || !Number.isFinite(accuracyMetres) || accuracyMetres < 0) {
+	if (typeof accuracyMetres !== 'number' || !Number.isFinite(accuracyMetres) || accuracyMetres <= 0) {
 		return ''
 	}
 

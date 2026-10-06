@@ -53,6 +53,8 @@ describe('accuracyLabel', () => {
 	it('says nothing rather than something false when there is no accuracy', () => {
 		expect(accuracyLabel(undefined)).toBe('')
 		expect(accuracyLabel(NaN)).toBe('')
+		expect(accuracyLabel(0)).toBe('')
+		expect(accuracyLabel(-5)).toBe('')
 	})
 })
 

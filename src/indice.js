@@ -79,6 +79,10 @@ const text = (value) => (value === null || value === undefined ? '' : String(val
  * @return {Array} one `{ id, cells }` per Feature
  */
 export function rowsFor(features, subcategories, boundaries) {
+	const boundaryMap = Array.isArray(boundaries)
+		? new Map(boundaries.map((boundary) => [boundary.id, boundary]))
+		: boundaries
+
 	return features.map((feature) => {
 		const subcategory = subcategories.get(feature.subcategoryId)
 
@@ -97,8 +101,8 @@ export function rowsFor(features, subcategories, boundaries) {
 				// every row.
 				category: subcategory?.categoryLabel ?? 'Clasificación desconocida',
 				subcategory: subcategory?.subcategoryLabel ?? '',
-				sector: nameOf(boundaries, feature.sectorId),
-				unidadVecinal: nameOf(boundaries, feature.unidadVecinalId),
+				sector: nameOf(boundaryMap, feature.sectorId),
+				unidadVecinal: nameOf(boundaryMap, feature.unidadVecinalId),
 				address: text(feature.address),
 				phone: text(feature.phone),
 				email: text(feature.email),

@@ -101,5 +101,12 @@ export function toggleGroup(picked, ids) {
  * show. One copy, because the sidebar and the Índice must never describe one
  * assignment differently, and two copies of a wording is how they come to.
  */
-export const nameOf = (boundaries, id) =>
-	boundaries.find((boundary) => boundary.id === id)?.name ?? 'sin asignar'
+export const nameOf = (boundaries, id) => {
+	if (id === null || id === undefined) {
+		return 'sin asignar'
+	}
+	if (boundaries instanceof Map) {
+		return boundaries.get(id)?.name ?? 'sin asignar'
+	}
+	return boundaries.find((boundary) => boundary.id === id)?.name ?? 'sin asignar'
+}

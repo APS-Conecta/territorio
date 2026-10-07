@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestions, toggleGroup, togglePick } from '../../src/boundaries.js'
+import { nameOf, suggestions, toggleGroup, togglePick } from '../../src/boundaries.js'
 
 /**
  * ADR-0007: the app never resolves a street NAME. It offers what exists and a
@@ -84,5 +84,19 @@ describe('picking', () => {
 
 	it('leaves everything else alone', () => {
 		expect(toggleGroup([6], [1, 2, 3])).toEqual([6, 1, 2, 3])
+	})
+})
+
+describe('nameOf boundary lookup', () => {
+	it('looks up name from an array or a Map', () => {
+		const boundariesMap = new Map([
+			[1, { id: 1, name: 'Sector Norte' }],
+			[2, { id: 2, name: 'UV 12' }],
+		])
+
+		expect(nameOf(BOUNDARIES, 4)).toBe('Los Toros')
+		expect(nameOf(boundariesMap, 1)).toBe('Sector Norte')
+		expect(nameOf(boundariesMap, 99)).toBe('sin asignar')
+		expect(nameOf(boundariesMap, null)).toBe('sin asignar')
 	})
 })

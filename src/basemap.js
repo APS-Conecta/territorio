@@ -257,7 +257,7 @@ function addPmtilesBasemap(map, basemap, hooks) {
  * @param {string} url the archive's address
  * @return {Promise<boolean>} whether the archive answered and spelled its name
  */
-export async function archiveReachable(url) {
+async function archiveReachable(url) {
 	try {
 		const response = await fetch(url, { headers: { Range: `bytes=0-${PMTILES_MAGIC.length - 1}` } })
 

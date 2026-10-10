@@ -134,13 +134,27 @@
 		</p>
 
 		<NcTextField v-model="draft.address" class="territorio-detail__field" label="Dirección" />
-		<NcTextField v-model="draft.phone" class="territorio-detail__field" label="Teléfono" />
-		<NcTextField v-model="draft.email" class="territorio-detail__field" label="Correo" />
-		<NcTextField v-model="draft.contactPerson" class="territorio-detail__field" label="Persona de contacto" />
-		<NcTextField v-model="draft.contactRole" class="territorio-detail__field" label="Cargo" />
-		<NcTextField v-model="draft.openingHours" class="territorio-detail__field" label="Horario" />
-		<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
-		<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
+
+		<!--
+			Native <details>, for the same reason CapasPanel collapses with one: no
+			state to hold, no aria-expanded to keep in sync, keyboard-reachable for
+			nothing. «Contacto» is open — a clinic answers the phone on a normal
+			day; «Más información» is not — hours, source and notes are reference.
+		-->
+		<details class="territorio-detail__section" open>
+			<summary>Contacto</summary>
+			<NcTextField v-model="draft.phone" class="territorio-detail__field" label="Teléfono" />
+			<NcTextField v-model="draft.email" class="territorio-detail__field" label="Correo" />
+			<NcTextField v-model="draft.contactPerson" class="territorio-detail__field" label="Persona de contacto" />
+			<NcTextField v-model="draft.contactRole" class="territorio-detail__field" label="Cargo" />
+		</details>
+
+		<details class="territorio-detail__section">
+			<summary>Más información</summary>
+			<NcTextField v-model="draft.openingHours" class="territorio-detail__field" label="Horario" />
+			<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
+			<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
+		</details>
 
 		<FeatureHistory v-if="draft.id !== null"
 			:entries="history"
@@ -360,6 +374,16 @@ export default {
 
 .territorio-detail__field {
 	margin-top: 12px;
+}
+
+.territorio-detail__section {
+	margin-top: 12px;
+}
+
+.territorio-detail__section summary {
+	cursor: pointer;
+	font-weight: bold;
+	padding: 6px 0;
 }
 
 .territorio-detail__derived {

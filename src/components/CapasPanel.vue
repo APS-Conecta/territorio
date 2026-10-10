@@ -301,8 +301,8 @@
 					<button class="territorio-capas__swatch"
 						type="button"
 						:style="{ background: NEUTRAL }"
-						title="Elegir pictograma de la nueva categoría"
-						aria-label="Elegir pictograma de la nueva categoría"
+						:title="draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'"
+						:aria-label="draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'"
 						:disabled="glyphsLoading"
 						@mousedown.prevent
 						@click.stop.prevent="startPicking(null)">

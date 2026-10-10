@@ -44,7 +44,11 @@ describe('the picker keeps the focus in the field beside it', () => {
 	it('guards the swatch that opens it, which sits outside the grid', () => {
 		// Same hazard, different element: this one is a sibling of the field,
 		// so the root guard above cannot cover it.
-		expect(openingTag('title="Elegir pictograma de la nueva categoría"'))
+		expect(openingTag("Elegir pictograma de la nueva categoría'"))
 			.toMatch(/@mousedown\.prevent/)
+	})
+
+	it('updates accessible name and title for the new category swatch dynamically', () => {
+		expect(capas).toContain("draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'")
 	})
 })

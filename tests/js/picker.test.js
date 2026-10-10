@@ -52,3 +52,19 @@ describe('the picker keeps the focus in the field beside it', () => {
 		expect(capas).toContain("draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'")
 	})
 })
+
+describe('the panel hides its editing affordances until they are asked for', () => {
+	// fileURLToPath, not .pathname, for the reason marks.test.js gives.
+	const ROOT = fileURLToPath(new URL('../../', import.meta.url))
+	const capas = readFileSync(`${ROOT}src/components/CapasPanel.vue`, 'utf8')
+
+	it('opens collapsed, so the record list owns the column on load', () => {
+		expect(capas).toContain('<details class="territorio-capas">')
+		expect(capas).not.toContain('<details class="territorio-capas" open>')
+	})
+
+	it('carries every CRUD control inside the edit mode', () => {
+		expect(capas).toContain('toggleCrud')
+		expect((capas.match(/v-if="crud/g) || []).length).toBeGreaterThanOrEqual(4)
+	})
+})

@@ -7,19 +7,30 @@
 			</h2>
 
 			<!--
-				Which columns to draw, as one checkbox each. No configuration modal
-				and no reordering (#105, out of scope): the whole control is this row,
-				where a person can see what it does to the table under it.
+				Which columns to draw, as one checkbox each — folded behind a native
+				<details> whose summary counts what is on, so eleven checkboxes stop
+				being the first thing the pane shows. No configuration modal and no
+				reordering (#105, out of scope): the whole control is still this one
+				inline disclosure, where a person can see what it does to the table
+				under it.
 			-->
-			<div class="territorio-indice__columns">
-				<NcCheckboxRadioSwitch v-for="column in COLUMNS"
-					:key="column.key"
-					type="checkbox"
-					:model-value="!view.hidden.has(column.key)"
-					@update:model-value="toggleColumn(column.key)">
-					{{ column.label }}
-				</NcCheckboxRadioSwitch>
-			</div>
+			<details class="territorio-indice__columns-details">
+				<summary class="territorio-indice__columns-toggle">
+					Columnas
+					<span class="territorio-indice__columns-count">
+						{{ shown.length }}/{{ COLUMNS.length }}
+					</span>
+				</summary>
+				<div class="territorio-indice__columns">
+					<NcCheckboxRadioSwitch v-for="column in COLUMNS"
+						:key="column.key"
+						type="checkbox"
+						:model-value="!view.hidden.has(column.key)"
+						@update:model-value="toggleColumn(column.key)">
+						{{ column.label }}
+					</NcCheckboxRadioSwitch>
+				</div>
+			</details>
 		</div>
 
 		<!--
@@ -235,13 +246,28 @@ export default {
 	margin-inline-start: 6px;
 }
 
+.territorio-indice__columns-details {
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.territorio-indice__columns-toggle {
+	cursor: pointer;
+	font-weight: bold;
+}
+
+.territorio-indice__columns-count {
+	color: var(--color-text-maxcontrast);
+	font-weight: normal;
+	font-size: 0.85em;
+	margin-inline-start: 6px;
+}
+
 .territorio-indice__columns {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0 16px;
-	margin-bottom: 12px;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-indice__table {

@@ -209,9 +209,11 @@ Keyed by slug, never by id: ids differ per install, slugs are what the seed and 
 
 Everything reads through the same set the app's own screens read, so retired records and the
 Boundary-feature Datasets are absent — a comuna's eleven thousand streets are not places anyone
-means to count. **No OCS route and no external API is registered**, and
-[`tests/unit/RoutesTest.php`](tests/unit/RoutesTest.php) fails if one is added
-([ADR-0014](docs/adr/0014-the-cross-app-surface-is-injection-not-rest.md)).
+means to count. Over HTTP, **exactly three read-only OCS routes are published** on `ApiController` —
+`counts`, `features/{id}` and `subcategories/{category}/{subcategory}/features` — and
+[`tests/unit/RoutesTest.php`](tests/unit/RoutesTest.php) fails if another is added or an `ocs` section
+appears in `routes.php` ([ADR-0020](docs/adr/0020-rest-is-the-published-surface.md), amending
+[ADR-0014](docs/adr/0014-the-cross-app-surface-is-injection-not-rest.md)).
 
 "How many sectores" and "how many unidades vecinales" are both ordinary Category counts: they are
 Features under `division_territorial` (ADR-0010), so

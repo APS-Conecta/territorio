@@ -1,11 +1,14 @@
 <template>
 	<div class="territorio-map"
 		:class="{ 'territorio-map--vector': basemap.kind === 'pmtiles' }">
-		<NcNoteCard v-if="basemapUnreachable"
+		<NcNoteCard v-if="basemapUnreachable && !basemapNoticeDismissed"
 			type="warning"
 			class="territorio-map__notice">
 			No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta
 			{{ basemap.kind === 'pmtiles' ? 'el dibujo de fondo' : 'la imagen de fondo' }}.
+			<NcButton variant="tertiary" @click="basemapNoticeDismissed = true">
+				Ocultar
+			</NcButton>
 		</NcNoteCard>
 
 		<NcNoteCard v-if="locateNotice"
@@ -34,6 +37,7 @@
 
 <script>
 import { loadState } from '@nextcloud/initial-state'
+import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -79,7 +83,7 @@ const PICKABLE_PANE = 'territorio-pickable'
 export default {
 	name: 'TerritorioMap',
 
-	components: { LocateControl, NcNoteCard, SearchControl },
+	components: { LocateControl, NcButton, NcNoteCard, SearchControl },
 
 	props: {
 		features: { type: Array, required: true },
@@ -166,6 +170,11 @@ export default {
 			// clear without a reload. The map, the pins and everything drawn on
 			// top keep working whichever way it points.
 			basemapUnreachable: false,
+			// Whether the person has already read the basemap warning and sent
+			// it away. The verdict itself stays in `basemapUnreachable` — the
+			// map keeps working either way, and a banner that outlives its
+			// reading crowds the canvas for the rest of the session.
+			basemapNoticeDismissed: false,
 			// The reshape we last told the parent about, cleared as soon as it comes
 			// back: redrawing on our own edit would tear the layer out from under the
 			// hand still dragging its vertex.

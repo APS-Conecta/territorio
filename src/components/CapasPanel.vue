@@ -8,7 +8,7 @@
 		Collapsing is a native <details>: no open/closed state to hold, no
 		aria-expanded to keep in sync, and it works before the JS loads.
 	-->
-	<details class="territorio-capas" open>
+	<details class="territorio-capas">
 		<summary class="territorio-capas__summary">
 			Capas
 			<!--
@@ -26,6 +26,18 @@
 		</summary>
 
 		<div class="territorio-capas__body">
+			<!--
+				The whole tree's editing mode, first thing in the body: renaming,
+				adding and removing are rare next to filtering, so they are asked
+				for rather than always drawn (`crud` in data(), `toggleCrud()`).
+			-->
+			<NcButton variant="tertiary"
+				class="territorio-capas__edit"
+				:pressed="crud"
+				@click="toggleCrud">
+				{{ crud ? 'Listo' : 'Editar capas' }}
+			</NcButton>
+
 			<!--
 				A refusal belongs where the person typed — a rename's or an add's,
 				both of which are typed in this panel. `error` in App.vue renders
@@ -106,14 +118,16 @@
 							@update:model-value="$emit('toggle-category', category)" />
 					</span>
 					<!--
-						The swatch IS the control (#46). A clinic reaches for the mark it
-						wants to change, and the row already carries three other buttons —
-						a fourth would make the Category's own name the smallest thing in
-						it. `@click.stop.prevent` for the reason the checkbox beside it
+						The swatch IS the control while the tree edits (#46). A clinic
+						reaches for the mark it wants to change, and the row already
+						carries three other buttons — a fourth would make the Category's
+						own name the smallest thing in it. Browsing, it is the plain
+						legend span below: a mark that cannot be picked must not read as
+						one. `@click.stop.prevent` for the reason the checkbox beside it
 						stops a click: this sits inside a <summary>, where any click folds
 						the branch.
 					-->
-					<button class="territorio-capas__swatch"
+					<button v-if="crud" class="territorio-capas__swatch"
 						type="button"
 						:style="{ background: category.color }"
 						:disabled="glyphsLoading"
@@ -122,6 +136,10 @@
 						@click.stop.prevent="startPicking(category)">
 						<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
 					</button>
+					<span v-else class="territorio-capas__swatch"
+						:style="{ background: category.color }">
+						<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
+					</span>
 					<!--
 						Renaming happens in place, in the row itself: there is no separate
 						"layer" object (CONTEXT.md), this panel IS the Category tree, and
@@ -144,7 +162,7 @@
 						@blur="cancel">
 					<template v-else>
 						<span class="territorio-capas__name">{{ category.label }}</span>
-						<button class="territorio-capas__rename"
+						<button v-if="crud" class="territorio-capas__rename"
 							type="button"
 							:title="`Renombrar «${category.label}»`"
 							:aria-label="`Renombrar «${category.label}»`"
@@ -169,7 +187,7 @@
 							to refuse: the `addSubcategory` docblock in App.vue says what a
 							row posted there would look like, and why nothing here makes one.
 						-->
-						<button class="territorio-capas__add"
+						<button v-if="crud" class="territorio-capas__add"
 							type="button"
 							:title="`Agregar subcategoría en «${category.label}»`"
 							:aria-label="`Agregar subcategoría en «${category.label}»`"
@@ -188,7 +206,7 @@
 							`FeatureDetail` uses for retiring a record and never a
 							`confirm()`, which blocks the page (ADR-0016).
 						-->
-						<button v-if="confirming !== keyOf(category)"
+						<button v-if="crud && confirming !== keyOf(category)"
 							class="territorio-capas__remove"
 							type="button"
 							:title="`Quitar «${category.label}»`"
@@ -198,7 +216,7 @@
 								<path fill="currentColor" :d="TRASH" />
 							</svg>
 						</button>
-						<span v-else class="territorio-capas__confirm" @click.stop>
+						<span v-else-if="crud && confirming === keyOf(category)" class="territorio-capas__confirm" @click.stop>
 							<NcButton variant="error" @click.stop.prevent="commitRemove(category)">
 								Quitar
 							</NcButton>
@@ -242,7 +260,7 @@
 								@update:model-value="$emit('toggle-subcategory', subcategory.id)">
 								{{ subcategory.label }}
 							</NcCheckboxRadioSwitch>
-							<button class="territorio-capas__rename"
+							<button v-if="crud" class="territorio-capas__rename"
 								type="button"
 								:title="`Renombrar «${subcategory.label}»`"
 								:aria-label="`Renombrar «${subcategory.label}»`"
@@ -251,7 +269,7 @@
 									<path fill="currentColor" :d="PENCIL" />
 								</svg>
 							</button>
-							<button v-if="confirming !== keyOf(category, subcategory)"
+							<button v-if="crud && confirming !== keyOf(category, subcategory)"
 								class="territorio-capas__remove"
 								type="button"
 								:title="`Quitar «${subcategory.label}»`"
@@ -261,7 +279,7 @@
 									<path fill="currentColor" :d="TRASH" />
 								</svg>
 							</button>
-							<span v-else class="territorio-capas__confirm">
+							<span v-else-if="crud && confirming === keyOf(category, subcategory)" class="territorio-capas__confirm">
 								<NcButton variant="error"
 									@click.stop.prevent="commitRemove(category, subcategory)">
 									Quitar
@@ -283,7 +301,7 @@
 				eye (ADR-0017) — which is why no colour input appears here or
 				anywhere else.
 			-->
-			<div class="territorio-capas__new">
+			<div v-if="crud" class="territorio-capas__new">
 				<template v-if="editing === NEW_CATEGORY">
 					<!--
 						Chosen while the Category is being named, not after it exists:
@@ -463,6 +481,15 @@ export default {
 			 * question at the same time.
 			 */
 			confirming: null,
+			/**
+			 * Whether the tree offers its editing affordances at all. Filtering
+			 * is what this panel is for on a normal day; renaming, adding and
+			 * removing are rare, and a row that always carries four controls
+			 * makes the Category's own name the smallest thing in it. Off, a
+			 * row is its checkbox, its swatch and its name; on, the pencil,
+			 * the «+», the trash and «Agregar categoría» join.
+			 */
+			crud: false,
 			draftLabel: '',
 			/**
 			 * Which Category the pictogram grid is open for, as
@@ -737,6 +764,23 @@ export default {
 			this.confirming = null
 		},
 
+		/**
+		 * Shows or hides the tree's editing affordances (see `crud`). A method
+		 * and not an inline flip because turning it OFF has to close what is
+		 * open: the picker swallows mousedown at its root, so the «Listo» click
+		 * never blurs the field beside it — without this, the 215-mark grid
+		 * would stay open under a panel that no longer offers a row to pick
+		 * for.
+		 */
+		toggleCrud() {
+			this.crud = !this.crud
+			if (!this.crud) {
+				this.picking = null
+				this.editing = null
+				this.confirming = null
+			}
+		},
+
 		cancel() {
 			this.$emit('clear-taxonomy-message')
 			this.editing = null
@@ -779,6 +823,10 @@ export default {
 }
 
 .territorio-capas__reset {
+	margin-bottom: 4px;
+}
+
+.territorio-capas__edit {
 	margin-bottom: 4px;
 }
 

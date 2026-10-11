@@ -1,6 +1,8 @@
 # The surface other apps read is a PHP service, not REST
 
-- **Status:** accepted (2026-08-06), recorded 2026-08-08
+- **Status:** accepted (2026-08-06), recorded 2026-08-08; amended 2026-09-23 by
+  [ADR-0020](0020-rest-is-the-published-surface.md), which publishes three read-only OCS routes
+  and keeps injection for in-instance transactional calls
 - **Corrects a premise of:** [ADR-0001](0001-standalone-app-not-nextcloud-maps.md)
 
 [ADR-0001](0001-standalone-app-not-nextcloud-maps.md) justified writing our own app partly on

@@ -286,6 +286,10 @@ The basemap stops being somebody else's public service.
   fails on the count. Shipped as 0.76.1 so the rebuilt bundle reaches browsers that have the
   leaking one cached (`?v=` on the script URL comes from `info.xml`).
 
+- **The new category's pictogram button names the category.** Once a name is typed, its title
+  and aria-label quote it (`Elegir pictograma de «…»`); an empty name keeps the generic «Elegir
+  pictograma de la nueva categoría».
+
 ## [0.72.0] — unreleased
 
 The Category colour tests stop describing the instance they happen to run on.

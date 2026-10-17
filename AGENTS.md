@@ -6,8 +6,7 @@ Full project guidance — skills, the review loop, CI and the docs gate — live
 
 One Jules agent visits this repo each night at 02:00 (Chile): Mon 🗡️ Breaker, Tue 🐞 Tracer,
 Wed ⚡ Bolt / ✂️ Simplifier (alternate weeks), Thu 🧹 Janitor, Fri 🎨 Palette, Sat 📚 Scribe,
-Sun 🔤 Lexicon. Their prompts and the code standards live in the private `APS-Conecta/agents` repo;
-Claude reviews every PR. The rules below are this repo's own facts, and they bind every agent.
+Sun 🔤 Lexicon. Claude reviews every PR. The rules below are this repo's own facts, and they bind every agent.
 
 - **Journals** live only in lowercase `.jules/` (`breaker.md`, `tracer.md`, `bolt.md`, `simplifier.md`,
   `janitor.md`, `palette.md`, `scribe.md`, `lexicon.md`) — never create `.Jules/`.

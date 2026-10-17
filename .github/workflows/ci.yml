@@ -42,9 +42,9 @@ jobs:
       # before this job's first post-slice run.)
       - name: aps-common sibling
         # aps-common is PRIVATE: the anonymous clone dies with 'could not read Username'.
-        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: Jules pushes
-        # branches here nightly and this job runs on them, so the secret it can reach
-        # reads one repo and writes nothing. GitHub's host key is pinned from api/meta.
+        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: this job runs on
+        # pushed branches, so the secret it can reach reads one repo and writes nothing.
+        # GitHub's host key is pinned from api/meta.
         # Without the secret the step degrades to that loud anonymous failure.
         env:
           APS_COMMON_DEPLOY_KEY: ${{ secrets.APS_COMMON_DEPLOY_KEY }}
@@ -147,9 +147,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: aps-common sibling
         # aps-common is PRIVATE: the anonymous clone dies with 'could not read Username'.
-        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: Jules pushes
-        # branches here nightly and this job runs on them, so the secret it can reach
-        # reads one repo and writes nothing. GitHub's host key is pinned from api/meta.
+        # A read-only deploy key on aps-common, not the org's APS_BOT_PAT: this job runs on
+        # pushed branches, so the secret it can reach reads one repo and writes nothing.
+        # GitHub's host key is pinned from api/meta.
         # Without the secret the step degrades to that loud anonymous failure.
         env:
           APS_COMMON_DEPLOY_KEY: ${{ secrets.APS_COMMON_DEPLOY_KEY }}

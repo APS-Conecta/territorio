@@ -1,7 +1,7 @@
 # Threat model
 
 *What an attacker would want from this repository, and where they would try. Read before any security
-work; the 🗡️ Breaker agent starts here.*
+work.*
 
 ## Data this repository holds
 

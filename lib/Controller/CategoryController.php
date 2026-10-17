@@ -10,7 +10,9 @@ use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\ILogger;
 use OCP\IRequest;
+use OCP\IUserSession;
 
 /**
  * Editing the Category tree.
@@ -30,8 +32,22 @@ class CategoryController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private TaxonomyService $taxonomy,
+		private ?IUserSession $userSession = null,
+		private ?ILogger $logger = null,
 	) {
 		parent::__construct(Application::APP_ID, $request);
+	}
+
+	private function logAuditEvent(string $action, array $context): void {
+		$actor = $this->userSession?->getUser()?->getUID() ?? 'system';
+		$ip = $this->request->getRemoteAddress() ?? '127.0.0.1';
+		$this->logger?->info(sprintf(
+			'HIPAA_AUDIT: taxonomy_mutation action=%s actor=%s ip=%s details=%s',
+			$action,
+			$actor,
+			$ip,
+			json_encode($context)
+		));
 	}
 
 	/**
@@ -44,10 +60,13 @@ class CategoryController extends Controller {
 	 */
 	#[NoAdminRequired]
 	public function create(): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->addCategory(
-			(string)($this->request->getParam('label') ?? ''),
-			(string)($this->request->getParam('glyph') ?? ''),
-		));
+		return $this->attempt(function (): array {
+			$label = (string)($this->request->getParam('label') ?? '');
+			$glyph = (string)($this->request->getParam('glyph') ?? '');
+			$res = $this->taxonomy->addCategory($label, $glyph);
+			$this->logAuditEvent('CREATE_CATEGORY', ['label' => $label, 'glyph' => $glyph]);
+			return $res;
+		});
 	}
 
 	/**
@@ -70,23 +89,37 @@ class CategoryController extends Controller {
 	public function update(string $slug): JSONResponse {
 		$glyph = $this->request->getParam('glyph');
 
-		return $this->attempt(fn (): array => $glyph === null
-			? $this->taxonomy->renameCategory($slug, (string)($this->request->getParam('label') ?? ''))
-			: $this->taxonomy->setCategoryGlyph($slug, (string)$glyph));
+		return $this->attempt(function () use ($slug, $glyph): array {
+			if ($glyph === null) {
+				$label = (string)($this->request->getParam('label') ?? '');
+				$res = $this->taxonomy->renameCategory($slug, $label);
+				$this->logAuditEvent('RENAME_CATEGORY', ['slug' => $slug, 'label' => $label]);
+				return $res;
+			}
+			$res = $this->taxonomy->setCategoryGlyph($slug, (string)$glyph);
+			$this->logAuditEvent('SET_CATEGORY_GLYPH', ['slug' => $slug, 'glyph' => (string)$glyph]);
+			return $res;
+		});
 	}
 
 	#[NoAdminRequired]
 	public function addSubcategory(string $slug): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->addSubcategory(
-			$slug, (string)($this->request->getParam('label') ?? ''),
-		));
+		return $this->attempt(function () use ($slug): array {
+			$label = (string)($this->request->getParam('label') ?? '');
+			$res = $this->taxonomy->addSubcategory($slug, $label);
+			$this->logAuditEvent('ADD_SUBCATEGORY', ['category' => $slug, 'label' => $label]);
+			return $res;
+		});
 	}
 
 	#[NoAdminRequired]
 	public function renameSubcategory(string $slug, string $subSlug): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->renameSubcategory(
-			$slug, $subSlug, (string)($this->request->getParam('label') ?? ''),
-		));
+		return $this->attempt(function () use ($slug, $subSlug): array {
+			$label = (string)($this->request->getParam('label') ?? '');
+			$res = $this->taxonomy->renameSubcategory($slug, $subSlug, $label);
+			$this->logAuditEvent('RENAME_SUBCATEGORY', ['category' => $slug, 'subcategory' => $subSlug, 'label' => $label]);
+			return $res;
+		});
 	}
 
 	/**
@@ -98,12 +131,20 @@ class CategoryController extends Controller {
 	 */
 	#[NoAdminRequired]
 	public function destroy(string $slug): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->removeCategory($slug));
+		return $this->attempt(function () use ($slug): array {
+			$res = $this->taxonomy->removeCategory($slug);
+			$this->logAuditEvent('REMOVE_CATEGORY', ['slug' => $slug]);
+			return $res;
+		});
 	}
 
 	#[NoAdminRequired]
 	public function destroySubcategory(string $slug, string $subSlug): JSONResponse {
-		return $this->attempt(fn (): array => $this->taxonomy->removeSubcategory($slug, $subSlug));
+		return $this->attempt(function () use ($slug, $subSlug): array {
+			$res = $this->taxonomy->removeSubcategory($slug, $subSlug);
+			$this->logAuditEvent('REMOVE_SUBCATEGORY', ['category' => $slug, 'subcategory' => $subSlug]);
+			return $res;
+		});
 	}
 
 }

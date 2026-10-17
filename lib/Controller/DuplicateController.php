@@ -10,7 +10,9 @@ use OCA\Territorio\Service\DuplicateService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\ILogger;
 use OCP\IRequest;
+use OCP\IUserSession;
 
 /**
  * The review queue (issue #16).
@@ -28,8 +30,23 @@ class DuplicateController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private DuplicateService $duplicates,
+		private ?IUserSession $userSession = null,
+		private ?ILogger $logger = null,
 	) {
 		parent::__construct(Application::APP_ID, $request);
+	}
+
+	private function logAuditEvent(string $action, int $pairId, ?int $survivorId): void {
+		$actor = $this->userSession?->getUser()?->getUID() ?? 'system';
+		$ip = $this->request->getRemoteAddress() ?? '127.0.0.1';
+		$this->logger?->info(sprintf(
+			'HIPAA_AUDIT: duplicate_review action=%s actor=%s ip=%s pair_id=%d survivor_id=%s',
+			$action,
+			$actor,
+			$ip,
+			$pairId,
+			$survivorId !== null ? (string)$survivorId : 'none'
+		));
 	}
 
 	#[NoAdminRequired]
@@ -56,10 +73,11 @@ class DuplicateController extends Controller {
 			return $this->refuse('Indique cuál registro sobrevive.');
 		}
 
-		return $this->attempt(fn (): array => $this->duplicates->merge(
-			(int)$id,
-			(int)$survivorId,
-		)->toClient());
+		return $this->attempt(function () use ($id, $survivorId): array {
+			$res = $this->duplicates->merge((int)$id, (int)$survivorId)->toClient();
+			$this->logAuditEvent('MERGE_DUPLICATE', (int)$id, (int)$survivorId);
+			return $res;
+		});
 	}
 
 	#[NoAdminRequired]
@@ -68,7 +86,11 @@ class DuplicateController extends Controller {
 			return $this->missing();
 		}
 
-		return $this->attempt(fn (): array => $this->duplicates->dismiss((int)$id)->toClient());
+		return $this->attempt(function () use ($id): array {
+			$res = $this->duplicates->dismiss((int)$id)->toClient();
+			$this->logAuditEvent('DISMISS_DUPLICATE', (int)$id, null);
+			return $res;
+		});
 	}
 
 }

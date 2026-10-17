@@ -8,7 +8,7 @@ the same fact, the one named here as its authority wins and the other should lin
 | [`README.md`](../README.md) | how-to + reference | developer, operator | What this app is, its status, how to run it, install it and configure it |
 | [`CONTEXT.md`](../CONTEXT.md) | reference | everyone | **The vocabulary.** Comuna, Territorio, Sector, Feature, Limit, Dataset, and the words to avoid |
 | [`adr/`](adr/) | explanation | developer | Decisions, and the reasoning that was live when each was taken |
-| [`threat-model.md`](threat-model.md) | reference | developer | What an attacker wants, the entry points and their guards; the Breaker agent starts here |
+| [`threat-model.md`](threat-model.md) | reference | developer | What an attacker wants, the entry points and their guards |
 | [`CLAUDE.md`](../CLAUDE.md) | reference | agent | Which agent skill runs what, and what is not enforced by anything |
 | [`design/map-legibility.md`](design/map-legibility.md) | explanation | developer | The mark system: hue, glyph, size, and the contrast the ramp must hold. `tools/ramp-check.py` enforces its arithmetic |
 | [`../.claude/skills/slice/SKILL.md`](../.claude/skills/slice/SKILL.md) | reference | agent | How one issue is built and landed, end to end |

@@ -7,7 +7,7 @@
 					<div class="territorio-topbar">
 						<OmniboxControl
 							:model-value="omniboxQuery"
-							:assets="liveFiltered"
+							:assets="searchable"
 							:streets="streets"
 							:subcategories="subcategories"
 							:unidades="unidadesVecinales"
@@ -482,6 +482,14 @@ export default {
 		},
 
 		/**
+		 * What the top search box looks through: the Capas toggles apply, the list's
+		 * own query does not, so a half-typed list search never hides a place from it.
+		 */
+		searchable() {
+			return filterFeatures(this.features, { ...this.filter, query: '' }, this.subcategories)
+		},
+
+		/**
 		 * The Subcategory index the filtering needs: search matches against
 		 * "Category · Subcategory", and `filters.js` stays pure by being handed the
 		 * index rather than importing the taxonomy itself.
@@ -626,13 +634,6 @@ export default {
 		 */
 		placing() {
 			return (this.draft !== null && this.draft.geometry === null) || this.seeding
-		},
-	},
-
-	watch: {
-		// The list's own search box, «Ver todo» and a reset change the query too.
-		'filter.query'(query) {
-			this.omniboxQuery = query
 		},
 	},
 

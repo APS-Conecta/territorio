@@ -96,6 +96,7 @@
 					@click="$emit('select', row.id)">
 					<td v-for="column in shown"
 						:key="column.key"
+						:data-key="column.key"
 						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }">
 						<template v-if="column.key === 'name'">
 							<button type="button"

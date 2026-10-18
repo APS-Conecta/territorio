@@ -201,6 +201,9 @@ The basemap stops being somebody else's public service.
   so they sat on the record's first line at 360px. The clearance is one variable now
   (`--territorio-topbar-clearance`, 188px below 810px) shared by the panel and the full-screen views.
 
+  Also deleted `IndiceView` and `AnalisisView`: each only forwarded its props and events to
+  `IndexView` / `AnalysisView`, which `App.vue` now mounts directly.
+
 - **No comuna or clinic is baked in (0.77.3).** The installer chooses the comuna and the
   establishment, so nothing the app shows or ships should pre-suppose one. The admin page no longer
   says «La Florida es 13110» and no longer suggests `13110` / «La Florida» as the code and name;

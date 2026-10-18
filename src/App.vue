@@ -221,7 +221,7 @@
 						would carry.
 					-->
 					<div v-if="pane === 'indice'" class="territorio-fullscreen-view">
-						<IndiceView
+						<IndexView
 							v-model:view="indice"
 							:features="liveFiltered"
 							:taxonomy="taxonomy"
@@ -233,7 +233,7 @@
 					</div>
 
 					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view">
-						<AnalisisView
+						<AnalysisView
 							:counts="counts"
 							:filtered="isFiltered(filter)"
 							@back="pane = 'mapa'" />
@@ -292,7 +292,7 @@ import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import AnalisisView from './components/AnalisisView.vue'
+import AnalysisView from './components/AnalysisView.vue'
 import BoundaryPicker from './components/BoundaryPicker.vue'
 import DrawSectorButton from './components/DrawSectorButton.vue'
 import DuplicatesView from './components/DuplicatesView.vue'
@@ -301,7 +301,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ImportDialog from './components/ImportDialog.vue'
-import IndiceView from './components/IndiceView.vue'
+import IndexView from './components/IndexView.vue'
 import LayersDropdownButton from './components/LayersDropdownButton.vue'
 import OmniboxControl from './components/OmniboxControl.vue'
 import TaxonomyDrawer from './components/TaxonomyDrawer.vue'
@@ -363,7 +363,7 @@ export default {
 	name: 'App',
 
 	components: {
-		AnalisisView,
+		AnalysisView,
 		BoundaryPicker,
 		DrawSectorButton,
 		DuplicatesView,
@@ -372,7 +372,7 @@ export default {
 		FeatureDetail,
 		FeatureList,
 		ImportDialog,
-		IndiceView,
+		IndexView,
 		LayersDropdownButton,
 		NcAppContent,
 		NcButton,

@@ -43,9 +43,9 @@ final class AdminSettingsControllerTest extends TestCase {
 	public function testTheChosenComunaComesBackStored(): void {
 		$this->comunaConfig->expects(self::once())->method('set');
 
-		$response = $this->controller->saveComuna('13110', 'La Florida');
+		$response = $this->controller->saveComuna('13110', 'Comuna de Prueba');
 
 		self::assertSame(Http::STATUS_OK, $response->getStatus());
-		self::assertSame(['cut' => '13110', 'name' => 'La Florida', 'chosen' => true], $response->getData());
+		self::assertSame(['cut' => '13110', 'name' => 'Comuna de Prueba', 'chosen' => true], $response->getData());
 	}
 }

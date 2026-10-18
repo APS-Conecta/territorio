@@ -39,8 +39,8 @@ use OCP\Migration\IRepairStep;
 class EnsureSeedData implements IRepairStep {
 	/**
 	 * The taxonomy an install starts with: the eleven categories, each with the
-	 * subcategories the La Florida catastro actually used, plus `taller`, which
-	 * the clinic asked for. A starting point, not a fixed list — a Category is
+	 * subcategories a comuna's catastro typically uses, plus `taller`, which a
+	 * clinic asked for. A starting point, not a fixed list — a Category is
 	 * editable data, and adding a row makes it appear in the app.
 	 *
 	 * `was` is the colour the seed gave that Category BEFORE the designed ramp, and

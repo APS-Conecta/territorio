@@ -14,7 +14,7 @@ use ZipArchive;
 /**
  * Reading a Google MyMaps export.
  *
- * The fixture is shaped like the real `La_Florida_Google_MyMaps.kml` — Folders
+ * The fixture is shaped like the real a real comuna's Google My Maps export — Folders
  * holding Placemarks, geometry and a name and nothing else — but every value in
  * it is invented. What was checked against the real file is the SHAPE: 865
  * placemarks arrived with no ExtendedData at all, so no phone, no email, no
@@ -335,7 +335,7 @@ final class KmlReaderTest extends TestCase {
 		self::assertSame(
 			$this->reader->read(self::KML, 'prueba'),
 			$this->reader->readArchive(
-				self::kmz(['images/icono.png' => 'no soy kml', 'La Florida.KML' => self::KML]),
+				self::kmz(['images/icono.png' => 'no soy kml', 'Catastro.KML' => self::KML]),
 				'prueba',
 			),
 		);

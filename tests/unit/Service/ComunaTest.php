@@ -14,10 +14,10 @@ use PHPUnit\Framework\TestCase;
  */
 final class ComunaTest extends TestCase {
 	public function testAComunaIsChosenByItsCutCode(): void {
-		$comuna = Comuna::of('13110', 'La Florida');
+		$comuna = Comuna::of('13110', 'Comuna de Prueba');
 
 		self::assertSame('13110', $comuna->cut);
-		self::assertSame('La Florida', $comuna->name);
+		self::assertSame('Comuna de Prueba', $comuna->name);
 		self::assertTrue($comuna->isChosen());
 	}
 
@@ -38,7 +38,7 @@ final class ComunaTest extends TestCase {
 		$this->expectException(InvalidComunaException::class);
 		$this->expectExceptionMessage('no es un código CUT');
 
-		Comuna::of('1311', 'La Florida');
+		Comuna::of('1311', 'Comuna de Prueba');
 	}
 
 	/**
@@ -47,8 +47,8 @@ final class ComunaTest extends TestCase {
 	 */
 	public function testAComunaSerializesItself(): void {
 		self::assertSame(
-			['cut' => '13110', 'name' => 'La Florida', 'chosen' => true],
-			json_decode(json_encode(Comuna::of('13110', 'La Florida')), true),
+			['cut' => '13110', 'name' => 'Comuna de Prueba', 'chosen' => true],
+			json_decode(json_encode(Comuna::of('13110', 'Comuna de Prueba')), true),
 		);
 	}
 }

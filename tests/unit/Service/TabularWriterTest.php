@@ -214,7 +214,7 @@ final class TabularWriterTest extends TestCase {
 	public function testCommasAndQuotesInAValueDoNotShiftTheColumns(): void {
 		$rows = $this->parse((new CsvWriter())->write([[
 			'name' => 'Sede "La Amistad", block C',
-			'address' => 'Av. La Florida 1234, depto 5',
+			'address' => 'Av. Principal 1234, depto 5',
 			'geometry' => null,
 		]], true));
 
@@ -222,7 +222,7 @@ final class TabularWriterTest extends TestCase {
 		self::assertCount(count($rows[0]), $rows[1]);
 		$row = array_combine($rows[0], $rows[1]);
 		self::assertSame('Sede "La Amistad", block C', $row['Nombre']);
-		self::assertSame('Av. La Florida 1234, depto 5', $row['Dirección']);
+		self::assertSame('Av. Principal 1234, depto 5', $row['Dirección']);
 	}
 
 	/**

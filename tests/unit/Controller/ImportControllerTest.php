@@ -91,7 +91,7 @@ final class ImportControllerTest extends TestCase {
 	 * one an upload goes through.
 	 */
 	public function testAFileInFilesIsReadFromTheCallersOwnFolderAndImportedByItsOwnName(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/Documentos/catastro.kml'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/Documentos/catastro.kml'];
 		$this->home->expects(self::once())
 			->method('get')
 			->with('/Documentos/catastro.kml')
@@ -99,7 +99,7 @@ final class ImportControllerTest extends TestCase {
 
 		$this->import->expects(self::once())
 			->method('importFile')
-			->with('<kml>bytes</kml>', 'catastro.kml', 'laflorida', '', self::UID)
+			->with('<kml>bytes</kml>', 'catastro.kml', 'catastro', '', self::UID)
 			->willReturn(new ImportBatch());
 
 		self::assertSame(Http::STATUS_OK, $this->controller->upload()->getStatus());
@@ -117,7 +117,7 @@ final class ImportControllerTest extends TestCase {
 	 * read as evidence of the share.
 	 */
 	public function testAPathIsResolvedOnlyThroughTheCallersOwnFolder(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/Compartido/catastro.geojson'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/Compartido/catastro.geojson'];
 		$this->root->expects(self::once())->method('getUserFolder')->with(self::UID);
 		$this->home->method('get')->willReturn($this->node(512, 'catastro.geojson', '{}'));
 		$this->import->expects(self::once())->method('importFile')->willReturn(new ImportBatch());
@@ -131,7 +131,7 @@ final class ImportControllerTest extends TestCase {
 	 * and the node is never read at all.
 	 */
 	public function testAFileOverTheCapIsRefusedWithoutBeingRead(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/enorme.geojson'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/enorme.geojson'];
 		$file = $this->createMock(File::class);
 		$file->method('getSize')->willReturn(8 * 1024 * 1024 + 1);
 		$file->expects(self::never())->method('getContent');
@@ -146,7 +146,7 @@ final class ImportControllerTest extends TestCase {
 
 	/** And it is the same sentence an oversized upload gets, from one constant. */
 	public function testTheOversizedMessageIsTheOneAnUploadGets(): void {
-		$this->params = ['dataset' => 'laflorida'];
+		$this->params = ['dataset' => 'catastro'];
 		$this->request->method('getUploadedFile')->willReturn([
 			'name' => 'enorme.geojson',
 			'error' => UPLOAD_ERR_OK,
@@ -166,7 +166,7 @@ final class ImportControllerTest extends TestCase {
 	 * `NotFoundException` would be.
 	 */
 	public function testAPathTheCallerCannotReachIsRefusedInSpanish(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/../admin/secreto.geojson'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/../admin/secreto.geojson'];
 		$this->home->method('get')->willThrowException(new NotFoundException());
 		$this->import->expects(self::never())->method('importFile');
 
@@ -181,7 +181,7 @@ final class ImportControllerTest extends TestCase {
 
 	/** A folder resolves perfectly well and has no content to read. */
 	public function testAFolderIsRefusedRatherThanRead(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/Documentos'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/Documentos'];
 		$this->home->method('get')->willReturn($this->createMock(Folder::class));
 		$this->import->expects(self::never())->method('importFile');
 
@@ -193,7 +193,7 @@ final class ImportControllerTest extends TestCase {
 
 	/** So does a file whose bytes cannot be read — locked, or no longer readable. */
 	public function testAFileThatCannotBeReadIsRefusedRatherThanCrashing(): void {
-		$this->params = ['dataset' => 'laflorida', 'path' => '/bloqueado.geojson'];
+		$this->params = ['dataset' => 'catastro', 'path' => '/bloqueado.geojson'];
 		$file = $this->createMock(File::class);
 		$file->method('getSize')->willReturn(64);
 		$file->method('getContent')->willThrowException(new NotPermittedException());
@@ -235,7 +235,7 @@ final class ImportControllerTest extends TestCase {
 	public function testAnUploadStillReachesTheSameImport(): void {
 		$tmp = tempnam(sys_get_temp_dir(), 'territorio');
 		file_put_contents($tmp, '{"type":"FeatureCollection","features":[]}');
-		$this->params = ['dataset' => 'laflorida'];
+		$this->params = ['dataset' => 'catastro'];
 		$this->request->method('getUploadedFile')->willReturn([
 			'name' => 'catastro.geojson',
 			'error' => UPLOAD_ERR_OK,
@@ -248,7 +248,7 @@ final class ImportControllerTest extends TestCase {
 			->with(
 				'{"type":"FeatureCollection","features":[]}',
 				'catastro.geojson',
-				'laflorida',
+				'catastro',
 				'',
 				self::UID,
 			)

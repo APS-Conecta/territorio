@@ -42,7 +42,7 @@ final class DuplicateFinderTest extends TestCase {
 			[[1, 2, 'coordenada']],
 			$this->pairs(
 				[1, 'Balneario Municipal', -33.52, -70.58],
-				[2, 'Piscina Municipal La Florida', -33.52, -70.58],
+				[2, 'Piscina Municipal Central', -33.52, -70.58],
 			),
 		);
 	}

@@ -50,7 +50,7 @@ const UV_NAME_FIELD = 't_uv_nom';
 function cutComuna(array $national, string $cut): array {
 	if (preg_match('/^\d{5}$/', $cut) !== 1) {
 		throw new InvalidArgumentException(
-			sprintf('"%s" no es un código CUT: se esperan cinco dígitos, como 13110.', $cut),
+			sprintf('"%s" no es un código CUT: se esperan cinco dígitos.', $cut),
 		);
 	}
 

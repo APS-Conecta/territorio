@@ -20,7 +20,7 @@ Contains no patient information.
 
 ## Status — 2026-08-08
 
-Version 0.77.2. `appinfo/info.xml` is where the version lives; `openapi.json` repeats it.
+Version 0.77.3. `appinfo/info.xml` is where the version lives; `openapi.json` repeats it.
 
 Working: the app shell and the map; Places created, edited, retired and restored, with history and
 a polled change cursor behind them; the Capas panel and text search driving map, Datos and Análisis

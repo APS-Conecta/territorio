@@ -186,6 +186,16 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **No comuna or clinic is baked in (0.77.3).** The installer chooses the comuna and the
+  establishment, so nothing the app shows or ships should pre-suppose one. The admin page no longer
+  says «La Florida es 13110» and no longer suggests `13110` / «La Florida» as the code and name;
+  the import dialog no longer suggests the dataset name `laflorida`; the CUT error no longer cites
+  a code. The seed taxonomy's comment no longer says it was drawn from one comuna's catastro, and
+  the tests use neutral names («Comuna de Prueba», «Sector Norte», dataset `catastro`) in place of
+  a real comuna's. Measurements that cite La Florida as their source, in ADRs and docblocks, are
+  left: they say where a number came from, and rewriting them would falsify it. Shipped as 0.77.3
+  so the rebuilt bundle reaches browsers that have the stale one cached.
+
 - **One street search, and one way to draw a sector (0.77.2).** The redesign left two street
   searches on the map (Leaflet's «Buscar una calle» beside the Omnibox) and Geoman's own toolbar
   button beside «Dibujar Sector». The Omnibox is the street search now, and it keeps what the old

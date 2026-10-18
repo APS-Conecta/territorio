@@ -31,7 +31,6 @@
 			estoy?».
 		-->
 		<LocateControl v-if="mapReady" :map="map" @notice="onLocateNotice" />
-		<SearchControl v-if="mapReady" :map="map" :unidades="unidades" />
 	</div>
 </template>
 
@@ -58,7 +57,6 @@ import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
 import { clusterIcon, escapeHtml, isApproximate, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
-import SearchControl from './SearchControl.vue'
 import {
 	boundsOf,
 	colourOf,
@@ -83,7 +81,7 @@ const PICKABLE_PANE = 'territorio-pickable'
 export default {
 	name: 'TerritorioMap',
 
-	components: { LocateControl, NcButton, NcNoteCard, SearchControl },
+	components: { LocateControl, NcButton, NcNoteCard },
 
 	props: {
 		features: { type: Array, required: true },
@@ -119,11 +117,6 @@ export default {
 		// anywhere places that coordinate — including on top of a Sector or a
 		// Unidad Vecinal, which otherwise swallow the click to select themselves.
 		placing: { type: Boolean, default: false },
-		// The Sectores and Unidades Vecinales, UNFILTERED: App.vue's `divisions`,
-		// the list the sidebar names assignments from. Only for the street
-		// search's place hint (`unidades` below), which must not change with
-		// what Capas or «Buscar» has taken off `features`.
-		divisions: { type: Array, default: () => [] },
 	},
 
 	emits: ['select', 'map-click', 'draw', 'reshape', 'pick', 'view-changed', 'draw-mode-change'],
@@ -212,18 +205,6 @@ export default {
 		/** Shared with the list, so a marker can never disagree with its legend. */
 		subcategories() {
 			return indexSubcategories(this.taxonomy)
-		},
-
-		/**
-		 * The Unidades Vecinales, for the street search's place hint — from
-		 * `divisions` and NOT from `features`, for the reason `draftSubcategoryId`
-		 * gives: `features` is the filtered set. Hiding the divisions in Capas, or
-		 * typing «pasaje» into the sidebar's «Buscar», would otherwise take every
-		 * hint off the street search, and which «Pasaje Dos» is which has nothing
-		 * to do with what is on screen.
-		 */
-		unidades() {
-			return this.divisions.filter((feature) => this.subcategories.get(feature.subcategoryId)?.slug === UNIDAD_VECINAL_SLUG)
 		},
 
 		/** The drafted record's Subcategory slug; null for a new drawing. */
@@ -587,20 +568,9 @@ export default {
 				snapDistance: 20,
 				allowSelfIntersection: false,
 			})
-			this.map.pm.addControls({
-				position: 'topright',
-				drawMarker: false,
-				drawCircle: false,
-				drawCircleMarker: false,
-				drawPolyline: false,
-				drawRectangle: false,
-				drawText: false,
-				editMode: false,
-				dragMode: false,
-				cutPolygon: false,
-				removalMode: false,
-				rotateMode: false,
-			})
+			// No Geoman toolbar: it offered one button, Polygon, beside
+			// DrawSectorButton, which arms the same tool through toggleDrawPolygon().
+			// Drawing, snapping and reshaping are the map's own and need no toolbar.
 
 			// Geoman's own layer is dropped and the shape comes back as the draft
 			// layer, drawn from the geometry the parent now holds. One round trip
@@ -881,7 +851,9 @@ export default {
 				return
 			}
 			this.map.invalidateSize()
+			// No closer than 17: a pasaje fitted to its own box would zoom to a house.
 			this.map.fitBounds(bounds, {
+				maxZoom: 17,
 				padding: [48, 48],
 				animate: true,
 				duration: 0.8,
@@ -1149,76 +1121,5 @@ $pin-ring: 2px solid #171717;
 	line-height: 1;
 	/* Lining, tabular figures: 8 and 88 must not jump in a 24px disc. */
 	font-variant-numeric: tabular-nums lining-nums;
-}
-
-/*
- * «Buscar una calle» (SearchControl.vue): Leaflet builds it, so it is styled
- * here with everything else Leaflet builds.
- *
- * The theme's own paper and ink, for the reason the cluster count above gives —
- * the one pair readable in both themes. Nextcloud already draws the input in
- * the theme's colours, and a list in Leaflet's fixed white under a dark input
- * would match neither it nor the page.
- */
-.territorio-search {
-	/* Wide enough for «Pasaje Los Toros Norte», and never wider than a phone
-	   leaves beside Nextcloud's navigation toggle. */
-	width: 16rem;
-	max-width: calc(100vw - 88px);
-	background: var(--color-main-background, #fff);
-	color: var(--color-main-text, #222);
-	/* App text somebody reads, not a map label: Leaflet's 12px is for those. */
-	font-size: var(--default-font-size, 15px);
-}
-
-.territorio-search__input {
-	box-sizing: border-box;
-	width: 100%;
-	margin: 0;
-}
-
-.territorio-search__list {
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	/* Twelve rows are taller than a phone's map, so the list scrolls, and
-	   setActive() keeps the keyboard's row in sight. */
-	max-height: 50vh;
-	overflow-y: auto;
-}
-
-.territorio-search__option {
-	display: flex;
-	flex-direction: column;
-	padding: 6px 8px;
-	cursor: pointer;
-
-	&:hover,
-	&[aria-selected='true'] {
-		background: var(--color-background-hover, #f5f5f5);
-	}
-
-	/* Where the keyboard is, though the focus itself stays in the box: the ring
-	   the map's shapes wear. Inset, so the list's own edge cannot clip it. */
-	&[aria-selected='true'] {
-		outline: $focus-ring;
-		outline-offset: -3px;
-	}
-}
-
-.territorio-search__detail {
-	color: var(--color-text-maxcontrast, #6b6b6b);
-	font-size: 12px;
-}
-
-.territorio-search__status {
-	margin: 0;
-	padding: 6px 8px;
-
-	/* Empty at rest, and collapsed rather than display:none — a live region
-	   has to be in the page before it speaks. */
-	&:empty {
-		padding: 0;
-	}
 }
 </style>

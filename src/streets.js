@@ -1,6 +1,6 @@
 /**
  * Finding a street on the map — the decisions behind the search box under
- * «¿Dónde estoy?» (SearchControl.vue).
+ * «¿Dónde estoy?» (the Omnibox, OmniboxControl.vue, now).
  *
  * The server sends every street the Cadastral Dataset names, once per place
  * (BoundaryService::names()): «Pasaje Dos» in sixteen places is sixteen rows,

@@ -11,7 +11,7 @@ import {
 } from '../../src/streets.js'
 
 /**
- * Finding a street on the map (SearchControl.vue).
+ * Finding a street on the map (OmniboxControl.vue).
  *
  * The server has already split every name by place (BoundaryService::names()).
  * These pin what the browser decides from there: what typing offers, which

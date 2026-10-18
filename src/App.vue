@@ -10,6 +10,10 @@
 							:assets="liveFiltered"
 							:streets="streets"
 							:subcategories="subcategories"
+							:unidades="unidadesVecinales"
+							:streets-loading="streetsLoading"
+							:streets-failed="streetsFailed"
+							:streets-loaded="streetsLoaded"
 							:pane="pane"
 							@update:model-value="onOmniboxInput"
 							@select-asset="onSelectAsset"
@@ -47,7 +51,6 @@
 							ref="mapComponent"
 							:features="liveFiltered"
 							:taxonomy="taxonomy"
-							:divisions="divisions"
 							:selected-id="selectedId"
 							:draft-geometry="draftGeometry"
 							:draft-colour="draft?.colour ?? null"
@@ -282,6 +285,7 @@
 
 <script>
 import axios from '@nextcloud/axios'
+import { markRaw } from 'vue'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
@@ -337,6 +341,7 @@ import {
 	divisionsOf,
 	indexSubcategories,
 	sectorSubcategoryId,
+	UNIDAD_VECINAL_SLUG,
 } from './taxonomy.js'
 
 /**
@@ -400,7 +405,14 @@ export default {
 			omniboxQuery: '',
 			showTaxonomyDrawer: false,
 			isDrawingSector: false,
+			// Read-only and about five thousand rows: markRaw'd where it is set, so
+			// Vue does not wrap every one of them in a Proxy (SearchControl, the
+			// control this replaced, kept them in non-reactive handles for the same
+			// reason).
 			streets: [],
+			streetsLoading: false,
+			streetsFailed: false,
+			streetsLoaded: false,
 			// The Índice's own View — which columns it draws and in what order
 			// (#105). Here and not in the component for the reason the filter is
 			// here: the View is personal (CONTEXT.md) and lives in this browser, and
@@ -557,6 +569,15 @@ export default {
 		 * `divisions`, matching taxonomy.js's `divisionsOf` vocabulary (L1-33) —
 		 * «boundary» names the /boundaries resource alone.
 		 */
+		/**
+		 * The comuna's Unidades Vecinales, UNFILTERED (`divisions`, not what Capas
+		 * or the search has left): which one a street is in is what tells the rows of
+		 * one name apart, and it has nothing to do with what is on screen.
+		 */
+		unidadesVecinales() {
+			return this.divisions.filter((feature) => this.subcategories.get(feature.subcategoryId)?.slug === UNIDAD_VECINAL_SLUG)
+		},
+
 		divisions() {
 			const ids = new Set(divisionsOf(this.taxonomy).map((division) => division.id))
 
@@ -663,6 +684,7 @@ export default {
 		onOmniboxInput(query) {
 			this.omniboxQuery = query
 			this.search(query)
+			this.loadStreets()
 		},
 
 		onSelectAsset(result) {
@@ -830,16 +852,31 @@ export default {
 		},
 
 		prefetchBoundaryStreets() {
-			prefetchStreets(async () => {
-				if (this.streets.length === 0) {
-					try {
-						const { data } = await axios.get(generateUrl('/apps/territorio/boundaries/names'))
-						this.streets = data
-					} catch {
-						// Non-critical background prefetch
-					}
-				}
-			})
+			prefetchStreets(() => this.loadStreets())
+		},
+
+		/**
+		 * The streets, once. The plain route, not OCS (ADR-0020). A failure leaves
+		 * `streetsLoaded` false, so the next keystroke in the search box asks again,
+		 * which is what the failure message tells the person to do; while one
+		 * request is out, nobody sends another.
+		 */
+		async loadStreets() {
+			if (this.streetsLoaded || this.streetsLoading) {
+				return
+			}
+			this.streetsLoading = true
+			this.streetsFailed = false
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/boundaries/names'))
+				this.streets = markRaw(data)
+				this.streetsLoaded = true
+			} catch (exception) {
+				this.streetsFailed = true
+				warnError('could not load the streets, will retry on the next keystroke', exception)
+			} finally {
+				this.streetsLoading = false
+			}
 		},
 
 		async loadHistory(id) {

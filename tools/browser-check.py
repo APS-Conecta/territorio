@@ -557,7 +557,7 @@ def to_list(page):
     # A dialog left open (an import that was only read, say) swallows every click.
     dialog = page.get_by_role("dialog")
     if dialog.count() > 0:
-        dialog.first.get_by_role("button", name="Cerrar").first.click()
+        dialog.first.get_by_role("button", name=re.compile("Cerrar|Close")).first.click()
         page.wait_for_timeout(300)
     if page.locator(".territorio-fullscreen-view").count() > 0:
         _pane(page, "Mapa")

@@ -17,7 +17,7 @@ export const SAME_PLACE_METRES = 25.0
 /** Threshold in metres where an alike name is considered a likely duplicate candidate. */
 export const SAME_BLOCK_METRES = 150.0
 
-/** Name similarity threshold percentage (matches DuplicateFinder::ALIKE in backend). */
+/** Name similarity threshold. An early warning only: the server's DuplicateFinder decides (ADR-0011). */
 export const ALIKE_THRESHOLD = 0.85
 
 /**
@@ -109,7 +109,8 @@ export function levenshteinDistance(a, b) {
 
 /**
  * Checks whether two names are alike (same place written differently).
- * Mirrors backend DuplicateFinder::alike:
+ * Same rules as backend DuplicateFinder::alike, but the metric differs (Levenshtein here,
+ * `similar_text` there), so a borderline pair may warn on one side only:
  * 1. Folded equality.
  * 2. Substring containment ("CESFAM Bellavista" vs "CESFAM Bellavista (SSMSO)").
  * 3. Levenshtein similarity >= ALIKE_THRESHOLD.

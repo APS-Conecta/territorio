@@ -421,7 +421,7 @@ import { PIN_DOT_SIZE, PIN_GLYPH_SIZE } from '../marks.js'
 import { DEFAULT_SECTOR_COLOUR, divisionsOf, treeOf } from '../taxonomy.js'
 
 /**
- * mdi-pencil-outline, inlined like the empty-state icon in AnalisisView.
+ * mdi-pencil-outline, inlined like the empty-state icon in AnalysisView.
  * The Maki set this app already carries is place pictograms — it holds nothing
  * for "edit this".
  */

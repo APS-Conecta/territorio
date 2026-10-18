@@ -94,19 +94,21 @@
 					:key="row.id"
 					:class="{ 'territorio-indice__row--selected': row.id === selectedId }"
 					@click="$emit('select', row.id)">
+					<!-- The first SHOWN cell carries the button, so the row opens from the
+					     keyboard even when «Nombre» is hidden; the click on the <tr> stays. -->
 					<td v-for="column in shown"
 						:key="column.key"
+						:data-key="column.key"
+						:title="row.cells[column.key] || null"
 						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }">
-						<template v-if="column.key === 'name'">
-							<button type="button"
-								class="territorio-indice__open"
-								:title="`Abrir ${row.name}`"
-								@click.stop="$emit('select', row.id)">
-								{{ row.name }}
-							</button>
-						</template>
+						<button v-if="column.key === shown[0].key"
+							type="button"
+							class="territorio-indice__open"
+							:aria-label="`Abrir registro «${row.cells[column.key]}»`">
+							{{ row.cells[column.key] }}
+						</button>
 						<template v-else>
-							{{ row[column.key] }}
+							{{ row.cells[column.key] }}
 						</template>
 					</td>
 				</tr>

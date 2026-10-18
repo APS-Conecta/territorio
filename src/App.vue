@@ -7,7 +7,7 @@
 					<div class="territorio-topbar">
 						<OmniboxControl
 							:model-value="omniboxQuery"
-							:assets="liveFiltered"
+							:assets="searchable"
 							:streets="streets"
 							:subcategories="subcategories"
 							:unidades="unidadesVecinales"
@@ -221,7 +221,7 @@
 						would carry.
 					-->
 					<div v-if="pane === 'indice'" class="territorio-fullscreen-view">
-						<IndiceView
+						<IndexView
 							v-model:view="indice"
 							:features="liveFiltered"
 							:taxonomy="taxonomy"
@@ -233,7 +233,7 @@
 					</div>
 
 					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view">
-						<AnalisisView
+						<AnalysisView
 							:counts="counts"
 							:filtered="isFiltered(filter)"
 							@back="pane = 'mapa'" />
@@ -292,7 +292,7 @@ import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import AnalisisView from './components/AnalisisView.vue'
+import AnalysisView from './components/AnalysisView.vue'
 import BoundaryPicker from './components/BoundaryPicker.vue'
 import DrawSectorButton from './components/DrawSectorButton.vue'
 import DuplicatesView from './components/DuplicatesView.vue'
@@ -301,7 +301,7 @@ import ExportDialog from './components/ExportDialog.vue'
 import FeatureDetail from './components/FeatureDetail.vue'
 import FeatureList from './components/FeatureList.vue'
 import ImportDialog from './components/ImportDialog.vue'
-import IndiceView from './components/IndiceView.vue'
+import IndexView from './components/IndexView.vue'
 import LayersDropdownButton from './components/LayersDropdownButton.vue'
 import OmniboxControl from './components/OmniboxControl.vue'
 import TaxonomyDrawer from './components/TaxonomyDrawer.vue'
@@ -363,7 +363,7 @@ export default {
 	name: 'App',
 
 	components: {
-		AnalisisView,
+		AnalysisView,
 		BoundaryPicker,
 		DrawSectorButton,
 		DuplicatesView,
@@ -372,7 +372,7 @@ export default {
 		FeatureDetail,
 		FeatureList,
 		ImportDialog,
-		IndiceView,
+		IndexView,
 		LayersDropdownButton,
 		NcAppContent,
 		NcButton,
@@ -398,10 +398,9 @@ export default {
 			// of which this is one part, alongside the filter above.
 			pane: 'mapa',
 			panelOpen: true,
-			// What the search box shows. It follows the keystroke at once, while
-			// `filter.query` waits out search()'s debounce: bound straight to
-			// `filter.query`, the box would hand back the stale text and eat a
-			// character on every re-render.
+			// What the search box shows. Typing there only offers matches; it does
+			// not narrow the list or the map (`filter.query` does, from the list's
+			// own box).
 			omniboxQuery: '',
 			showTaxonomyDrawer: false,
 			isDrawingSector: false,
@@ -480,6 +479,14 @@ export default {
 		 */
 		liveFiltered() {
 			return filterFeatures(this.features, this.filter, this.subcategories)
+		},
+
+		/**
+		 * What the top search box looks through: the Capas toggles apply, the list's
+		 * own query does not, so a half-typed list search never hides a place from it.
+		 */
+		searchable() {
+			return filterFeatures(this.features, { ...this.filter, query: '' }, this.subcategories)
 		},
 
 		/**
@@ -630,13 +637,6 @@ export default {
 		},
 	},
 
-	watch: {
-		// The list's own search box, «Ver todo» and a reset change the query too.
-		'filter.query'(query) {
-			this.omniboxQuery = query
-		},
-	},
-
 	mounted() {
 		this.loadDuplicates()
 		this.startPolling()
@@ -683,7 +683,6 @@ export default {
 
 		onOmniboxInput(query) {
 			this.omniboxQuery = query
-			this.search(query)
 			this.loadStreets()
 		},
 
@@ -1543,11 +1542,19 @@ export default {
 }
 
 .territorio-app-viewport {
+	// What the floating topbar covers at the top: 12px offset + 48px search box +
+	// 48px tabs + 12px of air. Below 810px the layers and draw buttons wrap onto a
+	// second row (+ 48px + 12px gap + 12px of air → 188px, measured at 360px).
+	--territorio-topbar-clearance: 124px;
 	position: relative;
 	width: 100%;
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
+
+	@media (max-width: 810px) {
+		--territorio-topbar-clearance: 188px;
+	}
 }
 
 .territorio-map-container {
@@ -1649,11 +1656,8 @@ export default {
 	overflow: hidden;
 }
 
-// Clears the search box and its view tabs, which float over the panel's top
-// (12px offset + 48px bar + 48px tabs + 12px of air).
 .territorio-docked-panel__spacer {
-	height: 124px;
-	flex: 0 0 124px;
+	flex: 0 0 var(--territorio-topbar-clearance);
 }
 
 .territorio-docked-panel__sheet,
@@ -1686,10 +1690,10 @@ export default {
 // 1000) left nothing to click but the view's own «Volver».
 .territorio-fullscreen-view {
 	position: absolute;
-	top: 124px;
+	top: var(--territorio-topbar-clearance);
 	left: 0;
 	width: 100%;
-	height: calc(100% - 124px);
+	height: calc(100% - var(--territorio-topbar-clearance));
 	z-index: 1100;
 	background: var(--color-main-background, #ffffff);
 	overflow-y: auto;

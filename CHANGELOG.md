@@ -186,6 +186,24 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **Typing a street no longer empties the list (0.77.4).** The top search box also wrote the
+  list's filter, so a street name (which no record carries) showed «Nada coincide con la búsqueda».
+  It now only offers matches (looking through the Capas-filtered set, not the list's query), and
+  the two boxes no longer mirror each other; the list keeps its own search box. The Índice drew
+  every cell empty (it read `row.name` where rows are `{ id, cells }`); it reads the cells again,
+  with their `data-key`, title and keyboard-reachable first cell. Also removed the street helpers
+  the old control left behind (`placesMatching`, `nextActive`, `chosen`, `cornersOf`) and their
+  tests, and corrected the comments that claimed the client's name similarity mirrors the server's
+  (it is Levenshtein here and `similar_text` there; the server decides, ADR-0011).
+
+  **On a phone the layers and draw buttons no longer cover the record's «← Volver a la lista».**
+  Below 810px they wrap under the search box, and the panel's clearance (124px) assumed one row,
+  so they sat on the record's first line at 360px. The clearance is one variable now
+  (`--territorio-topbar-clearance`, 188px below 810px) shared by the panel and the full-screen views.
+
+  Also deleted `IndiceView` and `AnalisisView`: each only forwarded its props and events to
+  `IndexView` / `AnalysisView`, which `App.vue` now mounts directly.
+
 - **No comuna or clinic is baked in (0.77.3).** The installer chooses the comuna and the
   establishment, so nothing the app shows or ships should pre-suppose one. The admin page no longer
   says «La Florida es 13110» and no longer suggests `13110` / «La Florida» as the code and name;

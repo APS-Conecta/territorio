@@ -80,6 +80,11 @@ describe('what the search says and asks', () => {
 	/** What streets.js's searchStatus message tells the person to do after a failure. */
 	it('asks again on the next keystroke after a failure, and never twice at once', () => {
 		expect(methodOf(app, 'onOmniboxInput')).toContain('this.loadStreets()')
+	})
+
+	/** A street name matches no record: filtering the list on it only shows «Nada coincide». */
+	it('does not filter the list or the map while a street is typed', () => {
+		expect(methodOf(app, 'onOmniboxInput')).not.toContain('this.search(')
 		expect(methodOf(app, 'loadStreets')).toMatch(/if \(this\.streetsLoaded \|\| this\.streetsLoading\)/)
 		expect(methodOf(app, 'loadStreets')).toContain('this.streetsFailed = true')
 	})

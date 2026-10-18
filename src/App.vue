@@ -58,7 +58,7 @@
 							:picked-ids="draft?.picked ?? []"
 							@pick="togglePicked"
 							@view-changed="onViewChanged"
-							@select="selectAndPan"
+							@select="select"
 							@map-click="placeDraft"
 							@draw="startSector"
 							@reshape="reshapeDraft"
@@ -89,8 +89,8 @@
 								<!--
 									The second boundary (L0-02). FeatureDetail and BoundaryPicker draw
 									geometry- and limit-derived drafts, and until now a render error there
-									blanked the whole page — including the navigation the main boundary
-									exists to preserve. Around the CONTENT only.
+									blanked the whole page. Around the CONTENT only: the topbar, the
+									map and the panel's toggle stay up for a crashed record.
 								-->
 								<ErrorBoundary>
 									<NcNoteCard v-if="selectedIsRetired" type="warning" class="territorio-restore-card">
@@ -192,6 +192,7 @@
 						:error="taxonomyError"
 						:notice="taxonomyNotice"
 						@close="closeTaxonomyDrawer"
+						@clear-taxonomy-message="clearTaxonomyMessage"
 						@toggle-category="onToggleCategory"
 						@toggle-subcategory="onToggleSubcategory"
 						@rename="rename"
@@ -242,6 +243,10 @@
 						filter would leave a card with one side and no question.
 					-->
 					<div v-if="pane === 'duplicados'" class="territorio-fullscreen-view">
+						<!-- resolve() writes `error`, and the panel that shows it is hidden here. -->
+						<NcNoteCard v-if="error !== ''" type="error" class="territorio-main__error">
+							{{ error }}
+						</NcNoteCard>
 						<DuplicatesView
 							:pairs="duplicates"
 							:features="features"
@@ -421,9 +426,9 @@ export default {
 			draft: null,
 			saving: false,
 			error: '',
-			// Separate from `error`: that one renders in the map column and only
+			// Separate from `error`: that one renders in the panel's list and only
 			// while no record is open, and the Capas panel — where a rename or an
-			// add is refused — is beside the list and always on screen.
+			// add is refused — is the taxonomy drawer, open on its own terms.
 			taxonomyError: '',
 			// Not an error, and it must not read as one (ADR-0017): what a
 			// Category on the neutral means, said once, where it was added.
@@ -769,9 +774,16 @@ export default {
 			}
 		},
 
-		selectAndPan(id) {
+		async selectAndPan(id) {
 			this.select(id)
 			this.panelOpen = true
+			// From the Índice or the duplicates queue the record opens in the panel
+			// and the map is hidden (`v-show`) at zero size, where Leaflet cannot
+			// compute a view. Back to the map first, and move it once it is laid out.
+			if (this.pane !== 'mapa') {
+				this.pane = 'mapa'
+				await this.$nextTick()
+			}
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			// A record has GeoJSON `geometry`, not `lat`/`lon`, and may have none:
 			// then it is selected and the map stays where it is.
@@ -1515,8 +1527,11 @@ export default {
 	top: 12px;
 	left: 12px;
 	right: 12px;
-	z-index: 1000;
+	// Above the full-screen views (1100), so the search box's results are not
+	// hidden behind the Índice it is typed over.
+	z-index: 1200;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: flex-start;
 	gap: 12px;
 	// The strip itself lets clicks through to the map between its controls; the

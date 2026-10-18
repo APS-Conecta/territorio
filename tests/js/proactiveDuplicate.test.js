@@ -193,3 +193,10 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 		})
 	})
 })
+
+describe('a draft typed with a decimal comma', () => {
+	it('still meets its neighbour', () => {
+		const neighbour = { id: 7, name: 'Otro', geometry: { type: 'Point', coordinates: [-70.65012, -33.44892] }, retired: false }
+		expect(findDuplicateCandidate({ id: null, name: 'X', lat: '-33,4489', lon: '-70,6501' }, [neighbour])?.reason).toBe('coordenada')
+	})
+})

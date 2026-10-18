@@ -34,10 +34,12 @@ export function metresBetween(lat1, lon1, lat2, lon2) {
 	if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
 		return Infinity
 	}
-	const nLat1 = Number(lat1)
-	const nLon1 = Number(lon1)
-	const nLat2 = Number(lat2)
-	const nLon2 = Number(lon2)
+	// A draft's coordinates are text, and payload() accepts «-33,4489» there.
+	const number = (value) => Number(typeof value === 'string' ? value.replace(',', '.') : value)
+	const nLat1 = number(lat1)
+	const nLon1 = number(lon1)
+	const nLat2 = number(lat2)
+	const nLon2 = number(lon2)
 
 	if (Number.isNaN(nLat1) || Number.isNaN(nLon1) || Number.isNaN(nLat2) || Number.isNaN(nLon2)) {
 		return Infinity

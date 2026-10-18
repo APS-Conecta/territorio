@@ -42,7 +42,7 @@
 					<input type="checkbox"
 						class="territorio-layers-item__checkbox"
 						:checked="isCategoryChecked(cat)"
-						@change="$emit('toggle-category', cat)">
+						@change="onToggleCategory(cat, $event)">
 					<span class="territorio-layers-item__dot" :style="{ backgroundColor: cat.color }" aria-hidden="true" />
 					<span class="territorio-layers-item__label">{{ cat.label }}</span>
 					<span v-if="counts[cat.slug] != null" class="territorio-layers-item__badge">
@@ -150,6 +150,16 @@ export default {
 			return !cat.subcategories.every(sub => this.filter.hidden.has(sub.id))
 		},
 
+		onToggleCategory(cat, event) {
+			this.$emit('toggle-category', cat)
+			// A partly hidden category shows ticked and a click reveals the rest, so
+			// the box ends where it started and Vue sees no change to patch: put the
+			// DOM back to what the filter says once it has caught up.
+			this.$nextTick(() => {
+				event.target.checked = this.isCategoryChecked(cat)
+			})
+		},
+
 		openManager() {
 			this.isOpen = false
 			this.$emit('open-taxonomy-drawer')
@@ -221,6 +231,10 @@ export default {
 	left: 0;
 	margin-top: 6px;
 	width: 290px;
+	/* The footer link that opens the taxonomy drawer is the last thing in the
+	   panel; with many categories it must scroll into reach, not off the screen. */
+	max-height: calc(100vh - 180px);
+	overflow-y: auto;
 	background: #ffffff;
 	border-radius: 8px;
 	box-shadow: 0 4px 16px rgba(60, 64, 67, 0.25);

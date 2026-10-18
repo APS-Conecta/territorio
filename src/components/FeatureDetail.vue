@@ -11,6 +11,15 @@
 			the thing that was broken for eight slices, and the confirm step keeps
 			working exactly as it did beside it.
 		-->
+		<!--
+			The way back to the list. The panel shows the list OR a record, so with
+			nothing here an opened record — and a retired one, which has no action
+			group — could not be left: App.vue listened for `cancel` and nothing
+			ever sent it. Outside the action group because a retired record has none.
+		-->
+		<NcButton class="territorio-detail__back" variant="tertiary" type="button" @click="$emit('cancel')">
+			← Volver a la lista
+		</NcButton>
 		<div v-if="!retired" class="territorio-detail__actions">
 			<!-- `type`, not `native-type`. In @nextcloud/vue 9 `type` IS the native
 			     button type and `variant` carries the appearance; `nativeType` was the

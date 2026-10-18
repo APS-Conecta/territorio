@@ -58,7 +58,11 @@ RUN = uuid.uuid4().hex[:6]
 # drives the pre-redesign layout (the Datos list column, the Capas sidebar), so
 # until it is ported this is the part of the gate that measures the layout that
 # actually ships.
-ONLY = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
+ONLY = None
+if "--only" in sys.argv:
+    ONLY = sys.argv[sys.argv.index("--only") + 1:][:1] and sys.argv[sys.argv.index("--only") + 1]
+    if ONLY != "redesign":
+        sys.exit("usage: browser-check.py [--only redesign]")
 
 # What a GeoJSON written WITHOUT contact fields is marked with, so the check can
 # tell a partial export from a complete one. Kept in step with
@@ -7148,6 +7152,15 @@ def the_redesigned_controls_work(page, errors, failures):
         if not page.locator(".territorio-docked-panel__sheet").get_by_text(place).first.is_visible():
             failures.append("picking the Place did not open its record in the side panel")
 
+    # An opened record has a way back to the list.
+    back = page.locator(".territorio-detail__back")
+    if back.count() == 0:
+        failures.append("an opened record has no «Volver a la lista»")
+    else:
+        back.click()
+        if not settles(page, lambda: page.locator(".territorio-list__sort-bar").count() > 0, timeout=5_000):
+            failures.append("«Volver a la lista» did not bring the list back")
+
     _, problem = _omnibox_pick(page, f"Colegio Rediseño {RUN}", polygon)
     view = last_view()
     if problem:
@@ -7183,6 +7196,14 @@ def the_redesigned_controls_work(page, errors, failures):
         selected = page.locator(".territorio-omnibox__tab--active").inner_text().strip()
         if selected != tab:
             failures.append(f"after clicking «{tab}» the highlighted tab is «{selected}»")
+
+    # Picking a record while the Índice is up takes the person to the map and the
+    # record: the panel and the map are hidden behind the table until it does.
+    page.locator(".territorio-omnibox__tab", has_text="Índice").click()
+    page.wait_for_timeout(400)
+    page.locator(f"{INDICE} tbody tr").first.click()
+    if not settles(page, lambda: page.locator(".territorio-docked-panel__sheet").is_visible(), timeout=5_000):
+        failures.append("picking a row in the Índice did not open the record on the map")
 
     # --- the layers menu ---
     # On a fresh page: the street pick above left the map two kilometres from every

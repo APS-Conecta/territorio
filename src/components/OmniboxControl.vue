@@ -17,7 +17,7 @@
 				role="combobox"
 				:aria-expanded="showDropdown ? 'true' : 'false'"
 				aria-autocomplete="list"
-				@focus="isFocused = true"
+				@focus="onFocus"
 				@blur="onBlur"
 				@keydown.down.prevent="navigateResults(1)"
 				@keydown.up.prevent="navigateResults(-1)"
@@ -73,7 +73,7 @@
 		<!-- Unified Autocomplete Results Dropdown -->
 		<div v-if="showDropdown" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
-				:key="result.kind + '-' + (result.id ?? result.name)"
+				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
 				role="option"
 				class="territorio-omnibox__item"
 				:class="{ 'territorio-omnibox__item--highlighted': activeIndex === index }"
@@ -174,10 +174,17 @@ export default {
 
 	methods: {
 		onBlur() {
-			// Short timeout so mousedown can fire
-			setTimeout(() => {
+			// Short timeout so mousedown can fire. Cleared by the next focus, or an
+			// early blur would hide the list a person has just come back to.
+			clearTimeout(this.blurTimer)
+			this.blurTimer = setTimeout(() => {
 				this.isFocused = false
 			}, 200)
+		},
+
+		onFocus() {
+			clearTimeout(this.blurTimer)
+			this.isFocused = true
 		},
 
 		clearQuery() {
@@ -221,9 +228,10 @@ export default {
  */
 .territorio-omnibox {
 	position: relative;
-	flex: 0 0 392px;
+	flex: 0 1 392px;
 	z-index: 1000;
 	width: 392px;
+	max-width: 100%;
 	background: #ffffff;
 	border-radius: 8px;
 	box-shadow: 0 2px 6px rgba(60, 64, 67, 0.3), 0 1px 2px rgba(60, 64, 67, 0.15);

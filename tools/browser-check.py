@@ -37,6 +37,7 @@ import sys
 import unicodedata
 import uuid
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
@@ -53,11 +54,14 @@ SHOTS = Path(__file__).parent / ".browser-check"
 # instance you can `make instance-clean`; if this ever runs somewhere that must
 # persist, it needs to retire what it made on the way out.
 RUN = uuid.uuid4().hex[:6]
+# The redesign check's own token, so what it seeds is not found by the later checks
+# that search the list for RUN and count exactly this run's records.
+REDESIGN = uuid.uuid4().hex[:6]
 
-# `--only redesign` runs the topbar check alone. The rest of this script still
-# drives the pre-redesign layout (the Datos list column, the Capas sidebar), so
-# until it is ported this is the part of the gate that measures the layout that
-# actually ships.
+# `--only redesign` runs the topbar check alone, which is the quick one. The rest
+# drives the docked panel: `to_list()` puts every check back on the list, and the
+# helpers above it (`open_first_row`, `edit`, `open_capas`, `toggle_division`)
+# are the new layout's way to what the old sidebar and Capas column showed at once.
 ONLY = None
 if "--only" in sys.argv:
     ONLY = sys.argv[sys.argv.index("--only") + 1:][:1] and sys.argv[sys.argv.index("--only") + 1]
@@ -92,6 +96,9 @@ NUDGE = int(RUN, 16) % 120
 ROWS = ".app-content-list .list-item"
 MARKERS = ".leaflet-marker-icon"
 SEARCH = ".territorio-list__search input"
+# The docked panel covers the map's left 408px and the topbar its top ~110px, so
+# a click placed there lands on them. Canvas positions below start clear of both.
+MAP_CLEAR = {"x": 480, "y": 160}
 
 # The Índice (#105): the fourth pane, and its own table. Addressed by
 # `data-key` rather than by column position, because the whole point of the pane
@@ -483,7 +490,12 @@ def save(page, failures, what):
     page.get_by_role("button", name="Guardar").click()
     page.wait_for_timeout(800)
 
-    refusal = page.locator(".notecard--error, .notecard--warning")
+    # In the panel only: the map's own notice about an unreachable basemap is a
+    # warning too, and it is not the app refusing the record.
+    # The duplicate shield is a warning about a neighbour, shown while typing; saving goes ahead.
+    refusal = page.locator(".territorio-docked-panel").locator(
+        ".notecard--error, .notecard--warning:not(.territorio-detail__duplicate-alert)",
+    )
     if refusal.count() > 0:
         failures.append(f"saving {what} was refused: {refusal.first.inner_text().strip()}")
 
@@ -497,6 +509,7 @@ def create_a_place(page, name, failures):
     a click does is checked on its own in clicking_places_the_coordinate(), where
     it is the subject rather than a step on the way to something else.
     """
+    to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
     page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
@@ -507,21 +520,144 @@ def create_a_place(page, name, failures):
     # Escape rather than its close button, deliberately: closing it properly
     # widens the map canvas, and every position-based click after that lands
     # somewhere else than the one before it. Escape leaves the geometry alone.
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
+
+
+LAYERS_BUTTON = ".territorio-layers-button"
+LAYERS_PANEL = ".territorio-layers-panel"
+
+
+def division_row(page, label):
+    """The layers menu's row for one territorial division; the menu has to be open."""
+    return page.locator(f"{LAYERS_PANEL} .territorio-layers-item").filter(has_text=label).last
+
+
+def dismiss(page):
+    """Leave whatever is open for the list: Escape, then «← Volver a la lista».
+
+    The old sidebar closed on Escape. The docked panel shows the list OR a record
+    and only the back button leaves a record, so both are pressed: Escape for a
+    dropdown or a mode, the button for the record.
+    """
+    page.keyboard.press("Escape")
+    back = page.locator(".territorio-detail__back")
+    if back.count() > 0 and back.first.is_visible():
+        back.first.click()
+        page.wait_for_timeout(300)
+
+
+def to_list(page):
+    """The state a check starts from: the map pane, the list in the docked panel.
+
+    The old layout showed the list and a record side by side, so whatever one
+    check left open the next still found the list. The docked panel shows one or
+    the other, and the checks below all begin by looking for the list.
+    """
+    # A dialog left open (an import that was only read, say) swallows every click.
+    dialog = page.get_by_role("dialog")
+    if dialog.count() > 0:
+        dialog.first.get_by_role("button", name="Cerrar").first.click()
+        page.wait_for_timeout(300)
+    if page.locator(".territorio-fullscreen-view").count() > 0:
+        _pane(page, "Mapa")
+    dismiss(page)
+    if page.locator(".territorio-docked-panel--collapsed").count() > 0:
+        page.locator(".territorio-docked-panel__toggle").click()
+
+
+def run(check, page, *args, **kwargs):
+    """One check, from the list."""
+    to_list(page)
+    return check(page, *args, **kwargs)
+
+
+def edit(page):
+    """Open the open record's form: «Editar» on the inspection card, if that is what is shown."""
+    button = page.get_by_role("button", name="Editar", exact=True)
+    if button.count() > 0 and button.first.is_visible():
+        button.first.click()
+        page.wait_for_timeout(300)
+
+
+def largest(shapes):
+    """The biggest of several matching shapes: a stroke colour can also be a 5px vertex mark."""
+    areas = shapes.evaluate_all(
+        "els => els.map((el) => { const b = el.getBoundingClientRect(); return b.width * b.height })",
+    )
+
+    return shapes.nth(areas.index(max(areas)))
+
+
+def open_first_row(page):
+    """Open the list's first record as a form, the way the old sidebar showed it."""
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(300)
+    edit(page)
+
+
+def open_capas(page):
+    """The Capas panel, which now lives in the taxonomy drawer: open the drawer, then the panel."""
+    if page.locator(".territorio-taxonomy-drawer").count() == 0:
+        if page.locator(LAYERS_BUTTON).count() == 0:
+            _pane(page, "Mapa")
+        page.locator(LAYERS_BUTTON).click()
+        page.get_by_role("button", name="Configurar taxonomía y capas").click()
+        page.wait_for_selector(".territorio-capas", timeout=5_000)
+    if not page.locator(".territorio-capas").evaluate("node => node.open"):
+        page.locator(".territorio-capas__summary").click()
+        page.wait_for_timeout(300)
+    # Renaming, adding and removing are behind «Editar capas»; the checks below do all three.
+    edit_layers = page.locator(".territorio-capas__edit")
+    if edit_layers.get_attribute("aria-pressed") != "true":
+        edit_layers.click()
+        page.wait_for_timeout(300)
+
+
+def capas_shot(page, path):
+    """A picture of the Capas panel, which is only on the page while its drawer is open."""
+    open_capas(page)
+    page.locator(".territorio-capas").screenshot(path=path)
+
+
+def run_in_capas(check, page, *args):
+    """One check of the Capas panel, from the list, with the panel open."""
+    to_list(page)
+    open_capas(page)
+    return check(page, *args)
+
+
+@contextmanager
+def map_pane(page):
+    """The map pane for the duration: the layers menu exists nowhere else. Puts the pane back."""
+    active = page.locator(".territorio-omnibox__tab--active").inner_text().strip()
+    if active != "Mapa":
+        _pane(page, "Mapa")
+    try:
+        yield
+    finally:
+        if active != "Mapa":
+            _pane(page, active)
 
 
 def toggle_division(page, label):
-    """Tick or untick one of the Capas division toggles."""
-    page.locator(".territorio-capas__divisions").get_by_text(label, exact=True).click()
-    page.wait_for_timeout(400)
+    """Tick or untick one of the layers menu's division toggles, then close the menu."""
+    with map_pane(page):
+        page.locator(LAYERS_BUTTON).click()
+        division_row(page, label).click()
+        page.locator(LAYERS_BUTTON).click()
+        page.wait_for_timeout(400)
 
 
-def division_toggle(page, label):
-    """The checkbox in Capas for one territorial division."""
-    return (page.locator(".territorio-capas__divisions .checkbox-radio-switch")
-            .filter(has_text=label)
-            .locator("input[type=checkbox]"))
+def division_is_shown(page, label):
+    """Whether the menu has a toggle for the division and it is ticked."""
+    with map_pane(page):
+        page.locator(LAYERS_BUTTON).click()
+        row = division_row(page, label).locator("input[type=checkbox]")
+        shown = row.count() > 0 and row.is_checked()
+        page.locator(LAYERS_BUTTON).click()
+
+    return shown
 
 
 def hide_divisions(page):
@@ -539,8 +675,7 @@ def hide_divisions(page):
     """
     hidden = []
     for label in ("Sector", "Unidad Vecinal"):
-        box = division_toggle(page, label)
-        if box.count() > 0 and box.first.is_checked():
+        if division_is_shown(page, label):
             toggle_division(page, label)
             hidden.append(label)
 
@@ -550,8 +685,7 @@ def hide_divisions(page):
 def show_divisions(page, labels):
     """Put back exactly what hide_divisions took away."""
     for label in labels:
-        box = division_toggle(page, label)
-        if box.count() > 0 and not box.first.is_checked():
+        if not division_is_shown(page, label):
             toggle_division(page, label)
 
 
@@ -578,16 +712,14 @@ def draw_a_sector(page, name, failures, colour="#16a34a", save_it=True):
 
 def _draw(page, name, failures, colour, save_it):
     """The draw itself, with the boundaries already off the map."""
-    # The icon is a div inside the button's anchor, not the anchor itself.
-    page.locator(".leaflet-pm-icon-polygon").click()
+    page.locator(".territorio-draw-sector__button").click()
 
     canvas = page.locator('[data-testid="map-canvas"]')
-    left, top = 180 + NUDGE, 160 + (NUDGE % 60)
-    for x, y in [(left, top), (left + 110, top), (left + 110, top + 90), (left, top + 90)]:
+    left, top = MAP_CLEAR["x"] + NUDGE, MAP_CLEAR["y"] + (NUDGE % 60)
+    # The first vertex again closes the ring: with no Geoman toolbar there is no
+    # Finalizar. The same pixel hits the same marker, so it is no coin toss.
+    for x, y in [(left, top), (left + 110, top), (left + 110, top + 90), (left, top + 90), (left, top)]:
         canvas.click(position={"x": x, "y": y})
-    # Geoman's own Finalizar, rather than clicking the first vertex again: the
-    # vertex is an 8px marker and hitting it is a coin toss.
-    page.locator(".leaflet-pm-action.action-finish").click()
 
     # The sidebar for a Sector carries a colour input and no coordinate fields.
     # Waiting for it here turns "the polygon never became a draft" into a sentence
@@ -613,7 +745,7 @@ def _draw(page, name, failures, colour, save_it):
             "the draw did not take: the sidebar holds an existing record, not a new Sector — "
             f"refusing to rename {page.get_by_label('Nombre').input_value().strip()!r}",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.wait_for_timeout(400)
         return False
 
@@ -654,6 +786,7 @@ def a_tramo_typed_before_the_first_save_is_kept(page, failures):
         failures.append(f"a tramo typed before the first save was dropped: {tramo!r}")
 
     save(page, failures, "the hand-drawn Sector")
+    dismiss(page)
 
     # Reopened, because the point is that it outlives the draft it was typed on.
     page.locator(SEARCH).fill(name)
@@ -663,13 +796,13 @@ def a_tramo_typed_before_the_first_save_is_kept(page, failures):
         page.locator(SEARCH).fill("")
         return
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1500)
     kept = page.locator(".territorio-picker__parts li")
     if kept.count() == 0 or tramo not in kept.first.inner_text():
         failures.append(f"a tramo typed before the first save did not survive it: {tramo!r}")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -685,7 +818,7 @@ def clicking_places_the_coordinate(page, failures):
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(f"Prueba de clic {RUN}")
 
-    page.locator('[data-testid="map-canvas"]').click(position={"x": 420, "y": 300})
+    page.locator('[data-testid="map-canvas"]').click(position={"x": MAP_CLEAR["x"] + 100, "y": 300})
     page.wait_for_timeout(400)
 
     if page.get_by_label("Latitud").input_value().strip() == "":
@@ -695,7 +828,7 @@ def clicking_places_the_coordinate(page, failures):
 
     # Nothing is saved: this is about where the click went, and leaving a record
     # behind for it would only be more to tidy.
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
 
@@ -703,7 +836,7 @@ def the_assignment_is_shown_and_not_editable(page, failures):
     """#11: Sector and Unidad Vecinal are shown, never typed (ADR-0008)."""
     page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
     page.wait_for_timeout(400)
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(600)
 
     sidebar = page.locator(".territorio-detail")
@@ -716,7 +849,7 @@ def the_assignment_is_shown_and_not_editable(page, failures):
         if page.get_by_role("textbox", name=label, exact=True).count() > 0:
             failures.append(f"{label} is an editable field, which ADR-0008 forbids")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -729,7 +862,7 @@ def the_limit_can_be_picked(page, failures):
     """
     page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
     page.wait_for_timeout(400)
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1200)
 
     picker = page.locator(".territorio-picker")
@@ -748,7 +881,7 @@ def the_limit_can_be_picked(page, failures):
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
         skip("no boundary features in view to pick from")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -779,19 +912,22 @@ def the_limit_can_be_picked(page, failures):
     else:
         box.fill("")
         page.wait_for_timeout(300)
-        lines.first.click(force=True)
+        # The same line twice, not `.first` twice: a picked line is redrawn, and
+        # the second `.first` can be another street altogether.
+        line = lines.first.element_handle()
+        line.click(force=True)
         page.wait_for_timeout(500)
 
         after = picker.locator(".territorio-picker__parts li")
         if after.count() != 1:
             failures.append(f"clicking a line picked {after.count()} things, expected 1")
 
-        lines.first.click(force=True)
+        line.click(force=True)
         page.wait_for_timeout(500)
         if picker.locator(".territorio-picker__parts li").count() != 0:
             failures.append("clicking the same line again did not unpick it")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -818,7 +954,7 @@ def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
     if not draw_a_sector(page, name, failures, colour=colour):
         return
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(500)
 
     shape = page.locator(f'.leaflet-overlay-pane path[stroke="{colour}"]')
@@ -841,7 +977,7 @@ def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
         retire_the_runs_record(page, name)
         return
 
-    shape.first.click(force=True)
+    largest(shape).click(force=True)
     if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
         failures.append(
             "clicking the map with «Ver retirados» on opened nothing — the click is dead (#67)",
@@ -853,6 +989,7 @@ def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
         # was every live one, once this fix made a live one reachable. `save()`
         # then read `picked` off a null draft, so a save that had ALREADY succeeded
         # reported "revise la conexión" and took the sidebar with it.
+        edit(page)
         page.get_by_role("button", name="Guardar").click()
         page.wait_for_timeout(1500)
 
@@ -864,7 +1001,7 @@ def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
         if page.locator(".territorio-detail").count() == 0:
             failures.append("saving with «Ver retirados» on closed the sidebar (#67)")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(300)
     page.get_by_role("button", name="Ver activos", exact=True).click()
     page.wait_for_timeout(600)
@@ -946,7 +1083,7 @@ def the_duplicate_queue_works(page, failures):
     page.wait_for_timeout(500)
     page.get_by_role("button", name="Importar", exact=True).click()
     page.wait_for_timeout(2500)
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(800)
 
     # Both are in the Registry. The criterion that matters most: nothing was
@@ -959,13 +1096,8 @@ def the_duplicate_queue_works(page, failures):
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(300)
 
-    button = page.locator(".territorio-main__switch").get_by_role("button", name="Posibles duplicados")
-    if "(" not in button.inner_text():
-        failures.append(
-            f"the pane button does not say how many are outstanding: {button.inner_text()!r}",
-        )
-    button.click()
-    page.wait_for_timeout(800)
+    _pane(page, "Posibles duplicados")
+    page.wait_for_timeout(500)
 
     # Scoped to BOTH of this run's names. A card naming one of them and a record
     # from some earlier run is a real candidate pair and none of this check's
@@ -976,7 +1108,7 @@ def the_duplicate_queue_works(page, failures):
             .filter(has_text=partner))
     if card.count() == 0:
         failures.append("the imported pair was not offered in the queue")
-        page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
+        _pane(page, "Mapa")
         return
 
     card = card.first
@@ -996,7 +1128,7 @@ def the_duplicate_queue_works(page, failures):
     ):
         failures.append("the pair is still in the queue after being merged")
 
-    page.locator(".territorio-main__switch").get_by_role("button", name="Mapa").click()
+    _pane(page, "Mapa")
     page.locator(SEARCH).fill(token)
     if not settles(page, lambda: page.locator(ROWS).count() == 1):
         failures.append(
@@ -1029,7 +1161,7 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     page.get_by_label("Longitud").fill(f"-70.5{400 + NUDGE}")
     page.get_by_label("Teléfono").fill("+56 9 8765 4321")
     save(page, failures, "the record with contact details")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
     # A filtered set, so what comes back is checkable rather than the whole
@@ -1123,7 +1255,7 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
 
     a_kmz_is_that_kml_in_an_archive(page, Path(kml.path()).read_bytes(), failures)
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1246,7 +1378,7 @@ def an_export_of_osm_data_names_the_licence(page, failures):
     if "ODbL" not in licence or "OpenStreetMap" not in licence:
         failures.append(f"an export of OSM-derived records did not name the licence: {licence!r}")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1273,7 +1405,7 @@ def the_export_offers_the_live_set_with_retirados_on(page, failures):
         page.get_by_label("Latitud").fill(f"-33.5{offset + NUDGE}")
         page.get_by_label("Longitud").fill(f"-70.5{offset + NUDGE}")
         save(page, failures, f"the exportable record {name!r}")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.wait_for_timeout(400)
 
     retire_the_runs_record(page, gone)
@@ -1382,6 +1514,26 @@ def the_server_refuses_an_unconfirmed_export(page, failures):
             )
 
 
+def go_to_the_square(page, failures):
+    """Put the map over this run's «Cuadro», the way a person gets to a street: the search box.
+
+    The map opens wherever the install's data is, which is not where this square
+    is, and the picker only offers the lines in view.
+    """
+    name = f"Cuadro {RUN}"
+    _titles, problem = _omnibox_pick(page, name, name)
+    if problem:
+        failures.append(f"the search could not take the map to {name!r}: {problem}")
+
+
+def click_inside_the_square(page):
+    """Click the middle of the map, which go_to_the_square() left inside the square."""
+    canvas = page.locator('[data-testid="map-canvas"]')
+    size = canvas.bounding_box()
+    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
+    page.wait_for_timeout(1200)
+
+
 def a_sector_can_be_built_from_picked_lines(page, failures):
     """#14: picked lines plus a click inside become an editable polygon.
 
@@ -1425,6 +1577,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     # Open the Sector this run drew earlier, which is what opens the picker.
     if not open_the_runs_sector(page, failures):
         return
+    go_to_the_square(page, failures)
 
     picker = page.locator('[data-testid="boundary-picker"]')
     # By label: the picker has a second field now, for the stretches of a limit
@@ -1435,7 +1588,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
         skip("the imported square is not in view; polygonize unchecked")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -1475,10 +1628,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     if picker.get_by_text("Haga clic dentro del sector").count() == 0:
         failures.append("pressing Generar did not ask where the sector is")
 
-    canvas = page.locator('[data-testid="map-canvas"]')
-    size = canvas.bounding_box()
-    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
-    page.wait_for_timeout(1200)
+    click_inside_the_square(page)
 
     if page.get_by_text("no cierran", exact=False).count() != 0:
         failures.append("generating over a closed square said the lines do not close")
@@ -1510,7 +1660,7 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     # and saves again — which makes it the third case instead.
     a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(600)
 
     corners = exported_corners(page, f"Sector Navegador {RUN}", failures)
@@ -1550,6 +1700,7 @@ def a_reopened_limit_can_generate_again(page, failures):
     """
     if not open_the_runs_sector(page, failures):
         return
+    go_to_the_square(page, failures)
 
     picker = page.locator('[data-testid="boundary-picker"]')
     # The button, not the parts list: that list counts hand-typed tramos too, so it
@@ -1558,7 +1709,7 @@ def a_reopened_limit_can_generate_again(page, failures):
     generate = picker.get_by_role("button", name="Generar el polígono")
     if generate.count() == 0:
         skip("the reopened Sector has no picked lines, so the reopen check did not run")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -1567,16 +1718,13 @@ def a_reopened_limit_can_generate_again(page, failures):
         failures.append(
             "a reopened Sector never became generatable, though its Limit's lines are on screen (#49)",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
     generate.click()
     page.wait_for_timeout(400)
-    canvas = page.locator('[data-testid="map-canvas"]')
-    size = canvas.bounding_box()
-    canvas.click(position={"x": size["width"] / 2, "y": size["height"] / 2})
-    page.wait_for_timeout(1200)
+    click_inside_the_square(page)
 
     # The whole point of the ticket: no message may blame the streets when the
     # cache was what was empty.
@@ -1585,7 +1733,7 @@ def a_reopened_limit_can_generate_again(page, failures):
 
     # Discarded, not saved: the shape it just made is the same square the
     # polygonize check already asserted, and this run has written enough.
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1600,23 +1748,25 @@ def a_generated_polygon_is_editable(page, square, failures):
     """
     if not open_the_runs_sector(page, failures):
         return
+    go_to_the_square(page, failures)
 
     handles = page.locator(".leaflet-marker-pane .marker-icon")
     if handles.count() == 0:
         failures.append("the generated polygon has no draggable vertices")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
     handle = handles.first.bounding_box()
     page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2)
     page.mouse.down()
-    page.mouse.move(handle["x"] + 60, handle["y"] + 60, steps=8)
+    # Far enough to change a corner at the zoom the square was fitted to, once rounded.
+    page.mouse.move(handle["x"] + 150, handle["y"] + 150, steps=12)
     page.mouse.up()
     page.wait_for_timeout(600)
 
     save(page, failures, "the dragged sector")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(600)
 
     moved = exported_corners(page, f"Sector Navegador {RUN}", failures)
@@ -1722,7 +1872,7 @@ def a_gone_line_says_so_and_keeps_its_name(page, failures):
     if restored != 200:
         failures.append(f"could not restore the line this check retired: HTTP {restored}")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1739,12 +1889,13 @@ def retire_the_runs_record(page, name):
     the same two again when the hand-drawn Sector of #48 was left behind for five
     runs (issue #58). A Place left behind is harmless; a boundary is not.
     """
+    to_list(page)
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(700)
     if page.locator(ROWS).count() == 0:
         return
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1200)
 
     # Two clicks: retiring asks first, because nothing else in this app does.
@@ -1755,7 +1906,7 @@ def retire_the_runs_record(page, name):
         page.get_by_role("button", name="Retirar", exact=True).first.click()
         page.wait_for_timeout(1500)
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1782,6 +1933,7 @@ def reclaim_the_runs_category(page, category, *names):
     not make every later run fail at the same removal. Anything that cannot be
     found is left for `make instance-clean`, the way RUN's own note says.
     """
+    to_list(page)
     for name in names:
         # A search filters the retired list too (listFor()), so the list must be
         # in active mode before an empty result may be read as "retired".
@@ -1808,13 +1960,13 @@ def reclaim_the_runs_category(page, category, *names):
                 page.locator(SEARCH).fill("")
                 continue  # gone, not retired: nothing to reclassify
 
-            page.locator(ROWS).first.click()
+            open_first_row(page)
             page.wait_for_timeout(1200)
             restore = page.get_by_role("button", name="Restaurar", exact=True)
             if restore.count() > 0:
                 restore.first.click()
                 page.wait_for_timeout(1500)
-            page.keyboard.press("Escape")
+            dismiss(page)
             page.wait_for_timeout(300)
             page.get_by_role("button", name="Ver activos", exact=True).first.click()
             settles(page, lambda: page.get_by_role(
@@ -1831,7 +1983,7 @@ def reclaim_the_runs_category(page, category, *names):
         # («Reclasifíquelos y vuelva a intentarlo»). «Sin clasificar» is
         # structural (#47) — it can never itself be removed — so a record parked
         # there can never orphan a Category again.
-        page.locator(ROWS).first.click()
+        open_first_row(page)
         page.wait_for_timeout(1200)
         # Reclassified through the door the refusal sentence itself names
         # («Reclasifíquelos y vuelva a intentarlo»). «Sin clasificar» is
@@ -1841,12 +1993,12 @@ def reclaim_the_runs_category(page, category, *names):
         # goes back retired where it was found, its Category left for
         # instance-clean like any other it strands.
         if not _pick(page, "Subcategoría", "Sin clasificar · Otro", [], f"{name!r}"):
-            page.keyboard.press("Escape")
+            dismiss(page)
             page.wait_for_timeout(400)
             retire_the_runs_record(page, name)
             continue
         save(page, [], f"{name!r}")  # a throwaway list: teardown stays silent
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.wait_for_timeout(400)
 
         retire_the_runs_record(page, name)
@@ -1903,7 +2055,7 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
         skip("no boundary features in view to pick from")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -1929,10 +2081,10 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
         failures.append("lines that do not close said nothing when generating")
 
     # ADR-0007: hand-drawing is available throughout, including after this.
-    if page.locator(".leaflet-pm-icon-polygon").count() == 0:
+    if page.locator(".territorio-draw-sector__button").count() == 0:
         failures.append("hand-drawing is no longer available after a failed generate")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -1946,11 +2098,11 @@ def open_the_runs_sector(page, failures):
         page.locator(SEARCH).fill("")
         return False
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1500)
     if page.locator('[data-testid="boundary-picker"]').count() == 0:
         failures.append("opening a Sector did not open the Limit picker")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return False
 
@@ -2005,7 +2157,7 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
         failures.append("the Limit is not shown in readable form on the Sector")
 
     save(page, failures, "the sector with a limit")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(600)
 
     # Reopened, because a Limit that only exists in this browser's memory looks
@@ -2019,7 +2171,7 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
     picker = page.locator('[data-testid="boundary-picker"]')
     if picker.get_by_text(stretch, exact=False).count() == 0:
         failures.append("the Limit did not survive a reload")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -2041,7 +2193,7 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
         failures.append("the sector had no draggable vertex, so nothing was adjusted")
 
     save(page, failures, "the adjusted sector")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(600)
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
@@ -2052,7 +2204,7 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
     if page.locator('[data-testid="boundary-picker"]').get_by_text(stretch, exact=False).count() == 0:
         failures.append("adjusting the geometry by hand lost the Limit")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -2170,7 +2322,7 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
             failures.append("the sidebar credited the Limit for a line no revision wrote with one (#50)")
 
     if open_it:
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         page.wait_for_timeout(400)
 
@@ -2242,7 +2394,7 @@ def an_imported_sector_says_it_came_from_the_catastro(page, failures):
         page.locator(SEARCH).fill("")
         return
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1500)
 
     said = page.locator('[data-testid="boundary-provenance"]')
@@ -2255,7 +2407,7 @@ def an_imported_sector_says_it_came_from_the_catastro(page, failures):
         elif "importada" not in text:
             failures.append(f"the imported Sector says {text!r}, which does not name the import (#50)")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -2275,7 +2427,7 @@ def the_map_survives_churn(page, errors, failures):
     """
     page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
     page.wait_for_timeout(400)
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1000)
 
     before = len(errors)
@@ -2306,7 +2458,7 @@ def the_map_survives_churn(page, errors, failures):
     if page.locator(MARKERS).count() == 0 and page.locator(".leaflet-tile").count() == 0:
         failures.append("nothing is drawn on the map after zooming and panning")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -2322,14 +2474,9 @@ def search_narrows_everything(page, failures):
     markers = page.locator(MARKERS)
 
     def analysis_total():
-        # Scoped to our own switch: with a record open the sidebar carries a
-        # "Mapa" control too, and an unscoped role lookup finds both.
-        switch = page.locator(".territorio-main__switch")
-        switch.get_by_role("button", name="Análisis").click()
-        page.wait_for_timeout(200)
+        _pane(page, "Análisis")
         text = page.locator(".territorio-analisis h2").inner_text()
-        switch.get_by_role("button", name="Mapa").click()
-        page.wait_for_timeout(200)
+        _pane(page, "Mapa")
         return int(text.split()[0])
 
     before_rows = rows.count()
@@ -2339,7 +2486,10 @@ def search_narrows_everything(page, failures):
     box.fill(RUN)
     page.wait_for_timeout(500)
     if rows.count() != 2:
-        failures.append(f"search found {rows.count()} of this run's 2 records")
+        failures.append(
+            f"search found {rows.count()} of this run's 2 records: "
+            f"{[row.inner_text().splitlines()[0] for row in rows.all()]}",
+        )
     if markers.count() != 1:
         failures.append(f"the map shows {markers.count()} markers, expected the one Place")
     counted = analysis_total()
@@ -2360,8 +2510,7 @@ def search_narrows_everything(page, failures):
     # The label, not the input: NcCheckboxRadioSwitch draws a span over the box,
     # and a person clicks the word anyway. Untick Sector and this run's Sector
     # should leave, while its Place — and the query — stay.
-    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
-    page.wait_for_timeout(500)
+    toggle_division(page, "Sector")
     if box.input_value() != RUN:
         failures.append("a Capas toggle wiped the search box")
     if rows.count() != 1:
@@ -2369,8 +2518,7 @@ def search_narrows_everything(page, failures):
 
     # Put Sector back, or the restore check below is comparing against a Capas
     # selection this function changed.
-    page.locator(".territorio-capas__divisions").get_by_text("Sector", exact=True).click()
-    page.wait_for_timeout(300)
+    toggle_division(page, "Sector")
 
     # Nothing matched: a message, not a bare empty list.
     box.fill("zzzz-no-existe")
@@ -2421,13 +2569,17 @@ def _indice_table(page):
     )
 
 
-def _pane(page, name):
-    """Switch the main area to one pane, scoped to our own switch.
+def indice_columns(page):
+    """The Índice's column checkboxes, folded behind the «Columnas» disclosure: open it."""
+    details = page.locator(".territorio-indice__columns-details")
+    if not details.evaluate("node => node.open"):
+        details.locator("summary").click()
+    return page.locator(INDICE_COLUMNS)
 
-    With a record open the sidebar carries a «Mapa» control of its own, and an
-    unscoped role lookup finds both.
-    """
-    page.locator(".territorio-main__switch").get_by_role("button", name=name).click()
+
+def _pane(page, name):
+    """Switch the main area to one pane through the topbar's tabs."""
+    page.locator(".territorio-omnibox__tab", has_text=name).click()
     page.wait_for_timeout(300)
 
 
@@ -2460,9 +2612,7 @@ def the_indice_reads_the_registry(page, failures):
     # Whatever ran before this may have left a record open, and the check below
     # that clicking a row OPENS one would then be true before it clicked: the
     # sidebar is already there, holding somebody else's name.
-    if page.locator(".app-sidebar__close").count() > 0:
-        page.locator(".app-sidebar__close").first.click()
-        page.wait_for_timeout(300)
+    dismiss(page)
 
     # This run's records and nothing else, so what follows is exact rather than
     # "whatever the instance has accumulated".
@@ -2553,7 +2703,7 @@ def the_indice_reads_the_registry(page, failures):
 
     # Hiding a column, and the criterion that the choice survives a pane switch.
     # The pane is rebuilt on every switch (v-if), so this is the whole of it.
-    page.locator(INDICE_COLUMNS).get_by_text("Teléfono", exact=True).click()
+    indice_columns(page).get_by_text("Teléfono", exact=True).click()
     page.wait_for_timeout(200)
     if "phone" in _indice_table(page)["columns"]:
         failures.append("unticking «Teléfono» left the column on screen")
@@ -2565,7 +2715,7 @@ def the_indice_reads_the_registry(page, failures):
     if "name" not in _indice_table(page)["columns"]:
         failures.append("switching panes lost the columns that were on")
 
-    page.locator(INDICE_COLUMNS).get_by_text("Teléfono", exact=True).click()
+    indice_columns(page).get_by_text("Teléfono", exact=True).click()
     page.wait_for_timeout(200)
     if "phone" not in _indice_table(page)["columns"]:
         failures.append("ticking «Teléfono» back did not bring the column back")
@@ -2643,7 +2793,7 @@ def the_indice_reads_the_registry(page, failures):
     # Hiding «Nombre» moves the pin — and the open button — to the next shown
     # column: a row must stay named and openable whatever columns a person
     # keeps, not because one fixed column is special.
-    page.locator(INDICE_COLUMNS).get_by_text("Nombre", exact=True).click()
+    indice_columns(page).get_by_text("Nombre", exact=True).click()
     page.wait_for_timeout(200)
     if _indice_table(page)["columns"][0] != "category":
         failures.append("hiding «Nombre» did not make «Categoría» the first shown column")
@@ -2669,7 +2819,7 @@ def the_indice_reads_the_registry(page, failures):
         failures.append(f"hiding «Nombre» left the pin on {moved['key']!r}")
     if moved["buttons"] != moved["rows"]:
         failures.append("the open button did not follow the first shown column")
-    page.locator(INDICE_COLUMNS).get_by_text("Nombre", exact=True).click()
+    indice_columns(page).get_by_text("Nombre", exact=True).click()
     page.wait_for_timeout(200)
     if _indice_table(page)["columns"][0] != "name":
         failures.append("ticking «Nombre» back did not bring the column back")
@@ -2711,11 +2861,12 @@ def the_indice_reads_the_registry(page, failures):
     if not settles(page, lambda: page.locator(".territorio-detail").count() > 0, timeout=6_000):
         failures.append(f"clicking the row for {opening!r} opened nothing")
     else:
+        edit(page)
         opened = page.locator(".territorio-detail").get_by_label("Nombre").input_value().strip()
         if opened != opening:
             failures.append(f"clicking the row for {opening!r} opened {opened!r}")
         page.screenshot(path=str(SHOTS / "indice.png"), full_page=False)
-        page.locator(".app-sidebar__close").first.click()
+        dismiss(page)
         page.wait_for_timeout(300)
 
     box.fill("")
@@ -2801,7 +2952,7 @@ def a_csv_imports_and_says_what_does_not_come_back_in(page, failures):
     page.get_by_role("button", name="Importar", exact=True).click()
     page.wait_for_timeout(2500)
     page.screenshot(path=str(SHOTS / "csv-import.png"), full_page=False)
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(800)
 
     stored = registry_feature(page, name)
@@ -2938,7 +3089,7 @@ def a_kmz_imports_like_the_kml_inside_it(page, errors, failures):
     # same scoping the Capas refusals use.
     errors[before:] = [message for message in errors[before:] if "422" not in message]
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
 
@@ -3045,7 +3196,7 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
 
         picker.get_by_text(wanted, exact=False).first.click()
         page.screenshot(path=str(SHOTS / "files-picker.png"), full_page=False)
-        choose = picker.get_by_role("button", name=re.compile(r"^(choose|elegir|select)", re.I))
+        choose = picker.get_by_role("button", name=re.compile(r"^(choose|elegir|select|seleccionar)", re.I))
         if choose.count() == 0:
             failures.append("core's file picker offered no Choose button — see files-picker.png")
             return False
@@ -3114,7 +3265,7 @@ def a_file_already_in_files_imports_without_being_uploaded(page, errors, failure
     # same scoping the KMZ refusal uses.
     errors[before:] = [message for message in errors[before:] if "422" not in message]
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
     # The file itself is not left in Files: it is not a Registry record and
@@ -3186,7 +3337,7 @@ def kml_says_what_it_cannot_carry(page, failures):
     if warning.count() == 0:
         failures.append("choosing a KML said nothing about what it cannot carry")
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
 
@@ -3236,11 +3387,11 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
     # The exact-matching of the locator itself is _pick's, for the «+» reason it
     # states.
     if not _pick(page, "Subcategoría", "Salud · CESFAM", failures, "the Salud place"):
-        page.keyboard.press("Escape")
+        dismiss(page)
         return
 
     save(page, failures, "the Salud place")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
     stored = registry_feature(page, name)
@@ -3358,6 +3509,7 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
     «Exactitud» is only offered once there is a coordinate to describe
     (`FeatureDetail.vue`, `v-if="hasCoordinates"`), so it is set last.
     """
+    to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
     page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE + offset}")
@@ -3369,12 +3521,12 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
         if not _pick(page, label, option, failures, f"{name!r}"):
             # Not saved: a record the pick never filed would land under «Sin
             # clasificar» and fail the map checks far from this cause.
-            page.keyboard.press("Escape")
+            dismiss(page)
             page.wait_for_timeout(400)
             return
 
     save(page, failures, f"{name!r}")
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
 
 
@@ -3932,6 +4084,7 @@ def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
         retire_the_runs_record(page, name)
         return
 
+    edit(page)
     opened = page.get_by_label("Nombre").input_value().strip()
     if opened != stored["name"]:
         failures.append(
@@ -3953,7 +4106,7 @@ def a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures):
     # criterion about surviving a rebuild — a poll-driven redraw swaps the group
     # the same way, and an attribute set once at start-up would be lost on the
     # first merge that arrived.
-    page.locator(".app-sidebar__close").first.click()
+    dismiss(page)
     if not settles(page, lambda: page.locator(".territorio-detail").count() == 0, timeout=6_000):
         failures.append("the sidebar did not close, so the redraw after closing was not checked")
     else:
@@ -4050,13 +4203,13 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
         page.locator(SEARCH).fill("")
         return
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1200)
 
     handles = page.locator(".leaflet-marker-pane .marker-icon")
     if handles.count() == 0:
         failures.append("the open Sector had no draggable vertex, so nothing was dragged")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.locator(SEARCH).fill("")
         return
 
@@ -4069,15 +4222,14 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
 
     # Switch records WITHOUT saving the Sector. This is the whole point: the
     # teardown happens because the draft is being replaced.
-    page.locator(SEARCH).fill(place)
-    page.wait_for_timeout(600)
-    if page.locator(ROWS).count() == 0:
-        failures.append(f"{place!r} vanished from the list while switching records")
-        page.locator(SEARCH).fill("")
+    # The list is behind the open record, so the way to another one is the search
+    # box, which is also how a person would leave this Sector half-edited.
+    titles, problem = _omnibox_pick(page, place, place)
+    if problem:
+        failures.append(f"{place!r} could not be reached while switching records: {problem} (offered {titles})")
         return
 
-    page.locator(ROWS).first.click()
-    page.wait_for_timeout(800)
+    edit(page)
     save(page, failures, "the Place after leaving an edited Sector")
 
     after = registry_feature(page, place)
@@ -4093,7 +4245,7 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
             f"{after['geometry']['coordinates']} without anybody editing it",
         )
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
 
@@ -4422,7 +4574,7 @@ def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failur
                 )
         page.emulate_media(color_scheme="no-override")
 
-        page.locator(ROWS).first.click()
+        open_first_row(page)
         page.wait_for_timeout(1200)
         offered = page.locator('input[type="color"]').count() > 0
         if offered and not wants_colour:
@@ -4433,7 +4585,7 @@ def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failur
             )
         if wants_colour and not offered:
             failures.append(f"{name!r} is offered no colour, and a Sector still carries one (#24)")
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.wait_for_timeout(400)
 
     page.locator(SEARCH).fill("")
@@ -4463,7 +4615,7 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
         failures.append(f"{uv!r} drew no shape to open (#21)")
         return
 
-    page.locator(ROWS).first.click()
+    open_first_row(page)
     page.wait_for_timeout(1200)
 
     reopened = page.locator(".leaflet-overlay-pane path")
@@ -4510,7 +4662,7 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
                 f"fill (#21)",
             )
 
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -4525,8 +4677,7 @@ def _the_chart_draws_a_division_neutral(page, neutral, failures):
     `Sector` and `Unidad Vecinal` bars in the inert seed while the section
     header above them was correctly neutral.
     """
-    switch = page.locator(".territorio-main__switch")
-    switch.get_by_role("button", name="Análisis").click()
+    _pane(page, "Análisis")
     page.wait_for_timeout(600)
 
     section = page.locator(".territorio-analisis__category").filter(
@@ -4534,7 +4685,7 @@ def _the_chart_draws_a_division_neutral(page, neutral, failures):
     ).first
     if section.count() == 0:
         skip("Análisis shows no División territorial section, so its bars are unchecked (#29)")
-        switch.get_by_role("button", name="Mapa").click()
+        _pane(page, "Mapa")
         page.wait_for_timeout(400)
         return
 
@@ -4559,7 +4710,7 @@ def _the_chart_draws_a_division_neutral(page, neutral, failures):
                 f"nowhere (#29)",
             )
 
-    switch.get_by_role("button", name="Mapa").click()
+    _pane(page, "Mapa")
     page.wait_for_timeout(400)
 
 
@@ -4924,7 +5075,7 @@ def the_app_icon_is_legible_in_both_themes(page, failures):
             f"the app menu's Territorio tile ({scheme} theme)", failures,
         )
         page.screenshot(path=str(SHOTS / f"app-icon-{scheme}.png"), full_page=False)
-        page.keyboard.press("Escape")
+        dismiss(page)
         page.wait_for_timeout(300)
 
     page.emulate_media(color_scheme="no-override")
@@ -5143,13 +5294,13 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
                 failures.append(f"{name!r} is not in the list to open at {width}x{height} (#35)")
                 continue
 
-            page.locator(ROWS).first.click()
+            open_first_row(page)
             page.wait_for_timeout(1200)
 
             control = page.get_by_role("button", name="Retirar del mapa")
             if not settles(page, lambda: control.count() > 0, timeout=5_000):
                 failures.append(f"{name!r} offers no way to retire it at {width}x{height} (#35)")
-                page.keyboard.press("Escape")
+                dismiss(page)
                 continue
 
             box = control.first.bounding_box()
@@ -5176,19 +5327,16 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
             # — is measured again at the bottom of the sidebar. Without this the
             # sticky half of the fix is guarded by nothing that can observe it.
             if box is not None and name.startswith("Sector "):
-                # `.app-sidebar` is the element that scrolls, measured on this
-                # instance rather than read off the stylesheet: one match,
-                # `overflow-y: auto`, scrollHeight 1336 over clientHeight 562 on
-                # a 620px screen, while `.app-sidebar-tabs__content` inside it is
-                # `overflow-y: visible`. If a later @nextcloud/vue moves the
-                # scroller this stops matching and the branch below says so.
-                sidebar = page.locator(".app-sidebar")
+                # The docked panel's sheet is the element that scrolls: it is
+                # `overflow-y: auto` in App.vue and holds the whole record. If it
+                # stops being the scroller the branch below says so.
+                sidebar = page.locator(".territorio-docked-panel__sheet")
                 if sidebar.count() == 0:
                     failures.append(
-                        f"no .app-sidebar to scroll for {name!r} at {width}x{height}, so "
+                        f"no panel sheet to scroll for {name!r} at {width}x{height}, so "
                         "nothing measured whether «Retirar del mapa» stays put (#35)",
                     )
-                    page.keyboard.press("Escape")
+                    dismiss(page)
                     page.wait_for_timeout(300)
                     continue
 
@@ -5227,7 +5375,7 @@ def the_retire_control_is_reachable_without_scrolling(page, failures):
                         page.screenshot(path=str(SHOTS / "retire-still-stuck.png"),
                                         full_page=False)
 
-            page.keyboard.press("Escape")
+            dismiss(page)
             page.wait_for_timeout(300)
 
     page.locator(SEARCH).fill("")
@@ -5274,6 +5422,8 @@ def _capas_category(page, label):
     the Subcategory rows carry no `__name` class precisely so this cannot pick
     one of them up.
     """
+    open_capas(page)
+
     return page.locator(
         f'.territorio-capas__category:has(.territorio-capas__name:text-is("{label}"))',
     )
@@ -5631,7 +5781,7 @@ def a_subcategory_can_be_added_without_a_reload(page, errors, failures):
         # it is supposed to be evidence of.
         _capas_child(page, SEEDED_CATEGORY, added).first.scroll_into_view_if_needed()
         page.wait_for_timeout(200)
-        page.locator(".territorio-capas").screenshot(path=str(SHOTS / "44-capas-panel.png"))
+        capas_shot(page, str(SHOTS / "44-capas-panel.png"))
 
         served = served_taxonomy(page)
         stored = None if served is None else next(
@@ -5689,6 +5839,7 @@ def _add_a_category_in_capas(page, label, failures):
     string a screen reader reads, and `exact=True` keeps it clear of the Datos
     column's «Agregar» and of #44's «Agregar subcategoría en «X»».
     """
+    open_capas(page)
     add = page.get_by_role("button", name="Agregar categoría", exact=True)
     if add.count() == 0:
         failures.append("the Capas panel offers no way to add a Category")
@@ -5807,7 +5958,7 @@ def a_category_can_be_added_without_a_reload(page, errors, failures):
 
         row.first.scroll_into_view_if_needed()
         page.wait_for_timeout(200)
-        page.locator(".territorio-capas").screenshot(path=str(SHOTS / "45-capas-panel.png"))
+        capas_shot(page, str(SHOTS / "45-capas-panel.png"))
 
         written = next(
             (entry for entry in served_taxonomy(page) or [] if entry["slug"] == slug), None,
@@ -5939,6 +6090,7 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
     actually travels on the POST is settled in `CategoryCrudTest` against the real
     schema, and the body key is pinned in `CategoryControllerTest`.
     """
+    open_capas(page)
     add = page.get_by_role("button", name="Agregar categoría", exact=True)
     if add.count() == 0:
         failures.append("the Capas panel offers no way to add a Category")
@@ -5959,7 +6111,7 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
             "a Category being named offers no pictogram control, so a mark can only be "
             "chosen after the Category exists — #46 asks for both",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         return
 
     swatch.first.click()
@@ -5969,7 +6121,7 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
             f"the pictogram control beside the new Category's name opened no grid holding "
             f"{PICKED_MARK!r}",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         return
 
     # The title first, and the gap between two cells after it: the hazard is
@@ -5987,7 +6139,7 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
             "has to sit on the picker root, where it also covers the padding and the gaps "
             "between the cells",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         return
 
     # Before the click, for the reason the other check gives: choosing closes
@@ -6002,7 +6154,7 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
             "picking a pictogram while naming a Category threw the typed name away — the "
             "field cancels on blur, so the picker has to keep the focus where it is",
         )
-        page.keyboard.press("Escape")
+        dismiss(page)
         return
 
     # By shape and not by name: this swatch is an `NcIconSvgWrapper`, which
@@ -6015,9 +6167,9 @@ def a_pictogram_can_be_picked_while_a_category_is_named(page, failures):
             f"nothing says what is about to be created",
         )
 
-    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picking.png"))
+    capas_shot(page, str(SHOTS / "46-picking.png"))
     # Escape, not Enter: nothing is created here. See the docstring.
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
     if page.locator(CAPAS_INPUT).count() > 0:
         failures.append("Escape left the new-Category field open")
@@ -6120,7 +6272,7 @@ def a_category_can_be_given_a_pictogram(page, failures):
             f"draws it at — a choice judged at list size can dissolve at the size it is used",
         )
 
-    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "46-picker.png"))
+    capas_shot(page, str(SHOTS / "46-picker.png"))
 
     # Before the click: choosing closes the grid, so the cell is gone afterwards.
     chosen_shape = _mark_shape(mark.first)
@@ -6299,6 +6451,7 @@ def _picker_options(page, typed):
     opened, which is this repo's own lesson about asserting over an empty
     fixture.
     """
+    to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.wait_for_timeout(400)
     # exact=True for the reason given in a_pin_says_what_kind_of_place_it_is():
@@ -6319,9 +6472,9 @@ def _picker_options(page, typed):
     everything = page.locator(".vs__dropdown-option").all_text_contents()
 
     # Twice: the first closes the open dropdown, the second the draft itself.
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(200)
-    page.keyboard.press("Escape")
+    dismiss(page)
     page.wait_for_timeout(400)
     return offered, everything
 
@@ -6342,8 +6495,7 @@ def _analisis_reads_the_new_name(page, category, subcategory, failures, shot=Non
     `shot` names a screenshot to save of the section, for a criterion whose
     wording is about what a person sees; the assertions do not depend on it.
     """
-    switch = page.locator(".territorio-main__switch")
-    switch.get_by_role("button", name="Análisis").click()
+    _pane(page, "Análisis")
     page.wait_for_timeout(700)
 
     section = page.locator(".territorio-analisis__category").filter(has_text=category)
@@ -6361,8 +6513,7 @@ def _analisis_reads_the_new_name(page, category, subcategory, failures, shot=Non
     if shot is not None and section.count() > 0:
         section.first.screenshot(path=str(SHOTS / shot))
 
-    switch.get_by_role("button", name="Mapa").click()
-    page.wait_for_timeout(400)
+    _pane(page, "Mapa")
 
 
 def _the_registry_kept_the_slugs(served, category, subcategory, failures):
@@ -6672,7 +6823,7 @@ def a_category_can_be_removed_without_a_reload(page, errors, failures):
             f"removing «{added}» logged console errors the panel did not show: "
             f"{errors[before:][:3]}",
         )
-    page.locator(".territorio-capas").screenshot(path=str(SHOTS / "47-capas-panel.png"))
+    capas_shot(page, str(SHOTS / "47-capas-panel.png"))
 
 
 def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
@@ -6856,8 +7007,8 @@ def the_redesigned_controls_work(page, errors, failures):
     anything else: a Place, a Polygon, and a street. Where the map went is read
     off Leaflet (VIEW_RECORDER), not off the control.
     """
-    place, polygon, street = (f"Cesfam Rediseño {RUN}", f"Colegio Rediseño {RUN}",
-                              f"Calle Rediseño {RUN}")
+    place, polygon, street = (f"Cesfam Rediseño {REDESIGN}", f"Colegio Rediseño {REDESIGN}",
+                              f"Calle Rediseño {REDESIGN}")
     point = (-33.70, -70.70)  # latitude, longitude
     # One name, two kilometres apart, so the box must offer two rows and the map
     # must land on the one chosen: La Florida's sixteen «Pasaje Dos», in miniature.
@@ -6867,9 +7018,9 @@ def the_redesigned_controls_work(page, errors, failures):
         _imported(place, "salud", "cesfam", {"type": "Point", "coordinates": [point[1], point[0]]}),
         _imported(polygon, "educacion", "colegio", square),
         import_dataset(json.dumps({"type": "FeatureCollection", "features": [{
-            "type": "Feature", "properties": {"id": f"rediseno-{RUN}-{line[0]}", "name": street},
+            "type": "Feature", "properties": {"id": f"rediseno-{REDESIGN}-{line[0]}", "name": street},
             "geometry": {"type": "LineString", "coordinates": [[-70.60, line[0]], [-70.59, line[0]]]},
-        } for line in lines]}), f"rediseno-{RUN}", boundary=True),
+        } for line in lines]}), f"rediseno-{REDESIGN}", boundary=True),
     )
     if not all(seeded):
         failures.append("the redesign check could not import its Place, Polygon and street through occ")
@@ -6894,7 +7045,7 @@ def the_redesigned_controls_work(page, errors, failures):
         failures.append("the taxonomy drawer is on the page before anyone opened it")
 
     # --- the search box: an asset, a polygon and a street ---
-    titles, problem = _omnibox_pick(page, f"Rediseño {RUN}", place)
+    titles, problem = _omnibox_pick(page, f"Rediseño {REDESIGN}", place)
     if problem:
         failures.append(f"Omnibox, picking the Place: {problem} (rows: {titles})")
     elif not {place, polygon, street} <= set(titles):
@@ -6916,7 +7067,7 @@ def the_redesigned_controls_work(page, errors, failures):
         if not settles(page, lambda: page.locator(".territorio-list__sort-bar").count() > 0, timeout=5_000):
             failures.append("«Volver a la lista» did not bring the list back")
 
-    _, problem = _omnibox_pick(page, f"Colegio Rediseño {RUN}", polygon)
+    _, problem = _omnibox_pick(page, f"Colegio Rediseño {REDESIGN}", polygon)
     view = last_view()
     if problem:
         failures.append(f"Omnibox, picking the Polygon: {problem}")
@@ -6927,7 +7078,7 @@ def the_redesigned_controls_work(page, errors, failures):
     # Two rows of one name, told apart by how much of it there is, and the pick lands on
     # the second one and not the first.
     for index, line in enumerate(lines):
-        titles, problem = _omnibox_pick(page, f"Calle Rediseño {RUN}", street, nth=index)
+        titles, problem = _omnibox_pick(page, f"Calle Rediseño {REDESIGN}", street, nth=index)
         view = last_view()
         if problem:
             failures.append(f"Omnibox, picking street row {index + 1}: {problem}")
@@ -7032,7 +7183,7 @@ def main():
 
         # The redesigned topbar first: it seeds three records of its own and ends
         # with the page reloaded and the filter reset. `--only redesign` stops here.
-        the_redesigned_controls_work(page, errors, failures)
+        run(the_redesigned_controls_work, page, errors, failures)
         if ONLY == "redesign":
             browser.close()
             return _report(errors, failures)
@@ -7040,32 +7191,30 @@ def main():
         # Before anything pans or draws: the basemap production runs
         # is the branch the clinic's crash lived on, and nothing else here
         # opens it.
-        the_basemap_production_runs_is_painted(page, failures)
+        run(the_basemap_production_runs_is_painted, page, failures)
         # Right after it, before anything pans or draws: the first fix recentres
         # the map to zoom 16, and the check puts the view back with a reload.
-        the_locate_control_can_ask_where_the_person_is(page, errors, failures)
+        run(the_locate_control_can_ask_where_the_person_is, page, errors, failures)
 
         # Hide the cadastre first, which is what a person drawing a boundary does
         # anyway. With a comuna's Unidades Vecinales on screen the whole map is
         # polygons: clicks land on them and geoman snaps new vertices to their
         # edges, so the drawing step becomes a coin toss for reasons that have
         # nothing to do with what is being checked.
-        if page.locator(".territorio-capas__divisions").get_by_text(
-            "Unidad Vecinal", exact=True,
-        ).count() > 0:
+        if division_is_shown(page, "Unidad Vecinal"):
             toggle_division(page, "Unidad Vecinal")
 
         # Before any check that names «Salud» or «Salud · CESFAM»: a run killed
         # between the rename below and its restore left those names changed, and
         # no seed or upgrade puts them back. Healing here rather than only inside
         # the rename check means one poisoned run costs one run, not every run.
-        _the_seeded_names_are_put_back(page, failures)
+        run_in_capas(_the_seeded_names_are_put_back, page, failures)
 
-        every_category_reaches_the_browser_with_its_colour(page, failures)
-        the_app_icon_is_legible_in_both_themes(page, failures)
+        run_in_capas(every_category_reaches_the_browser_with_its_colour, page, failures)
+        run(the_app_icon_is_legible_in_both_themes, page, failures)
 
-        create_a_place(page, f"Plaza del Navegador {RUN}", failures)
-        draw_a_sector(page, f"Sector Navegador {RUN}", failures)
+        run(create_a_place, page, f"Plaza del Navegador {RUN}", failures)
+        run(draw_a_sector, page, f"Sector Navegador {RUN}", failures)
 
         # Reload rather than trust the screen: a record that only exists in the
         # browser's memory looks identical to one that was saved.
@@ -7080,70 +7229,70 @@ def main():
 
         # Here, and not at the top: the Datos list needs a record in it, and this
         # run has just made one and proved it survived a reload.
-        the_glyphs_beside_a_label_are_white_too(page, failures)
+        run_in_capas(the_glyphs_beside_a_label_are_white_too, page, failures)
 
         # Before anything picks a Limit for it: this run's Sector was drawn
         # freehand and has one revision, which is #50's first case.
-        a_sector_says_how_its_boundary_came_to_be(page, "drawn", failures)
+        run(a_sector_says_how_its_boundary_came_to_be, page, "drawn", failures)
 
         # Before the polygonize check below, which grows this run's Sector to four
         # kilometres across: a vertex of the small drawn one is on screen and
         # draggable, which is what this needs.
-        a_dragged_vertex_stays_with_its_own_record(page, failures)
-        a_pin_says_what_kind_of_place_it_is(page, failures)
-        a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures)
+        run(a_dragged_vertex_stays_with_its_own_record, page, failures)
+        run(a_pin_says_what_kind_of_place_it_is, page, failures)
+        run(a_pin_opens_a_record_while_the_retired_list_is_shown, page, failures)
 
-        a_sector_can_be_reached_and_opened_with_the_keyboard(page, failures)
-        the_zoom_controls_are_in_spanish(page, failures)
+        run(a_sector_can_be_reached_and_opened_with_the_keyboard, page, failures)
+        run(the_zoom_controls_are_in_spanish, page, failures)
 
-        clicking_places_the_coordinate(page, failures)
-        the_assignment_is_shown_and_not_editable(page, failures)
-        search_narrows_everything(page, failures)
-        the_limit_can_be_picked(page, failures)
-        the_duplicate_queue_works(page, failures)
-        exports_ask_for_a_password_only_when_earned(page, failures)
-        an_export_of_osm_data_names_the_licence(page, failures)
-        the_export_offers_the_live_set_with_retirados_on(page, failures)
+        run(clicking_places_the_coordinate, page, failures)
+        run(the_assignment_is_shown_and_not_editable, page, failures)
+        run(search_narrows_everything, page, failures)
+        run(the_limit_can_be_picked, page, failures)
+        run(the_duplicate_queue_works, page, failures)
+        run(exports_ask_for_a_password_only_when_earned, page, failures)
+        run(an_export_of_osm_data_names_the_licence, page, failures)
+        run(the_export_offers_the_live_set_with_retirados_on, page, failures)
         # The failure case first: the check that succeeds retires the Sector both
         # of them open, because a four-kilometre Sector left on a shared instance
         # reassigns half the Registry to itself.
-        the_editor_says_so_when_the_lines_do_not_close(page, failures)
-        a_sector_can_be_built_from_picked_lines(page, failures)
-        the_limit_is_kept_and_survives_adjustment(page, failures)
+        run(the_editor_says_so_when_the_lines_do_not_close, page, failures)
+        run(a_sector_can_be_built_from_picked_lines, page, failures)
+        run(the_limit_is_kept_and_survives_adjustment, page, failures)
         # Which has just dragged a vertex and saved, so the line is now newer
         # than the Limit — #50's third case, the one a person would ask about.
-        a_sector_says_how_its_boundary_came_to_be(page, "adjusted", failures)
+        run(a_sector_says_how_its_boundary_came_to_be, page, "adjusted", failures)
         # After both: this one retires a line the Sector's Limit cites, and every
         # check above needs those lines live to pick and generate from.
-        a_gone_line_says_so_and_keeps_its_name(page, failures)
+        run(a_gone_line_says_so_and_keeps_its_name, page, failures)
         # The third origin, which this run has to create for itself: neither
         # Sector above came from a Dataset, and an imported one's history is
         # indistinguishable from the hand-drawn one's.
-        an_imported_sector_says_it_came_from_the_catastro(page, failures)
+        run(an_imported_sector_says_it_came_from_the_catastro, page, failures)
         # After it, and reusing the Sector it just imported: this one needs a
         # SAVED Sector nobody tinted, to read the neutral wash off, and it
         # imports the Unidad Vecinal beside it.
-        a_division_renders_as_a_division(page, failures)
+        run(a_division_renders_as_a_division, page, failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
-        a_tramo_typed_before_the_first_save_is_kept(page, failures)
+        run(a_tramo_typed_before_the_first_save_is_kept, page, failures)
 
-        the_map_survives_churn(page, errors, failures)
+        run(the_map_survives_churn, page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)
 
         # Here, and not earlier: the Índice is worth checking over several records
         # with different names, and by now this run has made a Place and three
         # Sectores. Before the cluster records below, which sit eleven metres apart
         # and add nothing a table can show.
-        the_indice_reads_the_registry(page, failures)
+        run(the_indice_reads_the_registry, page, failures)
 
         # Three records a few metres apart, made once and read by both checks
         # below: one bubble to measure the ring on, and two pins to measure the
         # dashed treatment on their own.
-        _a_clustered_place(page, f"Cúmulo {RUN} aproximado", "Salud · CESFAM", 1,
+        run(_a_clustered_place, page, f"Cúmulo {RUN} aproximado", "Salud · CESFAM", 1,
                            failures, quality="Aproximada")
-        _a_clustered_place(page, f"Cúmulo {RUN} exacto", "Salud · CESFAM", 2, failures)
-        _a_clustered_place(page, f"Cúmulo {RUN} colegio", "Educación · Colegio", 3,
+        run(_a_clustered_place, page, f"Cúmulo {RUN} exacto", "Salud · CESFAM", 2, failures)
+        run(_a_clustered_place, page, f"Cúmulo {RUN} colegio", "Educación · Colegio", 3,
                            failures)
         # Reloaded first, which is what puts the view back on the comuna the
         # install serves: eleven metres is under a pixel there, so the three
@@ -7152,22 +7301,22 @@ def main():
         page.reload(wait_until="domcontentloaded")
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
         page.wait_for_timeout(1000)
-        the_exactitud_is_drawn_on_the_pin(page, failures)
-        a_cluster_says_what_is_under_it(page, failures)
+        run(the_exactitud_is_drawn_on_the_pin, page, failures)
+        run(a_cluster_says_what_is_under_it, page, failures)
 
         # After the cluster records above, because it renames the Category they
         # are filed under and Análisis draws no section for a Category holding
         # nothing. It puts both names back when it is done.
-        a_category_can_be_renamed_without_a_reload(page, errors, failures)
+        run_in_capas(a_category_can_be_renamed_without_a_reload, page, errors, failures)
         # After it, and not before: that check renames «Salud» and puts it back,
         # and this one addresses the Category by that name throughout.
-        a_subcategory_can_be_added_without_a_reload(page, errors, failures)
+        run_in_capas(a_subcategory_can_be_added_without_a_reload, page, errors, failures)
         # After both: this one adds a Category it cannot take away again, and
         # every check above that
         # addresses «Salud» by name would otherwise have one more branch in the
         # panel to scroll past. It files its own record, so Análisis has a
         # section to read.
-        a_category_can_be_added_without_a_reload(page, errors, failures)
+        run_in_capas(a_category_can_be_added_without_a_reload, page, errors, failures)
         # After it, and on the Category it just added: #46 watches that Category
         # go from the neutral fallback to a pictogram somebody chose, and reusing
         # it is what keeps this run spending one vetted spare instead of two.
@@ -7175,38 +7324,38 @@ def main():
         # a Category — the add-time one stops at Escape — so they leave the
         # taxonomy exactly as «Agregar categoría» left it, which is what the #47
         # comment asks for.
-        a_category_can_be_given_a_pictogram(page, failures)
-        a_pictogram_can_be_picked_while_a_category_is_named(page, failures)
+        run_in_capas(a_category_can_be_given_a_pictogram, page, failures)
+        run_in_capas(a_pictogram_can_be_picked_while_a_category_is_named, page, failures)
         # #47, after every check that ADDS to the taxonomy: this one reads the
         # panel with the divisions block on screen, and the two below add
         # Categories of their own — and take their own away again (the first
         # through the empty removal; #45/#46 and the second through
         # `reclaim_the_runs_category`, #131), so no taxonomy check here leaves
         # anything behind.
-        the_territorial_division_says_it_cannot_be_removed(page, failures)
-        a_category_can_be_removed_without_a_reload(page, errors, failures)
-        a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures)
+        run_in_capas(the_territorial_division_says_it_cannot_be_removed, page, failures)
+        run_in_capas(a_category_can_be_removed_without_a_reload, page, errors, failures)
+        run_in_capas(a_category_in_use_is_refused_and_says_where_to_look, page, errors, failures)
 
         # After every check that reads this run's Limit, because it adds 30
         # tramos to it, and before the retires below, because it needs the
         # Sector open one last time.
-        the_retire_control_is_reachable_without_scrolling(page, failures)
+        run(the_retire_control_is_reachable_without_scrolling, page, failures)
 
         # Last, and after every check that needs this run's Sector: it is left
         # four kilometres across by the polygonize check above.
-        retire_the_runs_record(page, f"Sector Navegador {RUN}")
-        retire_the_runs_record(page, f"Sector a mano {RUN}")
+        run(retire_the_runs_record, page, f"Sector Navegador {RUN}")
+        run(retire_the_runs_record, page, f"Sector a mano {RUN}")
         # Imported, not drawn, but a Sector all the same: left behind it claims
         # every Place it covers, run after run, on the instance the integration
         # suite reads. Siting it away from the data limits today's damage and does
         # not make the record go away.
-        retire_the_runs_record(page, f"Sector Catastro {RUN}")
+        run(retire_the_runs_record, page, f"Sector Catastro {RUN}")
 
-        kml_says_what_it_cannot_carry(page, failures)
+        run(kml_says_what_it_cannot_carry, page, failures)
         page.screenshot(path=str(SHOTS / "kml-notice.png"), full_page=False)
-        a_csv_imports_and_says_what_does_not_come_back_in(page, failures)
-        a_kmz_imports_like_the_kml_inside_it(page, errors, failures)
-        a_file_already_in_files_imports_without_being_uploaded(page, errors, failures)
+        run(a_csv_imports_and_says_what_does_not_come_back_in, page, failures)
+        run(a_kmz_imports_like_the_kml_inside_it, page, errors, failures)
+        run(a_file_already_in_files_imports_without_being_uploaded, page, errors, failures)
         occ_import_names_the_formats_it_takes(failures)
         browser.close()
 

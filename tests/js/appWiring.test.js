@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
  * DOM attribute, both silently, so the search box, the view tabs, the
  * «Dibujar Sector» button and the taxonomy drawer all stopped working while
  * 437 tests and CI stayed green. Nothing in this repo mounts a component (see
- * search-control.test.js), so this reads the .vue files instead, as
+ * omnibox-streets.test.js), so this reads the .vue files instead, as
  * sidebar.test.js and locate-control.test.js do.
  *
  * Also fails on: a listener for an event the child declares but never fires

@@ -399,6 +399,7 @@ export function matchOmnibox(query, { assets = [], streets = [], subcategories =
 				west: street.west,
 				north: street.north,
 				east: street.east,
+				count: street.count,
 				score,
 			})
 		}

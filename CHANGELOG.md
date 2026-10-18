@@ -186,6 +186,22 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **One street search, and one way to draw a sector (0.77.2).** The redesign left two street
+  searches on the map (Leaflet's «Buscar una calle» beside the Omnibox) and Geoman's own toolbar
+  button beside «Dibujar Sector». The Omnibox is the street search now, and it keeps what the old
+  control had: a row says where a street is and how much of it there is («Villa Los Quillayes ·
+  3 tramos»), so sixteen «Pasaje Dos» can be told apart; a pick goes no closer than zoom 17; the
+  streets load once, and a failed load is retried by the next keystroke, with the same four
+  messages («Cargando las calles…», «No se pudieron cargar las calles…», «No hay calles cargadas
+  en este mapa.», «Ninguna calle con ese nombre.»). Drawing a sector is «Dibujar Sector» alone.
+  The street list (about 5000 rows) is no longer made reactive row by row.
+  `tests/js/search-control.test.js` became `omnibox-streets.test.js`, carrying over what it pinned
+  (Enter takes the highlighted row or nothing, names are text and never markup, the plain route,
+  the unfiltered Unidades Vecinales for the hint); the two browser checks of the old box are
+  replaced by one in `--only redesign` that offers two same-named streets two kilometres apart and
+  lands on the one chosen. Shipped as 0.77.2 so the rebuilt bundle reaches browsers that have the
+  stale one cached.
+
 - **The redesigned topbar does what it shows.** PR #171 wired `App.vue` to events and
   props its children never declared. Vue drops an unknown listener and turns an unknown prop into
   a DOM attribute, both without a word, and no test mounts a component, so 437 tests and CI stayed

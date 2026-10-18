@@ -70,6 +70,9 @@
 			</button>
 		</div>
 
+		<!-- Said when the dropdown has nothing to offer: loading, failed, no streets imported, no such street. -->
+		<p class="territorio-omnibox__status" role="status">{{ status }}</p>
+
 		<!-- Unified Autocomplete Results Dropdown -->
 		<div v-if="showDropdown" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
@@ -93,7 +96,7 @@
 							<span v-if="result.address" class="territorio-omnibox__addr"> · {{ result.address }}</span>
 						</template>
 						<template v-else>
-							<span class="territorio-omnibox__street-hint">Calle o vía de la comuna</span>
+							<span class="territorio-omnibox__street-hint">{{ streetDetail(result) }}</span>
 						</template>
 					</div>
 				</div>
@@ -104,6 +107,7 @@
 
 <script>
 import { matchOmnibox } from '../assets.js'
+import { hintFor, placeDetail, searchStatus } from '../streets.js'
 
 export default {
 	name: 'OmniboxControl',
@@ -129,6 +133,19 @@ export default {
 			type: Map,
 			default: () => new Map(),
 		},
+		/**
+		 * The comuna's Unidades Vecinales, whatever Capas is hiding: what tells the
+		 * rows of one name apart («Pasaje Dos» is sixteen rows), so it must not
+		 * change with the filter.
+		 */
+		unidades: {
+			type: Array,
+			default: () => [],
+		},
+		/** Whether the streets are on their way, failed, or have arrived (streets.js, searchStatus). */
+		streetsLoading: { type: Boolean, default: false },
+		streetsFailed: { type: Boolean, default: false },
+		streetsLoaded: { type: Boolean, default: false },
 	},
 
 	emits: ['update:modelValue', 'change-pane', 'select-asset', 'select-street', 'clear'],
@@ -167,12 +184,32 @@ export default {
 			})
 		},
 
+		/** What to say when the list is empty and a street is why. */
+		status() {
+			if (this.results.length > 0 || this.query.trim() === '') {
+				return ''
+			}
+
+			return searchStatus({
+				loading: this.streetsLoading,
+				failed: this.streetsFailed,
+				places: this.streetsLoaded ? this.streets : null,
+				query: this.query,
+				matches: [],
+			})
+		},
+
 		showDropdown() {
 			return this.isFocused && this.results.length > 0
 		},
 	},
 
 	methods: {
+		/** «Villa Los Quillayes · 3 tramos»: where a street is and how much of it there is. */
+		streetDetail(street) {
+			return placeDetail(hintFor(street, this.unidades), street.count)
+		},
+
 		onBlur() {
 			// Short timeout so mousedown can fire. Cleared by the next focus, or an
 			// early blur would hide the list a person has just come back to.
@@ -389,6 +426,17 @@ export default {
 	border-radius: 4px;
 	font-size: 11px;
 	font-weight: 500;
+}
+
+.territorio-omnibox__status {
+	margin: 0;
+	padding: 8px 16px;
+	font-size: 13px;
+	color: #5f6368;
+}
+
+.territorio-omnibox__status:empty {
+	display: none;
 }
 
 .territorio-omnibox__street-hint {

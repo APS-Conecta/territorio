@@ -19,7 +19,7 @@ use ZipArchive;
 /**
  * A Google MyMaps export, through the same pipeline GeoJSON uses.
  *
- * Shaped like the real `La_Florida_Google_MyMaps.kml` — Folders holding
+ * Shaped like the real a real comuna's Google My Maps export — Folders holding
  * Placemarks, geometry and a name and nothing else — with every value invented.
  * What was checked against the real file is the shape: 865 placemarks and not
  * one `ExtendedData` element, so no phone, email, contact or source anywhere.
@@ -307,7 +307,7 @@ final class KmlImportTest extends IntegrationTestCase {
 	private function import(): \OCA\Territorio\Db\ImportBatch {
 		$batch = Server::get(ImportService::class)->importFile(
 			self::KML,
-			'La_Florida_de_Prueba.kml',
+			'Catastro_de_Prueba.kml',
 			self::SLUG,
 			'MyMaps de prueba',
 			'prueba',

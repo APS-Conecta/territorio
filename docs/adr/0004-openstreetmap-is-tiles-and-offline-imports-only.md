@@ -11,7 +11,7 @@ The brief cited OSM's API v0.6 and taginfo alongside the tile service, which inv
 assumption that Territorio talks to OSM at runtime — so it is worth stating that it deliberately
 does not. OSM provides the background tiles, and OSM-derived features arrive as ordinary GeoJSON
 Datasets produced by a repo-side Overpass query, which is how the existing 309
-`osm_los_castanos` features were obtained. The app makes no Overpass calls of its own and never
+OSM-derived features of the first comuna were obtained. The app makes no Overpass calls of its own and never
 writes to OSM: live Overpass is a free public service with rate limits and no SLA that would
 become a runtime failure mode inside a clinic, and write-back via API v0.6 is a different product
 altogether — OAuth against osm.org, changesets, conflict resolution, and permanent public edits

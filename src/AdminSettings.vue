@@ -7,7 +7,7 @@
 		-->
 		<NcSettingsSection name="Comuna"
 			description="La comuna que atiende este CESFAM. Una sola por instalación,
-				identificada por su código CUT de cinco dígitos — La Florida es 13110.
+				identificada por su código CUT de cinco dígitos.
 				De ella se importan las Unidades Vecinales, y un archivo de otra comuna
 				se rechaza.">
 			<NcNoteCard v-if="comunaFailed" type="error">
@@ -24,13 +24,13 @@
 
 			<NcTextField v-model="cut"
 				label="Código CUT"
-				placeholder="13110"
+				placeholder="Cinco dígitos"
 				inputmode="numeric"
 				:disabled="savingComuna" />
 
 			<NcTextField v-model="comunaName"
 				label="Nombre (opcional)"
-				placeholder="La Florida"
+				placeholder="Nombre de la comuna"
 				:disabled="savingComuna"
 				class="territorio-admin__field" />
 

@@ -42,11 +42,11 @@ describe('makeOperable', () => {
 	it('gives the shape a tab stop, a role and the Feature name to announce', () => {
 		const element = fakeElement()
 
-		makeOperable(element, 'Sector Los Castaños', () => {})
+		makeOperable(element, 'Sector Norte', () => {})
 
 		expect(element.attributes.tabindex).toBe('0')
 		expect(element.attributes.role).toBe('button')
-		expect(element.attributes['aria-label']).toBe('Sector Los Castaños')
+		expect(element.attributes['aria-label']).toBe('Sector Norte')
 	})
 
 	it('activates on Enter', () => {

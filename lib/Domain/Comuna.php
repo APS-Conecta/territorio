@@ -31,7 +31,7 @@ final class Comuna implements JsonSerializable {
 	}
 
 	/**
-	 * A CUT code is five digits: 13110 is La Florida. Anything else is a typo,
+	 * A CUT code is five digits. Anything else is a typo,
 	 * and storing it would mean every UV file is later refused for a reason
 	 * nobody can see.
 	 *
@@ -41,7 +41,7 @@ final class Comuna implements JsonSerializable {
 		$cut = trim($cut);
 		if (preg_match('/^\d{5}$/', $cut) !== 1) {
 			throw new InvalidComunaException(sprintf(
-				'"%s" no es un código CUT: se esperan cinco dígitos, como 13110.',
+				'"%s" no es un código CUT: se esperan cinco dígitos.',
 				$cut,
 			));
 		}

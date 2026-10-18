@@ -36,12 +36,12 @@ final class ComunaConfigTest extends TestCase {
 
 	public function testAStoredComunaReadsBackChosen(): void {
 		$config = new ComunaConfig($this->appConfig());
-		$config->set(Comuna::of('13110', 'La Florida'));
+		$config->set(Comuna::of('13110', 'Comuna de Prueba'));
 
 		$comuna = $config->get();
 
 		self::assertSame('13110', $comuna->cut);
-		self::assertSame('La Florida', $comuna->name);
+		self::assertSame('Comuna de Prueba', $comuna->name);
 		self::assertTrue($comuna->isChosen());
 	}
 

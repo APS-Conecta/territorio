@@ -53,7 +53,7 @@
 			<NcTextField v-model="dataset"
 				class="territorio-import__field"
 				label="Conjunto de datos"
-				placeholder="laflorida"
+				placeholder="catastro-2026"
 				:disabled="working" />
 
 			<label class="territorio-import__field territorio-import__file">

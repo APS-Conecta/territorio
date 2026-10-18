@@ -28,7 +28,7 @@ final class GeoJsonReaderTest extends TestCase {
 	]}
 	JSON;
 
-	private function read(string $json, string $dataset = 'laflorida'): array {
+	private function read(string $json, string $dataset = 'catastro'): array {
 		return (new GeoJsonReader())->read($json, $dataset);
 	}
 
@@ -101,7 +101,7 @@ final class GeoJsonReaderTest extends TestCase {
 	public function testADerivedIdFallsBackToTheDatasetName(): void {
 		$json = str_replace(',"source":"cesfam_de_prueba"', '', self::JDV);
 
-		self::assertStringStartsWith('laflorida:', $this->read($json)[0]['externalId']);
+		self::assertStringStartsWith('catastro:', $this->read($json)[0]['externalId']);
 	}
 
 	/**

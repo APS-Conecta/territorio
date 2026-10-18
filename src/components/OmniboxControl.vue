@@ -148,6 +148,10 @@ export default {
 			set(val) {
 				this.$emit('update:modelValue', val)
 				this.activeIndex = -1
+				// Choosing a result drops `isFocused` while the input keeps the real
+				// focus, so a second search typed without leaving the box would find
+				// results and show none. Typing is the proof it is focused.
+				this.isFocused = true
 			},
 		},
 
@@ -210,10 +214,14 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * Placed by App.vue's topbar, not by itself: it used to be `absolute` at a fixed
+ * `top`/`left`, which stacked on the topbar's own offset and sat the control
+ * where the layers menu and «Dibujar Sector» were also positioned by hand.
+ */
 .territorio-omnibox {
-	position: absolute;
-	top: 12px;
-	left: 12px;
+	position: relative;
+	flex: 0 0 392px;
 	z-index: 1000;
 	width: 392px;
 	background: #ffffff;

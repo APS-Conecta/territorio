@@ -147,12 +147,39 @@ export function isSectorSubcategory(taxonomy, subcategoryId) {
  * Dataset if a national install ever appears.
  */
 export function boundsOf(features, subcategories, slug) {
-	let south = Infinity
-	let west = Infinity
-	let north = -Infinity
-	let east = -Infinity
+	const extent = new Extent()
 
-	const stretch = (node) => {
+	features.forEach((feature) => {
+		if (subcategories.get(feature.subcategoryId)?.slug === slug && feature.geometry) {
+			extent.stretch(feature.geometry.coordinates)
+		}
+	})
+
+	return extent.bounds()
+}
+
+/**
+ * The extent of one record's geometry, `[[south, west], [north, east]]`, or null
+ * when it has no positions to measure (no geometry, or a `coordinates: null`).
+ * A Point answers with a zero-size box, so the caller decides whether that is a
+ * place to pan to or an area to fit.
+ */
+export function boundsOfGeometry(geometry) {
+	const extent = new Extent()
+	extent.stretch(geometry?.coordinates)
+
+	return extent.bounds()
+}
+
+class Extent {
+	constructor() {
+		this.south = Infinity
+		this.west = Infinity
+		this.north = -Infinity
+		this.east = -Infinity
+	}
+
+	stretch(node) {
 		// Anything that is not a list of positions is not ours to measure — a
 		// GeometryCollection, or a `coordinates: null` the reader let through
 		// because it only checks that `geometry` is an object. Reading node[0] of
@@ -166,22 +193,18 @@ export function boundsOf(features, subcategories, slug) {
 		// deeply a Polygon's rings nest them.
 		if (typeof node[0] === 'number') {
 			const [lon, lat] = node
-			south = Math.min(south, lat)
-			north = Math.max(north, lat)
-			west = Math.min(west, lon)
-			east = Math.max(east, lon)
+			this.south = Math.min(this.south, lat)
+			this.north = Math.max(this.north, lat)
+			this.west = Math.min(this.west, lon)
+			this.east = Math.max(this.east, lon)
 			return
 		}
-		node.forEach(stretch)
+		node.forEach((child) => this.stretch(child))
 	}
 
-	features.forEach((feature) => {
-		if (subcategories.get(feature.subcategoryId)?.slug === slug && feature.geometry) {
-			stretch(feature.geometry.coordinates)
-		}
-	})
-
-	return south === Infinity ? null : [[south, west], [north, east]]
+	bounds() {
+		return this.south === Infinity ? null : [[this.south, this.west], [this.north, this.east]]
+	}
 }
 
 /**

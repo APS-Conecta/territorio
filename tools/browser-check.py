@@ -54,6 +54,12 @@ SHOTS = Path(__file__).parent / ".browser-check"
 # persist, it needs to retire what it made on the way out.
 RUN = uuid.uuid4().hex[:6]
 
+# `--only redesign` runs the topbar check alone. The rest of this script still
+# drives the pre-redesign layout (the Datos list column, the Capas sidebar), so
+# until it is ported this is the part of the gate that measures the layout that
+# actually ships.
+ONLY = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
+
 # What a GeoJSON written WITHOUT contact fields is marked with, so the check can
 # tell a partial export from a complete one. Kept in step with
 # lib/Service/ContactFields.php by the test that reads it there.
@@ -7047,6 +7053,191 @@ def a_category_in_use_is_refused_and_says_where_to_look(page, errors, failures):
     page.wait_for_timeout(500)
 
 
+OMNIBOX_INPUT = ".territorio-omnibox__input"
+OMNIBOX_ITEM = ".territorio-omnibox__item"
+
+
+def _omnibox_pick(page, typed, title):
+    """Type into the search box the way a person does, and click the row titled `title`.
+
+    Typed key by key, because the box must hand back what was typed: bound to a
+    value that lags the keystroke, it re-rendered with the old text and ate
+    characters. Returns the rows it offered, so the caller can say what was there.
+    """
+    box = page.locator(OMNIBOX_INPUT)
+    box.fill("")
+    box.press_sequentially(typed, delay=40)
+    shown = box.input_value()
+    page.wait_for_timeout(400)
+    rows = page.locator(OMNIBOX_ITEM)
+    titles = [row.locator(".territorio-omnibox__item-title").inner_text().strip()
+              for row in rows.all()]
+    if shown != typed:
+        return titles, f"typed {typed!r} but the box shows {shown!r}"
+    row = rows.filter(has=page.locator(".territorio-omnibox__item-title", has_text=title))
+    if row.count() == 0:
+        return titles, f"no row titled {title!r}"
+    try:
+        row.first.click(timeout=5_000)
+    except PlaywrightTimeout:
+        return titles, f"the row {title!r} is there but cannot be clicked"
+    page.wait_for_timeout(1200)
+    return titles, None
+
+
+def the_redesigned_controls_work(page, errors, failures):
+    """The topbar of the Google-Maps layout, driven the way a person drives it.
+
+    Why this exists: the redesign (#171) wired App.vue to events and props its
+    children never declared. Vue drops both silently, so the search box, the
+    view tabs, «Dibujar Sector», «Todas»/«Limpiar» and the taxonomy drawer all did
+    nothing, and every other check here still passed, because they measure the
+    layout that was replaced. tests/js/appWiring.test.js now fails the build on
+    that mismatch; this measures what it cannot — that each control, once
+    wired, does the thing.
+
+    The records are seeded through occ, named for the run, and sited away from
+    anything else: a Place, a Polygon, and a street. Where the map went is read
+    off Leaflet (VIEW_RECORDER), not off the control.
+    """
+    place, polygon, street = (f"Cesfam Rediseño {RUN}", f"Colegio Rediseño {RUN}",
+                              f"Calle Rediseño {RUN}")
+    point = (-33.70, -70.70)  # latitude, longitude
+    square = _a_boundary_box(-33.80, -70.80)
+    seeded = (
+        _imported(place, "salud", "cesfam", {"type": "Point", "coordinates": [point[1], point[0]]}),
+        _imported(polygon, "educacion", "colegio", square),
+        import_dataset(json.dumps({"type": "FeatureCollection", "features": [{
+            "type": "Feature", "properties": {"id": f"rediseno-{RUN}", "name": street},
+            "geometry": {"type": "LineString", "coordinates": [[-70.60, -33.90], [-70.59, -33.90]]},
+        }]}), f"rediseno-{RUN}", boundary=True),
+    )
+    if not all(seeded):
+        failures.append("the redesign check could not import its Place, Polygon and street through occ")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_selector(OMNIBOX_INPUT, timeout=10_000)
+    if not page.evaluate(VIEW_RECORDER):
+        failures.append("the page has no window.L, so nothing could read where the search took the map")
+        return
+
+    def last_view():
+        views = page.evaluate("() => window.__territorioViews")
+        return views[-1] if views else None
+
+    def centre(view):
+        return (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
+
+    # A taxonomy drawer that is "closed" but mounted covers the whole screen.
+    if page.locator(".territorio-taxonomy-drawer").count() != 0:
+        failures.append("the taxonomy drawer is on the page before anyone opened it")
+
+    # --- the search box: an asset, a polygon and a street ---
+    titles, problem = _omnibox_pick(page, f"Rediseño {RUN}", place)
+    if problem:
+        failures.append(f"Omnibox, picking the Place: {problem} (rows: {titles})")
+    elif not {place, polygon, street} <= set(titles):
+        failures.append(f"Omnibox offered {titles}, which lacks one of the Place, Polygon or street")
+    else:
+        view = last_view()
+        lat, lon = centre(view) if view else (None, None)
+        if view is None or abs(lat - point[0]) > 0.005 or abs(lon - point[1]) > 0.005:
+            failures.append(f"picking the Place left the map on {view}, not on {point}")
+        if not page.locator(".territorio-docked-panel__sheet").get_by_text(place).first.is_visible():
+            failures.append("picking the Place did not open its record in the side panel")
+
+    _, problem = _omnibox_pick(page, f"Colegio Rediseño {RUN}", polygon)
+    view = last_view()
+    if problem:
+        failures.append(f"Omnibox, picking the Polygon: {problem}")
+    elif view is None or not (view["south"] <= -33.80 and view["north"] >= -33.79
+                              and view["west"] <= -70.80 and view["east"] >= -70.79):
+        failures.append(f"picking the Polygon left the map on {view}, which does not hold {square['coordinates'][0]}")
+
+    _, problem = _omnibox_pick(page, f"Calle Rediseño {RUN}", street)
+    view = last_view()
+    if problem:
+        failures.append(f"Omnibox, picking the street: {problem}")
+    elif view is None or not (view["south"] <= -33.90 <= view["north"]
+                              and view["west"] <= -70.60 and view["east"] >= -70.59):
+        failures.append(f"picking the street left the map on {view}, which does not hold the line")
+
+    # --- the view tabs ---
+    # With a query typed the Índice lists only what matches it, and what was typed
+    # last names a street, which is not a record.
+    page.locator(OMNIBOX_INPUT).fill("")
+    page.wait_for_timeout(500)
+    tabs = {"Índice": INDICE, "Análisis": ".territorio-fullscreen-view",
+            "Posibles duplicados": ".territorio-fullscreen-view", "Mapa": '[data-testid="map-canvas"]'}
+    for tab, shown in tabs.items():
+        try:
+            page.locator(".territorio-omnibox__tab", has_text=tab).click(timeout=5_000)
+        except PlaywrightTimeout:
+            failures.append(f"the «{tab}» tab cannot be clicked")
+            continue
+        page.wait_for_timeout(400)
+        if not page.locator(shown).first.is_visible():
+            failures.append(f"the «{tab}» tab did not bring up {shown}")
+        selected = page.locator(".territorio-omnibox__tab--active").inner_text().strip()
+        if selected != tab:
+            failures.append(f"after clicking «{tab}» the highlighted tab is «{selected}»")
+
+    # --- the layers menu ---
+    # On a fresh page: the street pick above left the map two kilometres from every
+    # record, so no pin is in view to count, and an open record keeps its handles.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_selector(".territorio-layers-button", timeout=10_000)
+    page.wait_for_timeout(1000)
+    layers = page.locator(".territorio-layers-button")
+    layers.click()
+    panel = page.locator(".territorio-layers-panel")
+    if not panel.is_visible():
+        failures.append("«Tipo de Activo» did not open its menu")
+    else:
+        text = panel.inner_text()
+        if "CESFAM" in text.split("División Territorial")[-1]:
+            failures.append("the division toggles still say «CESFAM»: they should use the taxonomy's own labels")
+        if "Sector" not in text.split("División Territorial")[-1]:
+            failures.append("the layers menu has no toggle for the Sector division")
+        # `.marker-icon` is Geoman's vertex handle on the record still open from
+        # the picks above, not a place; a record's own pin or bubble is the rest.
+        pins = f"{MARKERS}:not(.marker-icon)"
+        panel.get_by_role("button", name="Limpiar").click()
+        if not settles(page, lambda: page.locator(pins).count() == 0, timeout=5_000):
+            failures.append("«Limpiar» left markers on the map")
+        panel.get_by_role("button", name="Todas").click()
+        if not settles(page, lambda: page.locator(pins).count() > 0, timeout=5_000):
+            failures.append("«Todas» did not bring the markers back")
+
+        # --- the taxonomy drawer ---
+        panel.get_by_role("button", name="Configurar taxonomía y capas").click()
+        drawer = page.locator(".territorio-taxonomy-drawer")
+        if not drawer.is_visible():
+            failures.append("«Configurar taxonomía y capas» did not open the drawer")
+        else:
+            drawer.get_by_role("button", name="Cerrar").click()
+            page.wait_for_timeout(300)
+            if page.locator(".territorio-taxonomy-drawer").count() != 0:
+                failures.append("the taxonomy drawer did not close")
+
+    # --- «Dibujar Sector» ---
+    draw = page.locator(".territorio-draw-sector__button")
+    draw.click()
+    page.wait_for_timeout(300)
+    if "Cancelar Dibujo" not in draw.inner_text():
+        failures.append("«Dibujar Sector» did not go into drawing mode")
+    draw.click()
+    page.wait_for_timeout(300)
+    if "Dibujar Sector" not in draw.inner_text():
+        failures.append("«Cancelar Dibujo» did not leave drawing mode")
+
+    page.screenshot(path=str(SHOTS / "redesign.png"), full_page=False)
+
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -7059,7 +7250,14 @@ def main():
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
-        # First, before anything pans or draws: the basemap production runs
+        # The redesigned topbar first: it seeds three records of its own and ends
+        # with the page reloaded and the filter reset. `--only redesign` stops here.
+        the_redesigned_controls_work(page, errors, failures)
+        if ONLY == "redesign":
+            browser.close()
+            return _report(errors, failures)
+
+        # Before anything pans or draws: the basemap production runs
         # is the branch the clinic's crash lived on, and nothing else here
         # opens it.
         the_basemap_production_runs_is_painted(page, failures)
@@ -7239,6 +7437,23 @@ def main():
         occ_import_names_the_formats_it_takes(failures)
         browser.close()
 
+    return _report(errors, failures)
+
+
+# What a page logs when the basemap archive cannot be reached from this machine.
+# The default archive sits behind a tailnet; off it, every run logs these. Said
+# out loud at the end rather than failed on or silently dropped.
+UNREACHABLE = re.compile(r"ERR_CONNECTION_REFUSED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_TIMED_OUT"
+                         r"|Failed to fetch")
+
+
+def _report(errors, failures):
+    unreachable = [line for line in errors if UNREACHABLE.search(line)]
+    if ONLY == "redesign" and unreachable:
+        errors = [line for line in errors if line not in unreachable]
+        skip(f"{len(unreachable)} console error(s) that look like the basemap archive being "
+             "unreachable from this machine; the redesign check does not depend on tiles")
+
     if errors:
         failures.append(f"console errors: {errors[:5]}")
 
@@ -7246,6 +7461,11 @@ def main():
         print(f"FAIL  {line}")
     if failures:
         return 1
+
+    if ONLY == "redesign":
+        print("OK    the redesigned topbar works: search, tabs, layers menu, drawer, drawing")
+        print(f"      screenshot: {SHOTS / 'redesign.png'}")
+        return 0
 
     print("OK    a Place and a Sector were created in the browser and survived a reload")
     print(f"      screenshot: {SHOTS / 'after-reload.png'}")

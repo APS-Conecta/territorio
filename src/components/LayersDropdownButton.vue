@@ -59,19 +59,14 @@
 				</div>
 			</div>
 			<div class="territorio-layers-panel__list">
-				<label class="territorio-layers-item">
+				<label v-for="division in divisions"
+					:key="division.id"
+					class="territorio-layers-item">
 					<input type="checkbox"
 						class="territorio-layers-item__checkbox"
-						:checked="showSectores"
-						@change="$emit('toggle-division', 'sector')">
-					<span class="territorio-layers-item__label">Sectores CESFAM</span>
-				</label>
-				<label class="territorio-layers-item">
-					<input type="checkbox"
-						class="territorio-layers-item__checkbox"
-						:checked="showUnidadesVecinales"
-						@change="$emit('toggle-division', 'unidad-vecinal')">
-					<span class="territorio-layers-item__label">Unidades Vecinales</span>
+						:checked="!filter.hidden.has(division.id)"
+						@change="$emit('toggle-division', division.id)">
+					<span class="territorio-layers-item__label">{{ division.label }}</span>
 				</label>
 			</div>
 
@@ -88,6 +83,8 @@
 </template>
 
 <script>
+import { divisionsOf, treeOf } from '../taxonomy.js'
+
 export default {
 	name: 'LayersDropdownButton',
 
@@ -104,14 +101,6 @@ export default {
 			type: Object,
 			default: () => ({}),
 		},
-		showSectores: {
-			type: Boolean,
-			default: true,
-		},
-		showUnidadesVecinales: {
-			type: Boolean,
-			default: true,
-		},
 	},
 
 	emits: ['toggle-category', 'toggle-division', 'select-all', 'clear-all', 'open-taxonomy-drawer'],
@@ -123,8 +112,15 @@ export default {
 	},
 
 	computed: {
+		// The Category tree, and beside it one toggle per territorial division
+		// (CONTEXT.md). The labels come from the taxonomy, so a clinic that
+		// renamed its divisions sees its own words here.
 		visibleCategories() {
-			return this.taxonomy.filter(c => c.slug !== 'division-territorial')
+			return treeOf(this.taxonomy)
+		},
+
+		divisions() {
+			return divisionsOf(this.taxonomy)
 		},
 
 		activeCategoryCount() {
@@ -163,10 +159,9 @@ export default {
 </script>
 
 <style scoped>
+/* Placed by App.vue's topbar; see .territorio-omnibox. */
 .territorio-layers-dropdown {
-	position: absolute;
-	top: 12px;
-	left: 414px;
+	position: relative;
 	z-index: 1000;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }

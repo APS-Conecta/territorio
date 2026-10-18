@@ -6,10 +6,12 @@ import {
 	featureById,
 	filterFeatures,
 	forgetRemoved,
+	hideTree,
 	isFiltered,
 	isSubcategoryVisible,
 	listFor,
 	matches,
+	showTree,
 	toggleCategory,
 	toggleSubcategory,
 } from '../../src/filters.js'
@@ -483,5 +485,42 @@ describe('a taxonomy that lost a row', () => {
 
 		expect(isFiltered(forgetRemoved(hidden, TAXONOMY.filter((c) => c.slug !== 'educacion'))))
 			.toBe(false)
+	})
+})
+
+describe('the layers menu bulk actions', () => {
+	// A territorial division sits beside the tree, not in it (CONTEXT.md).
+	const WITH_DIVISION = [
+		...TAXONOMY,
+		{
+			id: 9,
+			slug: 'division_territorial',
+			label: 'División territorial',
+			color: '#334155',
+			subcategories: [{ id: 91, slug: 'sector', label: 'Sector' }],
+		},
+	]
+
+	it('«Limpiar» hides every category in the tree and keeps what was typed', () => {
+		const filter = hideTree({ hidden: new Set(), query: 'plaza' }, WITH_DIVISION)
+		expect([...filter.hidden].sort()).toEqual([11, 12, 21])
+		expect(filter.query).toBe('plaza')
+	})
+
+	it('«Limpiar» leaves the territorial divisions as they were', () => {
+		expect(hideTree(emptyFilter(), WITH_DIVISION).hidden.has(91)).toBe(false)
+	})
+
+	it('«Todas» shows the whole tree but not a division someone switched off', () => {
+		const filter = showTree({ hidden: new Set([11, 21, 91]), query: 'plaza' }, WITH_DIVISION)
+		expect([...filter.hidden]).toEqual([91])
+		expect(filter.query).toBe('plaza')
+	})
+
+	it('does not change the filter it was given', () => {
+		const before = { hidden: new Set([11]), query: '' }
+		hideTree(before, WITH_DIVISION)
+		showTree(before, WITH_DIVISION)
+		expect([...before.hidden]).toEqual([11])
 	})
 })

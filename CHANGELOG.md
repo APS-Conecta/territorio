@@ -189,8 +189,9 @@ The basemap stops being somebody else's public service.
 - **Typing a street no longer empties the list (0.77.4).** The top search box also wrote the
   list's filter, so a street name (which no record carries) showed «Nada coincide con la búsqueda».
   It now only offers matches (looking through the Capas-filtered set, not the list's query), and
-  the two boxes no longer mirror each other; the list keeps its own search box. The Índice's cells
-  carry their `data-key` again. Also removed the street helpers
+  the two boxes no longer mirror each other; the list keeps its own search box. The Índice drew
+  every cell empty (it read `row.name` where rows are `{ id, cells }`); it reads the cells again,
+  with their `data-key`, title and keyboard-reachable first cell. Also removed the street helpers
   the old control left behind (`placesMatching`, `nextActive`, `chosen`, `cornersOf`) and their
   tests, and corrected the comments that claimed the client's name similarity mirrors the server's
   (it is Levenshtein here and `similar_text` there; the server decides, ADR-0011).

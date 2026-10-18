@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { suggestions } from '../../src/boundaries.js'
 import {
-	chosen,
-	cornersOf,
 	hintFor,
-	nextActive,
 	placeDetail,
-	placesMatching,
 	searchStatus,
 } from '../../src/streets.js'
 
@@ -14,9 +9,8 @@ import {
  * Finding a street on the map (OmniboxControl.vue).
  *
  * The server has already split every name by place (BoundaryService::names()).
- * These pin what the browser decides from there: what typing offers, which
- * Unidad Vecinal tells two rows apart, where the keyboard goes, where the map
- * goes — and that nothing is ever picked for the person (ADR-0007).
+ * These pin what the browser decides from there: which Unidad Vecinal tells
+ * two rows apart and what the search says when it has no list.
  */
 const PLACES = [
 	{ name: 'Pasaje Dos', south: -33.5231, west: -70.5911, north: -33.5226, east: -70.5899, count: 1 },
@@ -38,48 +32,6 @@ const UNIDADES = [
 	{ id: 1, name: 'Villa Los Quillayes', geometry: band(-33.53, -33.50) },
 	{ id: 2, name: 'Población Santa Julia', geometry: band(-33.56, -33.53) },
 ]
-
-describe('what typing offers', () => {
-	/** The criterion: two streets with one name are two rows, in the server's order. */
-	it('offers each place a name stands for as its own row', () => {
-		const offered = placesMatching(PLACES, 'pasaje dos')
-
-		expect(offered.map((place) => place.name)).toEqual(['Pasaje Dos', 'Pasaje Dos'])
-		expect(offered.map((place) => place.count)).toEqual([1, 2])
-	})
-
-	it('ignores accents and case, like every other search here', () => {
-		expect(placesMatching(PLACES, 'VICUNA')[0]?.name).toBe('Avenida Vicuña Mackenna')
-	})
-
-	/** One idea of "the closer match" for the app's two street lists. */
-	it('ranks names exactly as the Sector editor does', () => {
-		const lines = PLACES.map((place, id) => ({ id, name: place.name }))
-
-		expect(placesMatching(PLACES, 'los toros').map((place) => place.name))
-			.toEqual(suggestions(lines, 'los toros').map((group) => group.name))
-		expect(placesMatching(PLACES, 'los toros').map((place) => place.name))
-			.toEqual(['Los Toros', 'Pasaje Los Toros Norte'])
-	})
-
-	it('offers nothing for an empty query, rather than everything', () => {
-		expect(placesMatching(PLACES, '')).toEqual([])
-		expect(placesMatching(PLACES, '   ')).toEqual([])
-	})
-
-	it('stops at a length somebody can read', () => {
-		const many = Array.from({ length: 40 }, (_, i) => ({ ...PLACES[0], name: `Calle ${i}` }))
-
-		expect(placesMatching(many, 'calle')).toHaveLength(12)
-	})
-
-	it('leaves the list it was handed in the order it came', () => {
-		const held = [...PLACES]
-		placesMatching(held, 'a')
-
-		expect(held).toEqual(PLACES)
-	})
-})
 
 describe('the place hint', () => {
 	it('names the Unidad Vecinal a place\'s centre falls in', () => {
@@ -111,49 +63,6 @@ describe('the place hint', () => {
 		expect(placeDetail('Villa Los Quillayes', 1)).toBe('Villa Los Quillayes · 1 tramo')
 		expect(placeDetail('Villa Los Quillayes', 3)).toBe('Villa Los Quillayes · 3 tramos')
 		expect(placeDetail('', 128)).toBe('128 tramos')
-	})
-})
-
-describe('the keyboard', () => {
-	it('moves down from nothing to the first, and stops at the last', () => {
-		expect(nextActive(-1, 3, 'ArrowDown')).toBe(0)
-		expect(nextActive(0, 3, 'ArrowDown')).toBe(1)
-		expect(nextActive(2, 3, 'ArrowDown')).toBe(2)
-	})
-
-	it('moves up from nothing to the last, and stops at the first', () => {
-		expect(nextActive(-1, 3, 'ArrowUp')).toBe(2)
-		expect(nextActive(2, 3, 'ArrowUp')).toBe(1)
-		expect(nextActive(0, 3, 'ArrowUp')).toBe(0)
-	})
-
-	/** Home, End and every letter belong to the text being typed. */
-	it('leaves the active option alone for any other key', () => {
-		for (const key of ['Home', 'End', 'a', 'Enter', 'Tab']) {
-			expect(nextActive(1, 3, key)).toBe(1)
-		}
-	})
-
-	it('has nothing to make active in an empty list', () => {
-		expect(nextActive(-1, 0, 'ArrowDown')).toBe(-1)
-		expect(nextActive(4, 0, 'ArrowUp')).toBe(-1)
-	})
-
-	/** ADR-0007: Enter with nothing chosen is not "the first match", even when it is the only one. */
-	it('picks the active place and never one nobody chose', () => {
-		const offered = placesMatching(PLACES, 'pasaje dos')
-
-		expect(chosen(offered, -1)).toBeNull()
-		expect(chosen([offered[0]], -1)).toBeNull()
-		expect(chosen(offered, 1)).toBe(offered[1])
-		expect(chosen(offered, 5)).toBeNull()
-	})
-})
-
-describe('where the map goes', () => {
-	/** Leaflet reads [lat, lng]; GeoJSON and the server's boxes read west before south. */
-	it('hands Leaflet the box latitude first', () => {
-		expect(cornersOf(PLACES[0])).toEqual([[-33.5231, -70.5911], [-33.5226, -70.5899]])
 	})
 })
 

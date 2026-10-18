@@ -398,10 +398,9 @@ export default {
 			// of which this is one part, alongside the filter above.
 			pane: 'mapa',
 			panelOpen: true,
-			// What the search box shows. It follows the keystroke at once, while
-			// `filter.query` waits out search()'s debounce: bound straight to
-			// `filter.query`, the box would hand back the stale text and eat a
-			// character on every re-render.
+			// What the search box shows. Typing there only offers matches; it does
+			// not narrow the list or the map (`filter.query` does, from the list's
+			// own box).
 			omniboxQuery: '',
 			showTaxonomyDrawer: false,
 			isDrawingSector: false,
@@ -683,7 +682,6 @@ export default {
 
 		onOmniboxInput(query) {
 			this.omniboxQuery = query
-			this.search(query)
 			this.loadStreets()
 		},
 

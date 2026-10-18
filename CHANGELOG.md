@@ -186,6 +186,13 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **Typing a street no longer empties the list (0.77.4).** The top search box also wrote the
+  list's filter, so a street name (which no record carries) showed «Nada coincide con la búsqueda».
+  It now only offers matches; the list keeps its own search box. Also removed the street helpers
+  the old control left behind (`placesMatching`, `nextActive`, `chosen`, `cornersOf`) and their
+  tests, and corrected the comments that claimed the client's name similarity mirrors the server's
+  (it is Levenshtein here and `similar_text` there; the server decides, ADR-0011).
+
 - **No comuna or clinic is baked in (0.77.3).** The installer chooses the comuna and the
   establishment, so nothing the app shows or ships should pre-suppose one. The admin page no longer
   says «La Florida es 13110» and no longer suggests `13110` / «La Florida» as the code and name;

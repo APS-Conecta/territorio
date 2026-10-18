@@ -12,32 +12,7 @@
  * the map, and the deciding lives here, where it can be tested.
  */
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon'
-import { closerFirst } from './boundaries.js'
 import { fold } from './filters.js'
-
-/**
- * The places whose name holds what was typed, the closer match first.
- *
- * The same needle and the same ranking as the Sector editor's `suggestions()`,
- * so the app's two street lists never disagree about what comes first. Unlike
- * it, nothing is grouped: the server already split each name by place, and two
- * rows with one name are two different streets. The sort is stable, so those
- * keep the server's order.
- *
- * Returns [] for an empty query rather than everything: five thousand rows is
- * not a suggestion.
- */
-export function placesMatching(places, query, limit = 12) {
-	const needle = fold(query).trim()
-	if (needle === '') {
-		return []
-	}
-
-	return places
-		.filter((place) => fold(place.name).includes(needle))
-		.sort(closerFirst)
-		.slice(0, limit)
-}
 
 /**
  * The Unidad Vecinal a place's box centre falls in, by name — the words that
@@ -86,47 +61,6 @@ export function placeDetail(hint, count) {
 
 	return hint === '' ? stretches : `${hint} · ${stretches}`
 }
-
-/**
- * Which option is active after a key, in a list of `count` — -1 for none.
- *
- * The WAI-ARIA combobox's list movement: focus stays in the box and the active
- * option moves under it. ArrowDown from nothing is the first; ArrowUp from
- * nothing is the last; both stop at the ends rather than wrapping, so a person
- * reading twelve rows cannot lose their place. Every other key leaves it where
- * it is — Home and End belong to the text being typed.
- */
-export function nextActive(active, count, key) {
-	if (count === 0) {
-		return -1
-	}
-
-	if (key === 'ArrowDown') {
-		return Math.min(active + 1, count - 1)
-	}
-
-	if (key === 'ArrowUp') {
-		return active < 0 ? count - 1 : Math.max(active - 1, 0)
-	}
-
-	return active
-}
-
-/**
- * The place Enter picks: the active one, or none.
- *
- * Never the first by default, even when it is the only one. ADR-0007: the
- * person chooses, and "the first match" is exactly the guess the app refuses
- * to make on their behalf.
- */
-export const chosen = (options, active) => (active >= 0 ? options[active] ?? null : null)
-
-/**
- * A place's box as Leaflet takes it: [[south, west], [north, east]] — latitude
- * first, the opposite of GeoJSON's [lon, lat]. One place for that order, so it
- * is written once and tested once.
- */
-export const cornersOf = (place) => [[place.south, place.west], [place.north, place.east]]
 
 /**
  * What the search says when it has no list to show, or '' when it has nothing

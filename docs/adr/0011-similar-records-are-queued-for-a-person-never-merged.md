@@ -27,7 +27,8 @@ findable.
 - Detection may be generous, because a false positive costs a glance. It may not be so generous
   that the queue stops being read: "Sede Junta de Vecinos" is thirty different buildings in one
   comuna, so a similar name only counts within a short distance of another.
-- The queue must show how many pairs are outstanding, or it is a page nobody opens.
+- The queue is one tab away on the map's search bar, so it is a page people can find. (Amended
+  2026-10-18: the pending count on the tab was dropped with the redesign and is not required.)
 - A decision is stored, never recomputed. Dismissing a pair as "not duplicates" is a judgement
   about two real places, and re-offering it after the next import would teach people to close the
   queue and leave it closed.

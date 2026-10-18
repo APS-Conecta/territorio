@@ -7,8 +7,8 @@
         "build": "webpack --node-env production --progress",
         "dev": "webpack --node-env development --progress",
         "watch": "webpack --node-env development --progress --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
+        "test": "vitest run tests/js",
+        "test:watch": "vitest tests/js"
     },
     "dependencies": {
         "@geoman-io/leaflet-geoman-free": "^2.20.0",

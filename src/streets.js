@@ -160,3 +160,24 @@ export function searchStatus({ loading, failed, places, query, matches }) {
 
 	return ''
 }
+
+/**
+ * Asynchronously prefetch boundary streets during browser idle time
+ * to warm up the combobox cache without blocking main-thread rendering.
+ *
+ * @param {Function} fetcher
+ */
+export function prefetchStreets(fetcher) {
+	if (typeof window === 'undefined' || typeof fetcher !== 'function') {
+		return
+	}
+	const schedule = window.requestIdleCallback ?? ((cb) => setTimeout(cb, 1000))
+	schedule(() => {
+		try {
+			fetcher()
+		} catch {
+			// Non-critical background prefetch
+		}
+	})
+}
+

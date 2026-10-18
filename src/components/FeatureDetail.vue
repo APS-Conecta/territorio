@@ -16,9 +16,22 @@
 			     button type and `variant` carries the appearance; `nativeType` was the
 			     v8 prop and no longer exists, so it fell through as an inert attribute
 			     and left the button a type="button" that never submitted its form. -->
-			<NcButton variant="primary" :disabled="saving" type="submit">
-				{{ saving ? 'Guardando…' : 'Guardar' }}
-			</NcButton>
+			<template v-if="isEditing || draft.id === null">
+				<NcButton variant="primary" :disabled="saving" type="submit">
+					{{ saving ? 'Guardando…' : 'Guardar' }}
+				</NcButton>
+				<NcButton v-if="draft.id !== null" variant="tertiary" @click="isEditing = false">
+					Cancelar
+				</NcButton>
+			</template>
+			<template v-else>
+				<NcButton variant="primary" @click="isEditing = true">
+					Editar
+				</NcButton>
+				<NcButton variant="tertiary" @click="$emit('center')">
+					Centrar
+				</NcButton>
+			</template>
 
 			<!-- Two-step, inline. Never a browser confirm(): it blocks the page, and
 			     there is nothing irreversible to warn about anyway — retiring keeps
@@ -52,7 +65,62 @@
 			{{ error }}
 		</NcNoteCard>
 
-		<NcTextField v-model="draft.name" label="Nombre" required />
+		<!-- Inspection Mode: Place Card -->
+		<div v-if="!isEditing && draft.id !== null" class="territorio-detail__inspection">
+			<div class="territorio-detail__place-badge">
+				{{ currentSubcategoryLabel }}
+			</div>
+			<h2 class="territorio-detail__place-title">
+				{{ draft.name }}
+			</h2>
+
+			<div v-if="!isDivision" class="territorio-detail__place-chips">
+				<span v-if="sectorName" class="territorio-detail__place-chip">Sector: {{ sectorName }}</span>
+				<span v-if="unidadVecinalName" class="territorio-detail__place-chip">UV: {{ unidadVecinalName }}</span>
+			</div>
+
+			<div v-if="draft.phone || draft.email" class="territorio-detail__place-links">
+				<a v-if="draft.phone" :href="'tel:' + draft.phone" class="territorio-detail__link-btn">
+					📞 {{ draft.phone }}
+				</a>
+				<a v-if="draft.email" :href="'mailto:' + draft.email" class="territorio-detail__link-btn">
+					✉️ {{ draft.email }}
+				</a>
+			</div>
+
+			<div class="territorio-detail__place-fields">
+				<div v-if="draft.address" class="territorio-detail__place-row">
+					<span class="territorio-detail__place-label">Dirección:</span>
+					<span>{{ draft.address }}</span>
+				</div>
+				<div v-if="draft.openingHours" class="territorio-detail__place-row">
+					<span class="territorio-detail__place-label">Horario:</span>
+					<span>{{ draft.openingHours }}</span>
+				</div>
+				<div v-if="draft.contactPerson" class="territorio-detail__place-row">
+					<span class="territorio-detail__place-label">Contacto:</span>
+					<span>{{ draft.contactPerson }} <template v-if="draft.contactRole">({{ draft.contactRole }})</template></span>
+				</div>
+				<div v-if="draft.notes" class="territorio-detail__place-row">
+					<span class="territorio-detail__place-label">Notas:</span>
+					<span>{{ draft.notes }}</span>
+				</div>
+				<div v-if="draft.sourceRef" class="territorio-detail__place-row">
+					<span class="territorio-detail__place-label">Fuente:</span>
+					<span>{{ draft.sourceRef }}</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Edit Mode Fields -->
+		<template v-if="isEditing || draft.id === null">
+			<!-- Proactive Duplicate Shield Warning -->
+			<NcNoteCard v-if="duplicateCandidate" type="warning" class="territorio-detail__duplicate-alert">
+				<strong>⚠️ Posible duplicado detectado:</strong>
+				Existe un registro similar («{{ duplicateCandidate.feature.name }}») a {{ Math.round(duplicateCandidate.distance) }} metros.
+			</NcNoteCard>
+
+			<NcTextField v-model="draft.name" label="Nombre" required />
 
 		<!-- Nothing constrains the name. A CESFAM may call its sectores "3",
 		     "Rojo" or "Sector Sur", and Territorio does not know which. -->
@@ -155,6 +223,7 @@
 			<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 			<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />
 		</details>
+		</template>
 
 		<FeatureHistory v-if="draft.id !== null"
 			:entries="history"
@@ -182,11 +251,13 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FeatureHistory from './FeatureHistory.vue'
+import { findDuplicateCandidate } from '../assets.js'
 import { nameOf as boundaryName } from '../boundaries.js'
 import { provenance } from '../limit.js'
 import {
 	DEFAULT_SECTOR_COLOUR,
 	divisionsOf,
+	indexSubcategories,
 	isSectorSubcategory,
 	subcategoryOptions,
 	treeOf,
@@ -206,42 +277,48 @@ export default {
 
 	props: {
 		history: { type: Array, default: () => [] },
-		// A failed history load is not an empty history (L1-28): threaded down to
-		// FeatureHistory as `failed`, and its Reintentar re-emitted upward.
 		historyFailed: { type: Boolean, default: false },
 		retired: { type: Boolean, default: false },
-		// The draft is owned by App.vue and mutated in place: the sidebar edits
-		// one record at a time, and copying it back and forth would only add a
-		// second place for the two to disagree. THE DRAFT BOX CONVENTION
-		// (CONTEXT.md): one open record, one draft, App.vue owns it and this form
-		// mutates it in place. IndiceView's immutable `update:view` pattern is the
-		// rule for VIEW state — never copy one pattern into the other's context.
 		draft: { type: Object, required: true },
 		taxonomy: { type: Array, required: true },
-		// The territorial divisions the app holds, so a stored id can be shown as
-		// the name a person would recognise. `divisions`, matching taxonomy.js's
-		// `divisionsOf` vocabulary (L1-33) — «boundary» names the /boundaries
-		// resource alone: the cadastre street lines a Limit runs along.
 		divisions: { type: Array, default: () => [] },
+		features: { type: Array, default: () => [] },
 		saving: { type: Boolean, default: false },
 		error: { type: String, default: '' },
 	},
 
-	emits: ['save', 'retire', 'retry'],
+	emits: ['save', 'retire', 'retry', 'center', 'select-existing', 'cancel'],
 
 	data() {
-		return { confirmingRetire: false }
+		return {
+			confirmingRetire: false,
+			isEditing: this.draft.id === null,
+		}
 	},
 
 	watch: {
-		// Selecting a different record must not leave the previous one's confirm
-		// step armed — the next click would retire something nobody meant to.
 		'draft.id'() {
 			this.confirmingRetire = false
+			this.isEditing = (this.draft.id === null)
 		},
 	},
 
 	computed: {
+		duplicateCandidate() {
+			if (!this.features || this.features.length === 0) {
+				return null
+			}
+			return findDuplicateCandidate(this.draft, this.features)
+		},
+
+		subcategories() {
+			return indexSubcategories(this.taxonomy)
+		},
+
+		currentSubcategoryLabel() {
+			return this.subcategories.get(this.draft.subcategoryId)?.label ?? 'Lugar'
+		},
+
 		/**
 		 * The tree only. A territorial division is not something a record is
 		 * reclassified INTO — filing a colegio as a Sector would put it behind the
@@ -491,4 +568,92 @@ export default {
 	font-size: 0.9em;
 	margin-bottom: 8px;
 }
+
+.territorio-detail__inspection {
+	padding: 12px 4px;
+	border-bottom: 1px solid var(--color-border);
+	margin-bottom: 12px;
+}
+
+.territorio-detail__place-badge {
+	display: inline-block;
+	background: #e8f0fe;
+	color: #1a73e8;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.territorio-detail__place-title {
+	font-size: 1.4em;
+	font-weight: 700;
+	color: #202124;
+	margin: 0 0 8px;
+}
+
+.territorio-detail__place-chips {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.territorio-detail__place-chip {
+	font-size: 12px;
+	background: #f1f3f4;
+	color: #5f6368;
+	padding: 2px 8px;
+	border-radius: 12px;
+	font-weight: 500;
+}
+
+.territorio-detail__place-links {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 14px;
+}
+
+.territorio-detail__link-btn {
+	display: inline-flex;
+	align-items: center;
+	background: #f8f9fa;
+	border: 1px solid #dadce0;
+	border-radius: 6px;
+	color: #1a73e8;
+	text-decoration: none;
+	font-size: 12px;
+	font-weight: 500;
+	padding: 4px 10px;
+	transition: background 0.15s;
+}
+
+.territorio-detail__link-btn:hover {
+	background: #e8eaed;
+}
+
+.territorio-detail__place-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	font-size: 13px;
+	color: #3c4043;
+}
+
+.territorio-detail__place-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.territorio-detail__place-label {
+	font-weight: 600;
+	color: #5f6368;
+	min-width: 75px;
+}
+
+.territorio-detail__duplicate-alert {
+	margin-bottom: 12px;
+}
 </style>
+

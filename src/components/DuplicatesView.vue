@@ -1,9 +1,17 @@
 <template>
 	<div class="territorio-duplicados">
-		<h2>
-			{{ pairs.length }}
-			{{ pairs.length === 1 ? 'par por revisar' : 'pares por revisar' }}
-		</h2>
+		<div class="territorio-duplicados__head">
+			<button type="button"
+				class="territorio-duplicados__back-btn"
+				title="Volver al mapa"
+				@click="$emit('back')">
+				← Volver al mapa
+			</button>
+			<h2>
+				{{ pairs.length }}
+				{{ pairs.length === 1 ? 'par por revisar' : 'pares por revisar' }}
+			</h2>
+		</div>
 
 		<!-- Three states, not two (L1-28): a queue that failed to load is not a
 		     queue with nothing in it — «Nada por revisar» over a network failure
@@ -100,7 +108,7 @@ export default {
 		failed: { type: Boolean, default: false },
 	},
 
-	emits: ['merge', 'dismiss', 'retry', 'show'],
+	emits: ['merge', 'dismiss', 'retry', 'show', 'back'],
 
 	data() {
 		return { WHY }
@@ -140,8 +148,33 @@ export default {
 
 <style scoped>
 .territorio-duplicados {
-	padding: 12px 16px;
+	padding: 16px 24px 32px;
 	overflow-y: auto;
+	height: 100%;
+	background: #ffffff;
+}
+
+.territorio-duplicados__head {
+	margin-bottom: 16px;
+}
+
+.territorio-duplicados__back-btn {
+	background: #f1f3f4;
+	border: 1px solid #dadce0;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #1a73e8;
+	padding: 6px 12px;
+	cursor: pointer;
+	margin-bottom: 12px;
+	display: inline-flex;
+	align-items: center;
+	transition: background 0.15s;
+}
+
+.territorio-duplicados__back-btn:hover {
+	background: #e8eaed;
 }
 
 .territorio-duplicados__pair {

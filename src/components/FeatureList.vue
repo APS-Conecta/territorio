@@ -43,6 +43,28 @@
 				@trailing-button-click="$emit('update:query', '')" />
 		</div>
 
+		<!-- Sort and Sector Filter Bar -->
+		<div class="territorio-list__sort-bar">
+			<label class="territorio-list__sort-label">
+				<span>Ordenar:</span>
+				<select v-model="sortCriteria" class="territorio-list__select">
+					<option value="name:asc">Nombre (A-Z)</option>
+					<option value="name:desc">Nombre (Z-A)</option>
+					<option value="sector:asc">Sector</option>
+					<option value="revision:desc">Más reciente</option>
+				</select>
+			</label>
+			<label v-if="sectors.length > 0" class="territorio-list__sort-label">
+				<span>Sector:</span>
+				<select v-model="selectedSector" class="territorio-list__select">
+					<option value="">Todos</option>
+					<option v-for="sec in sectors" :key="sec.id" :value="sec.id">
+						{{ sec.name }}
+					</option>
+				</select>
+			</label>
+		</div>
+
 		<!--
 			Three empty states, not two. "Nothing matched" is a different fact from
 			"there is nothing here", and showing the second when the first is true
@@ -93,7 +115,7 @@
 			</template>
 		</NcEmptyContent>
 
-		<NcListItem v-for="feature in features"
+		<NcListItem v-for="feature in displayFeatures"
 			:key="feature.id"
 			:name="feature.name"
 			:active="feature.id === selectedId"
@@ -118,9 +140,10 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { sortAssets } from '../assets.js'
 import { glyphFor } from '../glyphs.js'
 import { swatchFor } from '../marks.js'
-import { colourOf, indexSubcategories } from '../taxonomy.js'
+import { colourOf, indexSubcategories, isSectorSubcategory } from '../taxonomy.js'
 
 export default {
 	name: 'FeatureList',
@@ -130,6 +153,7 @@ export default {
 	props: {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
+		divisions: { type: Array, default: () => [] },
 		selectedId: { type: Number, default: null },
 		showRetired: { type: Boolean, default: false },
 		// A failed load of the retired list is not an empty one (L1-28): shown
@@ -142,9 +166,30 @@ export default {
 
 	emits: ['select', 'create', 'import', 'export', 'retry', 'update:showRetired', 'update:query'],
 
+	data() {
+		return {
+			sortCriteria: 'name:asc',
+			selectedSector: '',
+		}
+	},
+
 	computed: {
 		subcategories() {
 			return indexSubcategories(this.taxonomy)
+		},
+
+		sectors() {
+			return this.divisions.filter(d => isSectorSubcategory(this.taxonomy, d.subcategoryId))
+		},
+
+		displayFeatures() {
+			let result = this.features
+			if (this.selectedSector !== '') {
+				const sId = Number(this.selectedSector)
+				result = result.filter(f => f.sectorId === sId)
+			}
+			const [sortBy, sortOrder] = this.sortCriteria.split(':')
+			return sortAssets(result, { sortBy, sortOrder })
 		},
 	},
 
@@ -271,5 +316,32 @@ export default {
 .territorio-list__swatch--ring :deep(svg),
 .territorio-list__swatch--ring-dashed :deep(svg) {
 	display: none;
+}
+
+.territorio-list__sort-bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 4px 12px 10px;
+	border-bottom: 1px solid var(--color-border);
+	font-size: 12px;
+}
+
+.territorio-list__sort-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--color-text-maxcontrast);
+	font-weight: 500;
+}
+
+.territorio-list__select {
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	font-size: 12px;
+	padding: 2px 6px;
+	cursor: pointer;
 }
 </style>

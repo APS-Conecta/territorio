@@ -126,7 +126,7 @@ export default {
 		divisions: { type: Array, default: () => [] },
 	},
 
-	emits: ['select', 'map-click', 'draw', 'reshape', 'pick', 'view-changed'],
+	emits: ['select', 'map-click', 'draw', 'reshape', 'pick', 'view-changed', 'draw-mode-change'],
 
 	/**
 	 * The Leaflet handles, deliberately NOT in data().
@@ -606,6 +606,12 @@ export default {
 			// layer, drawn from the geometry the parent now holds. One round trip
 			// instead of two layers to keep in step — and if the parent refuses the
 			// draft, nothing is left stranded on the map.
+			this.map.on('pm:drawstart', () => {
+				this.$emit('draw-mode-change', true)
+			})
+			this.map.on('pm:drawend', () => {
+				this.$emit('draw-mode-change', false)
+			})
 			this.map.on('pm:create', ({ layer }) => {
 				const geometry = layer.toGeoJSON().geometry
 				layer.remove()
@@ -844,6 +850,57 @@ export default {
 				iconSize: [36, 36],
 				iconAnchor: [18, 18],
 			})
+		},
+
+		/**
+		 * Smoothly pan and zoom to a specific coordinate (used by Omnibox and FeatureDetail).
+		 *
+		 * @param {number} lat Latitude
+		 * @param {number} lon Longitude
+		 * @param {number} [zoom=17] Target zoom level
+		 */
+		panToLocation(lat, lon, zoom = 17) {
+			if (this.map === null || lat === undefined || lon === undefined) {
+				return
+			}
+			this.map.flyTo([lat, lon], Math.max(this.map.getZoom(), zoom), {
+				animate: true,
+				duration: 0.8,
+			})
+		},
+
+		/**
+		 * Fit the map viewport to a bounding box (e.g. from an OSM street or polygon).
+		 *
+		 * @param {Array|Object} bounds Bounding box representation [[south, west], [north, east]] or Leaflet LatLngBounds
+		 */
+		fitStreetBounds(bounds) {
+			if (this.map === null || !bounds) {
+				return
+			}
+			this.map.fitBounds(bounds, {
+				padding: [48, 48],
+				animate: true,
+				duration: 0.8,
+			})
+		},
+
+		/**
+		 * Arm or disarm Geoman polygon drawing programmatically (from DrawSectorButton).
+		 */
+		toggleDrawPolygon() {
+			if (!this.map || !this.map.pm) {
+				return
+			}
+			if (this.map.pm.globalDrawModeEnabled()) {
+				this.map.pm.disableDraw()
+			} else {
+				this.map.pm.enableDraw('Polygon', {
+					snappable: true,
+					snapDistance: 20,
+					allowSelfIntersection: false,
+				})
+			}
 		},
 	},
 }

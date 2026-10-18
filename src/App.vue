@@ -1542,11 +1542,19 @@ export default {
 }
 
 .territorio-app-viewport {
+	// What the floating topbar covers at the top: 12px offset + 48px search box +
+	// 48px tabs + 12px of air. Below 810px the layers and draw buttons wrap onto a
+	// second row (+ 48px + 12px gap + 12px of air → 188px, measured at 360px).
+	--territorio-topbar-clearance: 124px;
 	position: relative;
 	width: 100%;
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
+
+	@media (max-width: 810px) {
+		--territorio-topbar-clearance: 188px;
+	}
 }
 
 .territorio-map-container {
@@ -1648,11 +1656,8 @@ export default {
 	overflow: hidden;
 }
 
-// Clears the search box and its view tabs, which float over the panel's top
-// (12px offset + 48px bar + 48px tabs + 12px of air).
 .territorio-docked-panel__spacer {
-	height: 124px;
-	flex: 0 0 124px;
+	flex: 0 0 var(--territorio-topbar-clearance);
 }
 
 .territorio-docked-panel__sheet,
@@ -1685,10 +1690,10 @@ export default {
 // 1000) left nothing to click but the view's own «Volver».
 .territorio-fullscreen-view {
 	position: absolute;
-	top: 124px;
+	top: var(--territorio-topbar-clearance);
 	left: 0;
 	width: 100%;
-	height: calc(100% - 124px);
+	height: calc(100% - var(--territorio-topbar-clearance));
 	z-index: 1100;
 	background: var(--color-main-background, #ffffff);
 	overflow-y: auto;

@@ -196,6 +196,11 @@ The basemap stops being somebody else's public service.
   tests, and corrected the comments that claimed the client's name similarity mirrors the server's
   (it is Levenshtein here and `similar_text` there; the server decides, ADR-0011).
 
+  **On a phone the layers and draw buttons no longer cover the record's «← Volver a la lista».**
+  Below 810px they wrap under the search box, and the panel's clearance (124px) assumed one row,
+  so they sat on the record's first line at 360px. The clearance is one variable now
+  (`--territorio-topbar-clearance`, 188px below 810px) shared by the panel and the full-screen views.
+
 - **No comuna or clinic is baked in (0.77.3).** The installer chooses the comuna and the
   establishment, so nothing the app shows or ships should pre-suppose one. The admin page no longer
   says «La Florida es 13110» and no longer suggests `13110` / «La Florida» as the code and name;

@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "territorio",
-        "version": "0.77.0",
+        "version": "0.77.1",
         "description": "Mapa territorial de un CESFAM",
         "license": {
             "name": "AGPL-3.0-or-later"

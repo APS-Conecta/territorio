@@ -19,6 +19,7 @@
 					:filter="filter"
 					:error="error"
 					:notice="notice"
+					@clear-taxonomy-message="$emit('clear-taxonomy-message')"
 					@toggle-category="$emit('toggle-category', $event)"
 					@toggle-subcategory="$emit('toggle-subcategory', $event)"
 					@reset="$emit('reset')"
@@ -49,6 +50,7 @@ export default {
 
 	emits: [
 		'close',
+		'clear-taxonomy-message',
 		'toggle-category',
 		'toggle-subcategory',
 		'reset',

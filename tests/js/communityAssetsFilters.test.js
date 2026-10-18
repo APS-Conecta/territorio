@@ -24,7 +24,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			contactPerson: 'Dra. Soto',
 			notes: 'Atención primaria',
 			revision: 4,
-			retiredAt: null,
+			retired: false,
 		},
 		{
 			id: 2,
@@ -37,7 +37,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			contactPerson: 'Q.F. Morales',
 			notes: 'Medicamentos a bajo costo',
 			revision: 2,
-			retiredAt: null,
+			retired: false,
 		},
 		{
 			id: 3,
@@ -50,7 +50,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			contactPerson: 'Profesor Silva',
 			notes: 'Escuela básica',
 			revision: 7,
-			retiredAt: null,
+			retired: false,
 		},
 		{
 			id: 4,
@@ -63,7 +63,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			contactPerson: null,
 			notes: null,
 			revision: 1,
-			retiredAt: null,
+			retired: false,
 		},
 		{
 			id: 5,
@@ -76,7 +76,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			contactPerson: null,
 			notes: 'Cerrado por traslado',
 			revision: 9,
-			retiredAt: '2026-05-01T10:00:00Z', // Retirado
+			retired: true, // Retirado
 		},
 	]
 
@@ -143,7 +143,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 
 	describe('sortAssets', () => {
 		it('sorts alphabetically by name ascending (default)', () => {
-			const activeOnly = sampleFeatures.filter(f => !f.retiredAt)
+			const activeOnly = sampleFeatures.filter(f => !f.retired)
 			const sorted = sortAssets(activeOnly, { sortBy: 'name', sortOrder: 'asc' })
 			expect(sorted.map(f => f.name)).toEqual([
 				'CESFAM Bellavista',
@@ -154,7 +154,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 		})
 
 		it('sorts alphabetically by name descending', () => {
-			const activeOnly = sampleFeatures.filter(f => !f.retiredAt)
+			const activeOnly = sampleFeatures.filter(f => !f.retired)
 			const sorted = sortAssets(activeOnly, { sortBy: 'name', sortOrder: 'desc' })
 			expect(sorted.map(f => f.name)).toEqual([
 				'Plaza Las Flores',
@@ -165,7 +165,7 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 		})
 
 		it('sorts by revision descending (newest first)', () => {
-			const activeOnly = sampleFeatures.filter(f => !f.retiredAt)
+			const activeOnly = sampleFeatures.filter(f => !f.retired)
 			const sorted = sortAssets(activeOnly, { sortBy: 'revision', sortOrder: 'desc' })
 			expect(sorted.map(f => f.id)).toEqual([3, 1, 2, 4]) // revisions: 7, 4, 2, 1
 		})

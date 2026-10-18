@@ -17,7 +17,7 @@
 				role="combobox"
 				:aria-expanded="showDropdown ? 'true' : 'false'"
 				aria-autocomplete="list"
-				@focus="isFocused = true"
+				@focus="onFocus"
 				@blur="onBlur"
 				@keydown.down.prevent="navigateResults(1)"
 				@keydown.up.prevent="navigateResults(-1)"
@@ -73,7 +73,7 @@
 		<!-- Unified Autocomplete Results Dropdown -->
 		<div v-if="showDropdown" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
-				:key="result.kind + '-' + (result.id ?? result.name)"
+				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
 				role="option"
 				class="territorio-omnibox__item"
 				:class="{ 'territorio-omnibox__item--highlighted': activeIndex === index }"
@@ -148,6 +148,10 @@ export default {
 			set(val) {
 				this.$emit('update:modelValue', val)
 				this.activeIndex = -1
+				// Choosing a result drops `isFocused` while the input keeps the real
+				// focus, so a second search typed without leaving the box would find
+				// results and show none. Typing is the proof it is focused.
+				this.isFocused = true
 			},
 		},
 
@@ -170,10 +174,17 @@ export default {
 
 	methods: {
 		onBlur() {
-			// Short timeout so mousedown can fire
-			setTimeout(() => {
+			// Short timeout so mousedown can fire. Cleared by the next focus, or an
+			// early blur would hide the list a person has just come back to.
+			clearTimeout(this.blurTimer)
+			this.blurTimer = setTimeout(() => {
 				this.isFocused = false
 			}, 200)
+		},
+
+		onFocus() {
+			clearTimeout(this.blurTimer)
+			this.isFocused = true
 		},
 
 		clearQuery() {
@@ -210,12 +221,17 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * Placed by App.vue's topbar, not by itself: it used to be `absolute` at a fixed
+ * `top`/`left`, which stacked on the topbar's own offset and sat the control
+ * where the layers menu and «Dibujar Sector» were also positioned by hand.
+ */
 .territorio-omnibox {
-	position: absolute;
-	top: 12px;
-	left: 12px;
+	position: relative;
+	flex: 0 1 392px;
 	z-index: 1000;
 	width: 392px;
+	max-width: 100%;
 	background: #ffffff;
 	border-radius: 8px;
 	box-shadow: 0 2px 6px rgba(60, 64, 67, 0.3), 0 1px 2px rgba(60, 64, 67, 0.15);

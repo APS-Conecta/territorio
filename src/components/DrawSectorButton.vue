@@ -39,10 +39,9 @@ export default {
 </script>
 
 <style scoped>
+/* Placed by App.vue's topbar; see .territorio-omnibox. */
 .territorio-draw-sector {
-	position: absolute;
-	top: 12px;
-	left: 588px;
+	position: relative;
 	z-index: 1000;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }

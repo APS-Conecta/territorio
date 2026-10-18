@@ -6,6 +6,7 @@
  */
 import { fold } from './filters.js'
 import { textMatches } from './aps/filters.js'
+import { boundsOfGeometry } from './taxonomy.js'
 
 /** Metres per degree of latitude in Chile (matches BoundingBox::METRES_PER_DEGREE in backend). */
 export const METRES_PER_DEGREE = 111320.0
@@ -33,10 +34,12 @@ export function metresBetween(lat1, lon1, lat2, lon2) {
 	if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
 		return Infinity
 	}
-	const nLat1 = Number(lat1)
-	const nLon1 = Number(lon1)
-	const nLat2 = Number(lat2)
-	const nLon2 = Number(lon2)
+	// A draft's coordinates are text, and payload() accepts «-33,4489» there.
+	const number = (value) => Number(typeof value === 'string' ? value.replace(',', '.') : value)
+	const nLat1 = number(lat1)
+	const nLon1 = number(lon1)
+	const nLat2 = number(lat2)
+	const nLon2 = number(lon2)
 
 	if (Number.isNaN(nLat1) || Number.isNaN(nLon1) || Number.isNaN(nLat2) || Number.isNaN(nLon2)) {
 		return Infinity
@@ -144,7 +147,8 @@ function extractCoordinates(item) {
 	if (!item) {
 		return { lat: null, lon: null }
 	}
-	if (item.lat != null && item.lon != null) {
+	// A draft's coordinates are text fields, and '' is a record that has none.
+	if (item.lat != null && item.lon != null && item.lat !== '' && item.lon !== '') {
 		return { lat: item.lat, lon: item.lon }
 	}
 	if (item.geometry?.type === 'Point' && Array.isArray(item.geometry.coordinates)) {
@@ -178,7 +182,7 @@ export function findDuplicateCandidate(draft, existingFeatures = [], options = {
 			continue
 		}
 		// Ignore retired records
-		if (feature.retiredAt) {
+		if (feature.retired) {
 			continue
 		}
 
@@ -241,7 +245,7 @@ export function filterAssets(features = [], criteria = {}, subcategories = new M
 
 	return features.filter((feature) => {
 		// Retired status gate
-		const isRetired = Boolean(feature.retiredAt)
+		const isRetired = Boolean(feature.retired)
 		if (showRetired !== isRetired) {
 			return false
 		}
@@ -340,6 +344,30 @@ export function sortAssets(features = [], { sortBy = 'name', sortOrder = 'asc' }
 }
 
 /**
+ * Where the map should go to show one record.
+ *
+ * A record carries GeoJSON `geometry`, never flat `lat`/`lon`: a Place is a
+ * Point, a Sector or Unidad Vecinal a Polygon or MultiPolygon, and a record
+ * without coordinates has `geometry: null` and is valid (`sin_coordenada`).
+ *
+ * @param {object|null|undefined} geometry The record's GeoJSON geometry.
+ * @return {{kind: 'point', lat: number, lon: number}|{kind: 'bounds', bounds: number[][]}|null}
+ *         A point to pan to, an area to fit, or null when there is nowhere to go.
+ */
+export function viewTargetOf(geometry) {
+	const bounds = boundsOfGeometry(geometry)
+	if (bounds === null) {
+		return null
+	}
+	if (geometry.type === 'Point') {
+		// Longitude first in GeoJSON; 0 is a real coordinate, so no truthiness test.
+		const [lon, lat] = geometry.coordinates
+		return { kind: 'point', lat, lon }
+	}
+	return { kind: 'bounds', bounds }
+}
+
+/**
  * Matches community assets and boundary streets for the Omnibox.
  *
  * @param {string|null} query
@@ -362,11 +390,15 @@ export function matchOmnibox(query, { assets = [], streets = [], subcategories =
 		const foldedName = fold(street.name).trim()
 		if (foldedName.includes(needle)) {
 			const score = foldedName.startsWith(needle) ? 100 : 70
+			// The server's own row, `{ name, south, west, north, east, count }`
+			// (BoundaryService::names()): goToStreet fits the map to the four edges.
 			results.push({
 				kind: 'street',
 				name: street.name,
-				bounds: street.bounds,
-				coordinates: street.coordinates,
+				south: street.south,
+				west: street.west,
+				north: street.north,
+				east: street.east,
 				score,
 			})
 		}
@@ -377,7 +409,9 @@ export function matchOmnibox(query, { assets = [], streets = [], subcategories =
 		const sub = subcategories.get(asset.subcategoryId)
 		const foldedName = fold(asset.name).trim()
 		const foldedAddr = fold(asset.address).trim()
-		const subLabel = sub?.label ?? ''
+		// The two halves, not `sub.label`: that is the composed "Category ·
+		// Subcategory", which would show the category twice in the badge.
+		const subLabel = sub?.subcategoryLabel ?? ''
 		const catLabel = sub?.categoryLabel ?? ''
 
 		let score = 0
@@ -399,8 +433,6 @@ export function matchOmnibox(query, { assets = [], streets = [], subcategories =
 				address: asset.address,
 				categoryLabel: catLabel,
 				subcategoryLabel: subLabel,
-				lat: asset.lat,
-				lon: asset.lon,
 				score,
 			})
 		}

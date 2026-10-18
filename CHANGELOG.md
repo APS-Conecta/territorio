@@ -186,6 +186,52 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **The redesigned topbar does what it shows.** PR #171 wired `App.vue` to events and
+  props its children never declared. Vue drops an unknown listener and turns an unknown prop into
+  a DOM attribute, both without a word, and no test mounts a component, so 437 tests and CI stayed
+  green over a search box, a set of view tabs, «Dibujar Sector», «Todas»/«Limpiar» and a taxonomy
+  drawer that did nothing. Wired to what each component really declares; and the wiring is now
+  pinned by `tests/js/appWiring.test.js`, which reads `App.vue` and every child it uses and fails
+  on a listener the child never emits, a prop it never declares, or a required prop left unbound.
+
+  Behind the wiring, what only a browser showed:
+
+  - **The search box could not be clicked.** The topbar's `pointer-events: none` was inherited by
+    the box and its tabs, so a click landed on the panel underneath. The three controls also
+    placed themselves with fixed `left` offsets on top of the topbar's own layout, which put
+    «Tipo de Activo» over «Dibujar Sector».
+  - **Picking a result moved nothing.** A record carries GeoJSON `geometry` (`[lon, lat]`, or
+    `null`), never flat `lat`/`lon`: a Place is panned to, a Sector or Unidad Vecinal is fitted to,
+    and a record with no coordinates is selected and the map stays put. A street result lost its
+    `south/west/north/east` on the way out of the matcher.
+  - **The retired filter and the duplicate check read `retiredAt`**, a field that does not exist;
+    the API sends the boolean `retired`. Their fixtures had the same invented shape, which is why
+    they passed.
+  - **The taxonomy drawer covered the page from the first paint**, because it was always mounted
+    and has no `open` prop.
+  - **The layers menu looked for `division-territorial`** where the slug is `division_territorial`,
+    and hard-coded «Sectores CESFAM»; the division toggles now come from the taxonomy.
+  - A second search typed after choosing a result showed no list: choosing a result cleared the
+    box's focus flag while the input kept the real focus.
+  - The Índice, Análisis and duplicates views covered the topbar they are switched from, and
+    picking a record in one of them opened it in a panel nobody could see: it now goes back to the
+    map first. A failed merge in the duplicates queue shows its error there too.
+  - A click on the map selects a record and no longer also moves the map; only the search and the
+    list pan to what they pick.
+  - The taxonomy drawer forwards `clear-taxonomy-message`, so a refused rename stops showing once
+    the next row is touched; the layers menu scrolls when its footer would fall off the screen;
+    a partly hidden category's checkbox no longer ends up opposite to what is shown; a duplicate
+    check on coordinates typed with a decimal comma works.
+  - The panel's list was pinned to 300px by Nextcloud's own `.app-content-list`.
+  - **An opened record could not be closed.** The panel shows the list or a record, `App.vue`
+    listened for a `cancel` that `FeatureDetail` declared and never sent, and the sidebar's close
+    button went with the sidebar. «← Volver a la lista» is the way back.
+
+  The ADR and design comments the rewrite deleted from `App.vue` are back, and the second error
+  boundary (L0-02) around the open record's form is too. `tools/browser-check.py --only redesign`
+  drives all of the above in a browser. Shipped as 0.77.1 so the rebuilt bundle reaches browsers
+  that have the stale one cached (`?v=` on the script URL comes from `info.xml`).
+
 - **The archive's reachability is checked directly, because there is no `tileerror` to hook.**
   `protomaps-leaflet` calls Leaflet's done callback as `done(undefined, tile)` unconditionally, so
   a tile that never rendered is indistinguishable from one that did, and the

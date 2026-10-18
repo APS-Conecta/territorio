@@ -42,7 +42,7 @@
 					<input type="checkbox"
 						class="territorio-layers-item__checkbox"
 						:checked="isCategoryChecked(cat)"
-						@change="$emit('toggle-category', cat)">
+						@change="onToggleCategory(cat, $event)">
 					<span class="territorio-layers-item__dot" :style="{ backgroundColor: cat.color }" aria-hidden="true" />
 					<span class="territorio-layers-item__label">{{ cat.label }}</span>
 					<span v-if="counts[cat.slug] != null" class="territorio-layers-item__badge">
@@ -59,19 +59,14 @@
 				</div>
 			</div>
 			<div class="territorio-layers-panel__list">
-				<label class="territorio-layers-item">
+				<label v-for="division in divisions"
+					:key="division.id"
+					class="territorio-layers-item">
 					<input type="checkbox"
 						class="territorio-layers-item__checkbox"
-						:checked="showSectores"
-						@change="$emit('toggle-division', 'sector')">
-					<span class="territorio-layers-item__label">Sectores CESFAM</span>
-				</label>
-				<label class="territorio-layers-item">
-					<input type="checkbox"
-						class="territorio-layers-item__checkbox"
-						:checked="showUnidadesVecinales"
-						@change="$emit('toggle-division', 'unidad-vecinal')">
-					<span class="territorio-layers-item__label">Unidades Vecinales</span>
+						:checked="!filter.hidden.has(division.id)"
+						@change="$emit('toggle-division', division.id)">
+					<span class="territorio-layers-item__label">{{ division.label }}</span>
 				</label>
 			</div>
 
@@ -88,6 +83,8 @@
 </template>
 
 <script>
+import { divisionsOf, treeOf } from '../taxonomy.js'
+
 export default {
 	name: 'LayersDropdownButton',
 
@@ -104,14 +101,6 @@ export default {
 			type: Object,
 			default: () => ({}),
 		},
-		showSectores: {
-			type: Boolean,
-			default: true,
-		},
-		showUnidadesVecinales: {
-			type: Boolean,
-			default: true,
-		},
 	},
 
 	emits: ['toggle-category', 'toggle-division', 'select-all', 'clear-all', 'open-taxonomy-drawer'],
@@ -123,8 +112,15 @@ export default {
 	},
 
 	computed: {
+		// The Category tree, and beside it one toggle per territorial division
+		// (CONTEXT.md). The labels come from the taxonomy, so a clinic that
+		// renamed its divisions sees its own words here.
 		visibleCategories() {
-			return this.taxonomy.filter(c => c.slug !== 'division-territorial')
+			return treeOf(this.taxonomy)
+		},
+
+		divisions() {
+			return divisionsOf(this.taxonomy)
 		},
 
 		activeCategoryCount() {
@@ -154,6 +150,16 @@ export default {
 			return !cat.subcategories.every(sub => this.filter.hidden.has(sub.id))
 		},
 
+		onToggleCategory(cat, event) {
+			this.$emit('toggle-category', cat)
+			// A partly hidden category shows ticked and a click reveals the rest, so
+			// the box ends where it started and Vue sees no change to patch: put the
+			// DOM back to what the filter says once it has caught up.
+			this.$nextTick(() => {
+				event.target.checked = this.isCategoryChecked(cat)
+			})
+		},
+
 		openManager() {
 			this.isOpen = false
 			this.$emit('open-taxonomy-drawer')
@@ -163,10 +169,9 @@ export default {
 </script>
 
 <style scoped>
+/* Placed by App.vue's topbar; see .territorio-omnibox. */
 .territorio-layers-dropdown {
-	position: absolute;
-	top: 12px;
-	left: 414px;
+	position: relative;
 	z-index: 1000;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
@@ -226,6 +231,10 @@ export default {
 	left: 0;
 	margin-top: 6px;
 	width: 290px;
+	/* The footer link that opens the taxonomy drawer is the last thing in the
+	   panel; with many categories it must scroll into reach, not off the screen. */
+	max-height: calc(100vh - 180px);
+	overflow-y: auto;
 	background: #ffffff;
 	border-radius: 8px;
 	box-shadow: 0 4px 16px rgba(60, 64, 67, 0.25);

@@ -17,7 +17,7 @@
  * change it. None of it ever leaves the browser: the View is personal
  * (CONTEXT.md), and changing it changes nothing for anyone else.
  */
-import { categoryColour } from './taxonomy.js'
+import { categoryColour, treeOf } from './taxonomy.js'
 import { fold, textMatches, listFor as sharedListFor } from './aps/filters.js'
 
 export { fold }
@@ -119,6 +119,33 @@ export function toggleCategory(filter, category) {
 	}
 
 	// Spread, for the reason toggleSubcategory spreads.
+	return { ...filter, hidden }
+}
+
+/**
+ * «Todas» in the layers menu: show every Category in the tree again.
+ *
+ * Only the tree's own ids come out of the hidden set; a territorial division
+ * someone switched off stays off, and so does what they typed.
+ */
+export function showTree(filter, taxonomy) {
+	const hidden = new Set(filter.hidden)
+	treeOf(taxonomy).forEach((category) => category.subcategories.forEach((subcategory) => hidden.delete(subcategory.id)))
+
+	return { ...filter, hidden }
+}
+
+/**
+ * «Limpiar» in the layers menu: hide every Category in the tree.
+ *
+ * The territorial divisions are left as they are. They have toggles of their
+ * own beside the tree (CONTEXT.md), and clearing the places should not also
+ * take away the boundaries they sit in.
+ */
+export function hideTree(filter, taxonomy) {
+	const hidden = new Set(filter.hidden)
+	treeOf(taxonomy).forEach((category) => category.subcategories.forEach((subcategory) => hidden.add(subcategory.id)))
+
 	return { ...filter, hidden }
 }
 

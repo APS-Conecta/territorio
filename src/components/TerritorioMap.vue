@@ -863,6 +863,8 @@ export default {
 			if (this.map === null || lat === undefined || lon === undefined) {
 				return
 			}
+			// Re-measure first: the map may have just come back from `v-show`.
+			this.map.invalidateSize()
 			this.map.flyTo([lat, lon], Math.max(this.map.getZoom(), zoom), {
 				animate: true,
 				duration: 0.8,
@@ -878,6 +880,7 @@ export default {
 			if (this.map === null || !bounds) {
 				return
 			}
+			this.map.invalidateSize()
 			this.map.fitBounds(bounds, {
 				padding: [48, 48],
 				animate: true,

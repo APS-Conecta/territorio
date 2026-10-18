@@ -161,4 +161,42 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(false)
 		})
 	})
+
+	describe('records as the server sends them', () => {
+		// toClient() has no flat lat/lon: a Place is GeoJSON, [lon, lat], and a
+		// record without coordinates has `geometry: null`. `retired` is a boolean.
+		const place = (id, name, lat, lon, extra = {}) => ({
+			id,
+			name,
+			geometry: { type: 'Point', coordinates: [lon, lat] },
+			retired: false,
+			...extra,
+		})
+		const draft = { id: null, name: 'Consultorio Norte', lat: '-33.4489', lon: '-70.6501' }
+
+		it('finds a neighbour that carries GeoJSON geometry', () => {
+			const candidate = findDuplicateCandidate(draft, [place(7, 'Otro', -33.44892, -70.65012)])
+			expect(candidate?.feature.id).toBe(7)
+			expect(candidate?.reason).toBe('coordenada')
+		})
+
+		it('ignores a retired neighbour', () => {
+			expect(findDuplicateCandidate(draft, [place(7, 'Otro', -33.44892, -70.65012, { retired: true })])).toBeNull()
+		})
+
+		it('skips a neighbour with no geometry rather than failing', () => {
+			expect(findDuplicateCandidate(draft, [{ id: 8, name: 'Sin mapa', geometry: null, retired: false }])).toBeNull()
+		})
+
+		it('does not compare a draft that has no coordinates yet', () => {
+			expect(findDuplicateCandidate({ id: null, name: 'X', lat: '', lon: '' }, [place(7, 'X', -33.4489, -70.6501)])).toBeNull()
+		})
+	})
+})
+
+describe('a draft typed with a decimal comma', () => {
+	it('still meets its neighbour', () => {
+		const neighbour = { id: 7, name: 'Otro', geometry: { type: 'Point', coordinates: [-70.65012, -33.44892] }, retired: false }
+		expect(findDuplicateCandidate({ id: null, name: 'X', lat: '-33,4489', lon: '-70,6501' }, [neighbour])?.reason).toBe('coordenada')
+	})
 })

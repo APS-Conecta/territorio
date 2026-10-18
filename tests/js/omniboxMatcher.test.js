@@ -5,8 +5,9 @@ import {
 
 describe('Omnibox Unified Matcher (pure logic)', () => {
 	const sampleSubcategories = new Map([
-		[11, { id: 11, label: 'CESFAM', categoryLabel: 'Salud' }],
-		[21, { id: 21, label: 'Colegio', categoryLabel: 'Educación' }],
+		// The shape indexSubcategories() builds: `label` is the composed name.
+		[11, { label: 'Salud · CESFAM', subcategoryLabel: 'CESFAM', categoryLabel: 'Salud' }],
+		[21, { label: 'Educación · Colegio', subcategoryLabel: 'Colegio', categoryLabel: 'Educación' }],
 	])
 
 	const sampleAssets = [
@@ -15,42 +16,33 @@ describe('Omnibox Unified Matcher (pure logic)', () => {
 			name: 'CESFAM Central',
 			subcategoryId: 11,
 			address: 'Av. Libertador 100',
-			lat: -33.44,
-			lon: -70.65,
 		},
 		{
 			id: 2,
 			name: 'Colegio Libertador',
 			subcategoryId: 21,
 			address: 'Calle Nueva 20',
-			lat: -33.45,
-			lon: -70.66,
 		},
 		{
 			id: 3,
 			name: 'Farmacia Libertador',
 			subcategoryId: 11,
 			address: 'Pasaje Corto 5',
-			lat: -33.46,
-			lon: -70.67,
 		},
 	]
 
 	const sampleStreets = [
 		{
 			name: 'Av. Libertador Bernardo O’Higgins',
-			bounds: [[-33.45, -70.67], [-33.43, -70.63]],
-			coordinates: [[-33.45, -70.67], [-33.43, -70.63]],
+			south: -33.45, west: -70.67, north: -33.43, east: -70.63, count: 12,
 		},
 		{
 			name: 'Libertad',
-			bounds: [[-33.44, -70.68], [-33.42, -70.68]],
-			coordinates: [[-33.44, -70.68], [-33.42, -70.68]],
+			south: -33.44, west: -70.68, north: -33.42, east: -70.68, count: 3,
 		},
 		{
 			name: 'Av. Providencia',
-			bounds: [[-33.43, -70.62], [-33.42, -70.60]],
-			coordinates: [[-33.43, -70.62], [-33.42, -70.60]],
+			south: -33.43, west: -70.62, north: -33.42, east: -70.60, count: 7,
 		},
 	]
 
@@ -102,5 +94,42 @@ describe('Omnibox Unified Matcher (pure logic)', () => {
 		expect(results[0].kind).toBe('asset')
 		expect(results[0].subcategoryLabel).toBe('CESFAM')
 		expect(results[0].categoryLabel).toBe('Salud')
+	})
+
+	it('keeps the street edges the server sent, which goToStreet fits the map to', () => {
+		const [street] = matchOmnibox('Providencia', {
+			assets: sampleAssets,
+			streets: sampleStreets,
+			subcategories: sampleSubcategories,
+		})
+		expect(street).toMatchObject({
+			kind: 'street',
+			name: 'Av. Providencia',
+			south: -33.43,
+			west: -70.62,
+			north: -33.42,
+			east: -70.60,
+		})
+	})
+
+	it('identifies an asset by id alone, since its position lives in its geometry', () => {
+		const [asset] = matchOmnibox('CESFAM Central', {
+			assets: sampleAssets,
+			streets: sampleStreets,
+			subcategories: sampleSubcategories,
+		})
+		expect(asset.id).toBe(1)
+		expect(asset).not.toHaveProperty('lat')
+		expect(asset).not.toHaveProperty('lon')
+	})
+
+	it('badges an asset with its own subcategory label, not the composed one', () => {
+		const [asset] = matchOmnibox('Colegio Libertador', {
+			assets: sampleAssets,
+			streets: sampleStreets,
+			subcategories: sampleSubcategories,
+		})
+		expect(asset.subcategoryLabel).toBe('Colegio')
+		expect(asset.categoryLabel).toBe('Educación')
 	})
 })

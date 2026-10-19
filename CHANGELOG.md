@@ -5,7 +5,7 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [Unreleased]
 
-The basemap stops being somebody else's public service.
+The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks (ADR-0021).
 
 ### Changed
 
@@ -21,8 +21,8 @@ The basemap stops being somebody else's public service.
   `https://tile.openstreetmap.org` and adds no `connect-src` host, whatever was configured before.
 
   **A repair step deletes the stale settings, and writes down what they held first.** On install and
-  after every migration, `RemoveRetiredTileSettings` logs one info line per key found (app, key, old
-  value) and then deletes it. Nextcloud cannot downgrade an app, so that log line is the only record
+  after every migration, `RemoveRetiredTileSettings` logs one warning line per key found (app, key, old
+  value) and then deletes it. Warning, because a default Nextcloud drops anything below it. Nextcloud cannot downgrade an app, so that log line is the only record
   of the address a clinic had configured. A second run finds nothing and says nothing.
 
   **What a block looks like, because the app cannot tell you.** OpenStreetMap answers a blocked

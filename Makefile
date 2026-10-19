@@ -138,11 +138,6 @@ clean:
 # (measured on farmacia-dev, farmacia#2). Provisioning owns the step rather
 # than leaving it to memory.
 #
-# The basemap is OpenStreetMap's own tile service, which is what the app serves when
-# nothing is configured. The two deletes clear what an earlier `instance-up` pinned (a
-# PMTiles archive on a tailnet host), which a persisted volume would otherwise keep serving
-# to a browser that cannot reach it. The deletes are idempotent: a missing key is not an error.
-#
 # The status line is for the browser gate. Nextcloud's front end asks for the signed-in user's
 # status on every page and answers a user who never set one with a 404, which it then logs as a
 # console error; the gate counts console errors, so a fresh `admin` would fail every run on a
@@ -150,8 +145,6 @@ clean:
 instance-up:
 	$(COMPOSE) up -d --wait
 	$(OCC) app:enable territorio
-	$(OCC) config:app:delete territorio tile_url
-	$(OCC) config:app:delete territorio tile_attribution
 	$(COMPOSE) restart nextcloud
 	$(COMPOSE) up -d --wait
 	$(COMPOSE) exec -T nextcloud curl -s -o /dev/null -u admin:dev -H 'OCS-APIRequest: true' \

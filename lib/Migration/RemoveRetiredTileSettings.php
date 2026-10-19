@@ -20,8 +20,12 @@ use Psr\Log\LoggerInterface;
  * database as a setting that looks live and does nothing.
  *
  * Destroying a value is irreversible, and Nextcloud cannot downgrade an app, so
- * each value goes to the log (info level, one line) BEFORE its key is deleted.
- * That line is the only record of the address a clinic had configured.
+ * each value goes to the log (one line) BEFORE its key is deleted. That line is
+ * the only record of the address a clinic had configured.
+ *
+ * At WARNING, deliberately: a default Nextcloud runs at loglevel 2 (warning) and
+ * drops everything below it, so an info line would be written nowhere on exactly
+ * the installs that need it. The unit test accepts no other level.
  *
  * Idempotent: a key already gone is skipped without a word, so the second run,
  * and every upgrade after it, logs nothing. A key stored as the empty string is
@@ -54,7 +58,7 @@ class RemoveRetiredTileSettings implements IRepairStep {
 
 			// json_encode, because the value was typed by an administrator: a newline
 			// in it must not end this entry and start one of its own.
-			$this->logger->info(
+			$this->logger->warning(
 				sprintf(
 					'%s: removing retired app setting %s, old value %s',
 					Application::APP_ID,

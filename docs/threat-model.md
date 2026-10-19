@@ -41,7 +41,7 @@ A route without `#[NoAdminRequired]` is admin-only: that attribute is what opens
 | Duplicates: list, merge, dismiss (`DuplicateController`) | every logged-in user | `#[NoAdminRequired]` |
 | Boundaries: `GET /boundaries`, `GET /boundaries/names`; changes: `GET /changes` | every logged-in user | `#[NoAdminRequired]` |
 | OCS `GET /api/v1/counts`, `/api/v1/features/{id}`, `/api/v1/subcategories/{category}/{subcategory}/features` (`ApiController`) | logged-in users | `#[NoAdminRequired]`, `#[UserRateLimit]` |
-| Admin settings: `PUT /settings/comuna` (`AdminSettingsController`) | **admins only** | no `#[NoAdminRequired]` and no `#[NoCSRFRequired]`, on purpose (`AdminSettingsController.php:20`) |
+| Admin settings: `PUT /settings/comuna` (`AdminSettingsController`) | **admins only** | no `#[NoAdminRequired]` and no `#[NoCSRFRequired]`, on purpose (see the `AdminSettingsController` class docblock) |
 | CLI `occ territorio:import` (`lib/Command/Import.php`) | server operators | shell access |
 
 ## Trust boundaries
@@ -50,7 +50,7 @@ A route without `#[NoAdminRequired]` is admin-only: that attribute is what opens
   network access off; reject entity expansion and zip bombs.
 - **Stored text is untrusted on output:** names and notes are shown in Leaflet popups, and Leaflet
   writes string content with `innerHTML`. Popups get a DOM text node, which cannot be parsed as
-  markup (`TerritorioMap.vue:510`, #62). The map's credit is markup the app owns, a constant in
+  markup (`TerritorioMap.vue`, the `bindTooltip(document.createTextNode(…))` calls, #62). The map's credit is markup the app owns, a constant in
   `src/basemap.js`, never stored text.
 - **The basemap is OpenStreetMap's tile service, loaded by every user's browser** (ADR-0021). No
   setting names it, so an administrator cannot point browsers at a host of their choosing: there is

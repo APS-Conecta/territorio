@@ -28,9 +28,11 @@ whole history of this file:
    esbuild leaves a `// node_modules/.pnpm/<pkg>@<version>/…` comment at every boundary it
    merged, and that comment is the literal string that finds them. 16 more packages today,
    all inside `@geoman-io/leaflet-geoman-free`.
-3. **A literal-byte probe**, for a package with no JavaScript at all. `@mapbox/maki` reaches
-   the bundle as SVG markup that webpack inlines as an asset, and an asset module carries no
-   source-map entry whichever loader emits it. Its bytes are in `js/` or they are not, so
+3. **A literal-byte probe**, for a package that reaches the bundle as bytes. `@mapbox/maki`
+   arrives as SVG markup that webpack inlines as an asset, and an asset module carries no
+   source-map entry of its own. Today a source map does name it, through the chunk that
+   holds its `browser.esm.js`, but that is an accident of how `src/glyphs.js` imports it;
+   the bytes are the evidence that cannot go stale. They are in `js/` or they are not, so
    `tools/notices.sh` asks exactly that: it derives both forms webpack can emit — the markup
    itself, which is what `asset/source` leaves, and the file's base64, which is what
    `asset/inline` leaves inside a data URI — and greps the bundles for either.
@@ -113,7 +115,8 @@ and `nextcloud/ocp` are `require-dev` and are not distributed.
 | MIT | `vue` |
 
 `@mapbox/maki` is the probed one: eleven of its icons are imported by `src/glyphs.js` and are
-inlined into the bundle as assets rather than as modules, so no source map names it. `@nextcloud/password-confirmation`
+inlined into the bundle as assets rather than as modules, so no source map entry of an icon's
+own names it (one does name its `browser.esm.js` chunk today). `@nextcloud/password-confirmation`
 publishes a REUSE-style `LICENSES/` directory holding `MIT.txt` and `CC0-1.0.txt`.
 
 ## Also compiled into `js/`, named by no manifest of ours
@@ -139,7 +142,6 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 | MIT | `@floating-ui/utils` |
 | MIT | `floating-vue` |
 | MIT | `focus-trap` |
-| MIT | `linkifyjs` |
 | MIT | `@nextcloud/vue-select` |
 | MIT | `point-in-polygon-hao` |
 | MIT | `process` |
@@ -158,7 +160,6 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 | MIT | `@vue/runtime-core` |
 | MIT | `@vue/runtime-dom` |
 | MIT | `@vue/shared` |
-| MIT | `@vueuse/components` |
 | MIT | `@vueuse/core` |
 | MIT | `@vueuse/shared` |
 | MPL-2.0 OR Apache-2.0 | `dompurify` |
@@ -258,7 +259,7 @@ floating-vue
     Copyright (c) 2018 Guillaume Chau (alias Akryum)
 vue, @vue/reactivity, @vue/runtime-core, @vue/runtime-dom, @vue/shared
     Copyright (c) 2018-present, Yuxi (Evan) You
-@vueuse/components, @vueuse/core, @vueuse/shared
+@vueuse/core, @vueuse/shared
     Copyright (c) 2019-PRESENT Anthony Fu<https://github.com/antfu>
 vue-router
     Copyright (c) 2019-present Eduardo San Martin Morote
@@ -272,8 +273,6 @@ point-in-polygon-hao
     Copyright (c) 2021 Rowan Winsemius
 polyclip-ts
     Copyright (c) 2022 Luiz Felipe Machado Barboza
-linkifyjs
-    Copyright (c) 2024 Nick Frasser
 debounce
     Copyright (c) Ben Carpenter, Billy Moon, Josh Goldberg, Julian Gruber, Kristofer Selbekk, Matthew Mueller, Nathan Rajlich, Oleg Pudeyev, Stephen Mathieson, TJ Holowaychuk, suhaotian, ven
     Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)

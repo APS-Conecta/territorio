@@ -34,6 +34,13 @@ use OCP\Util;
  */
 #[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class PageController extends Controller {
+	/**
+	 * The one origin the basemap's tiles come from (ADR-0021). The JavaScript names
+	 * the same host in `OSM_TILE_URL` (`src/basemap.js`); the two languages cannot
+	 * share a constant, so PageControllerTest compares them.
+	 */
+	public const BASEMAP_HOST = 'https://tile.openstreetmap.org';
+
 	public function __construct(
 		IRequest $request,
 		private IInitialState $initialState,
@@ -72,13 +79,6 @@ class PageController extends Controller {
 
 		return $response;
 	}
-
-	/**
-	 * The one origin the basemap's tiles come from (ADR-0021). The JavaScript names
-	 * the same host in `OSM_TILE_URL` (`src/basemap.js`); the two languages cannot
-	 * share a constant, so PageControllerTest compares them.
-	 */
-	public const BASEMAP_HOST = 'https://tile.openstreetmap.org';
 
 	/**
 	 * The page's Content-Security-Policy: Nextcloud's own, plus the one host the

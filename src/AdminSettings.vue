@@ -42,46 +42,46 @@
 			</NcButton>
 		</NcSettingsSection>
 
-	<!--
-		ADR-0006: "An administrator can read that list as a report." A route on its
-		own does not make that true — nobody administering a clinic's Nextcloud is
-		going to curl anything — so the report is here, where the other things only
-		an administrator can see already are.
-	-->
-	<NcSettingsSection name="Exportaciones con datos de contacto"
-		description="Quién ha exportado nombres, teléfonos o correos de personas, cuándo y cuántos registros. Este registro no se borra.">
-		<NcNoteCard v-if="exportsFailed" type="error">
-			No se pudo leer el registro de exportaciones.
-			<NcButton variant="tertiary" @click="loadExports">
-				Reintentar
-			</NcButton>
-		</NcNoteCard>
+		<!--
+			ADR-0006: "An administrator can read that list as a report." A route on its
+			own does not make that true — nobody administering a clinic's Nextcloud is
+			going to curl anything — so the report is here, where the other things only
+			an administrator can see already are.
+		-->
+		<NcSettingsSection name="Exportaciones con datos de contacto"
+			description="Quién ha exportado nombres, teléfonos o correos de personas, cuándo y cuántos registros. Este registro no se borra.">
+			<NcNoteCard v-if="exportsFailed" type="error">
+				No se pudo leer el registro de exportaciones.
+				<NcButton variant="tertiary" @click="loadExports">
+					Reintentar
+				</NcButton>
+			</NcNoteCard>
 
-		<p v-else-if="exports.length === 0">
-			Todavía nadie ha exportado datos de contacto.
-		</p>
+			<p v-else-if="exports.length === 0">
+				Todavía nadie ha exportado datos de contacto.
+			</p>
 
-		<table v-else class="territorio-admin__exports">
-			<thead>
-				<tr>
-					<th>Fecha</th>
-					<th>Usuario</th>
-					<th>Formato</th>
-					<th>Registros</th>
-					<th>Alcance</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr v-for="entry in exports" :key="entry.id">
-					<td>{{ when(entry.exportedAt) }}</td>
-					<td>{{ entry.actor }}</td>
-					<td>{{ entry.format.toUpperCase() }}</td>
-					<td>{{ entry.records }}</td>
-					<td>{{ entry.scope }}</td>
-				</tr>
-			</tbody>
-		</table>
-	</NcSettingsSection>
+			<table v-else class="territorio-admin__exports">
+				<thead>
+					<tr>
+						<th>Fecha</th>
+						<th>Usuario</th>
+						<th>Formato</th>
+						<th>Registros</th>
+						<th>Alcance</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr v-for="entry in exports" :key="entry.id">
+						<td>{{ when(entry.exportedAt) }}</td>
+						<td>{{ entry.actor }}</td>
+						<td>{{ entry.format.toUpperCase() }}</td>
+						<td>{{ entry.records }}</td>
+						<td>{{ entry.scope }}</td>
+					</tr>
+				</tbody>
+			</table>
+		</NcSettingsSection>
 	</div>
 </template>
 

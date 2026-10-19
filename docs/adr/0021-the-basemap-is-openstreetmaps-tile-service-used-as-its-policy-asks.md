@@ -67,9 +67,11 @@ Each row is something the code does or a test asserts; none is left to configura
 
 ## Where the map opens
 
-The map opens on the **Comuna extent**, then the Unidad Vecinal bounds, then a Chile-wide bounds
-constant, whichever comes first. With the minimum zoom of 8, that last constant opens on the middle
-of the country at the widest zoom the map allows: a country fact, not a clinic fact.
+The map opens on the **Comuna extent**, then the Unidad Vecinal bounds, then the bounds of the
+install's own records, then a Chile-wide bounds constant, whichever comes first. The records rung
+exists because the last one cannot show a country: with the minimum zoom of 8 it opens on the middle
+of Chile at the widest zoom the map allows (a country fact, not a clinic fact), and an install that
+has data but no Comuna chosen and no Unidades Vecinales should open where its data is.
 
 The Comuna extent is derived from the install's comuna CUT, which the installer already writes. A
 table inside the app maps each CUT to a bounding box. Nothing is stored, so a comuna changed by an

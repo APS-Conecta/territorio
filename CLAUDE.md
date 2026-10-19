@@ -12,9 +12,7 @@ gate, then land. See `.claude/skills/slice/SKILL.md`.
 issues' own `## Blocked by` and `## Decided` sections dictate. See
 `.claude/skills/sprint/SKILL.md`.
 
-This paragraph used to name `/implement`, a skill that does not exist here, and to
-call `/code-review` the two-axis review, which it is not — the same failure mode as
-the docs-gate note below, so it is recorded rather than quietly swapped.
+`/review main` is the two-axis review; `/code-review` is not.
 
 Nothing in that loop blocks a merge, and no wording here should pretend otherwise:
 this is a private repo on a plan with no branch protection and one account, so the
@@ -29,14 +27,8 @@ integration and browser suites stay manual, on purpose: they need a whole instan
 The other mechanical check is the `docs` workflow, and **it passes**:
 `python3 .github/repo-docs.py check . --offline` exits 0 with 0 errors (measured
 2026-09-13). Both `profiles/aps-conecta.json` and `profiles/_base.json` — which holds
-the `levels` key — are vendored at `.github/profiles/`.
-
-This paragraph previously said the gate *"cannot pass today"* because the checker was
-vendored without its `profiles/`, exiting on `KeyError: 'levels'`. That was true when
-written and was fixed in `repo-docs` without this note being updated, so the repository
-spent an unknown stretch telling every agent its only mechanical check was broken — which
-is a reliable way to get a working gate skipped. Both profile files are canon and are
-overwritten by `--fix`, so they are still not edited here.
+the `levels` key — are vendored at `.github/profiles/`. Both are canon and are
+overwritten by `--fix`, so they are not edited here.
 
 ## Agent skills
 

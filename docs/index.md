@@ -20,7 +20,7 @@ the same fact, the one named here as its authority wins and the other should lin
 | [`../CHANGELOG.md`](../CHANGELOG.md) | history | developer, operator | What changed, slice by slice |
 | [`../THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) | reference | operator | Every third-party component in the shipped bundles, and its licence |
 | [`../LICENSE`](../LICENSE) | reference | everyone | AGPL-3.0-or-later, the whole text |
-| GitHub issues | status | everyone | What is left. The README's status section is a snapshot; the issues are the record |
+| GitHub issues | status | everyone | What is left. The README's Status section only points here; it lists nothing itself |
 
 > **Note:** The organisation's contributing doctrine and security policy are not here: they are
 > **to be** served to every repository from

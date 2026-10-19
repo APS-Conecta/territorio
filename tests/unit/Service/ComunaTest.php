@@ -42,8 +42,8 @@ final class ComunaTest extends TestCase {
 	}
 
 	/**
-	 * JsonSerializable is the sibling convention (Basemap): whatever holds a
-	 * Comuna can serialize it without knowing to call jsonSerialize() by hand.
+	 * Whatever holds a Comuna can serialize it without knowing to call
+	 * jsonSerialize() by hand.
 	 */
 	public function testAComunaSerializesItself(): void {
 		self::assertSame(

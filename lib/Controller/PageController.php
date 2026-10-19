@@ -7,7 +7,6 @@ namespace OCA\Territorio\Controller;
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Domain\Comuna;
 use OCA\Territorio\Domain\ComunaExtent;
-use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Service\ComunaConfig;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\TaxonomyService;
@@ -15,7 +14,6 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
-use OCA\Territorio\Domain\Basemap;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\FeaturePolicy;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -26,10 +24,10 @@ use OCP\Util;
 /**
  * The single page the map lives on.
  *
- * The basemap and the Comuna arrive as initial state rather than through a
- * fetch: they are a few values known before the document is written, and a
- * request for them would add a spinner, an error path and a route to no
- * purpose. The Registry's own data will need a route; this does not.
+ * The Comuna arrives as initial state rather than through a fetch: it is a few
+ * values known before the document is written, and a request for them would add
+ * a spinner, an error path and a route to no purpose. The Registry's own data
+ * will need a route; this does not.
  *
  * #[NoAdminRequired] is deliberate — the map is for everyone who can open the
  * app, and most clinic staff are not administrators.
@@ -39,7 +37,6 @@ class PageController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private IInitialState $initialState,
-		private BasemapConfig $basemapConfig,
 		private ComunaConfig $comunaConfig,
 		private TaxonomyService $taxonomy,
 		private FeatureService $features,
@@ -50,9 +47,6 @@ class PageController extends Controller {
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse {
-		$basemap = $this->basemapConfig->get();
-
-		$this->initialState->provideInitialState('basemap', $basemap->jsonSerialize());
 		$this->initialState->provideInitialState('comuna', self::comunaState($this->comunaConfig->get()));
 		$this->initialState->provideInitialState('taxonomy', $this->taxonomy->tree());
 		// The cursor is read BEFORE the Features, and the order matters. Read
@@ -69,22 +63,7 @@ class PageController extends Controller {
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-main');
 
 		$response = new TemplateResponse(Application::APP_ID, 'index');
-
-		// The policy is derived from the same setting the basemap comes from, so
-		// repointing it cannot leave the map blocked by a stale host (ADR-0004).
-		//
-		// WHICH directive follows from how the browser fetches it, and getting
-		// that wrong fails silently in the worst way: the host is named, the
-		// policy reads as though it allowed the basemap, and the map is blank.
-		// Raster tiles are <img> loads — `img-src`. A PMTiles archive is read
-		// with `fetch` and Range requests — `connect-src`.
-		$csp = new ContentSecurityPolicy();
-		if ($basemap->kind() === Basemap::KIND_PMTILES) {
-			$csp->addAllowedConnectDomain($basemap->cspHost());
-		} else {
-			$csp->addAllowedImageDomain($basemap->cspHost());
-		}
-		$response->setContentSecurityPolicy($csp);
+		$response->setContentSecurityPolicy(self::contentSecurityPolicy());
 
 		// Its sibling, attached the way core attaches the two together: the page
 		// grants geolocation to itself, or «¿Dónde estoy?» is refused before the
@@ -92,6 +71,31 @@ class PageController extends Controller {
 		$response->setFeaturePolicy(self::geolocationPolicy());
 
 		return $response;
+	}
+
+	/**
+	 * The one origin the basemap's tiles come from (ADR-0021). The JavaScript names
+	 * the same host in `OSM_TILE_URL` (`src/basemap.js`); the two languages cannot
+	 * share a constant, so PageControllerTest compares them.
+	 */
+	public const BASEMAP_HOST = 'https://tile.openstreetmap.org';
+
+	/**
+	 * The page's Content-Security-Policy: Nextcloud's own, plus the one host the
+	 * basemap's images come from.
+	 *
+	 * Tiles are <img> loads, so the host goes in `img-src` and nowhere else. A
+	 * host named in the wrong directive reads as though it allowed the map and
+	 * leaves it blank, and nothing is fetched cross-origin any more, so there is
+	 * no `connect-src` domain to add.
+	 *
+	 * Public and static for the same reason as geolocationPolicy().
+	 */
+	public static function contentSecurityPolicy(): ContentSecurityPolicy {
+		$policy = new ContentSecurityPolicy();
+		$policy->addAllowedImageDomain(self::BASEMAP_HOST);
+
+		return $policy;
 	}
 
 	/**

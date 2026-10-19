@@ -1,11 +1,10 @@
 <template>
-	<div class="territorio-map"
-		:class="{ 'territorio-map--vector': basemap.kind === 'pmtiles' }">
+	<div class="territorio-map">
 		<NcNoteCard v-if="basemapUnreachable && !basemapNoticeDismissed"
 			type="warning"
 			class="territorio-map__notice">
 			No se pudo cargar el fondo de mapa. El mapa sigue disponible; solo falta
-			{{ basemap.kind === 'pmtiles' ? 'el dibujo de fondo' : 'la imagen de fondo' }}.
+			la imagen de fondo.
 			<NcButton variant="tertiary" @click="basemapNoticeDismissed = true">
 				Ocultar
 			</NcButton>
@@ -55,7 +54,7 @@ import { addBasemap, OSM_ATTRIBUTION } from '../basemap.js'
 import { glyphFor } from '../glyphs.js'
 import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
-import { clusterIcon, escapeHtml, isApproximate, pinIcon } from '../pins.js'
+import { clusterIcon, isApproximate, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
 import { initialView } from '../extent.js'
 import {
@@ -146,16 +145,12 @@ export default {
 
 	data() {
 		return {
-			basemap: loadState('territorio', 'basemap'),
 			// The Comuna this install serves and its extent (ADR-0021), for the opening view.
 			comuna: loadState('territorio', 'comuna'),
-			// The basemap's latest reachability verdict, announced by basemap.js
-			// only when it changes. Raster keeps its old latch — only «no tile
-			// has ever loaded» is a verdict, a mid-session blip is retryTile's
-			// business and not the banner's. A PMTiles archive is probed on a
-			// retrying ladder and re-checked as the view moves, so this can
-			// clear without a reload. The map, the pins and everything drawn on
-			// top keep working whichever way it points.
+			// The basemap's latest reachability verdict, announced by basemap.js.
+			// Only «no tile has ever loaded» is a verdict, a mid-session blip is
+			// retryTile's business and not the banner's. The map, the pins and
+			// everything drawn on top keep working whichever way it points.
 			basemapUnreachable: false,
 			// Whether the person has already read the basemap warning and sent
 			// it away. The verdict itself stays in `basemapUnreachable` — the
@@ -185,17 +180,6 @@ export default {
 	},
 
 	computed: {
-		/**
-		 * OpenStreetMap tiles get OpenStreetMap's own link, because that markup is
-		 * ours and its licence requires the credit. Anything an administrator
-		 * typed is text, escaped — Leaflet writes attribution with innerHTML.
-		 */
-		attributionHtml() {
-			return this.basemap.usesOpenStreetMap
-				? OSM_ATTRIBUTION
-				: escapeHtml(this.basemap.attribution)
-		},
-
 		/** Shared with the list, so a marker can never disagree with its legend. */
 		subcategories() {
 			return indexSubcategories(this.taxonomy)
@@ -313,8 +297,8 @@ export default {
 		})
 		this.map.fitBounds(bounds, { padding: [16, 16], animate: false })
 
-		addBasemap(this.map, this.basemap, {
-			attribution: this.attributionHtml,
+		addBasemap(this.map, {
+			attribution: OSM_ATTRIBUTION,
 			onLoaded: () => { this.basemapUnreachable = false },
 			onFailed: () => { this.basemapUnreachable = true },
 		})
@@ -910,29 +894,6 @@ export default {
  */
 .leaflet-tile-pane {
 	filter: saturate(0.55);
-}
-
-/*
- * The Protomaps basemap, and ONLY it, is lifted as well as desaturated.
- *
- * This is the "moves all of them at once" the note above warns about, done on
- * purpose and with all of them re-measured (ADR-0019, map-legibility § 2.2).
- * The reason it is needed: Protomaps `light` earth is darker than the raster
- * land every § 2 ratio was taken over, which alone drops the worst dot-on-tint
- * pair to 2.65:1 — under WCAG 1.4.11's 3:1 and under the 3.04:1 it replaces.
- * At 1.09 that pair reads 3.14:1, and every other measured ratio comes out
- * BETTER than it was on raster: park 2.98:1 against 2.60:1, water 2.63:1
- * against 2.20:1, the dark-theme label still invisible at 1.08:1 so § 2's
- * "labels follow the tile" rule stands, and the hairline over the dark page
- * background untouched at 1.87:1 because this filter is on the tile pane and
- * the page is not in it.
- *
- * Scoped to the vector basemap so the raster path keeps exactly the numbers
- * § 2 documents for it — a clinic still serving `{z}/{x}/{y}` tiles has not
- * agreed to a re-measurement.
- */
-.territorio-map--vector .leaflet-tile-pane {
-	filter: saturate(0.55) brightness(1.09);
 }
 
 /*

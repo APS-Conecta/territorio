@@ -10,7 +10,7 @@ namespace OCA\Territorio\Domain;
  * ODbL asks for the LICENCE to be named and not only the source, and it asks it
  * of whoever passes the data on — which is what a clinic does the day it hands a
  * Sector file to the municipality, the normal reason the app offers three export
- * formats at all. Crediting OSM on the map (`Basemap`) covers the tiles a browser
+ * formats at all. Crediting OSM on the map (`src/basemap.js`) covers the tiles a browser
  * fetched and says nothing about the records inside a file.
  *
  * Here rather than in each writer because "this export holds OSM data" is one
@@ -27,10 +27,10 @@ final class OsmAttribution {
 	 * the attribution OSM asks for verbatim, and this app already renders it
 	 * unchanged on the map.
 	 *
-	 * Deliberately not `Basemap::DEFAULT_ATTRIBUTION`, which is the same text
-	 * today. That one is about tiles, and an administrator repointing the app at
-	 * their own tile server changes what it should say; this one is about the
-	 * data in the file, and nobody may change it.
+	 * Deliberately not the map's credit (`OSM_ATTRIBUTION` in `src/basemap.js`),
+	 * which is the same words today. That one is about tiles and is markup for
+	 * Leaflet; this one is about the data in the file, as plain text a spreadsheet
+	 * can carry, and the two have no reason to change together.
 	 */
 	public const NOTICE = '© OpenStreetMap contributors, licencia ODbL — '
 		. 'https://www.openstreetmap.org/copyright';

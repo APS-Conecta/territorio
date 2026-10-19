@@ -14,9 +14,8 @@
  * `tile.openstreetmap.org` as a P2 best-effort service under a Tile Usage Policy,
  * answers 429 when it rate-limits, and keeps a published list of applications it
  * blocked for heavy use. A tile failing now and then is the contract we accepted
- * in ADR-0004, not a fault — so recovering from one belongs here, and belongs
- * here whatever the configured tile server is: a clinic's own one drops requests
- * too, and Leaflet will not retry those either.
+ * in ADR-0004, not a fault — so recovering from one belongs here, and Leaflet
+ * will not do it.
  *
  * No dependency for this. `Leaflet.TileLayer.Fallback` is the plugin that exists
  * and it solves a different problem (substitute a lower zoom for a 404), while

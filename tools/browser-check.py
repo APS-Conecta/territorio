@@ -294,10 +294,13 @@ def the_basemap_is_painted(page, failures):
     page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
 
 
-# La Florida (CUT 13110), the Comuna extent T2a's table holds for it, as
-# [[south, west], [north, east]]. The table is outward-rounded to 3 decimals, so the
-# check below asks only that the view CONTAINS this box's centre, never that it equals it.
-LA_FLORIDA = ("13110", "La Florida", (-33.571, -70.615), (-33.491, -70.436))
+# Concepción (CUT 08101) and the Comuna extent the app's table holds for it, as
+# [[south, west], [north, east]]. Chosen because it is far from Santiago: a map that still
+# opened on the old hard-coded view, or on the imported Unidades Vecinales, would be
+# looking at the wrong city, and so the check could not pass by luck. The table is
+# outward-rounded to 3 decimals, so the check asks only that the view CONTAINS this box's
+# centre, never that it equals it.
+CONCEPCION = ("08101", "Concepción", (-36.928, -73.092), (-36.764, -72.844))
 
 
 def _tile_corners(url):
@@ -329,7 +332,7 @@ def the_map_opens_on_the_comuna_extent(page, tiles, failures):
     serving the old value. It is last in the full run for the same reason from the other
     side: the Comuna stays chosen afterwards, which refuses other comunas' imports.
     """
-    cut, name, (south, west), (north, east) = LA_FLORIDA
+    cut, name, (south, west), (north, east) = CONCEPCION
     token = page.evaluate("() => document.head.dataset.requesttoken")
     saved = page.request.put(
         f"{BASE}/apps/territorio/settings/comuna",

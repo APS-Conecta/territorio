@@ -294,6 +294,31 @@ def the_basemap_is_painted(page, failures):
     page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
 
 
+def the_instance_starts_without_a_comuna(page, failures):
+    """Whether the instance is the unprovisioned one the gate assumes; says so when it is not.
+
+    A chosen Comuna opens the map on its extent (ADR-0021) and every check below was written
+    for the map opening on the records it seeds. Nothing in the app can unchoose a Comuna, and
+    the extent check leaves one chosen, so a second run on the same instance would fail
+    somewhere far from the cause. Better to stop here and name it.
+    """
+    chosen = page.evaluate(
+        """() => {
+            const element = document.getElementById('initial-state-territorio-comuna')
+            return element === null ? null : JSON.parse(atob(element.value)).chosen
+        }""",
+    )
+    if chosen is None:
+        failures.append("the page carries no comuna at #initial-state-territorio-comuna")
+    elif chosen:
+        failures.append(
+            "the instance already has a Comuna chosen, which opens the map somewhere these checks "
+            "do not expect: start from a clean one with `make instance-clean && make instance-up`",
+        )
+
+    return chosen is False
+
+
 # Concepción (CUT 08101) and the Comuna extent the app's table holds for it, as
 # [[south, west], [north, east]]. Chosen because it is far from Santiago: a map that still
 # opened on the old hard-coded view, or on the imported Unidades Vecinales, would be
@@ -329,8 +354,9 @@ def the_map_opens_on_the_comuna_extent(page, tiles, failures):
     The comuna is chosen the way an administrator chooses it, through the settings
     endpoint, because that write lands in the web process itself. `occ config:app:set`
     would not: APCu is per-process (README, "Two traps"), so the page would keep
-    serving the old value. It is last in the full run for the same reason from the other
-    side: the Comuna stays chosen afterwards, which refuses other comunas' imports.
+    serving the old value. Nothing can unchoose a Comuna, so this is last in the full run
+    and the next run must start from a clean instance, which
+    `the_instance_starts_without_a_comuna` insists on.
     """
     cut, name, (south, west), (north, east) = CONCEPCION
     token = page.evaluate("() => document.head.dataset.requesttoken")
@@ -7294,6 +7320,9 @@ def main():
 
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+        if not the_instance_starts_without_a_comuna(page, failures):
+            browser.close()
+            return _report(errors, failures)
 
         # `--only extent` is the quick check of where the map opens on a chosen Comuna.
         if ONLY == "extent":

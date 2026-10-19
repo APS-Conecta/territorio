@@ -45,9 +45,10 @@ Everything runs from this directory. Steps 1 and 4–6 need Docker; steps 2 and 
 2. `npm install` — once, on the host.
 3. `make build` — webpack writes `js/territorio-{main,admin}.js`.
 4. `make instance-up` — a throwaway Nextcloud 34 + PostgreSQL 18 instance with this directory
-   bind-mounted as the app, pointed at the same self-hosted PMTiles basemap production runs
-   (`TILE_URL` in the Makefile), so the branch the clinic runs is the branch the gate runs. It
-   prints `Instance ready at http://localhost:8083 (admin / dev)`.
+   bind-mounted as the app, serving the app's default basemap (OpenStreetMap's tiles) and
+   clearing any tile setting an earlier run pinned. It prints
+   `Instance ready at http://localhost:8083 (admin / dev)`. The browser gate answers the tile
+   requests itself and never contacts OpenStreetMap.
 5. Open <http://localhost:8083>, log in as `admin` / `dev`, and pick **Territorio** in the header.
 6. `make instance-clean` when you are done — it removes the containers and their volumes.
 

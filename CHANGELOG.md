@@ -195,6 +195,17 @@ The basemap stops being somebody else's public service.
 
 ### Fixed
 
+- **The dev map is no longer grey, and the browser gate no longer touches OpenStreetMap.**
+  `make instance-up` pinned `tile_url` to a PMTiles archive on a tailnet host, so the map was
+  blank on any machine that cannot reach it, and `protomaps-leaflet` raised no error to say so.
+  The instance now serves the app's own default and clears what an earlier run pinned. The
+  gate answers OpenStreetMap's tile requests from a generated tile, refuses anything else
+  addressed to `openstreetmap.org` and resolves the host nowhere as a second layer, so a run
+  never contacts the tile service (its Tile Usage Policy forbids scraping). It also gives the
+  dev `admin` a status: Nextcloud's front end logs a console error for a user with none, and the
+  gate counts console errors. A full run on a clean instance now exits 0 (it exited 1 on three
+  basemap failures); the two cadastre SKIPs remain.
+
 - **Typing a street no longer empties the list (0.77.4).** The top search box also wrote the
   list's filter, so a street name (which no record carries) showed «Nada coincide con la búsqueda».
   It now only offers matches (looking through the Capas-filtered set, not the list's query), and

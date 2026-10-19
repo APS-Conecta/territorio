@@ -1,6 +1,8 @@
 # The basemap is a self-hosted PMTiles archive, not a public tile service
 
-- **Status:** accepted (2026-09-18)
+- **Status:** superseded by [ADR-0021](0021-the-basemap-is-openstreetmaps-tile-service-used-as-its-policy-asks.md)
+  (2026-10-18); accepted 2026-09-18. The PMTiles archive and the raster setting are replaced by
+  one constant OpenStreetMap tile URL. The record below is left as written.
 - **Extends:** [ADR-0004](0004-openstreetmap-is-tiles-and-offline-imports-only.md), which made the
   basemap URL an administrator setting and defaulted it to OpenStreetMap's public tile service.
   That default is what changed. Everything ADR-0004 says about *not* talking to OSM at runtime, and

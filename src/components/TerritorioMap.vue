@@ -57,6 +57,7 @@ import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
 import { clusterIcon, escapeHtml, isApproximate, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
+import { initialView } from '../extent.js'
 import {
 	boundsOf,
 	colourOf,
@@ -64,16 +65,6 @@ import {
 	UNIDAD_VECINAL_SLUG,
 	UNKNOWN_COLOUR,
 } from '../taxonomy.js'
-
-/**
- * Where the map opens before there is anything to open on.
- *
- * Once the comuna's Unidades Vecinales are imported (issue #9) the map fits
- * their extent instead, so a clinic sees its own territory rather than a guess
- * at central Santiago. This stays for the install that has not imported them
- * yet — an empty map somewhere plausible beats an empty map over the ocean.
- */
-const INITIAL_VIEW = { center: [-33.52, -70.58], zoom: 12 }
 
 /** Between overlayPane (400) and markerPane (600): above shapes, below pins. */
 const PICKABLE_PANE = 'territorio-pickable'
@@ -155,6 +146,8 @@ export default {
 	data() {
 		return {
 			basemap: loadState('territorio', 'basemap'),
+			// The Comuna this install serves and its extent (ADR-0021), for the opening view.
+			comuna: loadState('territorio', 'comuna'),
 			// The basemap's latest reachability verdict, announced by basemap.js
 			// only when it changes. Raster keeps its old latch — only «no tile
 			// has ever loaded» is a verdict, a mid-session blip is retryTile's
@@ -270,8 +263,6 @@ export default {
 
 	mounted() {
 		this.map = L.map(this.$refs.container, {
-			center: INITIAL_VIEW.center,
-			zoom: INITIAL_VIEW.zoom,
 			// Leaflet's default puts the zoom control top-left, under Nextcloud's
 			// app navigation toggle on narrow screens.
 			zoomControl: false,
@@ -301,21 +292,24 @@ export default {
 		this.map.createPane(PICKABLE_PANE);
 		this.map.getPane(PICKABLE_PANE).style.zIndex = 450
 
-		// Open on the comuna this install serves, measured from the Unidades
-		// Vecinales it imported — they are ordinary Features, so the client already
-		// holds them and no round trip is needed to find out where we are.
+		// Open on the Comuna this install serves (ADR-0021): its extent when the CUT is
+		// in the table, otherwise the Unidades Vecinales it imported — ordinary Features,
+		// so the client already holds them — otherwise continental Chile. Nothing here
+		// restricts where a person may pan afterwards.
 		//
 		// Set BEFORE a single layer is added, and without animation. A zoom that
 		// happens while layers exist runs Leaflet's animation over each of them,
 		// and any redraw landing inside that flight leaves it holding a layer whose
 		// map is already gone. Moving the view first means there is nothing to
-		// animate over.
+		// animate over. The map is created without a view, so this call is also what
+		// gives the layers added below something to join.
 		// The Unidad Vecinal is the division whose boundaries describe the comuna
 		// (CONTEXT.md).
-		const comuna = boundsOf(this.features, this.subcategories, UNIDAD_VECINAL_SLUG)
-		if (comuna !== null) {
-			this.map.fitBounds(comuna, { padding: [16, 16], animate: false })
-		}
+		const { bounds } = initialView({
+			extent: this.comuna.extent,
+			unitBounds: boundsOf(this.features, this.subcategories, UNIDAD_VECINAL_SLUG),
+		})
+		this.map.fitBounds(bounds, { padding: [16, 16], animate: false })
 
 		addBasemap(this.map, this.basemap, {
 			attribution: this.attributionHtml,

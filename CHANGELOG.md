@@ -121,6 +121,15 @@ The basemap stops being somebody else's public service.
 
 ### Added
 
+- **The map opens on the Comuna it serves (0.78.0).** With a Comuna chosen, the map opens on its
+  extent, a box the app derives from the comuna's CUT code from a table it ships (ADR-0021), so
+  an install provisioned before this release opens in the right place without being provisioned
+  again, and a comuna an administrator changes moves the opening view at once. A comuna of
+  several islands or pieces of land opens on the part where its health establishments are. The
+  Unidad Vecinal bounds remain the next source, then the middle of the country; the hard-coded
+  view of central Santiago is gone, which did not belong in a product that serves any comuna.
+  Nothing restricts where a person may pan afterwards.
+
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom
   control, Leaflet's own `locate({ watch: true })`, and no dependency.
 

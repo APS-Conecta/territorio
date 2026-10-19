@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Controller;
 
 use OCA\Territorio\Controller\AdminSettingsController;
-use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\AppFramework\Http;
 use OCP\IRequest;
@@ -26,7 +25,6 @@ final class AdminSettingsControllerTest extends TestCase {
 		$this->comunaConfig = $this->createMock(ComunaConfig::class);
 		$this->controller = new AdminSettingsController(
 			$this->createStub(IRequest::class),
-			$this->createStub(BasemapConfig::class),
 			$this->comunaConfig,
 		);
 	}

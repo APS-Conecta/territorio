@@ -36,3 +36,11 @@ rewrite; it was right. Only the default moved.
   ADR-0019**: the archive is served beside the app, so the basemap reaches exactly as far as the
   app does. The second half stands and is load-bearing — the map must stay usable, with features
   and geometry intact, when the basemap fails to load.
+
+## Addendum (2026-10-18): the runtime-tiles consequence is amended by ADR-0021
+
+[ADR-0021](0021-the-basemap-is-openstreetmaps-tile-service-used-as-its-policy-asks.md) supersedes
+ADR-0019 and, with it, the first paragraph's mechanism: the tile URL stops being an administrator
+setting, and the PMTiles route is gone. The basemap is OpenStreetMap's tile service, loaded by the
+browser as that service's policy asks. What this ADR decided about OSM and the app still stands:
+tiles and offline imports only, no Overpass calls of the app's own, no write-back to OSM.

@@ -13,12 +13,6 @@ APS ?= $(CURDIR)/../aps-common
 DOCKER := docker run --rm -v "$(CURDIR)":/app -v "$(APS)":/aps-common -w /app $(IMG)
 COMPOSE := docker compose -f compose.dev.yaml
 OCC := $(COMPOSE) exec --user www-data nextcloud php occ
-# The basemap production runs — the self-hosted PMTiles archive, not stock OSM.
-# Every `usesOpenStreetMap === false` branch (attribution escaping, CSP
-# connect-src, the archive watch) was dead code to 762 tests and a green gate
-# while the clinic crashed on it (review L1-01/L1-03). The tailnet URL is fine
-# here: the repo is private and the archive is served read-only.
-TILE_URL ?= https://srv1713185.tail8db35e.ts.net:10009/chile.pmtiles
 
 .PHONY: test test-image test-integration test-js test-browser deps build watch lint lint-js notices clean instance-up instance-occ instance-down instance-clean aps-sync aps-drift openapi
 
@@ -143,15 +137,21 @@ clean:
 # 3600 s) — every /apps/territorio/ page answers 404 until they restart
 # (measured on farmacia-dev, farmacia#2). Provisioning owns the step rather
 # than leaving it to memory.
+#
+# The basemap is OpenStreetMap's own tile service, which is what the app serves when
+# nothing is configured. The two deletes clear what an earlier `instance-up` pinned (a
+# PMTiles archive on a tailnet host), which a persisted volume would otherwise keep serving
+# to a browser that cannot reach it. The deletes are idempotent: a missing key is not an error.
 instance-up:
 	$(COMPOSE) up -d --wait
 	$(OCC) app:enable territorio
-	$(OCC) config:app:set territorio tile_url --value $(TILE_URL)
+	$(OCC) config:app:delete territorio tile_url
+	$(OCC) config:app:delete territorio tile_attribution
 	$(COMPOSE) restart nextcloud
 	$(COMPOSE) up -d --wait
-	@echo "Instance ready at http://localhost:8083 (admin / dev) — basemap $(TILE_URL)"
+	@echo "Instance ready at http://localhost:8083 (admin / dev)"
 
-# Run any occ command:  make instance-occ CMD="config:app:get territorio tile_url"
+# Run any occ command:  make instance-occ CMD="config:app:get territorio comuna_cut"
 instance-occ:
 	$(OCC) $(CMD)
 

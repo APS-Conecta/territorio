@@ -35,8 +35,10 @@ import re
 import subprocess
 import sys
 import unicodedata
+import struct
 import uuid
 import zipfile
+import zlib
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -184,27 +186,68 @@ def served_basemap(page):
     )
 
 
-def the_basemap_production_runs_is_painted(page, failures):
-    """The self-hosted PMTiles basemap draws, credited as served (review L1-03).
+# OpenStreetMap's tile service. Its Tile Usage Policy forbids scraping, and a gate that
+# loads real tiles is an automated client of that service on every run, so the gate never
+# reaches it: every request to the host is answered here, and anything else addressed to
+# openstreetmap.org is refused.
+OSM_HOST = re.compile(r"openstreetmap\.org")
+OSM_TILE = re.compile(r"^https://tile\.openstreetmap\.org/\d+/\d+/\d+\.png$")
 
-    Production runs a PMTiles archive, not OpenStreetMap's tile service; every
-    check here ran against stock OSM, so the `usesOpenStreetMap === false`
-    branch — attribution escaping, the CSP `connect-src` derivation, the
-    archive watch — was dead code to 762 tests and a green gate while every
-    load in the clinic died in the ErrorBoundary on a missing export. This is
-    the branch, exercised: served state compared with what the map painted, the
-    way `every_category_reaches_the_browser_with_its_colour` does.
+# OSM's land colour and a one-pixel grid in a slightly darker one, so a tile that painted
+# has more than one colour and the seams between tiles are visible in a screenshot.
+OSM_LAND = (0xF2, 0xEF, 0xE9)
+OSM_GRID = (0xD9, 0xD4, 0xCC)
 
-    A painted vector tile is the only direct proof that the CSP lets the
-    archive through: a blocked fetch logs a console error and paints nothing.
-    The attribution is compared as text against the SERVED string — the
-    escaped control is the exact line that crashed — and the unreachable
-    banner must be absent once a tile has painted.
 
-    Failed, not skipped, on an instance pointed at OSM (#141): the finding is
-    that the gate must exercise the branch production runs, and a skip would
-    have recreated the blind spot under a nicer name. `make instance-up`
-    provisions the archive, so a gate against OSM is a provisioning mistake.
+def osm_tile_png():
+    """A 256 x 256 PNG tile in OpenStreetMap's land colour, encoded with the standard library."""
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    rows = b"".join(
+        b"\x00" + b"".join(bytes(OSM_GRID if x == 0 or y == 0 else OSM_LAND) for x in range(256))
+        for y in range(256)
+    )
+    header = struct.pack(">IIBBBBB", 256, 256, 8, 2, 0, 0, 0)
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def mock_osm(context):
+    """Answer OpenStreetMap's tile requests with a generated tile; return the requests seen.
+
+    Playwright runs the LAST registered route that matches, so the refusal goes first and
+    the tile answer second. Refusing everything else on the host means a link to the
+    copyright page, or a tile URL that stopped matching, fails loudly instead of leaving
+    the machine.
+    """
+    seen = []
+    png = osm_tile_png()
+
+    def answer(route):
+        seen.append(route.request)
+        route.fulfill(status=200, content_type="image/png", body=png,
+                      headers={"cache-control": "max-age=3600"})
+
+    context.route(OSM_HOST, lambda route: route.abort())
+    context.route(OSM_TILE, answer)
+
+    return seen
+
+
+def the_basemap_is_painted(page, failures):
+    """OpenStreetMap's tiles draw, credited as served.
+
+    The served state is compared with what the map painted, the way
+    `every_category_reaches_the_browser_with_its_colour` does. A raster tile is an <img>
+    that has loaded, so paint is a tile with width, not a tile element: Leaflet creates
+    the element before the request has come back.
+
+    Failed, not skipped, on an instance serving anything else: this gate answers tile
+    requests from a mock of OpenStreetMap's service, so another URL would reach a host
+    the mock refuses. `make instance-up` clears what an earlier run pinned.
     """
     served = served_basemap(page)
     if served is None:
@@ -214,55 +257,31 @@ def the_basemap_production_runs_is_painted(page, failures):
         )
         return
 
-    if served["kind"] != "pmtiles":
+    if not served["usesOpenStreetMap"]:
         failures.append(
-            f"the instance serves a {served['kind']} basemap ({served['url']}), not the "
-            f"PMTiles archive production runs — the branch the clinic runs went unchecked; "
-            f"provision it with `make instance-up` (L1-03, #141)",
+            f"the instance serves a {served['kind']} basemap ({served['url']}), not "
+            f"OpenStreetMap's tiles — `make instance-up` clears a tile setting an earlier run pinned",
         )
         return
 
-    if page.locator(".territorio-map.territorio-map--vector").count() == 0:
-        failures.append(
-            "the served basemap is pmtiles but the map root does not carry "
-            "«territorio-map--vector», so the map is not drawing the branch it was served",
-        )
-
-    # Paint, not presence: `protomaps-leaflet` creates the tile canvas and
-    # fills it with the flavor's background whether or not the fetch behind
-    # it succeeded (src/basemap.js records why there is no `tileerror` to
-    # hook). Measured with the archive blocked at the network layer: 24
-    # canvases, every one a single flat colour; healthy, 85–141 colours per
-    # tile. A tile with more than one colour is a tile the archive drew.
-    # Sampled every 97th pixel and polled twice a second: reading every pixel
-    # of every tile at frame rate crashed the renderer on the dev box.
     try:
         page.wait_for_function(
-            """() => [...document.querySelectorAll('canvas.leaflet-tile')].some((canvas) => {
-                const context = canvas.getContext('2d')
-                if (context === null || canvas.width === 0) return false
-                const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
-                const first = data[0] << 16 | data[1] << 8 | data[2]
-                for (let i = 4 * 97; i < data.length; i += 4 * 97) {
-                    if ((data[i] << 16 | data[i + 1] << 8 | data[i + 2]) !== first) return true
-                }
-                return false
-            })""",
+            """() => [...document.querySelectorAll('img.leaflet-tile')].some((tile) =>
+                tile.src.startsWith('https://tile.openstreetmap.org/') && tile.complete && tile.naturalWidth > 0)""",
             timeout=10_000,
             polling=500,
         )
     except PlaywrightTimeout:
         failures.append(
-            f"no vector tile painted within 10 s from {served['url']} — the archive is "
-            f"unreachable from this browser or the page's CSP connect-src does not allow it",
+            f"no tile painted within 10 s from {served['url']} — the page asked for tiles the "
+            f"gate's mock did not answer, or its CSP refused them",
         )
 
     attribution = page.locator(".leaflet-control-attribution")
     painted = attribution.first.inner_text() if attribution.count() > 0 else ""
     if served["attribution"] not in painted:
         failures.append(
-            f"the map credits {painted!r} but the app served {served['attribution']!r} — "
-            f"the escaped attribution (TerritorioMap's attributionHtml) did not reach the control",
+            f"the map credits {painted!r} but the app served {served['attribution']!r}",
         )
 
     if page.get_by_text("No se pudo cargar el fondo de mapa").count() > 0:
@@ -7174,8 +7193,12 @@ def main():
     failures = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        # The resolver rule is the second layer behind the routes: if a request ever slipped
+        # past them it would fail to resolve, not reach OpenStreetMap.
+        browser = p.chromium.launch(args=["--host-resolver-rules=MAP *.openstreetmap.org ~NOTFOUND"])
+        context = browser.new_context(viewport={"width": 1400, "height": 900})
+        mock_osm(context)
+        page = context.new_page()
         errors = console_errors(page)
 
         log_in(page)
@@ -7188,10 +7211,8 @@ def main():
             browser.close()
             return _report(errors, failures)
 
-        # Before anything pans or draws: the basemap production runs
-        # is the branch the clinic's crash lived on, and nothing else here
-        # opens it.
-        run(the_basemap_production_runs_is_painted, page, failures)
+        # Before anything pans or draws: the basemap is what every later check stands on.
+        run(the_basemap_is_painted, page, failures)
         # Right after it, before anything pans or draws: the first fix recentres
         # the map to zoom 16, and the check puts the view back with a reload.
         run(the_locate_control_can_ask_where_the_person_is, page, errors, failures)
@@ -7362,20 +7383,7 @@ def main():
     return _report(errors, failures)
 
 
-# What a page logs when the basemap archive cannot be reached from this machine.
-# The default archive sits behind a tailnet; off it, every run logs these. Said
-# out loud at the end rather than failed on or silently dropped.
-UNREACHABLE = re.compile(r"ERR_CONNECTION_REFUSED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_TIMED_OUT"
-                         r"|Failed to fetch")
-
-
 def _report(errors, failures):
-    unreachable = [line for line in errors if UNREACHABLE.search(line)]
-    if ONLY == "redesign" and unreachable:
-        errors = [line for line in errors if line not in unreachable]
-        skip(f"{len(unreachable)} console error(s) that look like the basemap archive being "
-             "unreachable from this machine; the redesign check does not depend on tiles")
-
     if errors:
         failures.append(f"console errors: {errors[:5]}")
 

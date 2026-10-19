@@ -62,15 +62,16 @@ RUN = uuid.uuid4().hex[:6]
 REDESIGN = uuid.uuid4().hex[:6]
 
 # `--only redesign` runs the topbar check alone, which is the quick one, and
-# `--only extent` the opening-view check alone. The rest
+# `--only extent` the opening-view check alone and `--only tiles` the basemap checks
+# (the topbar check seeds the records they search for). The rest
 # drives the docked panel: `to_list()` puts every check back on the list, and the
 # helpers above it (`open_first_row`, `edit`, `open_capas`, `toggle_division`)
 # are the new layout's way to what the old sidebar and Capas column showed at once.
 ONLY = None
 if "--only" in sys.argv:
     ONLY = sys.argv[sys.argv.index("--only") + 1:][:1] and sys.argv[sys.argv.index("--only") + 1]
-    if ONLY not in ("redesign", "extent"):
-        sys.exit("usage: browser-check.py [--only redesign|extent]")
+    if ONLY not in ("redesign", "extent", "tiles"):
+        sys.exit("usage: browser-check.py [--only redesign|extent|tiles]")
 
 # What a GeoJSON written WITHOUT contact fields is marked with, so the check can
 # tell a partial export from a complete one. Kept in step with
@@ -7593,6 +7594,9 @@ def main():
         run(the_search_flies_without_a_tile_storm, page, tiles, failures)
         run(the_map_survives_its_tiles_failing_and_recovers, page, tiles, failures)
         run(the_blocked_basemap_is_invisible_to_the_app, page, tiles, failures)
+        if ONLY == "tiles":
+            browser.close()
+            return _report(errors, failures)
         # Right after it, before anything pans or draws: the first fix recentres
         # the map to zoom 16, and the check puts the view back with a reload.
         run(the_locate_control_can_ask_where_the_person_is, page, errors, failures)
@@ -7782,6 +7786,10 @@ def _report(errors, failures):
 
     if ONLY == "extent":
         print("OK    the map opens on the chosen Comuna's extent")
+        return 0
+
+    if ONLY == "tiles":
+        print("OK    the tiles follow OpenStreetMap's policy and the credit stays readable")
         return 0
 
     print("OK    a Place and a Sector were created in the browser and survived a reload")

@@ -28,8 +28,8 @@ use OCP\Util;
  *
  * The basemap and the Comuna arrive as initial state rather than through a
  * fetch: they are a few values known before the document is written, and a
- * request for them would add a spinner, an error path and a route to no purpose. The Registry's own
- * data will need a route; this does not.
+ * request for them would add a spinner, an error path and a route to no
+ * purpose. The Registry's own data will need a route; this does not.
  *
  * #[NoAdminRequired] is deliberate — the map is for everyone who can open the
  * app, and most clinic staff are not administrators.
@@ -137,11 +137,8 @@ class PageController extends Controller {
 	 * @return array{cut: string, name: string, chosen: bool, extent: ?array{array{float, float}, array{float, float}}}
 	 */
 	public static function comunaState(Comuna $comuna): array {
-		return [
-			'cut' => $comuna->cut,
-			'name' => $comuna->name,
-			'chosen' => $comuna->isChosen(),
+		return array_merge($comuna->jsonSerialize(), [
 			'extent' => ComunaExtent::forCut($comuna->cut)?->jsonSerialize(),
-		];
+		]);
 	}
 }

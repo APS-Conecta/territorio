@@ -27,6 +27,7 @@ is shaped like that; revisit if one is.
 import argparse
 import csv
 import hashlib
+import io
 import math
 import os
 import struct
@@ -49,14 +50,17 @@ SHP_MEMBER = 'COMUNAS/COMUNAS_v1.shp'
 DBF_MEMBER = 'COMUNAS/COMUNAS_v1.dbf'
 POLYGON = 5  # shapefile shape type
 
-# Places people live that the register lacks, counted as one more establishment.
-# The register is the primary-care trim of DEIS and holds nothing in Cabo de
-# Hornos, so the rule would fall back to its largest part, Hoste island, while
-# Puerto Williams is on Navarino. Add a place only when the rule picks uninhabited
-# land and a register row cannot fix it. A place must be inside its part: the
-# boundary is drawn at the waterline and the town's own coordinate falls just
-# outside it, so this one is taken 700 m inland.
-EXTRA_PLACES = {'12201': [(-67.6167, -54.9400)]}  # Puerto Williams
+# Places people live that the part choice would otherwise miss, each counted as
+# one more establishment: cut -> (why, [(lon, lat)]). They are listed in the
+# generated header. Add one only when the rule picks the wrong land and a register
+# row cannot fix it. A place must be inside its part: boundaries are drawn at the
+# waterline, so take the point a little inland and check it with contains().
+EXTRA_PLACES = {
+    '10210': ('Achao, the capital, is on the largest island, but the register puts 2 of 10 posts on a smaller one; '
+              'with Achao the two tie and the larger wins', [(-73.4936, -42.4719)]),
+    '12201': ('Puerto Williams is on Navarino and the register has no post in the comuna, so Hoste would win; '
+              'the point is 700 m inland of the town', [(-67.6167, -54.9400)]),
+}
 
 
 class Refused(Exception):
@@ -65,19 +69,14 @@ class Refused(Exception):
 
 # ---- reading the inputs ---------------------------------------------------
 
-def verify_sha256(path, expected):
-    digest = hashlib.sha256()
-    with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(1 << 20), b''):
-            digest.update(chunk)
-    if digest.hexdigest() != expected:
-        raise Refused('%s is not the pinned file: sha256 %s, expected %s' % (path, digest.hexdigest(), expected))
-
-
 def read_boundary_zip(path, expected=ZIP_SHA256):
-    """The shapefile and its attribute table, after the hash and before anything else."""
-    verify_sha256(path, expected)
-    with zipfile.ZipFile(path) as z:
+    """The shapefile and its attribute table. The bytes hashed are the bytes parsed, and the hash comes first."""
+    with open(path, 'rb') as f:
+        data = f.read()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        raise Refused('%s is not the pinned file: sha256 %s, expected %s' % (path, actual, expected))
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
         return z.read(SHP_MEMBER), z.read(DBF_MEMBER)
 
 
@@ -125,18 +124,23 @@ def read_shp(data):
 
 
 def read_register(path):
-    """CUT -> [(lon, lat)] of the DEIS establishments, and how many had coordinates."""
+    """CUT -> [(lon, lat)] of the DEIS establishments, how many had coordinates, and the file's sha256.
+
+    The register is not pinned anywhere; its hash goes in the table's header so the
+    table says which snapshot it is reproducible against.
+    """
     by_cut, count = {}, 0
-    with open(path, encoding='utf-8', newline='') as f:
-        for row in csv.DictReader(f):
-            try:
-                lon, lat = float(row['longitud']), float(row['latitud'])
-            except ValueError:
-                continue  # no coordinates: nothing to place
-            if math.isfinite(lon) and math.isfinite(lat):
-                by_cut.setdefault(row['comuna_codigo'].strip(), []).append((lon, lat))
-                count += 1
-    return by_cut, count
+    with open(path, 'rb') as f:
+        data = f.read()
+    for row in csv.DictReader(io.StringIO(data.decode('utf-8'), newline='')):
+        try:
+            lon, lat = float(row['longitud']), float(row['latitud'])
+        except ValueError:
+            continue  # no coordinates: nothing to place
+        if math.isfinite(lon) and math.isfinite(lat):
+            by_cut.setdefault(row['comuna_codigo'].strip(), []).append((lon, lat))
+            count += 1
+    return by_cut, count, hashlib.sha256(data).hexdigest()
 
 
 # ---- the part rule --------------------------------------------------------
@@ -191,7 +195,7 @@ def build_table(shp, dbf, cuts, points_by_cut, extra=EXTRA_PLACES):
             raise Refused('comuna %s has no outer ring' % cut)
         table[cut] = {
             'name': row['COMUNA'],
-            'box': outward_box(choose_part(parts, points_by_cut.get(cut, []) + extra.get(cut, []))),
+            'box': outward_box(choose_part(parts, points_by_cut.get(cut, []) + extra.get(cut, ('', []))[1])),
             'largest_box': outward_box(max(parts, key=lambda r: abs(signed_area(r)))),
         }
     if sorted(table) != sorted(cuts):
@@ -202,9 +206,11 @@ def build_table(shp, dbf, cuts, points_by_cut, extra=EXTRA_PLACES):
 
 # ---- writing the table ----------------------------------------------------
 
-def render(table, register_sha, register_count):
+def render(table, register_sha, register_count, extra=EXTRA_PLACES):
     rows = ''.join('\t\t%r => [%s], // %s\n' % (cut, ', '.join(table[cut]['box']), table[cut]['name'])
                    for cut in sorted(table))
+    placed = ''.join(' *           %s %s: %s\n' % (cut, table[cut]['name'], extra[cut][0])
+                     for cut in sorted(extra) if cut in table)
     return '''<?php
 
 declare(strict_types=1);
@@ -224,11 +230,15 @@ namespace OCA\\Territorio\\Domain;
  * CRS:      GCS_SIRGAS-Chile degrees, used as lon/lat. Its offset from WGS84 is
  *           under a metre, far below the 3-decimal rounding (about 100 m).
  * Part:     a comuna of several islands or pieces of land has several parts. The
- *           box is that of the part holding the most DEIS establishments, and of
- *           the largest part by planar area when parts tie or none holds any.
- *           Rounded outward to 3 decimals: west and south down, east and north up.
- * Register: DEIS establishments, sha256 %(rsha)s,
- *           %(rn)d with coordinates.
+ *           box is that of the part holding the most DEIS establishments (register
+ *           rows plus the hand-placed places below), and of the largest part by
+ *           planar area when parts tie or none holds any. Rounded outward to 3
+ *           decimals: west and south down, east and north up.
+ * Placed:   hand-placed places, each counted as one more establishment
+ *           (EXTRA_PLACES in the tool):
+%(placed)s * Register: DEIS establishments, a register snapshot: sha256 %(rsha)s,
+ *           %(rn)d with coordinates. The register is not pinned anywhere, so this
+ *           table is reproducible only against exactly that file.
  * Columns:  [west, south, east, north]. BoundingBox takes (minLat, minLon,
  *           maxLat, maxLon), so ComunaExtent::of() is the one place that reorders.
  *
@@ -236,12 +246,12 @@ namespace OCA\\Territorio\\Domain;
  * Verify:     the same command with --check exits 1 if this file would change.
  */
 final class ComunaExtentTable {
-\t/** @var array<string, array{float, float, float, float}> */
+\t/** @var array<string, array{float, float, float, float}> keys are numeric strings, which PHP coerces to int where they have no leading zero */
 \tpublic const BY_CUT = [
 %(rows)s\t];
 }
 ''' % {'id': ZIP_ID, 'origin': ZIP_ORIGIN, 'sha': ZIP_SHA256, 'n': len(table),
-       'rsha': register_sha, 'rn': register_count, 'rows': rows}
+       'rsha': register_sha, 'rn': register_count, 'rows': rows, 'placed': placed}
 
 
 # ---- the self-test --------------------------------------------------------
@@ -319,7 +329,7 @@ def self_test():
     assert table['99001']['name'] == 'Uno'
 
     # A place the register lacks counts like a register row.
-    extra = build_table(shp, dbf, cuts, {}, {'99002': [(0.5, 0.5)]})
+    extra = build_table(shp, dbf, cuts, {}, {'99002': ('a place', [(0.5, 0.5)])})
     assert extra['99002']['box'] == ('0.000', '0.000', '1.000', '1.000'), 'extra place'
 
     # The CUT list is the authority: a missing or an extra comuna is refused.
@@ -329,21 +339,46 @@ def self_test():
     _expect_refusal('truncated shapefile', build_table, shp[:-9], dbf, cuts, {})
 
     # Deterministic, sorted, quoted keys, header facts present.
-    text = render(table, 'f' * 64, 7)
-    assert text == render(dict(reversed(list(table.items()))), 'f' * 64, 7), 'order of input does not matter'
+    placed = {'99002': ('Dos is on the small part', [(0.5, 0.5)])}
+    text = render(table, 'f' * 64, 7, placed)
+    assert text == render(dict(reversed(list(table.items()))), 'f' * 64, 7, placed), 'order of input does not matter'
+    assert '99002 Dos: Dos is on the small part' in text, 'hand-placed places are listed with their reason'
     assert text.index("'99001'") < text.index("'99002'") < text.index("'99003'")
     assert "'99001' => [0.000, 0.000, 1.000, 1.000], // Uno" in text, 'row format'
-    for fact in (ZIP_ID, ZIP_ORIGIN, ZIP_SHA256, '3 records', 'most DEIS establishments', 'python3 -I tools/comuna-extents.py'):
+    for fact in (ZIP_ID, ZIP_ORIGIN, ZIP_SHA256, '3 records', 'most DEIS establishments', 'hand-placed', 'register snapshot', 'python3 -I tools/comuna-extents.py'):
         assert fact in text, 'header lacks ' + fact
 
-    # The sha is checked before anything is read: a file that is not even a ZIP
-    # is refused for its hash, not for being unreadable.
+    # The hand-placed places are pinned: emptying or moving one reopens a comuna on the wrong land.
+    for cut in ('12201', '10210'):
+        why, places = EXTRA_PLACES[cut]
+        assert why and places, cut + ': a place needs its reason'
+        assert all(-110 <= lon <= -66 and -56 <= lat <= -17 for lon, lat in places), cut + ': not in Chile'
+
     with tempfile.TemporaryDirectory() as tmp:
+        # The sha is checked before anything is read: a file that is not even a ZIP
+        # is refused for its hash, not for being unreadable. And the bytes that are
+        # hashed are the bytes that are parsed.
         path = os.path.join(tmp, 'x.zip')
         with open(path, 'wb') as f:
             f.write(b'not a zip')
         _expect_refusal('wrong sha', read_boundary_zip, path, '0' * 64)
-        assert verify_sha256(path, hashlib.sha256(b'not a zip').hexdigest()) is None, 'right sha passes'
+        with zipfile.ZipFile(path, 'w') as z:
+            z.writestr(SHP_MEMBER, shp)
+            z.writestr(DBF_MEMBER, dbf)
+        with open(path, 'rb') as f:
+            pinned = hashlib.sha256(f.read()).hexdigest()
+        assert read_boundary_zip(path, pinned) == (shp, dbf), 'right sha passes'
+
+        # The register: no coordinates, nan, inf or text are skipped; the CUT is stripped.
+        path = os.path.join(tmp, 'r.csv')
+        rows = ['codigo,comuna_codigo,latitud,longitud', '1, 01101 ,-33.5,-70.6', '2,01101,,', '3,01101,nan,-70.6',
+                '4,01101,-33.5,inf', '5,01101,abc,-70.6', '6,01101,-33.5,-inf']
+        with open(path, 'w', newline='') as f:
+            f.write('\r\n'.join(rows) + '\r\n')
+        by_cut, count, sha = read_register(path)
+        assert (by_cut, count) == ({'01101': [(-70.6, -33.5)]}, 1), 'register rows kept and skipped'
+        with open(path, 'rb') as f:
+            assert sha == hashlib.sha256(f.read()).hexdigest(), 'register sha'
     print('self-test ok')
 
 
@@ -364,10 +399,10 @@ def main():
         ap.error('--zip and --register are required')
 
     shp, dbf = read_boundary_zip(args.zip)
-    by_cut, count = read_register(args.register)
+    by_cut, count, register_sha = read_register(args.register)
     cuts = Path(args.cuts).read_text(encoding='utf-8').split()
     table = build_table(shp, dbf, cuts, by_cut)
-    text = render(table, hashlib.sha256(Path(args.register).read_bytes()).hexdigest(), count)
+    text = render(table, register_sha, count)
 
     if args.check:
         if Path(args.out).read_text(encoding='utf-8') != text:
@@ -387,6 +422,6 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except Refused as e:
+    except (Refused, OSError) as e:
         print('refused: %s' % e, file=sys.stderr)
         sys.exit(1)

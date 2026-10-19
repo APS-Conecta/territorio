@@ -62,11 +62,11 @@ final class PageControllerTest extends TestCase {
 		);
 	}
 
-	/** A valid CUT the table has no box for: the page still loads, the map opens on the next source. */
+	/** A valid CUT the table has no box for (Antártica): the page still loads, the map opens on the next source. */
 	public function testAChosenComunaMissingFromTheTableHasNoExtent(): void {
 		self::assertSame(
-			['cut' => '99999', 'name' => 'Nueva', 'chosen' => true, 'extent' => null],
-			PageController::comunaState(Comuna::of('99999', 'Nueva')),
+			['cut' => '12202', 'name' => 'Antártica', 'chosen' => true, 'extent' => null],
+			PageController::comunaState(Comuna::of('12202', 'Antártica')),
 		);
 	}
 

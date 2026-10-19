@@ -17,11 +17,17 @@ namespace OCA\Territorio\Domain;
  * CRS:      GCS_SIRGAS-Chile degrees, used as lon/lat. Its offset from WGS84 is
  *           under a metre, far below the 3-decimal rounding (about 100 m).
  * Part:     a comuna of several islands or pieces of land has several parts. The
- *           box is that of the part holding the most DEIS establishments, and of
- *           the largest part by planar area when parts tie or none holds any.
- *           Rounded outward to 3 decimals: west and south down, east and north up.
- * Register: DEIS establishments, sha256 fd21ba2cd1d8fa2f2634b3116b88826048ad1c36581ce39392611502ee2d0630,
- *           2655 with coordinates.
+ *           box is that of the part holding the most DEIS establishments (register
+ *           rows plus the hand-placed places below), and of the largest part by
+ *           planar area when parts tie or none holds any. Rounded outward to 3
+ *           decimals: west and south down, east and north up.
+ * Placed:   hand-placed places, each counted as one more establishment
+ *           (EXTRA_PLACES in the tool):
+ *           10210 Quinchao: Achao, the capital, is on the largest island, but the register puts 2 of 10 posts on a smaller one; with Achao the two tie and the larger wins
+ *           12201 Cabo de Hornos: Puerto Williams is on Navarino and the register has no post in the comuna, so Hoste would win; the point is 700 m inland of the town
+ * Register: DEIS establishments, a register snapshot: sha256 fd21ba2cd1d8fa2f2634b3116b88826048ad1c36581ce39392611502ee2d0630,
+ *           2655 with coordinates. The register is not pinned anywhere, so this
+ *           table is reproducible only against exactly that file.
  * Columns:  [west, south, east, north]. BoundingBox takes (minLat, minLon,
  *           maxLat, maxLon), so ComunaExtent::of() is the one place that reorders.
  *
@@ -29,7 +35,7 @@ namespace OCA\Territorio\Domain;
  * Verify:     the same command with --check exits 1 if this file would change.
  */
 final class ComunaExtentTable {
-	/** @var array<string, array{float, float, float, float}> */
+	/** @var array<string, array{float, float, float, float}> keys are numeric strings, which PHP coerces to int where they have no leading zero */
 	public const BY_CUT = [
 		'01101' => [-70.211, -21.439, -69.819, -20.063], // Iquique
 		'01107' => [-70.125, -20.352, -69.893, -20.048], // Alto Hospicio
@@ -255,7 +261,7 @@ final class ComunaExtentTable {
 		'10207' => [-73.752, -42.906, -73.461, -42.744], // Queilén
 		'10208' => [-74.407, -43.429, -73.477, -42.819], // Quellón
 		'10209' => [-73.588, -42.298, -73.337, -41.972], // Quemchi
-		'10210' => [-73.359, -42.664, -73.231, -42.623], // Quinchao
+		'10210' => [-73.540, -42.587, -73.388, -42.455], // Quinchao
 		'10301' => [-73.419, -40.788, -72.768, -40.419], // Osorno
 		'10302' => [-73.012, -41.120, -72.037, -40.723], // Puerto Octay
 		'10303' => [-73.946, -41.064, -72.929, -40.803], // Purranque

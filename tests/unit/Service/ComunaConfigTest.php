@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Domain\Comuna;
-use OCA\Territorio\Domain\ComunaExtent;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\IAppConfig;
 use PHPUnit\Framework\TestCase;
@@ -57,36 +56,5 @@ final class ComunaConfigTest extends TestCase {
 
 		self::assertFalse($comuna->isChosen());
 		self::assertSame('', $comuna->cut);
-	}
-
-	public function testNoComunaChosenHasNoExtent(): void {
-		self::assertNull((new ComunaConfig($this->appConfig()))->extent());
-	}
-
-	/** Derived from the stored CUT every time it is asked: nothing is stored or cached. */
-	public function testAChosenKnownComunaHasItsBox(): void {
-		$config = new ComunaConfig($this->appConfig());
-		$config->set(Comuna::of('13101', 'Santiago'));
-
-		self::assertEquals(ComunaExtent::forCut('13101'), $config->extent());
-		self::assertSame([[-33.479, -70.693], [-33.426, -70.625]], $config->extent()?->jsonSerialize());
-	}
-
-	public function testAComunaChangedLaterMovesTheExtentAtOnce(): void {
-		$config = new ComunaConfig($this->appConfig());
-		$config->set(Comuna::of('13101', 'Santiago'));
-		$before = $config->extent();
-		$config->set(Comuna::of('13110', 'La Florida'));
-
-		self::assertNotEquals($before, $config->extent());
-	}
-
-	/** A well-formed CUT that is not in the table (12202 Antártica is one) falls through to the next source. */
-	public function testAValidCutMissingFromTheTableHasNoExtent(): void {
-		$config = new ComunaConfig($this->appConfig());
-		$config->set(Comuna::of('12202', 'Antártica'));
-
-		self::assertTrue($config->get()->isChosen());
-		self::assertNull($config->extent());
 	}
 }

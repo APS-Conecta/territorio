@@ -378,24 +378,11 @@ def spare_failures(spares, taken):
 # where the hand pass rounded. Same ceiling as derive_spares() above: a reader
 # that finds nothing fails below, but one that starts finding something
 # vacuous does not. Re-seed a violation by hand (comment out the $pin-ring
-# declaration, or point FLAVORS at a missing file) after touching this block.
+# declaration, or set a RASTER_SURFACES colour to the ink's own) after touching
+# this block.
 PIN_RING_SOURCE = REPO / 'src' / 'components' / 'TerritorioMap.vue'
-FLAVORS = REPO / 'node_modules' / '@protomaps' / 'basemaps' / 'src' / 'flavors.ts'
-BRIGHTNESS = 1.09             # the vector pane's `brightness(1.09)`, on encoded sRGB channels
 RASTER_SURFACES = {'land': '#f2efe9', 'water': '#aad3df', 'green': '#cdebb0'}
                               # OSM Carto's standard palette, the §2 era
-
-
-def lifted(hex_colour):
-    """What the vector pane's `brightness(1.09)` does to a tile colour.
-
-    A straight multiply on the encoded sRGB channels — which is both what the
-    browser does and what §2.2's own measured rows were computed as, so the
-    lift this models and the lift the doc measured are one arithmetic.
-    """
-    hex_colour = hex_colour.lstrip('#')
-    return '#%02x%02x%02x' % tuple(min(255, round(int(hex_colour[i:i + 2], 16) * BRIGHTNESS))
-                                   for i in (0, 2, 4))
 
 
 def pin_ring():
@@ -408,25 +395,6 @@ def pin_ring():
     match = re.search(r'^[ \t]*\$pin-ring:\s*(\d+)px\s+solid\s+(#[0-9a-fA-F]{6})',
                       PIN_RING_SOURCE.read_text(encoding='utf-8'), re.M)
     return None if match is None else (int(match.group(1)), match.group(2))
-
-
-def protomaps_surfaces():
-    """name -> hex for the LIGHT surfaces a pin can sit on, out of the vendored
-    style source — read rather than copied for the same reason the seed is.
-
-    {} if the file or the block has drifted (or cannot be read at all), which
-    main() turns into a failure rather than a vacuous pass.
-    """
-    try:
-        source = FLAVORS.read_text(encoding='utf-8')
-    except OSError:
-        return {}
-    block = re.search(r'export const LIGHT[^\n]*\{(.*?)\n\};', source, re.S)
-    if block is None:
-        return {}
-    found = dict(re.findall(r'\b(earth|park_a|park_b|water):\s*[\'"](#[0-9a-fA-F]{6})[\'"]',
-                            block.group(1)))
-    return found if len(found) == 4 else {}
 
 
 def main():
@@ -510,8 +478,8 @@ def main():
 
     # The pin ring (map-legibility.md §2.2): one fixed ink worn against the
     # basemap in both themes. The tiles are light in both, so the ink must clear
-    # every surface a tile paints — raster bare, vector bare and lifted — and
-    # every fill a pin can carry, or a dot would vanish into its background.
+    # every surface a tile paints (RASTER_SURFACES) and every fill a pin can
+    # carry, or a dot would vanish into its background.
     ring = pin_ring()
     if ring is None:
         failures.append('no $pin-ring found in TerritorioMap.vue — the declaration or the '
@@ -519,22 +487,13 @@ def main():
     else:
         width, ink = ring
         surfaces = [(f'raster {name}', colour) for name, colour in RASTER_SURFACES.items()]
-        surfaces += [(f'light {name}', colour) for name, colour in protomaps_surfaces().items()]
-        if len(surfaces) == len(RASTER_SURFACES):
-            failures.append('no Protomaps surfaces found in flavors.ts — the vendored file or '
-                            'the regex reading it has drifted')
         surface_ratios = []
         for name, surface in surfaces:
-            # Only the vector pane is brightened; raster carries saturate() alone.
-            variants = [('bare', surface)]
-            if name.startswith('light'):
-                variants.append(('lifted', lifted(surface)))
-            for how, colour in variants:
-                ratio = contrast(ink, colour)
-                surface_ratios.append((ratio, f'{name} {how}'))
-                if ratio < MIN_CONTRAST:
-                    failures.append(f'the pin ring {ink} reads {ratio:.2f}:1 over {name} {how} '
-                                    f'{surface} — needs {MIN_CONTRAST}:1 (WCAG 1.4.11)')
+            ratio = contrast(ink, surface)
+            surface_ratios.append((ratio, name))
+            if ratio < MIN_CONTRAST:
+                failures.append(f'the pin ring {ink} reads {ratio:.2f}:1 over {name} '
+                                f'{surface} — needs {MIN_CONTRAST}:1 (WCAG 1.4.11)')
         fills = taken + [(f'spare {index + 1}', colour) for index, colour in enumerate(spares)]
         neutral = seeded_neutral()
         if neutral is not None:

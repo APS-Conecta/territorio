@@ -295,7 +295,8 @@ over every substrate a pin can sit on:
 The floor clears the requirement more than three times over, and the ink also clears 3:1 against
 every legal fill — eleven Categories, the shipped spares, both greys; the worst is a spare at
 **3.04:1**. Both loops are gated, not asserted: `tools/ramp-check.py` reads the ring out of
-`TerritorioMap.vue` and the surfaces out of the vendored Protomaps source, and fails on drift.
+`TerritorioMap.vue`, measures it against the OSM raster surfaces it carries as constants, and fails
+on drift of the ring.
 Recomputing this section's earlier rows with the gate's arithmetic reproduces land exactly and
 sits **≤ 0.08** off the hand-written water/green rows above — they were rounded by hand when
 written; the rows in this table are the gate's own.

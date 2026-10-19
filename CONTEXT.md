@@ -19,7 +19,7 @@ The bounding box of the part of the Comuna where its health establishments are, 
 CUT code. A Comuna of several islands or pieces of land is drawn as several parts; the extent is the
 part holding the most DEIS establishments, or the largest part when none holds any. It decides only
 where the map opens; it never restricts where a person may pan. When the CUT is unknown, the map
-opens on the Unidad Vecinal bounds, then on Chile.
+opens on the Unidad Vecinal bounds, then on the bounds of the records, then on Chile.
 _Avoid_: coverage area, map bounds, viewport, pan limit
 
 **Territorio**:

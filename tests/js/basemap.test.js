@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TILE_RETRY_DELAYS_MS } from '../../src/tiles.js'
 
-// src/basemap.js imports Leaflet and protomaps at module top — the fork builds
-// real layers — and neither survives a DOM-less run: `leaflet-src.js` touches
-// `window` while loading. `archiveWatch` touches neither. This file imports no
-// Leaflet and drives the campaign entirely through the injected probe and say;
-// the mocks only let the module load at all.
+// src/basemap.js imports Leaflet and protomaps at module top, and neither survives a DOM-less
+// run: `leaflet-src.js` touches `window` while loading. The `archiveWatch` cases below touch
+// neither and drive the campaign entirely through an injected probe and say; the raster cases
+// give `L.tileLayer` a fake layer that records its handlers.
 vi.mock('leaflet', () => ({ default: { tileLayer: vi.fn() } }))
 vi.mock('protomaps-leaflet', () => ({ leafletLayer: () => ({}) }))
 
@@ -242,6 +241,7 @@ describe('the raster basemap', () => {
 
 		expect(hooks.onFailed).toHaveBeenCalledTimes(1)
 		expect(retryTile).toHaveBeenCalledWith(tile)
+		expect(tileLoaded).not.toHaveBeenCalled()
 	})
 
 	it('hands a loaded tile to the retry budget and says the basemap is reachable', () => {

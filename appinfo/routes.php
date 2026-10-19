@@ -97,7 +97,6 @@ return [
 
 		// Admin-only by default: it is #[NoAdminRequired] that opens a route up,
 		// and this one deliberately carries no such attribute.
-		['name' => 'adminSettings#save', 'url' => '/settings/basemap', 'verb' => 'PUT'],
 		['name' => 'adminSettings#saveComuna', 'url' => '/settings/comuna', 'verb' => 'PUT'],
 	],
 ];

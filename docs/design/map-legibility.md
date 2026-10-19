@@ -202,7 +202,8 @@ Measured (recompute with `tools/ramp-check.py`'s own functions, not by eye):
   decision, and the code carries both (`FIGURE_FILL_OPACITY` in `src/marks.js`); changing either
   alone puts a measured contrast below its floor. What keeps this from being a defect is the pin's
   2px `#171717` ring — one fixed ink, measured over every surface in § 2.2 — so a dot never relies
-  on fill-vs-tint contrast alone.
+  on fill-vs-tint contrast alone. Land is the only surface that clears it: over OSM water the same
+  pair reads **2.23:1** and over green **2.68:1**, and the ring is what holds there too.
 - These are composited in **sRGB**, which is what a browser does with CSS alpha. An earlier draft
   of this section computed them in linear light and read ~0.05 high throughout.
 - The tint sits ΔE 0.021 from the bare basemap against ΔE ~0.45 for a dot, so a Sector a clinic
@@ -225,52 +226,12 @@ invisible. Label colour follows the *tile*, never the theme.
 ~50–100 Unidades Vecinales they do — and the answer there is a zoom threshold, which is the correct
 cartography and costs no dependency.
 
-### 2.2 Re-measured against the Protomaps basemap (ADR-0019)
+### 2.2 The position dot and the pin ring
 
-Every ratio in § 2 was taken over **raster OSM** land, water and green. ADR-0019 replaced that
-basemap with a self-hosted Protomaps PMTiles archive, so all of them became claims about a surface
-that is no longer there. Recomputed with `tools/ramp-check.py`'s own functions, over the eleven
-seeded Categories — the same set that produced § 2's figures, verified by reproducing its
-`3.04:1 (deporte_recreacion)` exactly before changing anything.
-
-The vector basemap is drawn `light`, and its tile pane carries `saturate(0.55) brightness(1.09)`
-where the raster pane carries `saturate(0.55)` alone. § 2 warns that a brightness filter "would
-move all of them at once" — it does, which is why all of them are below.
-
-**Worst dot-on-tint, Sector wash `#949494` at alpha 0.10** (WCAG 1.4.11 floor 3:1):
-
-| surface | raster OSM (before) | Protomaps `light`, bare | Protomaps `light` + `brightness(1.09)` |
-|---|---|---|---|
-| land / earth | **3.04** ✅ | 2.65 ❌ | **3.14** ✅ |
-| green / park | 2.60 ❌ | 2.51 ❌ | 2.98 ❌ |
-| water | 2.20 ❌ | 2.23 ❌ | 2.63 ❌ |
-
-Three things this table says that § 2 did not:
-
-1. **Water and green never passed.** § 2 quotes 3.04:1 "over OSM land" and that is the only surface
-   it measured. Over raster water the same pair read **2.20:1** and over green **2.60:1**, both
-   under the floor, for as long as this app has existed. ADR-0019 did not introduce that; it is the
-   first time anyone looked. It stays under the floor, by less than before, and what keeps it off
-   the defect list is unchanged and stated in § 2 itself: the pin's 2px `#171717` ring, so a dot
-   never relies on fill-vs-tint contrast alone.
-2. **Bare `light` would have been a real regression** on the one surface that did pass — 3.04 → 2.65
-   — and no alpha rescues it. Even a wash of zero reads 2.84:1, because what changed is the
-   basemap's own lightness, not the wash over it.
-3. **With the brightness, the new basemap beats the old one on every surface measured**, including
-   the two that were already failing.
-
-`white` was measured too: 3.44 / 3.38 / 2.58, the only option that clears the floor on land *and*
-park. It was rejected for a reason no ratio captures — it renders a basemap so pale that the street
-grid is hard to read, and reading the street grid is how a Sector gets drawn (ADR-0007).
-
-**The rest of § 2, re-measured:**
-
-| claim in § 2 | over raster | over Protomaps + brightness | verdict |
-|---|---|---|---|
-| UV hairline `#7d7d7d` @0.45, over the basemap | 1.35–1.49 | 1.57–1.68 | holds — the band widens upward, still "visible, never loud" |
-| UV hairline over the dark page background | 1.87 | **1.87** | unchanged, and necessarily: the filter is on the tile pane, and the page is not in it |
-| dark-theme label `#ebebeb` on the basemap | 1.04 | 1.08 | still invisible ⇒ **"labels follow the tile, never the theme" stands** |
-| Sector tint stays subordinate to a dot | ΔE 0.021 vs ~0.45 | unchanged | the tint is composited from the same two colours |
+> The re-measurement against the Protomaps basemap that stood here was retired with that basemap
+> ([ADR-0021](../adr/0021-the-basemap-is-openstreetmaps-tile-service-used-as-its-policy-asks.md)):
+> the basemap is OpenStreetMap's raster again, so § 2's numbers are the measurement. What follows
+> is what the code and the gates still cite.
 
 **The «¿Dónde estoy?» dot** is new and measured on the same terms. `#1a73e8` sits ΔE **0.113** from
 its nearest Category (`educacion`) against the 0.05 floor at which two 18px dots read as one
@@ -286,14 +247,13 @@ surfaces the tiles paint. Under the 3:1 floor in both themes, since the first re
 now one fixed dark ink — `#171717`, byte-identical to what the dark theme always drew — measured
 over every substrate a pin can sit on:
 
-| surface | raster OSM | Protomaps `light`, bare | Protomaps `light` + `brightness(1.09)` |
-|---|---|---|---|
-| land / earth | 15.62 | 13.49 | 16.20 |
-| green / park_a | 13.75 | 12.77 | 15.35 |
-| green / park_b | — | **10.58** — the floor | 12.66 |
-| water | 11.18 | 11.57 | 13.88 |
+| surface | raster OSM |
+|---|---|
+| land | 15.62 |
+| green / park | 13.75 |
+| water | 11.18 |
 
-The floor clears the requirement more than three times over, and the ink also clears 3:1 against
+The floor (water) clears the requirement more than three times over, and the ink also clears 3:1 against
 every legal fill — eleven Categories, the shipped spares, both greys; the worst is a spare at
 **3.04:1**. Both loops are gated, not asserted: `tools/ramp-check.py` reads the ring out of
 `TerritorioMap.vue`, measures it against the OSM raster surfaces it carries as constants, and fails

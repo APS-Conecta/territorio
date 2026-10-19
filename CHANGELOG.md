@@ -5,9 +5,33 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [Unreleased]
 
-The basemap stops being somebody else's public service.
+The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks (ADR-0021).
 
 ### Changed
+
+- **The basemap is OpenStreetMap's tile service and nothing else (0.79.0).** One constant,
+  `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, loaded directly by each user's browser under the
+  Tile Usage Policy (ADR-0021). There is no setting, no second form and no archive.
+
+  **Removed with it:** PMTiles and `protomaps-leaflet` (14 packages leave the lockfile, 9 of them
+  compiled into `js/` with attribution rows in `THIRD-PARTY-NOTICES.md`); the `tile_url` and `tile_attribution`
+  settings; the «Fondo de mapa» form under Administración and its `PUT /settings/basemap` route; the
+  `basemap` initial state; the `Basemap` and `BasemapConfig` classes; the vector basemap's
+  brightness filter. The page's Content-Security-Policy now allows images from
+  `https://tile.openstreetmap.org` and adds no `connect-src` host, whatever was configured before.
+
+  **A repair step deletes the stale settings, and writes down what they held first.** On install and
+  after every migration, `RemoveRetiredTileSettings` logs one warning line per key found (app, key, old
+  value) and then deletes it. Warning, because a default Nextcloud drops anything below it. Nextcloud cannot downgrade an app, so that log line is the only record
+  of the address a clinic had configured. A second run finds nothing and says nothing.
+
+  **What a block looks like, because the app cannot tell you.** OpenStreetMap answers a blocked
+  client with a valid PNG, which the browser loads without error: no banner appears and no
+  `tileerror` fires, and the basemap shows an «access blocked» picture. The fix is a release that
+  changes the one constant, since no setting remains to change.
+
+  Check from a real clinic network, with the previous release installed, that OpenStreetMap's tiles
+  load before this ships; the tile service is best-effort and is the only basemap left.
 
 - **Documentation aligns with the org-wide standard.** `docs/index.md` becomes one Document ×
   Mode × Reader × Authority table, the README puts the operator chapters (install, configuration,
@@ -66,6 +90,9 @@ The basemap stops being somebody else's public service.
   **The refresh cannot be a pinned URL.** Protomaps' daily builds expire — `20260908` was already
   `404` nine days later. Extract once, serve locally, re-extract on a schedule.
 
+  _Superseded by 0.79.0 and ADR-0021: the basemap is OpenStreetMap's tile service again, so a page
+  load contacts `openstreetmap.org` for tiles and the archive, `tile_url` and the kind fork are gone._
+
 - **Every measured legibility ratio was re-measured, and one of them needed the basemap changed**
   (`docs/design/map-legibility.md` § 2.2). All of § 2 was taken over raster OSM land, so the swap
   made every one of them a claim about a surface that is no longer there.
@@ -89,6 +116,9 @@ The basemap stops being somebody else's public service.
   and reading the street grid is how a Sector gets drawn (ADR-0007). The filter is scoped to the
   vector basemap, so a clinic still serving raster tiles keeps exactly the numbers § 2 documents
   for it — it has not agreed to a re-measurement.
+
+  _Superseded by 0.79.0 and ADR-0021: the vector basemap and its filter are gone and § 2.2 no longer
+  carries the Protomaps re-measurement; § 2's raster numbers stand._
 
 - **The import path owns its label rule, and ImportFiles owns its bytes.** The `trim(...) ?: null`
   normalisation lived inline in two callers, bound only by a comment that named the other; it is

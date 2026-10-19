@@ -42,84 +42,46 @@
 			</NcButton>
 		</NcSettingsSection>
 
-	<NcSettingsSection name="Fondo de mapa"
-		description="De dónde viene el dibujo de fondo del mapa. Puede ser un archivo
-			.pmtiles propio del CESFAM —lo habitual, y no necesita internet en cada
-			equipo— o la dirección de un servidor de teselas con {z}, {x} e {y}.">
-		<NcNoteCard v-if="rejected" type="warning">
-			Esa dirección no sirve como fondo de mapa, así que el mapa sigue usando el
-			anterior. Debe empezar por http:// o https:// y terminar en
-			<code>.pmtiles</code>, o bien incluir <code>{z}</code>, <code>{x}</code> e
-			<code>{y}</code>.
-		</NcNoteCard>
+		<!--
+			ADR-0006: "An administrator can read that list as a report." A route on its
+			own does not make that true — nobody administering a clinic's Nextcloud is
+			going to curl anything — so the report is here, where the other things only
+			an administrator can see already are.
+		-->
+		<NcSettingsSection name="Exportaciones con datos de contacto"
+			description="Quién ha exportado nombres, teléfonos o correos de personas, cuándo y cuántos registros. Este registro no se borra.">
+			<NcNoteCard v-if="exportsFailed" type="error">
+				No se pudo leer el registro de exportaciones.
+				<NcButton variant="tertiary" @click="loadExports">
+					Reintentar
+				</NcButton>
+			</NcNoteCard>
 
-		<NcNoteCard v-else-if="failed" type="error">
-			No se pudo guardar. Revise la conexión e inténtelo de nuevo.
-		</NcNoteCard>
+			<p v-else-if="exports.length === 0">
+				Todavía nadie ha exportado datos de contacto.
+			</p>
 
-		<NcNoteCard v-else-if="saved" type="success">
-			Guardado.
-		</NcNoteCard>
-
-		<NcTextField v-model="url"
-			label="Dirección del fondo de mapa"
-			placeholder="https://mapas.ejemplo.cl/chile.pmtiles"
-			:disabled="saving" />
-
-		<NcTextField v-model="attribution"
-			label="Atribución"
-			placeholder="© OpenStreetMap contributors"
-			:disabled="saving"
-			class="territorio-admin__field" />
-
-		<NcButton :disabled="saving"
-			variant="primary"
-			class="territorio-admin__field"
-			@click="save">
-			Guardar
-		</NcButton>
-	</NcSettingsSection>
-
-	<!--
-		ADR-0006: "An administrator can read that list as a report." A route on its
-		own does not make that true — nobody administering a clinic's Nextcloud is
-		going to curl anything — so the report is here, where the other things only
-		an administrator can see already are.
-	-->
-	<NcSettingsSection name="Exportaciones con datos de contacto"
-		description="Quién ha exportado nombres, teléfonos o correos de personas, cuándo y cuántos registros. Este registro no se borra.">
-		<NcNoteCard v-if="exportsFailed" type="error">
-			No se pudo leer el registro de exportaciones.
-			<NcButton variant="tertiary" @click="loadExports">
-				Reintentar
-			</NcButton>
-		</NcNoteCard>
-
-		<p v-else-if="exports.length === 0">
-			Todavía nadie ha exportado datos de contacto.
-		</p>
-
-		<table v-else class="territorio-admin__exports">
-			<thead>
-				<tr>
-					<th>Fecha</th>
-					<th>Usuario</th>
-					<th>Formato</th>
-					<th>Registros</th>
-					<th>Alcance</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr v-for="entry in exports" :key="entry.id">
-					<td>{{ when(entry.exportedAt) }}</td>
-					<td>{{ entry.actor }}</td>
-					<td>{{ entry.format.toUpperCase() }}</td>
-					<td>{{ entry.records }}</td>
-					<td>{{ entry.scope }}</td>
-				</tr>
-			</tbody>
-		</table>
-	</NcSettingsSection>
+			<table v-else class="territorio-admin__exports">
+				<thead>
+					<tr>
+						<th>Fecha</th>
+						<th>Usuario</th>
+						<th>Formato</th>
+						<th>Registros</th>
+						<th>Alcance</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr v-for="entry in exports" :key="entry.id">
+						<td>{{ when(entry.exportedAt) }}</td>
+						<td>{{ entry.actor }}</td>
+						<td>{{ entry.format.toUpperCase() }}</td>
+						<td>{{ entry.records }}</td>
+						<td>{{ entry.scope }}</td>
+					</tr>
+				</tbody>
+			</table>
+		</NcSettingsSection>
 	</div>
 </template>
 
@@ -131,7 +93,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
-import { messageFrom, safeError, warnError } from './api.js'
+import { messageFrom, warnError } from './api.js'
 
 export default {
 	name: 'AdminSettings',
@@ -139,10 +101,6 @@ export default {
 	components: { NcButton, NcNoteCard, NcSettingsSection, NcTextField },
 
 	data() {
-		// These are the stored values, not the resolved ones: a URL Territorio
-		// declined must stay in the box that produced it, next to the warning
-		// saying why the map is still on the previous basemap. An empty box means unset.
-		const basemap = loadState('territorio', 'basemap')
 		const comuna = loadState('territorio', 'comuna')
 
 		return {
@@ -158,12 +116,6 @@ export default {
 			savingComuna: false,
 			comunaSaved: false,
 			comunaFailed: '',
-			url: basemap.url,
-			attribution: basemap.attribution,
-			saving: false,
-			saved: false,
-			rejected: basemap.rejected,
-			failed: false,
 		}
 	},
 
@@ -207,32 +159,6 @@ export default {
 					'No se pudo guardar. Revise la conexión e inténtelo de nuevo.')
 			} finally {
 				this.savingComuna = false
-			}
-		},
-
-		async save() {
-			this.saving = true
-			this.saved = false
-			this.rejected = false
-			this.failed = false
-
-			try {
-				const { data } = await axios.put(
-					generateUrl('/apps/territorio/settings/basemap'),
-					{ url: this.url, attribution: this.attribution },
-				)
-				// The server reports what the setting resolves to, not what we
-				// sent, so a URL it will not put in a policy is visible here
-				// rather than later as a blank map.
-				this.rejected = !data.accepted
-				this.saved = data.accepted
-			} catch (error) {
-				// Without this, a 500 or a dropped connection leaves every flag
-				// false and the page looks exactly as if nobody pressed the button.
-				safeError('could not save the basemap setting', error)
-				this.failed = true
-			} finally {
-				this.saving = false
 			}
 		},
 	},

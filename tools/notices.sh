@@ -9,7 +9,7 @@
 #
 #   1. `.sources[]` of the bundles' own source maps — every module webpack compiled
 #      in, whether or not any manifest of ours mentions it. A manifest walk cannot
-#      do this: `package.json` names 12 packages and 67 ship.
+#      do this: `package.json` names a dozen packages and several dozen ship.
 #   2. `.sourcesContent[]` — the *text* of those modules. A dependency published as
 #      an esbuild bundle (`@geoman-io/leaflet-geoman-free`) arrives with its own
 #      dependencies already concatenated into one file, so they are modules of ours
@@ -17,10 +17,11 @@
 #      leaves a `// node_modules/…` comment at each boundary it merged — carrying the
 #      version too, `.pnpm/<pkg>@<version>/`, when the parent was bundled under pnpm as
 #      this one was — and that comment is the literal string that finds them.
-#   3. A literal-byte probe, for a package with no JavaScript at all: `@mapbox/maki`
-#      reaches the bundle as SVG markup, inlined by webpack as an asset. An asset
-#      module carries no source-map entry whichever loader emits it, so nothing above
-#      can see it. Its bytes are in `js/` or they are not.
+#   3. A literal-byte probe, for a package that reaches the bundle as bytes: `@mapbox/maki`
+#      arrives as SVG markup, inlined by webpack as an asset. An asset module carries no
+#      source-map entry of its own, so nothing above is guaranteed to see it (today a
+#      source map names its chunk, which is an accident of how it is imported). Its bytes
+#      are in `js/` or they are not.
 #
 # Licences are read from each package's own licence FILE, never from the `license`
 # field: `splaytree-ts` declares `"BDS-3-Clause"`, a string no SPDX list knows, and

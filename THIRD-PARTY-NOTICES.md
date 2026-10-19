@@ -21,16 +21,18 @@ It reads three things, because no one of them is complete — and the incomplete
 whole history of this file:
 
 1. **`jq -r '.sources[]' js/*.map`** — every module webpack compiled in, whether or not any
-   manifest of ours mentions it. 50 packages today.
+   manifest of ours mentions it. 49 packages today.
 2. **`.sourcesContent[]`, the *text* of those modules.** A dependency published as an esbuild
    bundle arrives with its own dependencies already concatenated into one file, so they are
    modules of ours that no resolution of ours ever performed and no path of ours names.
    esbuild leaves a `// node_modules/.pnpm/<pkg>@<version>/…` comment at every boundary it
    merged, and that comment is the literal string that finds them. 16 more packages today,
    all inside `@geoman-io/leaflet-geoman-free`.
-3. **A literal-byte probe**, for a package with no JavaScript at all. `@mapbox/maki` reaches
-   the bundle as SVG markup that webpack inlines as an asset, and an asset module carries no
-   source-map entry whichever loader emits it. Its bytes are in `js/` or they are not, so
+3. **A literal-byte probe**, for a package that reaches the bundle as bytes. `@mapbox/maki`
+   arrives as SVG markup that webpack inlines as an asset, and an asset module carries no
+   source-map entry of its own. Today a source map does name it, through the chunk that
+   holds its `browser.esm.js`, but that is an accident of how `src/glyphs.js` imports it;
+   the bytes are the evidence that cannot go stale. They are in `js/` or they are not, so
    `tools/notices.sh` asks exactly that: it derives both forms webpack can emit — the markup
    itself, which is what `asset/source` leaves, and the file's base64, which is what
    `asset/inline` leaves inside a data URI — and greps the bundles for either.
@@ -43,7 +45,7 @@ unattributed.
 
 ### What is not enough, each of which was this file's method at some point
 
-- **`package.json`.** It names 12 packages. 67 ship. Only the manifests were read until
+- **`package.json`.** It names 12 packages. 65 ship. Only the manifests were read until
   2026-08-08, which is exactly how three components shipped unattributed — the words "Apache"
   and "MPL" did not appear in this file while a dual-licensed component was in every page
   load. The organisation's docs gate
@@ -78,16 +80,17 @@ nested `a/node_modules/b`.
 
 ### The count
 
-Measured 2026-09-18 by `make notices`: **76 packages are compiled into `js/`, and 76 are named
-here.** The tables below add up to that number — 59 from the source maps, 16 inlined, 1 probed —
-and `make notices` fails if they ever do not.
+Measured 2026-10-19 by `make notices`: **65 packages are compiled into `js/`, and 65 are named
+here.** The tables below add up to that number — 49 from the source maps and 16 found only inside
+geoman's dist; the probe's one package, `@mapbox/maki`, is also named by a source map, so it adds
+none — and `make notices` fails if they ever do not.
 
-Nine of those arrived in one go on 2026-09-18 with `protomaps-leaflet` (ADR-0019): the library
-itself, `@protomaps/basemaps`, `pmtiles`, `pbf`, `@mapbox/point-geometry`, `@mapbox/vector-tile`,
-`color2k`, `potpack` and `fflate`. `make notices` named all nine on the first run after the
-install, which is the check doing its job — one `npm install` is nine attribution obligations.
+Nine packages left with the vector basemap library (ADR-0021). `make notices` checks that every
+package in `js/` has a row, not the converse, so it does not flag a row left behind for a package
+that no longer ships: those rows, their copyright lines and their licence text were removed by
+hand. After any dependency removal, grep this file for each package's name.
 
-`vue` is named as well and is not one of the 67: `import { createApp } from 'vue'` resolves to a
+`vue` is named as well and is not one of the 65: `import { createApp } from 'vue'` resolves to a
 bundler build that re-exports `@vue/runtime-dom`, and what reaches `js/` is those four `@vue/*`
 packages, each MIT, each listed. The wrapper leaves no module of its own behind.
 
@@ -100,7 +103,6 @@ and `nextcloud/ocp` are `require-dev` and are not distributed.
 |---|---|
 | AGPL-3.0-or-later † | `@nextcloud/vue` |
 | BSD-2-Clause | `leaflet` |
-| BSD-3-Clause | `protomaps-leaflet` |
 | CC0-1.0 | `@mapbox/maki` |
 | GPL-3.0-or-later | `@nextcloud/axios` |
 | GPL-3.0-or-later | `@nextcloud/initial-state` |
@@ -113,7 +115,8 @@ and `nextcloud/ocp` are `require-dev` and are not distributed.
 | MIT | `vue` |
 
 `@mapbox/maki` is the probed one: eleven of its icons are imported by `src/glyphs.js` and are
-inlined into the bundle as assets rather than as modules, so no source map names it. `@nextcloud/password-confirmation`
+inlined into the bundle as assets rather than as modules, so no source map entry of an icon's
+own names it (one does name its `browser.esm.js` chunk today). `@nextcloud/password-confirmation`
 publishes a REUSE-style `LICENSES/` directory holding `MIT.txt` and `CC0-1.0.txt`.
 
 ## Also compiled into `js/`, named by no manifest of ours
@@ -123,14 +126,6 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 
 | Licence | Component |
 |---|---|
-| BSD-3-Clause | `@mapbox/vector-tile` |
-| BSD-3-Clause † | `@protomaps/basemaps` |
-| BSD-3-Clause | `pbf` |
-| BSD-3-Clause † | `pmtiles` |
-| ISC | `@mapbox/point-geometry` |
-| ISC | `potpack` |
-| MIT | `color2k` |
-| MIT | `fflate` |
 | GPL-3.0-or-later | `@nextcloud/auth` |
 | GPL-3.0-or-later | `@nextcloud/browser-storage` |
 | GPL-3.0-or-later | `@nextcloud/capabilities` |
@@ -147,7 +142,6 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 | MIT | `@floating-ui/utils` |
 | MIT | `floating-vue` |
 | MIT | `focus-trap` |
-| MIT | `linkifyjs` |
 | MIT | `@nextcloud/vue-select` |
 | MIT | `point-in-polygon-hao` |
 | MIT | `process` |
@@ -166,7 +160,6 @@ attribution. Every one of these is named by `.sources[]` in a bundle's source ma
 | MIT | `@vue/runtime-core` |
 | MIT | `@vue/runtime-dom` |
 | MIT | `@vue/shared` |
-| MIT | `@vueuse/components` |
 | MIT | `@vueuse/core` |
 | MIT | `@vueuse/shared` |
 | MPL-2.0 OR Apache-2.0 | `dompurify` |
@@ -236,10 +229,6 @@ copyright line, then the permission text, which is one text they all carry. Copy
 copied from each package's licence file by `tools/notices.sh`'s own reading of it, not retyped.
 
 ```
-color2k
-    Copyright (c) 2020 Rico Kahler
-fflate
-    Copyright (c) 2026 Arjun Barrett
 leaflet.markercluster
     Copyright 2012 David Leaver
 bignumber.js
@@ -270,7 +259,7 @@ floating-vue
     Copyright (c) 2018 Guillaume Chau (alias Akryum)
 vue, @vue/reactivity, @vue/runtime-core, @vue/runtime-dom, @vue/shared
     Copyright (c) 2018-present, Yuxi (Evan) You
-@vueuse/components, @vueuse/core, @vueuse/shared
+@vueuse/core, @vueuse/shared
     Copyright (c) 2019-PRESENT Anthony Fu<https://github.com/antfu>
 vue-router
     Copyright (c) 2019-present Eduardo San Martin Morote
@@ -284,8 +273,6 @@ point-in-polygon-hao
     Copyright (c) 2021 Rowan Winsemius
 polyclip-ts
     Copyright (c) 2022 Luiz Felipe Machado Barboza
-linkifyjs
-    Copyright (c) 2024 Nick Frasser
 debounce
     Copyright (c) Ben Carpenter, Billy Moon, Josh Goldberg, Julian Gruber, Kristofer Selbekk, Matthew Mueller, Nathan Rajlich, Oleg Pudeyev, Stephen Mathieson, TJ Holowaychuk, suhaotian, ven
     Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
@@ -375,48 +362,6 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### BSD 3-Clause — the Protomaps basemap stack
-
-Five packages arrived with `protomaps-leaflet` under BSD-3-Clause (ADR-0019). Its second clause
-requires this notice be reproduced wherever the code is redistributed in binary form, which the
-bundles under `js/` are.
-
-```
-protomaps-leaflet
-    Copyright 2021-2024 Protomaps LLC
-@mapbox/vector-tile
-    Copyright (c) 2024, Mapbox
-pbf
-    Copyright (c) 2024, Mapbox
-@protomaps/basemaps †
-    no licence file published; `package.json` declares BSD-3-Clause
-pmtiles †
-    no licence file published; `package.json` declares BSD-3-Clause
-```
-
-**The two marked †** are the case this file's own rule was written for: they ship no licence file
-at all, so there is no text of theirs to read and none to copy. Their `package.json` declares
-`BSD-3-Clause`, and that declaration is all the evidence there is — recorded as a declaration
-rather than as a reading, because the distinction is the whole reason this file reads files. Both
-are published by Protomaps LLC, the same author as `protomaps-leaflet`, whose file *is* below.
-
-The text, from `protomaps-leaflet`'s own licence file, unmodified:
-
-```
-Copyright 2021-2024 Protomaps LLC
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-
 ### BSD 2-Clause — `leaflet`
 
 Leaflet's second clause requires the notice below be reproduced in a redistribution in binary
@@ -451,26 +396,15 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### ISC — `semver`, `@mapbox/point-geometry`, `potpack`
+### ISC — `semver`
 
 `semver` reaches the bundle through `@nextcloud/event-bus`, which vendors it under its own
-`node_modules`. The other two arrived with `protomaps-leaflet` (ADR-0019): it does its geometry
-in `@mapbox/point-geometry` and packs its label glyphs with `potpack`.
-
-ISC is one text with three different copyright lines, so the lines are here and the text is
-below once:
+`node_modules`.
 
 ```
-@mapbox/point-geometry
-    Copyright (c) 2024, Mapbox
-potpack
-    Copyright (c) 2018, Mapbox
 semver
     Copyright (c) Isaac Z. Schlueter and Contributors
 ```
-
-`semver`'s own file is reproduced in full below; the other two carry the same permission and
-disclaimer text verbatim under the copyright lines above.
 
 ```
 The ISC License

@@ -33,8 +33,7 @@ Everything runs from this directory. Steps 1 and 4–6 need Docker; steps 2 and 
 2. `npm install` — once, on the host.
 3. `make build` — webpack writes `js/territorio-{main,admin}.js`.
 4. `make instance-up` — a throwaway Nextcloud 34 + PostgreSQL 18 instance with this directory
-   bind-mounted as the app, serving the app's default basemap (OpenStreetMap's tiles) and
-   clearing any tile setting an earlier run pinned. It prints
+   bind-mounted as the app, serving OpenStreetMap's tiles. It prints
    `Instance ready at http://localhost:8083 (admin / dev)`. The browser gate answers the tile
    requests itself and never contacts OpenStreetMap.
 5. Open <http://localhost:8083>, log in as `admin` / `dev`, and pick **Territorio** in the header.
@@ -58,16 +57,18 @@ idempotent and runs again after every migration.
 
 ## Configuration
 
-Four settings, all app config under the `territorio` app id, all reachable at
+Two settings, all app config under the `territorio` app id, all reachable at
 **Administración → Territorio**. Read them with
 `occ config:app:get territorio <key>`.
 
 | Key | What it does | Default |
 |---|---|---|
-| `tile_url` | The basemap the map draws — either a `.pmtiles` archive or a Leaflet `{z}/{x}/{y}` template (ADR-0019). The Content-Security-Policy host is derived from it, and the directive from which form it is, so neither can drift. A string that is neither form is stored verbatim but never served. | empty → `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
-| `tile_attribution` | Plain-text credit shown over the map. Ignored while `tile_url` is rejected or unset, because we are then serving OpenStreetMap's tiles and owe OpenStreetMap the credit. | empty → `© OpenStreetMap contributors` |
 | `comuna_cut` | The CUT code of the comuna this install serves. Empty means "not chosen yet" and the setup screen says so. | empty |
 | `comuna_name` | The comuna's name, for display. Written together with `comuna_cut`. | empty |
+
+There is no basemap setting: the map's tiles are OpenStreetMap's, fixed in the code
+([The basemap](#the-basemap)). An install that still holds the retired `tile_url` and
+`tile_attribution` loses them on upgrade, after the repair step logs their old values.
 
 The dev instance caches app config in APCu, which is per-process: see **Two traps worth knowing**
 below before you trust `occ config:app:set`.
@@ -252,58 +253,18 @@ what format, how many records and what it was of. An administrator reads that li
 
 ## The basemap
 
-**A self-hosted PMTiles archive**, not a public tile service
-([ADR-0019](docs/adr/0019-the-basemap-is-a-self-hosted-pmtiles-archive.md)). OpenStreetMap's public
-tile service answered `403` — it is a P2 best-effort service whose own policy asks heavy users to
-host their own — so the basemap is one file served beside the app and read by the browser over HTTP
-Range requests. The map now reaches exactly as far as the app does, with no third party in the path.
+**OpenStreetMap's standard tile service**, `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, loaded
+directly by each user's browser under its
+[Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/)
+([ADR-0021](docs/adr/0021-the-basemap-is-openstreetmaps-tile-service-used-as-its-policy-asks.md)).
+It is one constant (`OSM_TILE_URL` in `src/basemap.js`) and there is no setting, no archive to build
+and no tile server to run. The page's Content-Security-Policy names that one host for images and
+nothing else. A clinic without internet has no basemap; records, drawing and every layer keep working
+over a plain background.
 
-Two forms are accepted, and `Basemap::kind()` decides which:
-
-| the URL looks like | what it is | the browser | the CSP directive |
-|---|---|---|---|
-| `…/chile.pmtiles` | one archive, read by byte range | `fetch` | `connect-src` |
-| `…/{z}/{x}/{y}.png` | a directory of raster images | `<img>` | `img-src` |
-
-The raster form is still fully supported, because ADR-0004's promise was that an administrator can
-repoint this at their own server. The Content-Security-Policy host is derived from whatever URL is
-configured, so the two can never drift apart — and the *directive* is derived from the kind, because
-naming a PMTiles host in `img-src` blocks it while the policy reads as though it allowed it. A URL
-that is neither form is stored as typed but never served: the map falls back and the settings page
-says so.
-
-Attribution is unchanged and still required. The archive is an ODbL Produced Work and its own
-metadata declares `© OpenStreetMap`, so self-hosting moves where the bytes come from, not whose data
-it is.
-
-### Building the archive
-
-The basemap is generated data with a refresh schedule, so it is **not in this repository**. Build it
-with Protomaps' [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI:
-
-```
-pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles chile.pmtiles \
-  --bbox=-110.0,-56.0,-66.4,-17.5 --download-threads=8
-```
-
-That pulls **only** the bbox out of the planet build over Range requests — no planet download. The
-result is **1.04 GB**, all of Chile at zoom 0–15.
-
-- **The bbox starts at `-110.0` on purpose.** Stopping at the mainland (`-75.8`) silently excludes
-  **Isla de Pascua** (lon −109.4) and **Juan Fernández** (−78.8), both comunas with health
-  facilities. Including them costs **4.7 MB**, because empty Pacific deduplicates away.
-- **`<YYYYMMDD>` cannot be pinned.** The daily builds expire — one nine days old already returns
-  `404` — so this is a scheduled re-extract, not a fixed URL in a script.
-- **Zoom 15 is the whole archive** and is what Protomaps document as sufficient for street-level
-  mapping. Each further level roughly doubles the file (measured: 2.04×, 1.93×, 1.97×).
-
-Serve it from anything that honours **Range** requests and sets CORS; this stack uses an
-`nginx:alpine` container (`tiles` in `compose.yaml`). Then point `tile_url` at it.
-
-**The file size is not what a client downloads.** Measured over one comuna: 552 KB for a screenful
-at z12, 863 KB at z14, 952 KB at z15, and 2.3 MB to work the whole comuna across all three — a ratio
-of about 1:460. Vector tiles re-render at any zoom, so z15 data serves z16–19 with no further
-fetches.
+**If OpenStreetMap blocks the app, the remedy is a release that changes that one constant.** A block
+arrives as a valid image, so the browser loads it without error and the app shows no banner: the
+basemap shows an "access blocked" picture and nothing says why. That is how a block looks.
 
 ## Licence
 

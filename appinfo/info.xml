@@ -11,7 +11,7 @@ organizaciones sociales.
 
 No contiene información de pacientes.
     ]]></description>
-    <version>0.78.1</version>
+    <version>0.79.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Territorio</namespace>
@@ -42,14 +42,18 @@ No contiene información de pacientes.
       Seeding lives here, not in a migration's postSchemaChange, because that
       hook is skipped when an app's schema is applied on a first install — the
       one case where the seed matters most. Registered for both events; the step
-      is guarded and idempotent.
+      is guarded and idempotent. RemoveRetiredTileSettings is registered for both
+      for the same reason: an install that skips the upgrade path must not keep
+      the retired tile settings.
     -->
     <repair-steps>
         <install>
             <step>OCA\Territorio\Migration\EnsureSeedData</step>
+            <step>OCA\Territorio\Migration\RemoveRetiredTileSettings</step>
         </install>
         <post-migration>
             <step>OCA\Territorio\Migration\EnsureSeedData</step>
+            <step>OCA\Territorio\Migration\RemoveRetiredTileSettings</step>
         </post-migration>
     </repair-steps>
 </info>

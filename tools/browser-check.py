@@ -172,23 +172,6 @@ def console_errors(page):
     return found
 
 
-def served_basemap(page):
-    """The basemap this page was served, decoded the way `loadState` decodes it,
-    or None when the page carries none.
-
-    Off the page already open, not a fresh fetch like served_taxonomy(): the
-    basemap is fixed for a page's life, and the question every caller asks is
-    what THIS page was told — what the map should have painted, and which one
-    host besides this server the page may ask for anything.
-    """
-    return page.evaluate(
-        """() => {
-            const element = document.getElementById('initial-state-territorio-basemap')
-            return element === null ? null : JSON.parse(atob(element.value))
-        }""",
-    )
-
-
 # OpenStreetMap's tile service. Its Tile Usage Policy forbids scraping, and a gate that
 # loads real tiles is an automated client of that service on every run, so the gate never
 # reaches it: every request to the host is answered here, and anything else addressed to
@@ -275,46 +258,27 @@ TILE_PAINTED = """() => [...document.querySelectorAll('img.leaflet-tile')].some(
 
 
 def the_basemap_is_painted(page, failures):
-    """OpenStreetMap's tiles draw, credited as served.
+    """OpenStreetMap's tiles draw, credited as the policy asks (ADR-0021).
 
-    The served state is compared with what the map painted, the way
-    `every_category_reaches_the_browser_with_its_colour` does. A raster tile is an <img>
-    that has loaded, so paint is a tile with width, not a tile element: Leaflet creates
-    the element before the request has come back.
+    A raster tile is an <img> that has loaded, so paint is a tile with width, not a tile
+    element: Leaflet creates the element before the request has come back. The basemap is
+    one constant in the bundle, so there is no served state to compare it with; what is
+    asserted is what a person sees.
 
-    Failed, not skipped, on an instance serving anything else: this gate answers tile
-    requests from a mock of OpenStreetMap's service, so another URL would reach a host
-    the mock refuses. `make instance-up` clears what an earlier run pinned.
+    The page asks for tiles from a mock of OpenStreetMap's service, never the real one.
     """
-    served = served_basemap(page)
-    if served is None:
-        failures.append(
-            "the page carries no served basemap at #initial-state-territorio-basemap, so "
-            "nothing could be compared with what the map painted",
-        )
-        return
-
-    if not served["usesOpenStreetMap"]:
-        failures.append(
-            f"the instance serves a {served['kind']} basemap ({served['url']}), not "
-            f"OpenStreetMap's tiles — `make instance-up` clears a tile setting an earlier run pinned",
-        )
-        return
-
     try:
         page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
     except PlaywrightTimeout:
         failures.append(
-            f"no tile painted within 10 s from {served['url']} — the page asked for tiles the "
-            f"gate's mock did not answer, or its CSP refused them",
+            "no tile painted within 10 s — the page asked for tiles the gate's mock did not "
+            "answer, or its CSP refused them",
         )
 
     attribution = page.locator(".leaflet-control-attribution")
     painted = attribution.first.inner_text() if attribution.count() > 0 else ""
-    if served["attribution"] not in painted:
-        failures.append(
-            f"the map credits {painted!r} but the app served {served['attribution']!r}",
-        )
+    if "OpenStreetMap" not in painted:
+        failures.append(f"the map credits {painted!r}, which does not name OpenStreetMap")
 
     if page.get_by_text("No se pudo cargar el fondo de mapa").count() > 0:
         failures.append(

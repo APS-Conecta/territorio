@@ -6,7 +6,6 @@ namespace OCA\Territorio\Controller;
 
 use APS\Common\Refuses;
 use OCA\Territorio\AppInfo\Application;
-use OCA\Territorio\Service\BasemapConfig;
 use OCA\Territorio\Domain\Comuna;
 use OCA\Territorio\Service\ComunaConfig;
 use OCP\AppFramework\Controller;
@@ -14,8 +13,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
 /**
- * Saves the settings an administrator chooses: which Comuna this install
- * serves, and where the map's tiles come from.
+ * Saves the setting an administrator chooses: which Comuna this install serves.
  *
  * Carries no #[NoAdminRequired] and no #[NoCSRFRequired] on purpose: both of
  * those are how a route is opened up, so their absence is what makes this
@@ -26,24 +24,9 @@ class AdminSettingsController extends Controller {
 
 	public function __construct(
 		IRequest $request,
-		private BasemapConfig $basemapConfig,
 		private ComunaConfig $comunaConfig,
 	) {
 		parent::__construct(Application::APP_ID, $request);
-	}
-
-	/**
-	 * The response reports what the setting actually resolves to, not what was
-	 * sent. An administrator who types a URL Territorio will not put in a policy
-	 * sees the map fall back to OpenStreetMap immediately, instead of finding out
-	 * later from a blank map.
-	 */
-	public function save(string $url = '', string $attribution = ''): JSONResponse {
-		$basemap = $this->basemapConfig->set($url, $attribution);
-
-		return new JSONResponse(
-			$basemap->jsonSerialize() + ['accepted' => !$basemap->wasRejected()],
-		);
 	}
 
 	/**
@@ -55,8 +38,7 @@ class AdminSettingsController extends Controller {
 	public function saveComuna(string $cut = '', string $name = ''): JSONResponse {
 		// attempt(), not the manual catch (L1-03): Comuna::of() throws a
 		// RefusedException, and the exception→response mapping lives in exactly
-		// one place. save() is untouched — BasemapConfig::set() throws no
-		// refusal, so there is nothing for attempt() to catch there.
+		// one place.
 		return $this->attempt(function () use ($cut, $name): array {
 			$comuna = Comuna::of($cut, $name);
 			$this->comunaConfig->set($comuna);

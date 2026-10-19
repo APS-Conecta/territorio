@@ -31,6 +31,7 @@ else. That took this from passing two runs in three to nine of nine.
 
 import io
 import json
+import math
 import re
 import subprocess
 import sys
@@ -60,7 +61,8 @@ RUN = uuid.uuid4().hex[:6]
 # that search the list for RUN and count exactly this run's records.
 REDESIGN = uuid.uuid4().hex[:6]
 
-# `--only redesign` runs the topbar check alone, which is the quick one. The rest
+# `--only redesign` runs the topbar check alone, which is the quick one, and
+# `--only extent` the opening-view check alone. The rest
 # drives the docked panel: `to_list()` puts every check back on the list, and the
 # helpers above it (`open_first_row`, `edit`, `open_capas`, `toggle_division`)
 # are the new layout's way to what the old sidebar and Capas column showed at once.
@@ -290,6 +292,92 @@ def the_basemap_is_painted(page, failures):
         )
 
     page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
+
+
+# La Florida (CUT 13110), the Comuna extent T2a's table holds for it, as
+# [[south, west], [north, east]]. The table is outward-rounded to 3 decimals, so the
+# check below asks only that the view CONTAINS this box's centre, never that it equals it.
+LA_FLORIDA = ("13110", "La Florida", (-33.571, -70.615), (-33.491, -70.436))
+
+
+def _tile_corners(url):
+    """The (zoom, west, south, east, north) of an OSM tile URL, or None for any other URL."""
+    found = re.search(r"/(\d+)/(\d+)/(\d+)\.png$", url)
+    if found is None:
+        return None
+    z, x, y = (int(group) for group in found.groups())
+    n = 2 ** z
+
+    def lat(row):
+        return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * row / n))))
+
+    return z, x / n * 360 - 180, lat(y + 1), (x + 1) / n * 360 - 180, lat(y)
+
+
+def the_map_opens_on_the_comuna_extent(page, tiles, failures):
+    """With a Comuna chosen, the map opens on its extent (ADR-0021).
+
+    Asserted on what the browser asked the tile service for, because that is the one
+    thing a map that opened in the right place and one that merely looks right cannot
+    fake: the tiles at the opening zoom must cover the extent's centre, and that zoom
+    must be one that frames a comuna (a view of the whole country, or of one block,
+    would both be wrong).
+
+    The comuna is chosen the way an administrator chooses it, through the settings
+    endpoint, because that write lands in the web process itself. `occ config:app:set`
+    would not: APCu is per-process (README, "Two traps"), so the page would keep
+    serving the old value. It is last in the full run for the same reason from the other
+    side: the Comuna stays chosen afterwards, which refuses other comunas' imports.
+    """
+    cut, name, (south, west), (north, east) = LA_FLORIDA
+    token = page.evaluate("() => document.head.dataset.requesttoken")
+    saved = page.request.put(
+        f"{BASE}/apps/territorio/settings/comuna",
+        data=json.dumps({"cut": cut, "name": name}),
+        headers={"requesttoken": token, "content-type": "application/json"},
+    )
+    if not saved.ok:
+        failures.append(f"choosing the comuna {cut} through the settings endpoint answered {saved.status}")
+        return
+
+    first = len(tiles)
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    try:
+        page.wait_for_function(
+            """() => [...document.querySelectorAll('img.leaflet-tile')].some((tile) =>
+                tile.src.startsWith('https://tile.openstreetmap.org/') && tile.complete && tile.naturalWidth > 0)""",
+            timeout=10_000,
+            polling=500,
+        )
+    except PlaywrightTimeout:
+        failures.append("no tile painted after the page opened with a comuna chosen")
+        return
+    page.wait_for_timeout(1500)
+
+    opened = [corners for corners in (_tile_corners(request.url) for request in tiles[first:])
+              if corners is not None]
+    if not opened:
+        failures.append("the page opened with a comuna chosen and asked for no tile")
+        return
+
+    zoom = max(corners[0] for corners in opened)
+    at_zoom = [corners for corners in opened if corners[0] == zoom]
+    covered = (min(c[1] for c in at_zoom), min(c[2] for c in at_zoom),
+               max(c[3] for c in at_zoom), max(c[4] for c in at_zoom))
+    centre = ((south + north) / 2, (west + east) / 2)
+
+    if not 11 <= zoom <= 15:
+        failures.append(
+            f"the map opened at zoom {zoom} on {name}, whose extent is "
+            f"{north - south:.2f} x {east - west:.2f} degrees: a comuna frames at zoom 11 to 15",
+        )
+    if not (covered[0] <= centre[1] <= covered[2] and covered[1] <= centre[0] <= covered[3]):
+        failures.append(
+            f"the tiles the map opened on cover lon {covered[0]:.3f}..{covered[2]:.3f}, "
+            f"lat {covered[1]:.3f}..{covered[3]:.3f}, which does not contain {name}'s "
+            f"centre {centre[1]:.3f}, {centre[0]:.3f}",
+        )
 
 
 # What the gate wraps to count the GPS. `navigator.geolocation` is what Leaflet's
@@ -7197,12 +7285,18 @@ def main():
         # past them it would fail to resolve, not reach OpenStreetMap.
         browser = p.chromium.launch(args=["--host-resolver-rules=MAP *.openstreetmap.org ~NOTFOUND"])
         context = browser.new_context(viewport={"width": 1400, "height": 900})
-        mock_osm(context)
+        tiles = mock_osm(context)
         page = context.new_page()
         errors = console_errors(page)
 
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+        # `--only extent` is the quick check of where the map opens on a chosen Comuna.
+        if ONLY == "extent":
+            run(the_map_opens_on_the_comuna_extent, page, tiles, failures)
+            browser.close()
+            return _report(errors, failures)
 
         # The redesigned topbar first: it seeds three records of its own and ends
         # with the page reloaded and the filter reset. `--only redesign` stops here.
@@ -7378,6 +7472,9 @@ def main():
         run(a_kmz_imports_like_the_kml_inside_it, page, errors, failures)
         run(a_file_already_in_files_imports_without_being_uploaded, page, errors, failures)
         occ_import_names_the_formats_it_takes(failures)
+        # Last of all: it leaves the Comuna chosen, and a chosen Comuna refuses the
+        # files of any other, which every import above would then trip on.
+        run(the_map_opens_on_the_comuna_extent, page, tiles, failures)
         browser.close()
 
     return _report(errors, failures)
@@ -7395,6 +7492,10 @@ def _report(errors, failures):
     if ONLY == "redesign":
         print("OK    the redesigned topbar works: search, tabs, layers menu, drawer, drawing")
         print(f"      screenshot: {SHOTS / 'redesign.png'}")
+        return 0
+
+    if ONLY == "extent":
+        print("OK    the map opens on the chosen Comuna's extent")
         return 0
 
     print("OK    a Place and a Sector were created in the browser and survived a reload")

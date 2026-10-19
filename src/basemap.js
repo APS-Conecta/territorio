@@ -6,7 +6,7 @@
  * Everything here existed verbatim in the component under the same names.
  */
 import L from 'leaflet'
-import { retryTile, TILE_RETRY_DELAYS_MS } from './tiles.js'
+import { retryTile, TILE_RETRY_DELAYS_MS, tileLayerOptions, tileLoaded } from './tiles.js'
 import { leafletLayer } from 'protomaps-leaflet'
 
 /**
@@ -292,22 +292,7 @@ function addRasterBasemap(map, basemap, hooks) {
 	// banner must not pin itself over either.
 	let loaded = false
 
-	L.tileLayer(basemap.url, {
-		attribution: hooks.attribution,
-		maxZoom: MAX_ZOOM,
-		// Nextcloud serves every page with `Referrer-Policy: no-referrer`, so
-		// without this a tile request carries no `Referer` at all — measured.
-		// A browser also supplies its own `User-Agent`, which names Chrome and
-		// not this app, so the two things OpenStreetMap's Tile Usage Policy
-		// asks an application to identify itself by are both absent and the
-		// traffic is indistinguishable from anonymous scraping. That is the
-		// profile they rate-limit and then answer `403`.
-		//
-		// `origin` and not the browser default: it sends the scheme, host and
-		// port and never a path, so a third party learns which instance asked
-		// and never which page of it, nor which record was open.
-		referrerPolicy: 'origin',
-	})
+	L.tileLayer(basemap.url, tileLayerOptions({ attribution: hooks.attribution }))
 		// Tiles failing is not an error the app should die on: the clinic may
 		// be offline, or the tile host firewalled. Pan, zoom and everything
 		// drawn on top keep working, so we note it and carry on.
@@ -324,6 +309,7 @@ function addRasterBasemap(map, basemap, hooks) {
 		})
 		.on('tileload', () => {
 			loaded = true
+			tileLoaded()
 			hooks.onLoaded()
 		})
 		.addTo(map)

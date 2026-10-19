@@ -217,6 +217,17 @@ def osm_tile_png():
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
+class OsmTiles(list):
+    """The tile requests the mock has answered, oldest first, and how it answers the next.
+
+    `mode` is "ok" (a tile), "down" (503, the way an overloaded or firewalled host fails) or
+    "blocked" (403 carrying a tile-shaped image, which is how OpenStreetMap answers a blocked
+    client: a browser loads it without an error, so the app cannot tell).
+    """
+
+    mode = "ok"
+
+
 def mock_osm(context):
     """Answer OpenStreetMap's tile requests with a generated tile; return the requests seen.
 
@@ -225,18 +236,29 @@ def mock_osm(context):
     copyright page, or a tile URL that stopped matching, fails loudly instead of leaving
     the machine.
     """
-    seen = []
+    tiles = OsmTiles()
     png = osm_tile_png()
 
     def answer(route):
-        seen.append(route.request)
-        route.fulfill(status=200, content_type="image/png", body=png,
-                      headers={"cache-control": "max-age=3600"})
+        tiles.append(route.request)
+        if tiles.mode == "down":
+            route.fulfill(status=503, body="")
+        else:
+            route.fulfill(status=403 if tiles.mode == "blocked" else 200,
+                          content_type="image/png", body=png,
+                          headers={"cache-control": "max-age=3600"})
 
     context.route(OSM_HOST, lambda route: route.abort())
     context.route(OSM_TILE, answer)
 
-    return seen
+    return tiles
+
+
+# True once one tile OpenStreetMap's service answered has loaded: a raster tile is an <img>,
+# and Leaflet creates the element before the request has come back, so paint is a tile with
+# width and not a tile element.
+TILE_PAINTED = """() => [...document.querySelectorAll('img.leaflet-tile')].some((tile) =>
+    tile.src.startsWith('https://tile.openstreetmap.org/') && tile.complete && tile.naturalWidth > 0)"""
 
 
 def the_basemap_is_painted(page, failures):
@@ -267,12 +289,7 @@ def the_basemap_is_painted(page, failures):
         return
 
     try:
-        page.wait_for_function(
-            """() => [...document.querySelectorAll('img.leaflet-tile')].some((tile) =>
-                tile.src.startsWith('https://tile.openstreetmap.org/') && tile.complete && tile.naturalWidth > 0)""",
-            timeout=10_000,
-            polling=500,
-        )
+        page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
     except PlaywrightTimeout:
         failures.append(
             f"no tile painted within 10 s from {served['url']} — the page asked for tiles the "
@@ -292,6 +309,272 @@ def the_basemap_is_painted(page, failures):
         )
 
     page.screenshot(path=str(SHOTS / "basemap.png"), full_page=False)
+
+
+OSM_TILE_PREFIX = "https://tile.openstreetmap.org/"
+OSM_BANNER = "No se pudo cargar el fondo de mapa"
+
+
+def _settled_tile_requests(page, tiles):
+    """Reload, wait for a tile to paint and the view to settle, and return the requests since."""
+    first = len(tiles)
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
+    page.wait_for_timeout(1500)
+
+    return list(tiles[first:])
+
+
+def the_tiles_follow_the_policy(page, tiles, failures):
+    """OpenStreetMap's Tile Usage Policy, asserted on what the browser actually sent (ADR-0021).
+
+    https://operations.osmfoundation.org/policies/tiles/ — the clauses a browser can break:
+    the exact HTTPS URL with nothing appended (a cache-busting parameter turns every request
+    into an origin hit), a valid Referer (Nextcloud sends `Referrer-Policy: no-referrer`, and
+    without an override the tile requests carry none, which is the profile OpenStreetMap
+    blocks), and no scan: one screen is at most 54 tiles, so a settled load asking for far
+    more is fetching what nobody is looking at. The page may also only be allowed to load
+    images from the tile host, and not from `*`.
+
+    The Cache-Control a request carries is NOT asserted: Playwright's routing makes Chromium
+    add `no-cache` to every request it intercepts, so that check would fail by construction.
+    """
+    try:
+        requests = _settled_tile_requests(page, tiles)
+    except PlaywrightTimeout:
+        failures.append("no tile painted after a reload, so the tile policy could not be checked")
+        return
+
+    if not requests:
+        failures.append("a settled load asked for no tile, so the tile policy could not be checked")
+        return
+
+    odd = [r.url for r in requests if "?" in r.url or not r.url.startswith(OSM_TILE_PREFIX)]
+    if odd:
+        failures.append(f"{len(odd)} tile request(s) were not the bare https tile URL, e.g. {odd[0]!r}")
+
+    origin = BASE + "/"
+    no_referer = [r.url for r in requests if r.headers.get("referer") != origin]
+    if no_referer:
+        failures.append(
+            f"{len(no_referer)} of {len(requests)} tile requests did not carry Referer {origin!r}, "
+            f"e.g. {no_referer[0]!r}",
+        )
+
+    if len(requests) > 80:
+        failures.append(f"a settled load asked for {len(requests)} tiles; one screen needs at most 54")
+
+    policy = page.request.get(f"{BASE}/apps/territorio/").headers.get("content-security-policy", "")
+    images = re.search(r"img-src ([^;]*)", policy)
+    sources = images.group(1).split() if images else []
+    if "https://tile.openstreetmap.org" not in sources:
+        failures.append(f"the page's img-src {sources} does not name the tile host")
+    if {"*", "http:", "https:"} & set(sources):
+        failures.append(f"the page's img-src {sources} lets images load from anywhere")
+
+
+# Where the attribution has to stay readable: the widest desktop, the breakpoint, the width at
+# which the docked panel and the credit meet, and the two phones. Each with the panel open and
+# collapsed, in both themes. The surfaces are OpenStreetMap's land, water and park colours,
+# which are what the credit sits on.
+ATTRIBUTION_VIEWPORTS = [(1400, 900), (810, 900), (640, 900), (360, 740), (320, 568)]
+OSM_SURFACES = {"land": (0xF2, 0xEF, 0xE9), "water": (0xAA, 0xD3, 0xDF), "park": (0xCD, 0xEB, 0xB0)}
+ATTRIBUTION_LINK = '.leaflet-control-attribution a[href="https://www.openstreetmap.org/copyright"]'
+ATTRIBUTION_READING = """() => {
+    const link = document.querySelector('""" + ATTRIBUTION_LINK + """')
+    if (link === null) return null
+    const control = link.closest('.leaflet-control-attribution')
+    const r = link.getBoundingClientRect()
+    const points = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 1, r.top + 1],
+                    [r.right - 1, r.top + 1], [r.left + 1, r.bottom - 1], [r.right - 1, r.bottom - 1]]
+    const covered = points.filter(([x, y]) => {
+        const hit = document.elementFromPoint(x, y)
+        return !(hit && control.contains(hit))
+    }).length
+    const filtered = []
+    for (let e = link; e && e !== document.documentElement; e = e.parentElement) {
+        const c = getComputedStyle(e)
+        if (c.filter !== 'none' || Number(c.opacity) < 1 || c.mixBlendMode !== 'normal') {
+            filtered.push(e.className || e.tagName)
+        }
+    }
+    const text = getComputedStyle(link)
+    return {
+        left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height,
+        width: innerWidth, viewportHeight: innerHeight, covered, filtered,
+        fontSize: parseFloat(text.fontSize), colour: text.color,
+        background: getComputedStyle(control).backgroundColor,
+        hidden: text.visibility !== 'visible' || text.display === 'none',
+    }
+}"""
+
+
+def _composite(background, surface):
+    """`rgba(r, g, b, a)` laid over an (r, g, b) surface, as an `rgb(r, g, b)` string."""
+    numbers = [float(n) for n in re.findall(r"[\d.]+", background)]
+    alpha = numbers[3] if len(numbers) > 3 else 1.0
+    mixed = [round(alpha * numbers[i] + (1 - alpha) * surface[i]) for i in range(3)]
+
+    return f"rgb({mixed[0]}, {mixed[1]}, {mixed[2]})"
+
+
+def the_attribution_is_visible(page, failures):
+    """The OpenStreetMap credit is on screen, uncovered and readable (Tile Usage Policy).
+
+    The policy: attribution shown clearly, "not hidden beneath UI, behind toggles, or
+    off-screen". The docked panel is a left-hand overlay and the credit sits bottom-right,
+    so on a narrow screen the panel covered most of it. Measured on what is rendered: the
+    link is inside the viewport, nothing sits over any of five points of it, no ancestor
+    dims or filters it, its text is at least 11 px, and it keeps a 4.5:1 contrast over each
+    of OpenStreetMap's land, water and park colours. Light and dark theme, five viewports,
+    panel open and collapsed.
+    """
+    toggle = page.locator(".territorio-docked-panel__toggle")
+    problems = []
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        for width, height in ATTRIBUTION_VIEWPORTS:
+            page.set_viewport_size({"width": width, "height": height})
+            for panel in ("open", "collapsed"):
+                if (toggle.get_attribute("aria-expanded") == "true") != (panel == "open"):
+                    toggle.click()
+                    page.wait_for_timeout(450)
+
+                where = f"{width}x{height}, panel {panel}, {scheme} theme"
+                reading = page.evaluate(ATTRIBUTION_READING)
+                if reading is None:
+                    problems.append(f"{where}: no link to openstreetmap.org/copyright")
+                    continue
+                if reading["hidden"] or reading["left"] < 0 or reading["top"] < 0 \
+                        or reading["right"] > reading["width"] or reading["bottom"] > reading["viewportHeight"]:
+                    problems.append(f"{where}: the credit is hidden or off screen")
+                if reading["covered"]:
+                    problems.append(f"{where}: something sits over {reading['covered']} of 5 points of the credit")
+                if reading["filtered"]:
+                    problems.append(f"{where}: an ancestor filters or dims it: {reading['filtered']}")
+                if reading["fontSize"] < 11:
+                    problems.append(f"{where}: the credit is {reading['fontSize']}px, under 11px")
+                for surface, rgb in OSM_SURFACES.items():
+                    ratio = _contrast(reading["colour"], _composite(reading["background"], rgb))
+                    if ratio < 4.5:
+                        problems.append(f"{where}: contrast {ratio:.2f}:1 over {surface}, under 4.5:1")
+                if width == 360 and panel == "open" and scheme == "light":
+                    page.screenshot(path=str(SHOTS / "attribution-360.png"), full_page=False)
+
+    page.emulate_media(color_scheme="light")
+    page.set_viewport_size({"width": 1400, "height": 900})
+    if (toggle.get_attribute("aria-expanded") == "true") is False:
+        toggle.click()
+        page.wait_for_timeout(450)
+    for line in problems[:6]:
+        failures.append(line)
+    if len(problems) > 6:
+        failures.append(f"...and {len(problems) - 6} more attribution problems")
+
+
+def the_search_flies_without_a_tile_storm(page, tiles, failures):
+    """Picking a search result flies the map there without asking for tiles on the way.
+
+    `flyTo` ignores `zoomAnimation: false`, and with Leaflet's defaults it asked for tiles at
+    every zoom it passed through: measured 255 requests for a jump from zoom 12 to 17, the
+    shape of a scan to anyone watching the tile service. With `updateWhenZooming: false` it
+    asks for the destination only (65).
+    """
+    place = f"Cesfam Rediseño {REDESIGN}"
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
+    page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
+    page.wait_for_timeout(1000)
+    first = len(tiles)
+    titles, problem = _omnibox_pick(page, f"Rediseño {REDESIGN}", place)
+    if problem:
+        failures.append(f"flying to a search result: {problem} (rows: {titles})")
+        return
+
+    page.wait_for_timeout(3500)
+    asked = [corners for corners in (_tile_corners(r.url) for r in tiles[first:]) if corners is not None]
+    zooms = sorted({corners[0] for corners in asked})
+    if len(asked) > 90:
+        failures.append(f"flying to a search result asked for {len(asked)} tiles; one screen needs at most 54")
+    if len(zooms) > 2:
+        failures.append(f"flying to a search result asked for tiles at zooms {zooms}, not only where it landed")
+
+
+def the_map_survives_its_tiles_failing_and_recovers(page, tiles, failures):
+    """With the tile service down the app still works, asks politely, and recovers on its own.
+
+    ADR-0004: a basemap that fails is a note, never a broken map. Down means 503 to every
+    tile. The banner appears, the search still moves the map, and the retries stay inside the
+    page's budget of 16 (measured before the budget: 170 requests in 24 seconds from a
+    clinic's page against a host that was already refusing it). When the host comes back a
+    pan asks for new tiles and the banner clears without a reload.
+    """
+    banner = page.get_by_text(OSM_BANNER)
+    tiles.mode = "down"
+    try:
+        first = len(tiles)
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
+        banner.first.wait_for(timeout=20_000)
+    except PlaywrightTimeout:
+        failures.append("with the tile service down, the page showed no note that the basemap could not load")
+        tiles.mode = "ok"
+        return
+
+    # The ladder is 1 s, 4 s and 12 s: wait it out, then count what it cost.
+    page.wait_for_timeout(18_000)
+    sent = [r.url for r in tiles[first:]]
+    retries = len(sent) - len(set(sent))
+    if retries > 16:
+        failures.append(f"with the tile service down the page repeated {retries} tile requests; its budget is 16")
+
+    place = f"Cesfam Rediseño {REDESIGN}"
+    titles, problem = _omnibox_pick(page, f"Rediseño {REDESIGN}", place)
+    if problem:
+        failures.append(f"with the tile service down the search stopped working: {problem} (rows: {titles})")
+
+    tiles.mode = "ok"
+    page.mouse.move(700, 450)
+    page.mouse.down()
+    page.mouse.move(300, 450, steps=12)
+    page.mouse.up()
+    try:
+        page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
+        banner.first.wait_for(state="hidden", timeout=10_000)
+    except PlaywrightTimeout:
+        failures.append("when the tile service came back, a pan did not bring the basemap back")
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
+
+
+def the_blocked_basemap_is_invisible_to_the_app(page, tiles, failures):
+    """A block by OpenStreetMap looks like a working map to the app, and this pins that.
+
+    OpenStreetMap answers a blocked client with a 403 that carries an image. A browser loads
+    an <img> whatever the status says, so Leaflet fires `tileload`, never `tileerror`: no
+    banner, no retry, and a basemap that shows an 'access blocked' picture. The runbook says
+    so (ADR-0021); this fails the day that stops being true, which would be the day the app
+    could be taught to notice.
+    """
+    tiles.mode = "blocked"
+    try:
+        _settled_tile_requests(page, tiles)
+    except PlaywrightTimeout:
+        failures.append("a 403 that carries an image did not load as a tile")
+        tiles.mode = "ok"
+        return
+
+    if page.get_by_text(OSM_BANNER).count() > 0:
+        failures.append(
+            "the app noticed a 403 that carries an image, which the runbook says it cannot: "
+            "update the ADR-0021 runbook note before this assertion",
+        )
+
+    tiles.mode = "ok"
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
 
 
 # Concepción (CUT 08101) and the Comuna extent the app's table holds for it, as
@@ -347,12 +630,7 @@ def the_map_opens_on_the_comuna_extent(page, tiles, failures):
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
     try:
-        page.wait_for_function(
-            """() => [...document.querySelectorAll('img.leaflet-tile')].some((tile) =>
-                tile.src.startsWith('https://tile.openstreetmap.org/') && tile.complete && tile.naturalWidth > 0)""",
-            timeout=10_000,
-            polling=500,
-        )
+        page.wait_for_function(TILE_PAINTED, timeout=10_000, polling=500)
     except PlaywrightTimeout:
         failures.append("no tile painted after the page opened with a comuna chosen")
         return
@@ -7310,6 +7588,11 @@ def main():
 
         # Before anything pans or draws: the basemap is what every later check stands on.
         run(the_basemap_is_painted, page, failures)
+        run(the_tiles_follow_the_policy, page, tiles, failures)
+        run(the_attribution_is_visible, page, failures)
+        run(the_search_flies_without_a_tile_storm, page, tiles, failures)
+        run(the_map_survives_its_tiles_failing_and_recovers, page, tiles, failures)
+        run(the_blocked_basemap_is_invisible_to_the_app, page, tiles, failures)
         # Right after it, before anything pans or draws: the first fix recentres
         # the map to zoom 16, and the check puts the view back with a reload.
         run(the_locate_control_can_ask_where_the_person_is, page, errors, failures)

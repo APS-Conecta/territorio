@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// src/basemap.js imports Leaflet at module top, and `leaflet-src.js` touches
-// `window` while loading, which a DOM-less run does not have. The mock only lets
-// the module load; the wiring under test is what the layer is built with and
-// what a failed or loaded tile is handed to.
+// src/basemap.js imports Leaflet at module top, and `leaflet-src.js` touches `window` while
+// loading, which a DOM-less run does not have. The mock only lets the module load; `L.tileLayer`
+// returns a fake layer that records its handlers and the map it was added to.
 vi.mock('leaflet', () => ({ default: { tileLayer: vi.fn() } }))
 
 // The basemap hands every failed tile to `retryTile` and every loaded one to
@@ -81,6 +80,7 @@ describe('the basemap', () => {
 
 		expect(hooks.onFailed).toHaveBeenCalledTimes(1)
 		expect(retryTile).toHaveBeenCalledWith(tile)
+		expect(tileLoaded).not.toHaveBeenCalled()
 	})
 
 	it('hands a loaded tile to the retry budget and says the basemap is reachable', () => {

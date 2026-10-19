@@ -15,10 +15,12 @@
  * Continental Chile, `[[south, west], [north, east]]` as Leaflet wants it.
  *
  * What an install with no known Comuna and no imported Unidades Vecinales opens
- * on: the middle of the country at the widest zoom the map allows. The OSM
- * layer's minZoom (8) clamps what fitBounds can choose, so any Chile-sized box
- * lands on its centre (about -36.75, -71.2) at that zoom; the numbers only fix
- * the centre. A country fact, not a clinic fact. It is frozen because callers
+ * on: the middle of the country at the widest zoom the map allows. fitBounds
+ * runs before the basemap exists; when the OSM tile layer (minZoom 8) is added,
+ * Leaflet's Map._updateZoomLevels raises the zoom to that minimum (only while
+ * the map sets no minZoom of its own), so any Chile-sized box ends on its
+ * centre (about -36.75, -71.2) at zoom 8; the numbers only fix the centre. A
+ * country fact, not a clinic fact. It is frozen because callers
  * receive it by reference and one mutation would change every later opening.
  */
 export const CHILE_BOUNDS = Object.freeze([

@@ -210,6 +210,14 @@ class OsmTiles(list):
     """
 
     mode = "ok"
+    # URLs addressed to openstreetmap.org that were NOT a bare tile request (a query string,
+    # plain http, another path). The app must never send one, and a check that only looked at
+    # the answered requests could not see it: the refusal drops them before they are counted.
+    refused = None
+
+    def __init__(self):
+        super().__init__()
+        self.refused = []
 
 
 def mock_osm(context):
@@ -232,7 +240,11 @@ def mock_osm(context):
                           content_type="image/png", body=png,
                           headers={"cache-control": "max-age=3600"})
 
-    context.route(OSM_HOST, lambda route: route.abort())
+    def refuse(route):
+        tiles.refused.append(route.request.url)
+        route.abort()
+
+    context.route(OSM_HOST, refuse)
     context.route(OSM_TILE, answer)
 
     return tiles
@@ -305,11 +317,19 @@ def the_tiles_follow_the_policy(page, tiles, failures):
     The Cache-Control a request carries is NOT asserted: Playwright's routing makes Chromium
     add `no-cache` to every request it intercepts, so that check would fail by construction.
     """
+    refused_before = len(tiles.refused)
     try:
         requests = _settled_tile_requests(page, tiles)
     except PlaywrightTimeout:
         failures.append("no tile painted after a reload, so the tile policy could not be checked")
         return
+
+    refused = tiles.refused[refused_before:]
+    if refused:
+        failures.append(
+            f"{len(refused)} request(s) to openstreetmap.org were not a bare https tile request, "
+            f"e.g. {refused[0]!r}",
+        )
 
     if not requests:
         failures.append("a settled load asked for no tile, so the tile policy could not be checked")
@@ -328,7 +348,10 @@ def the_tiles_follow_the_policy(page, tiles, failures):
         )
 
     if len(requests) > 80:
-        failures.append(f"a settled load asked for {len(requests)} tiles; one screen needs at most 54")
+        failures.append(
+            f"a settled load asked for {len(requests)} tiles: one screen needs at most 54, and the "
+            f"limit here is 80 to allow for the view settling",
+        )
 
     policy = page.request.get(f"{BASE}/apps/territorio/").headers.get("content-security-policy", "")
     images = re.search(r"img-src ([^;]*)", policy)
@@ -427,7 +450,7 @@ def the_attribution_is_visible(page, failures):
                 if width == 360 and panel == "open" and scheme == "light":
                     page.screenshot(path=str(SHOTS / "attribution-360.png"), full_page=False)
 
-    page.emulate_media(color_scheme="light")
+    page.emulate_media(color_scheme="no-override")
     page.set_viewport_size({"width": 1400, "height": 900})
     if (toggle.get_attribute("aria-expanded") == "true") is False:
         toggle.click()
@@ -459,9 +482,16 @@ def the_search_flies_without_a_tile_storm(page, tiles, failures):
 
     page.wait_for_timeout(3500)
     asked = [corners for corners in (_tile_corners(r.url) for r in tiles[first:]) if corners is not None]
+    if not asked:
+        failures.append("flying to a search result asked for no tile, so no flight was measured")
+        return
+
     zooms = sorted({corners[0] for corners in asked})
     if len(asked) > 90:
-        failures.append(f"flying to a search result asked for {len(asked)} tiles; one screen needs at most 54")
+        failures.append(
+            f"flying to a search result asked for {len(asked)} tiles: it needs about one screen "
+            f"(at most 54), and the limit here is 90 to allow for the view settling",
+        )
     if len(zooms) > 2:
         failures.append(f"flying to a search result asked for tiles at zooms {zooms}, not only where it landed")
 
@@ -567,6 +597,31 @@ def _the_blocked_basemap_is_invisible_to_the_app(page, tiles, failures):
     page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
 
 
+def the_instance_starts_without_a_comuna(page, failures):
+    """Whether the instance is the unprovisioned one the gate assumes; says so when it is not.
+
+    A chosen Comuna opens the map on its extent (ADR-0021) and every check below was written
+    for the map opening on the records it seeds. Nothing in the app can unchoose a Comuna, and
+    the extent check leaves one chosen, so a second run on the same instance would fail
+    somewhere far from the cause. Better to stop here and name it.
+    """
+    chosen = page.evaluate(
+        """() => {
+            const element = document.getElementById('initial-state-territorio-comuna')
+            return element === null ? null : JSON.parse(atob(element.value)).chosen
+        }""",
+    )
+    if chosen is None:
+        failures.append("the page carries no comuna at #initial-state-territorio-comuna")
+    elif chosen:
+        failures.append(
+            "the instance already has a Comuna chosen, which opens the map somewhere these checks "
+            "do not expect: start from a clean one with `make instance-clean && make instance-up`",
+        )
+
+    return chosen is False
+
+
 # Concepción (CUT 08101) and the Comuna extent the app's table holds for it, as
 # [[south, west], [north, east]]. Chosen because it is far from Santiago: a map that still
 # opened on the old hard-coded view, or on the imported Unidades Vecinales, would be
@@ -602,8 +657,9 @@ def the_map_opens_on_the_comuna_extent(page, tiles, failures):
     The comuna is chosen the way an administrator chooses it, through the settings
     endpoint, because that write lands in the web process itself. `occ config:app:set`
     would not: APCu is per-process (README, "Two traps"), so the page would keep
-    serving the old value. It is last in the full run for the same reason from the other
-    side: the Comuna stays chosen afterwards, which refuses other comunas' imports.
+    serving the old value. Nothing can unchoose a Comuna, so this is last in the full run
+    and the next run must start from a clean instance, which
+    `the_instance_starts_without_a_comuna` insists on.
     """
     cut, name, (south, west), (north, east) = CONCEPCION
     token = page.evaluate("() => document.head.dataset.requesttoken")
@@ -681,7 +737,6 @@ LOCATION_FIX = {"latitude": -33.5226, "longitude": -70.5985, "accuracy": 30}
 LOCATE_BUTTON = ".territorio-locate a"
 LOCATE_NOTICE = '[data-testid="locate-notice"]'
 OVERLAY_PATHS = ".leaflet-overlay-pane path"
-LOCATE_CONTROL = ".territorio-locate"
 
 # What the gate installs to read where the map really went. Leaflet fires
 # `moveend` once a move has landed, so the bounds and the zoom at that moment
@@ -7554,7 +7609,7 @@ def main():
     with sync_playwright() as p:
         # The resolver rule is the second layer behind the routes: if a request ever slipped
         # past them it would fail to resolve, not reach OpenStreetMap.
-        browser = p.chromium.launch(args=["--host-resolver-rules=MAP *.openstreetmap.org ~NOTFOUND"])
+        browser = p.chromium.launch(args=["--host-resolver-rules=MAP openstreetmap.org ~NOTFOUND, MAP *.openstreetmap.org ~NOTFOUND"])
         context = browser.new_context(viewport={"width": 1400, "height": 900})
         tiles = mock_osm(context)
         page = context.new_page()
@@ -7562,6 +7617,9 @@ def main():
 
         log_in(page)
         page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+        if not the_instance_starts_without_a_comuna(page, failures):
+            browser.close()
+            return _report(errors, failures)
 
         # `--only extent` is the quick check of where the map opens on a chosen Comuna.
         if ONLY == "extent":

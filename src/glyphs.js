@@ -165,6 +165,3 @@ export function glyphFor(categorySlug, chosen = null) {
 
 	return MARKS.get(chosen) ?? MARKS.get(GLYPHS[categorySlug]) ?? MARKS.get(GLYPHS.sin_clasificar)
 }
-
-/** Every Category slug that has a glyph of its own. Read by the tests. */
-export const GLYPH_SLUGS = Object.keys(GLYPHS)

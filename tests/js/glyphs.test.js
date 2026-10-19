@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { CATALOGUE, GLYPH_SLUGS, glyphFor, loadCatalogue } from '../../src/glyphs.js'
+import { CATALOGUE, glyphFor, loadCatalogue } from '../../src/glyphs.js'
 
 /**
  * The Category → pictogram mapping (issue #20, ADR-0013).
@@ -75,7 +75,11 @@ describe('glyphFor', () => {
 	it('covers exactly the seeded Categories and no more', () => {
 		// A glyph for a slug the seed does not ship is dead weight; a seeded slug
 		// with no glyph falls back silently and looks unclassified on the map.
-		expect([...GLYPH_SLUGS].sort()).toEqual([...SEEDED].sort())
+		const table = readFileSync(fileURLToPath(new URL('../../src/glyphs.js', import.meta.url)), 'utf8')
+			.match(/^const GLYPHS = \{\n([\s\S]*?)^\}/m)?.[1] ?? ''
+		const slugs = [...table.matchAll(/^\t(\w+):/gm)].map(([, slug]) => slug)
+
+		expect(slugs.sort()).toEqual([...SEEDED].sort())
 	})
 
 	it('gives each Category a glyph of its own', () => {

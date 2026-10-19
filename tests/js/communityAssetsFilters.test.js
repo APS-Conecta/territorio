@@ -1,17 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import {
-	filterAssets,
-	sortAssets,
-} from '../../src/assets.js'
+import { sortAssets } from '../../src/assets.js'
 
-describe('Community Assets Filtering & Sorting (pure logic)', () => {
-	const sampleSubcategories = new Map([
-		[11, { id: 11, label: 'CESFAM', categoryId: 1, categoryLabel: 'Salud' }],
-		[12, { id: 12, label: 'Farmacia', categoryId: 1, categoryLabel: 'Salud' }],
-		[21, { id: 21, label: 'Colegio', categoryId: 2, categoryLabel: 'Educación' }],
-		[31, { id: 31, label: 'Plaza', categoryId: 3, categoryLabel: 'Espacio Público' }],
-	])
-
+describe('Community Assets Sorting (pure logic)', () => {
 	const sampleFeatures = [
 		{
 			id: 1,
@@ -79,67 +69,6 @@ describe('Community Assets Filtering & Sorting (pure logic)', () => {
 			retired: true, // Retirado
 		},
 	]
-
-	describe('filterAssets', () => {
-		it('returns all active features when filter criteria is empty', () => {
-			const result = filterAssets(sampleFeatures, {}, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1, 2, 3, 4])
-		})
-
-		it('filters out active features and returns only retired when showRetired is true', () => {
-			const result = filterAssets(sampleFeatures, { showRetired: true }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([5])
-		})
-
-		it('filters features by sectorId', () => {
-			const result = filterAssets(sampleFeatures, { sectorId: 10 }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1, 2])
-		})
-
-		it('filters features with no sector assigned (sectorId: null explicit)', () => {
-			const result = filterAssets(sampleFeatures, { sectorId: null }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([4])
-		})
-
-		it('filters features by unidadVecinalId', () => {
-			const result = filterAssets(sampleFeatures, { unidadVecinalId: 100 }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1, 3])
-		})
-
-		it('filters features by locationQuality', () => {
-			const exactResult = filterAssets(sampleFeatures, { locationQuality: 'exact' }, sampleSubcategories)
-			expect(exactResult.map(f => f.id)).toEqual([1, 3, 4])
-
-			const approxResult = filterAssets(sampleFeatures, { locationQuality: 'approximate' }, sampleSubcategories)
-			expect(approxResult.map(f => f.id)).toEqual([2])
-		})
-
-		it('filters features by subcategoryId', () => {
-			const result = filterAssets(sampleFeatures, { subcategoryId: 11 }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1])
-		})
-
-		it('filters features by categoryId', () => {
-			const result = filterAssets(sampleFeatures, { categoryId: 1 }, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1, 2])
-		})
-
-		it('filters features by text query matching name, address, contact, notes, or taxonomy', () => {
-			expect(filterAssets(sampleFeatures, { query: 'Bellavista' }, sampleSubcategories).map(f => f.id)).toEqual([1])
-			expect(filterAssets(sampleFeatures, { query: 'Calle Real' }, sampleSubcategories).map(f => f.id)).toEqual([2])
-			expect(filterAssets(sampleFeatures, { query: 'Silva' }, sampleSubcategories).map(f => f.id)).toEqual([3])
-			expect(filterAssets(sampleFeatures, { query: 'medicamentos' }, sampleSubcategories).map(f => f.id)).toEqual([2])
-			expect(filterAssets(sampleFeatures, { query: 'Educación' }, sampleSubcategories).map(f => f.id)).toEqual([3])
-		})
-
-		it('composes multiple filter criteria simultaneously', () => {
-			const result = filterAssets(sampleFeatures, {
-				sectorId: 10,
-				locationQuality: 'exact',
-			}, sampleSubcategories)
-			expect(result.map(f => f.id)).toEqual([1])
-		})
-	})
 
 	describe('sortAssets', () => {
 		it('sorts alphabetically by name ascending (default)', () => {

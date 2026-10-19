@@ -224,6 +224,23 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   boot, so the stub removes itself. Before this there was nothing at all: a blank frame until the
   webpack bundle mounted, and nothing for a JS-disabled browser.
 
+### Removed
+
+- **Code nothing in production reached (0.79.1).** No behaviour changes. Every symbol was searched by
+  exact name across `src/`, `lib/`, `tests/`, `tools/`, `templates/`, the docs and the README before
+  it went.
+  - `filterAssets` and `isPotentialDuplicate` in `src/assets.js`, and the tests that existed only
+    for them. `filterAssets` repeated what `filterFeatures` and `listFor` in `src/filters.js` already
+    do; `findDuplicateCandidate`, which the form calls, is unchanged.
+  - `GLYPH_SLUGS` in `src/glyphs.js`; the only reader was a test, which now reads the `GLYPHS` table
+    from the module's source.
+  - The `counts` prop of `LayersDropdownButton` and its per-category badge: `App.vue` never bound it.
+  - The `select-existing` event `FeatureDetail` declared and nothing fired or listened to.
+  - Five `export`s that only their own file uses (`METRES_PER_DEGREE`, `SAME_PLACE_METRES`,
+    `SAME_BLOCK_METRES`, `ALIKE_THRESHOLD`, `closerFirst`), and two unused PHP `use` statements.
+  - `tests/js/deadcode.test.js` pins the absences, because ESLint flags an unused local but never an
+    unused export, an unread prop or an emit nobody fires.
+
 ### Fixed
 
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The

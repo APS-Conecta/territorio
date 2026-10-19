@@ -16,11 +16,9 @@ import { fold } from './filters.js'
  * shorter one, then alphabetical.
  *
  * Someone typing "los toros" wants "Los Toros" above "Pasaje Los Toros Norte",
- * and a shorter name is the closer match to what they typed. Exported because
- * the street search ranks by the same rule (streets.js): one app, one idea of
- * which street comes first.
+ * and a shorter name is the closer match to what they typed.
  */
-export const closerFirst = (a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name)
+const closerFirst = (a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name)
 
 /**
  * What someone typing has to choose between.

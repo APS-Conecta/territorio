@@ -296,7 +296,7 @@ export default {
 		error: { type: String, default: '' },
 	},
 
-	emits: ['save', 'retire', 'retry', 'center', 'select-existing', 'cancel'],
+	emits: ['save', 'retire', 'retry', 'center', 'cancel'],
 
 	data() {
 		return {

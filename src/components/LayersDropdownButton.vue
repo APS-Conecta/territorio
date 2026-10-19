@@ -45,9 +45,6 @@
 						@change="onToggleCategory(cat, $event)">
 					<span class="territorio-layers-item__dot" :style="{ backgroundColor: cat.color }" aria-hidden="true" />
 					<span class="territorio-layers-item__label">{{ cat.label }}</span>
-					<span v-if="counts[cat.slug] != null" class="territorio-layers-item__badge">
-						{{ counts[cat.slug] }}
-					</span>
 				</label>
 			</div>
 
@@ -96,10 +93,6 @@ export default {
 		filter: {
 			type: Object,
 			default: () => ({ hidden: new Set(), query: '' }),
-		},
-		counts: {
-			type: Object,
-			default: () => ({}),
 		},
 	},
 
@@ -318,14 +311,6 @@ export default {
 	flex: 1;
 	font-size: 13px;
 	color: #202124;
-}
-
-.territorio-layers-item__badge {
-	font-size: 11px;
-	color: #70757a;
-	background: #f1f3f4;
-	padding: 1px 6px;
-	border-radius: 10px;
 }
 
 .territorio-layers-panel__divider {

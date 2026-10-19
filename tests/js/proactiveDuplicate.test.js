@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
 	alike,
 	findDuplicateCandidate,
-	isPotentialDuplicate,
 	levenshteinDistance,
 	metresBetween,
 	normalizeName,
@@ -75,7 +74,7 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 		})
 	})
 
-	describe('isPotentialDuplicate and findDuplicateCandidate', () => {
+	describe('findDuplicateCandidate', () => {
 		const existingFeatures = [
 			{
 				id: 101,
@@ -111,7 +110,6 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 			expect(candidate).not.toBeNull()
 			expect(candidate.feature.id).toBe(101)
 			expect(candidate.reason).toBe('coordenada')
-			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(true)
 		})
 
 		it('detects duplicate on alike name within block distance (<= 150m)', () => {
@@ -125,7 +123,6 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 			expect(candidate).not.toBeNull()
 			expect(candidate.feature.id).toBe(102)
 			expect(candidate.reason).toBe('nombre')
-			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(true)
 		})
 
 		it('does not flag duplicate if name is alike but distance is far (> 150m)', () => {
@@ -136,7 +133,6 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 				lon: -70.6505,
 			}
 			expect(findDuplicateCandidate(draft, existingFeatures)).toBeNull()
-			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(false)
 		})
 
 		it('does not flag duplicate against itself when editing an existing feature', () => {
@@ -147,7 +143,6 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 				lon: -70.6501,
 			}
 			expect(findDuplicateCandidate(draft, existingFeatures)).toBeNull()
-			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(false)
 		})
 
 		it('handles draft without coordinates gracefully without error', () => {
@@ -158,7 +153,6 @@ describe('Proactive Duplicate Shield (pure logic)', () => {
 				lon: null,
 			}
 			expect(findDuplicateCandidate(draft, existingFeatures)).toBeNull()
-			expect(isPotentialDuplicate(draft, existingFeatures)).toBe(false)
 		})
 	})
 

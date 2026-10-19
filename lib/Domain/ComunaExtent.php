@@ -21,12 +21,11 @@ use JsonSerializable;
  */
 final class ComunaExtent implements JsonSerializable {
 	/**
-	 * The widest a single box may be. The real ones are under 4 degrees; the
-	 * extra room is for a comuna that grows, while a box several times that is
-	 * the union of every island of an archipelago, which is the mistake the
-	 * generator's part rule exists to avoid.
+	 * The widest a single box may be (the widest real one is Aisen, 3.689). A
+	 * wider box is the union of the islands of an archipelago, the mistake the
+	 * generator's part rule exists to avoid. The table test reads this same cap.
 	 */
-	private const MAX_SPAN_DEGREES = 6.0;
+	public const MAX_SPAN_DEGREES = 4.0;
 
 	private function __construct(
 		private readonly BoundingBox $box,
@@ -53,7 +52,7 @@ final class ComunaExtent implements JsonSerializable {
 			throw new InvalidArgumentException('A Comuna extent runs west to east and south to north.');
 		}
 		if ($east - $west > self::MAX_SPAN_DEGREES || $north - $south > self::MAX_SPAN_DEGREES) {
-			throw new InvalidArgumentException('A Comuna extent is at most 6 degrees across.');
+			throw new InvalidArgumentException(sprintf('A Comuna extent is at most %d degrees across.', self::MAX_SPAN_DEGREES));
 		}
 
 		return new self(BoundingBox::fromBounds($south, $west, $north, $east));
@@ -64,10 +63,6 @@ final class ComunaExtent implements JsonSerializable {
 		$row = ComunaExtentTable::BY_CUT[$cut] ?? null;
 
 		return $row === null ? null : self::of(...$row);
-	}
-
-	public function box(): BoundingBox {
-		return $this->box;
 	}
 
 	/**

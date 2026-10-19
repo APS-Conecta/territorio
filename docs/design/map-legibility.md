@@ -12,7 +12,7 @@ boundary the clinic may never touch and a Sector it drew this morning.
 
 The fix is not a legend and not a repaint. It is to **give each domain distinction its own channel**:
 
-| Domain distinction | Channel | Today |
+| Domain distinction | Channel | At the 2026-08-07 audit |
 |---|---|---|
 | Category (what it is about) | **glyph**, hue as grouping | hue alone |
 | Kind (Place / Zone / Route) | the geometry itself | already correct |
@@ -175,8 +175,8 @@ already what a whole Category nobody could give a hue to is painted. Deliberatel
 ## 2. Figure and ground
 
 CONTEXT.md distinguishes a **Cadastral Dataset** ("the clinic reads it, never draws it") from a
-**Curated Dataset** ("born inside the clinic"). Enormous operational weight, currently zero visual
-weight. Unidad Vecinal becomes ground; Sector becomes figure.
+**Curated Dataset** ("born inside the clinic"). Enormous operational weight and, before #21, zero visual
+weight. Unidad Vecinal is ground; Sector is figure.
 
 | | Unidad Vecinal — ground | Sector — figure |
 |---|---|---|
@@ -197,11 +197,12 @@ Measured (recompute with `tools/ramp-check.py`'s own functions, not by eye):
 - UV hairline at 0.45 reads at **1.35–1.49:1** over OSM land, water and green, and **1.87:1** over
   the dark background — visible, never loud.
 - The Sector tint at **alpha 0.10** over OSM land composites to `#e9e6e0`, leaving the worst
-  dot-on-tint contrast at **3.04:1** (`deporte_recreacion`). Above 3:1, but only just — and the
-  code currently ships `fillOpacity: 0.15` (`TerritorioMap.vue`, `styleFor`), where the same pair measures
-  **2.90:1**. Adopting `#949494` as the Sector wash therefore requires adopting 0.10 with it; #21
-  owns both. What keeps this off the defect list today is the pin's 2px `#171717` ring — one fixed
-  ink, measured over every surface in § 2.2 — so a dot never relies on fill-vs-tint contrast alone.
+  dot-on-tint contrast at **3.04:1** (`deporte_recreacion`). Above 3:1, but only just — and at the
+  0.15 the wash shipped before #21, the same pair measured **2.90:1**. So `#949494` and 0.10 are one
+  decision, and the code carries both (`FIGURE_FILL_OPACITY` in `src/marks.js`); changing either
+  alone puts a measured contrast below its floor. What keeps this from being a defect is the pin's
+  2px `#171717` ring — one fixed ink, measured over every surface in § 2.2 — so a dot never relies
+  on fill-vs-tint contrast alone.
 - These are composited in **sRGB**, which is what a browser does with CSS alpha. An earlier draft
   of this section computed them in linear light and read ~0.05 high throughout.
 - The tint sits ΔE 0.021 from the bare basemap against ΔE ~0.45 for a dot, so a Sector a clinic
@@ -310,16 +311,18 @@ outline and the label identify.
 
 ## 3. Defects
 
-Each is independently verifiable and independently shippable.
+The audit of 2026-08-07 found six. All six are fixed; none is open. The table is kept as a record
+of what was wrong and where it was fixed, because § 4 and the verification list in § 6 refer to
+them by number.
 
-| | Defect | Evidence |
+| | Defect, as found | Fixed in |
 |---|---|---|
-| **D1** | Cluster hue means *count* while dot hue means *Category* — one channel, two meanings, switching on zoom | markercluster buckets on `getChildCount()` into small/medium/large. Fix: `iconCreateFunction`, already unused in the options object that `TerritorioMap.vue` hands markercluster, walking `getAllChildMarkers()` through `colourOf`. ~40 lines |
-| **D2** | Every un-recoloured Sector is drawn in exactly the colour of every school | `taxonomy.js:28` `#2563eb` is byte-identical to `EnsureSeedData.php:48` |
-| **D3** | A Unidad Vecinal is offered a colour picker, and `colourOf` honours it over the division colour | `FeatureDetail.vue:24` gated on `isDivision`, which is true for *any* division. No figure/ground rule can be guaranteed while this exists |
-| **D4** | The map asserts a precision the Registry never claimed | `locationQuality` is stored, validated, imported, exported and historicised (`LocationQuality.php`, `CsvWriter.php:31`, `FeatureHistory.vue:92`) and never drawn. `aproximada` renders identically to `exacta` |
-| **D5** | `img/app.svg` and `img/app-dark.svg` are byte-identical, so one of them does nothing | |
-| **D6** | A Sector can be clicked but never tabbed to | `L.Marker` defaults `keyboard: true`; `Path.js` and `Layer.js` have no keyboard handling at all. No Leaflet plugin anywhere fixes this |
+| **D1** | Cluster hue meant *count* while dot hue meant *Category* | 0.57.0, #22 — a cluster is coloured by the Categories under it |
+| **D2** | Every un-recoloured Sector was drawn in exactly the colour of every school (`#2563eb`) | 0.56.0, #21 — the Sector default is the neutral `#949494` |
+| **D3** | A Unidad Vecinal was offered a colour picker | 0.56.0, #24 — the picker is offered to a Sector only |
+| **D4** | `aproximada` rendered identically to `exacta` | 0.57.0, #23 — an approximate coordinate draws a dashed ring |
+| **D5** | `img/app.svg` and `img/app-dark.svg` were byte-identical, so one of them did nothing | 0.48.0, #26 — `app.svg` is the white variant, `app-dark.svg` the black one |
+| **D6** | A Sector could be clicked but never tabbed to | 0.49.0, #25 — every Zone and Route is tab-focusable (`src/a11y.js`) |
 
 ## 4. What was evaluated and rejected
 

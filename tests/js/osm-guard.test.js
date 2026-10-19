@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockOsm } from './setup-no-osm.js'
+import { blockOsm } from './osm-block.js'
 
 /**
  * No unit test may reach openstreetmap.org. A test that scraped the tile service

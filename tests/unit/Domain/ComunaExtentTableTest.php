@@ -18,13 +18,6 @@ final class ComunaExtentTableTest extends TestCase {
 	private const SOURCE = __DIR__ . '/../../../lib/Domain/ComunaExtentTable.php';
 	private const CUTS = __DIR__ . '/../../fixtures/comuna-cuts.txt';
 
-	/**
-	 * A tripwire for a part picked wrongly: the union of every part of a
-	 * southern comuna is a box of many degrees. Not a statement about any
-	 * real comuna.
-	 */
-	private const MAX_SPAN = 4.0;
-
 	/** PHP turns a numeric string key such as '13101' into an int; '01101' stays a string. */
 	private static function cuts(): array {
 		return array_map('strval', array_keys(ComunaExtentTable::BY_CUT));
@@ -42,6 +35,10 @@ final class ComunaExtentTableTest extends TestCase {
 			'SIRGAS-Chile',
 			'most DEIS establishments',
 			'python3 -I tools/comuna-extents.py',
+			'hand-placed',
+			'12201',
+			'10210',
+			'register snapshot',
 		] as $fact) {
 			self::assertStringContainsString($fact, $header);
 		}
@@ -69,23 +66,24 @@ final class ComunaExtentTableTest extends TestCase {
 		self::assertCount(21, $nuble);
 	}
 
-	public function testEveryRowIsAValidExtentNoWiderThanFourDegrees(): void {
+	public function testEveryRowIsAValidExtentWithinTheSpanCap(): void {
 		$widest = 0.0;
 		foreach (self::cuts() as $cut) {
 			$extent = ComunaExtent::forCut($cut);
 			self::assertNotNull($extent, $cut);
 
-			$box = $extent->box();
-			$widest = max($widest, $box->maxLon() - $box->minLon(), $box->maxLat() - $box->minLat());
+			[[$south, $west], [$north, $east]] = $extent->jsonSerialize();
+			$widest = max($widest, $east - $west, $north - $south);
 		}
 
-		self::assertLessThanOrEqual(self::MAX_SPAN, $widest);
+		// One cap, ComunaExtent's own. The widest real box is Aisen, 3.689 degrees.
+		self::assertLessThanOrEqual(ComunaExtent::MAX_SPAN_DEGREES, $widest);
 	}
 
 	/**
-	 * Places people live. The first three are the comunas whose largest part
-	 * is the wrong one, so these fail if the generator takes the largest part,
-	 * or the union of all of them, instead of the part with the establishments.
+	 * Places people live. Natales, Cabo de Hornos, Juan Fernandez and Quinchao are
+	 * where the largest part is the wrong one, so these fail if the generator
+	 * takes the largest part, the union of all parts, or loses a hand-placed place.
 	 *
 	 * @return array<string, array{string, float, float}>
 	 */
@@ -94,6 +92,8 @@ final class ComunaExtentTableTest extends TestCase {
 			'Puerto Natales' => ['12401', -72.4978, -51.7308],
 			'Puerto Williams' => ['12201', -67.6167, -54.9333],
 			'San Juan Bautista, Robinson Crusoe' => ['05104', -78.8359, -33.6393],
+			'Achao, capital of Quinchao' => ['10210', -73.4936, -42.4719],
+			'Hanga Roa' => ['05201', -109.4281, -27.1127],
 			'Santiago centre' => ['13101', -70.6693, -33.4489],
 			'La Florida' => ['13110', -70.5985, -33.5225],
 		];
@@ -104,6 +104,7 @@ final class ComunaExtentTableTest extends TestCase {
 		$extent = ComunaExtent::forCut($cut);
 
 		self::assertNotNull($extent);
-		self::assertTrue($extent->box()->holds($lon, $lat));
+		[[$south, $west], [$north, $east]] = $extent->jsonSerialize();
+		self::assertTrue($lon >= $west && $lon <= $east && $lat >= $south && $lat <= $north);
 	}
 }

@@ -10,10 +10,20 @@ import { blockOsm } from './setup-no-osm.js'
 const OSM_TILE = 'https://tile.openstreetmap.org/12/1244/2452.png'
 
 describe('the OpenStreetMap guard', () => {
-	it('is installed on the real fetch for every test', () => {
-		expect(() => fetch(OSM_TILE)).toThrow(/openstreetmap\.org/)
-		expect(() => fetch(new URL('https://www.openstreetmap.org/copyright'))).toThrow()
-		expect(() => fetch(new Request(OSM_TILE))).toThrow()
+	it('is installed on the real fetch for every test', async () => {
+		// Asserted first: without the setup file the calls below would be real
+		// requests to the tile service.
+		expect(globalThis.fetch.__osmGuard).toBe(true)
+
+		await expect(fetch(OSM_TILE)).rejects.toThrow(/openstreetmap\.org/)
+		await expect(fetch(new URL('https://www.openstreetmap.org/copyright'))).rejects.toThrow()
+		await expect(fetch(new Request(OSM_TILE))).rejects.toThrow()
+	})
+
+	it('blocks the fully qualified host with a trailing dot', async () => {
+		expect(globalThis.fetch.__osmGuard).toBe(true)
+
+		await expect(fetch('https://tile.openstreetmap.org./12/1244/2452.png')).rejects.toThrow()
 	})
 
 	it('leaves every other host alone', async () => {

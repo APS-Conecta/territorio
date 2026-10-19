@@ -98,9 +98,12 @@ export const isSpentTile = (tile) => (tile?._territorioRetries ?? 0) >= TILE_RET
  */
 export const tileLayerOptions = ({ attribution }) => ({
 	attribution,
-	// Same two numbers on the map and the layer, so a person cannot zoom to a
-	// level the layer does not draw. z8 stops a zoomed-out view from requesting
-	// a whole country's tiles; z18 is the deepest OSM serves.
+	// The owner capped zoom at 18; the app itself navigates to 17 at most, and
+	// the deepest levels are the ones that cost OpenStreetMap the most. z8 stops a
+	// zoomed-out view from requesting a whole country's tiles. L.map sets no
+	// zoom limits of its own: the map picks these up because GridLayer.onAdd calls
+	// map._addZoomLimit(this) and getMinZoom/getMaxZoom fall back to the layer's
+	// (Leaflet 1.9.4), so they bind map and layer alike.
 	minZoom: 8,
 	maxZoom: 18,
 	// Without it the world repeats sideways and every copy is another set of

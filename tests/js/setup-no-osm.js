@@ -13,21 +13,30 @@ const isOsm = (url) => {
 	try {
 		const { hostname } = new URL(String(url?.url ?? url), 'http://localhost')
 
-		return hostname === 'openstreetmap.org' || hostname.endsWith('.openstreetmap.org')
+		// A trailing dot is the same host, fully qualified, and a valid way in.
+		const host = hostname.replace(/\.$/, '')
+
+		return host === 'openstreetmap.org' || host.endsWith('.openstreetmap.org')
 	} catch {
 		return false
 	}
 }
 
+const refusal = (url) => new Error(`Unit tests must not reach openstreetmap.org (${url?.url ?? url})`)
+
 const refuse = (url) => {
-	throw new Error(`Unit tests must not reach openstreetmap.org (${url?.url ?? url})`)
+	throw refusal(url)
 }
 
 export function blockOsm(target) {
 	const { fetch, XMLHttpRequest, HTMLImageElement } = target
 
 	if (fetch) {
-		target.fetch = (input, ...rest) => (isOsm(input) ? refuse(input) : fetch(input, ...rest))
+		// A rejection and not a throw, because that is how the real fetch fails.
+		target.fetch = (input, ...rest) => (isOsm(input) ? Promise.reject(refusal(input)) : fetch(input, ...rest))
+		// Lets a test confirm the guard is installed BEFORE it calls fetch, so a
+		// dropped setup file fails the test instead of hitting the network.
+		target.fetch.__osmGuard = true
 	}
 
 	if (XMLHttpRequest) {

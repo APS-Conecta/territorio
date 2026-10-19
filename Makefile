@@ -66,6 +66,7 @@ test-browser:
 lint: test-image
 	$(DOCKER) sh -c 'find lib tests tools -path tools/openapi -prune -o -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null'
 	python3 tools/ramp-check.py
+	python3 -I tools/comuna-extents.py --self-test
 
 build:
 	npm run build

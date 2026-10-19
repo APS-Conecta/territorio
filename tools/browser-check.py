@@ -502,7 +502,27 @@ def the_search_flies_without_a_tile_storm(page, tiles, failures):
         failures.append(f"flying to a search result asked for tiles at zooms {zooms}, not only where it landed")
 
 
-def the_map_survives_its_tiles_failing_and_recovers(page, tiles, failures):
+@contextmanager
+def expected_console_errors(errors, status):
+    """Forgive the console errors a check causes ON PURPOSE by making the tile service answer `status`.
+
+    Chromium logs «Failed to load resource: the server responded with a status of 503» for every
+    tile it was refused, and this gate fails a run on any console error. The check below
+    breaks the tile service deliberately; only that status, only while it does, is dropped.
+    """
+    mark = len(errors)
+    try:
+        yield
+    finally:
+        errors[mark:] = [line for line in errors[mark:] if f"status of {status}" not in line]
+
+
+def the_map_survives_its_tiles_failing_and_recovers(page, tiles, errors, failures):
+    with expected_console_errors(errors, 503):
+        _the_map_survives_its_tiles_failing_and_recovers(page, tiles, failures)
+
+
+def _the_map_survives_its_tiles_failing_and_recovers(page, tiles, failures):
     """With the tile service down the app still works, asks politely, and recovers on its own.
 
     ADR-0004: a basemap that fails is a note, never a broken map. Down means 503 to every
@@ -550,7 +570,12 @@ def the_map_survives_its_tiles_failing_and_recovers(page, tiles, failures):
     page.wait_for_selector(OMNIBOX_INPUT, timeout=15_000)
 
 
-def the_blocked_basemap_is_invisible_to_the_app(page, tiles, failures):
+def the_blocked_basemap_is_invisible_to_the_app(page, tiles, errors, failures):
+    with expected_console_errors(errors, 403):
+        _the_blocked_basemap_is_invisible_to_the_app(page, tiles, failures)
+
+
+def _the_blocked_basemap_is_invisible_to_the_app(page, tiles, failures):
     """A block by OpenStreetMap looks like a working map to the app, and this pins that.
 
     OpenStreetMap answers a blocked client with a 403 that carries an image. A browser loads
@@ -7592,8 +7617,8 @@ def main():
         run(the_tiles_follow_the_policy, page, tiles, failures)
         run(the_attribution_is_visible, page, failures)
         run(the_search_flies_without_a_tile_storm, page, tiles, failures)
-        run(the_map_survives_its_tiles_failing_and_recovers, page, tiles, failures)
-        run(the_blocked_basemap_is_invisible_to_the_app, page, tiles, failures)
+        run(the_map_survives_its_tiles_failing_and_recovers, page, tiles, errors, failures)
+        run(the_blocked_basemap_is_invisible_to_the_app, page, tiles, errors, failures)
         if ONLY == "tiles":
             browser.close()
             return _report(errors, failures)

@@ -60,6 +60,7 @@ import LocateControl from './LocateControl.vue'
 import { initialView } from '../extent.js'
 import {
 	boundsOf,
+	boundsOfRecords,
 	colourOf,
 	indexSubcategories,
 	UNIDAD_VECINAL_SLUG,
@@ -294,8 +295,8 @@ export default {
 
 		// Open on the Comuna this install serves (ADR-0021): its extent when the CUT is
 		// in the table, otherwise the Unidades Vecinales it imported — ordinary Features,
-		// so the client already holds them — otherwise continental Chile. Nothing here
-		// restricts where a person may pan afterwards.
+		// so the client already holds them — otherwise wherever its records are, otherwise
+		// the middle of the country. Nothing here restricts where a person may pan afterwards.
 		//
 		// Set BEFORE a single layer is added, and without animation. A zoom that
 		// happens while layers exist runs Leaflet's animation over each of them,
@@ -308,6 +309,7 @@ export default {
 		const { bounds } = initialView({
 			extent: this.comuna.extent,
 			unitBounds: boundsOf(this.features, this.subcategories, UNIDAD_VECINAL_SLUG),
+			recordBounds: boundsOfRecords(this.features),
 		})
 		this.map.fitBounds(bounds, { padding: [16, 16], animate: false })
 

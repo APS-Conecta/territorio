@@ -126,8 +126,9 @@ The basemap stops being somebody else's public service.
   an install provisioned before this release opens in the right place without being provisioned
   again, and a comuna an administrator changes moves the opening view at once. A comuna of
   several islands or pieces of land opens on the part where its health establishments are. The
-  Unidad Vecinal bounds remain the next source, then the middle of the country; the hard-coded
-  view of central Santiago is gone, which did not belong in a product that serves any comuna.
+  Unidad Vecinal bounds remain the next source, then the bounds of the records themselves, then the
+  middle of the country; the hard-coded view of central Santiago is gone, which did not belong in
+  a product that serves any comuna.
   Nothing restricts where a person may pan afterwards.
 
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom

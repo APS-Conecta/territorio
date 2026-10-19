@@ -1,8 +1,14 @@
 /**
  * Where the map opens (ADR-0021, CONTEXT.md "Comuna extent"): the Comuna
  * extent first, then the bounds of the Unidades Vecinales the install imported,
- * then continental Chile. Pure on purpose: no Leaflet, no DOM, so the choice is
- * testable without a map.
+ * then the bounds of its records, then continental Chile. Pure on purpose: no
+ * Leaflet, no DOM, so the choice is testable without a map.
+ *
+ * The records rung exists because the map's minimum zoom (8) makes a
+ * country-wide fit impossible: "Chile" is only the middle of the country, so an
+ * install that has data but neither a chosen Comuna nor Unidades Vecinales would
+ * open with its own records off screen. An install with data opens where its
+ * data is.
  */
 
 /**
@@ -45,19 +51,25 @@ function isUsable(bounds) {
 
 /**
  * `extent` is the Comuna extent the server derived from the CUT, or null.
- * `unitBounds` is what `boundsOf` answers: `[[s, w], [n, e]]` or null.
+ * `unitBounds` is what `boundsOf` answers and `recordBounds` what
+ * `boundsOfRecords` answers: `[[s, w], [n, e]]` or null. A lone Point makes a
+ * zero-size `recordBounds`, which is skipped like any box without area.
  * The source is returned so a caller (and a test) can tell which one won.
  *
  * Callers always pass an object; `= {}` only covers an omitted argument, so
  * `initialView(null)` throws by design rather than being quietly tolerated.
  */
-export function initialView({ extent, unitBounds } = {}) {
+export function initialView({ extent, unitBounds, recordBounds } = {}) {
 	if (isUsable(extent)) {
 		return { bounds: extent, source: 'extent' }
 	}
 
 	if (isUsable(unitBounds)) {
 		return { bounds: unitBounds, source: 'units' }
+	}
+
+	if (isUsable(recordBounds)) {
+		return { bounds: recordBounds, source: 'records' }
 	}
 
 	return { bounds: CHILE_BOUNDS, source: 'chile' }

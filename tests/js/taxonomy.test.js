@@ -5,6 +5,7 @@ import {
 	defaultSubcategoryId,
 	divisionsOf,
 	boundsOf,
+	boundsOfRecords,
 	DEFAULT_SECTOR_COLOUR,
 	indexSubcategories,
 	isDivision,
@@ -200,6 +201,50 @@ describe('the extent of a division', () => {
 		expect(boundsOf([], subcategories, 'sector')).toBe(null)
 		expect(boundsOf([{ id: 1, subcategoryId: 21, geometry: null }], subcategories, 'sector'))
 			.toBe(null)
+	})
+})
+
+describe('the extent of the records themselves', () => {
+	const record = (id, type, coordinates) => ({ id, subcategoryId: 11, geometry: { type, coordinates } })
+
+	it('is null when there are no records, and when none has a geometry', () => {
+		expect(boundsOfRecords([])).toBe(null)
+		expect(boundsOfRecords([
+			{ id: 1, subcategoryId: 11, geometry: null },
+			{ id: 2, subcategoryId: 11 },
+			{ id: 3, subcategoryId: 11, geometry: { type: 'Point', coordinates: null } },
+		])).toBe(null)
+	})
+
+	/** Asymmetric numbers, so a lat/lon swap changes the answer. */
+	it('is stretched by points, lines and polygons alike, whatever their Subcategory', () => {
+		const features = [
+			record(1, 'Point', [-70.50, -33.40]),
+			record(2, 'LineString', [[-70.70, -33.60], [-70.65, -33.58]]),
+			{ id: 3, subcategoryId: 21, geometry: { type: 'Polygon', coordinates: [[[-70.55, -33.45], [-70.45, -33.45], [-70.45, -33.30], [-70.55, -33.45]]] } },
+		]
+
+		expect(boundsOfRecords(features)).toEqual([[-33.60, -70.70], [-33.30, -70.45]])
+	})
+
+	it('skips a record without a geometry but still measures the others', () => {
+		const features = [
+			{ id: 1, subcategoryId: 11, geometry: null },
+			record(2, 'Point', [-70.50, -33.40]),
+			record(3, 'Point', [-70.20, -33.10]),
+		]
+
+		expect(boundsOfRecords(features)).toEqual([[-33.40, -70.50], [-33.10, -70.20]])
+	})
+
+	/**
+	 * A lone Point is a zero-size box. It is returned as it is; initialView
+	 * refuses a box with no area and falls through, rather than fitting a
+	 * point at the highest zoom.
+	 */
+	it('is a zero-size box for a single Point', () => {
+		expect(boundsOfRecords([record(1, 'Point', [-70.50, -33.40])]))
+			.toEqual([[-33.40, -70.50], [-33.40, -70.50]])
 	})
 })
 

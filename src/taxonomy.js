@@ -147,10 +147,24 @@ export function isSectorSubcategory(taxonomy, subcategoryId) {
  * Dataset if a national install ever appears.
  */
 export function boundsOf(features, subcategories, slug) {
+	return boundsWhere(features, (feature) => subcategories.get(feature.subcategoryId)?.slug === slug)
+}
+
+/**
+ * The extent of every record that has a geometry, whatever its Subcategory, or
+ * null when none does. The opening view's rung for an install with records but
+ * no chosen Comuna and no imported Unidades Vecinales: it should open where its
+ * data is. A lone Point answers a zero-size box, which `initialView` refuses.
+ */
+export function boundsOfRecords(features) {
+	return boundsWhere(features, () => true)
+}
+
+function boundsWhere(features, keep) {
 	const extent = new Extent()
 
 	features.forEach((feature) => {
-		if (subcategories.get(feature.subcategoryId)?.slug === slug && feature.geometry) {
+		if (feature.geometry && keep(feature)) {
 			extent.stretch(feature.geometry.coordinates)
 		}
 	})

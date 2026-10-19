@@ -9,6 +9,7 @@ import { CHILE_BOUNDS, initialView } from '../../src/extent.js'
  */
 const EXTENT = [[-33.61, -70.74], [-33.37, -70.43]]
 const UNITS = [[-33.55, -70.66], [-33.45, -70.52]]
+const RECORDS = [[-33.58, -70.70], [-33.30, -70.44]]
 
 describe('initialView precedence', () => {
 	it('opens on the Comuna extent when there is one', () => {
@@ -26,7 +27,24 @@ describe('initialView precedence', () => {
 			.toEqual({ bounds: UNITS, source: 'units' })
 	})
 
-	it('falls back to Chile when it has neither', () => {
+	it('falls back to the bounds of the records when it has neither', () => {
+		expect(initialView({ extent: null, unitBounds: null, recordBounds: RECORDS }))
+			.toEqual({ bounds: RECORDS, source: 'records' })
+	})
+
+	it('prefers the Unidad Vecinal bounds over the records', () => {
+		expect(initialView({ extent: null, unitBounds: UNITS, recordBounds: RECORDS }))
+			.toEqual({ bounds: UNITS, source: 'units' })
+	})
+
+	it('prefers the Comuna extent over everything else', () => {
+		expect(initialView({ extent: EXTENT, unitBounds: UNITS, recordBounds: RECORDS }))
+			.toEqual({ bounds: EXTENT, source: 'extent' })
+	})
+
+	it('falls back to Chile when it has nothing', () => {
+		expect(initialView({ extent: null, unitBounds: null, recordBounds: null }))
+			.toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
 		expect(initialView({ extent: null, unitBounds: null }))
 			.toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
 	})
@@ -70,6 +88,21 @@ describe('initialView skips what it cannot trust', () => {
 	it.each(Object.entries(INVALID))('invalid unit bounds (%s) fall through to Chile', (_, unitBounds) => {
 		expect(initialView({ extent: null, unitBounds }))
 			.toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
+	})
+
+	it.each(Object.entries(INVALID))('invalid record bounds (%s) fall through to Chile', (_, recordBounds) => {
+		expect(initialView({ extent: null, unitBounds: null, recordBounds }))
+			.toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
+	})
+
+	it('skips a lone Point (zero-size record bounds) and opens on Chile', () => {
+		expect(initialView({ extent: null, unitBounds: null, recordBounds: [[-33.4, -70.5], [-33.4, -70.5]] }))
+			.toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
+	})
+
+	it('falls from invalid unit bounds to valid record bounds', () => {
+		expect(initialView({ extent: undefined, unitBounds: [[NaN, 0], [1, 1]], recordBounds: RECORDS }))
+			.toEqual({ bounds: RECORDS, source: 'records' })
 	})
 
 	it('keeps a valid extent when the unit bounds are the invalid ones', () => {

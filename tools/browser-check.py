@@ -69,8 +69,8 @@ REDESIGN = uuid.uuid4().hex[:6]
 ONLY = None
 if "--only" in sys.argv:
     ONLY = sys.argv[sys.argv.index("--only") + 1:][:1] and sys.argv[sys.argv.index("--only") + 1]
-    if ONLY != "redesign":
-        sys.exit("usage: browser-check.py [--only redesign]")
+    if ONLY not in ("redesign", "extent"):
+        sys.exit("usage: browser-check.py [--only redesign|extent]")
 
 # What a GeoJSON written WITHOUT contact fields is marked with, so the check can
 # tell a partial export from a complete one. Kept in step with

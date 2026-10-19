@@ -6,10 +6,20 @@ import { TILE_RETRY_DELAYS_MS } from '../../src/tiles.js'
 // `window` while loading. `archiveWatch` touches neither. This file imports no
 // Leaflet and drives the campaign entirely through the injected probe and say;
 // the mocks only let the module load at all.
-vi.mock('leaflet', () => ({ default: {} }))
+vi.mock('leaflet', () => ({ default: { tileLayer: vi.fn() } }))
 vi.mock('protomaps-leaflet', () => ({ leafletLayer: () => ({}) }))
 
-import { archiveWatch } from '../../src/basemap.js'
+// The raster branch hands every failed tile to `retryTile` and every loaded one to
+// `tileLoaded`; what it hands them is what these cases pin, so both are spies.
+vi.mock('../../src/tiles.js', async (importOriginal) => ({
+	...await importOriginal(),
+	retryTile: vi.fn(),
+	tileLoaded: vi.fn(),
+}))
+
+import L from 'leaflet'
+import { addBasemap, archiveWatch } from '../../src/basemap.js'
+import { retryTile, tileLayerOptions, tileLoaded } from '../../src/tiles.js'
 
 /**
  * Watching a PMTiles archive without a browser.
@@ -190,5 +200,63 @@ describe('archiveWatch', () => {
 		slowAnswer.resolve(true)
 		await settle()
 		expect(verdicts).toEqual([true])
+	})
+})
+
+/**
+ * The raster basemap's wiring: which options the layer is built with, and what a
+ * tile that failed or loaded is handed to.
+ *
+ * `tileLayerOptions` and `retryTile` are tested on their own (`tiles.test.js`); this is
+ * the seam between them and Leaflet, which nothing else covers. A layer whose `tileload`
+ * handler forgot `tileLoaded()` would pass every other test and slowly lose its retries.
+ */
+describe('the raster basemap', () => {
+	const URL = 'https://tile.example/{z}/{x}/{y}.png'
+	let handlers
+	let hooks
+
+	beforeEach(() => {
+		handlers = {}
+		const layer = {
+			on: (name, handler) => {
+				handlers[name] = handler
+				return layer
+			},
+			addTo: vi.fn(() => layer),
+		}
+		L.tileLayer.mockReturnValue(layer)
+		hooks = { attribution: 'credit', onLoaded: vi.fn(), onFailed: vi.fn() }
+		retryTile.mockClear()
+		tileLoaded.mockClear()
+		addBasemap({}, { kind: 'raster', url: URL }, hooks)
+	})
+
+	it('builds the layer from the served url and the policy options', () => {
+		expect(L.tileLayer).toHaveBeenCalledWith(URL, tileLayerOptions({ attribution: 'credit' }))
+	})
+
+	it('announces failure while no tile has ever loaded, and retries the tile', () => {
+		const tile = {}
+		handlers.tileerror({ tile })
+
+		expect(hooks.onFailed).toHaveBeenCalledTimes(1)
+		expect(retryTile).toHaveBeenCalledWith(tile)
+	})
+
+	it('hands a loaded tile to the retry budget and says the basemap is reachable', () => {
+		handlers.tileload()
+
+		expect(tileLoaded).toHaveBeenCalledTimes(1)
+		expect(hooks.onLoaded).toHaveBeenCalledTimes(1)
+	})
+
+	it('stops announcing failure once a tile has loaded, but still retries', () => {
+		handlers.tileload()
+		const tile = {}
+		handlers.tileerror({ tile })
+
+		expect(hooks.onFailed).not.toHaveBeenCalled()
+		expect(retryTile).toHaveBeenCalledWith(tile)
 	})
 })

@@ -72,9 +72,17 @@ final class RemoveRetiredTileSettingsTest extends IntegrationTestCase {
 	public function testAnUnrelatedSettingOfTheAppIsLeftAlone(): void {
 		$config = Server::get(IAppConfig::class);
 		$before = $config->getValueString('territorio', 'comuna_cut');
+		// Non-empty on purpose: against an unset key, '' === '' passes even if the
+		// step deleted every key of the app.
+		$config->setValueString('territorio', 'comuna_cut', '13110');
 
-		$this->repair();
+		try {
+			$this->repair();
 
-		self::assertSame($before, $config->getValueString('territorio', 'comuna_cut'));
+			self::assertTrue($config->hasKey('territorio', 'comuna_cut'));
+			self::assertSame('13110', $config->getValueString('territorio', 'comuna_cut'));
+		} finally {
+			$config->setValueString('territorio', 'comuna_cut', $before);
+		}
 	}
 }

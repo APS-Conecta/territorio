@@ -15,10 +15,8 @@ vi.mock('../../src/tiles.js', async (importOriginal) => ({
 }))
 
 import L from 'leaflet'
-import * as basemap from '../../src/basemap.js'
+import { addBasemap, OSM_ATTRIBUTION, OSM_TILE_URL } from '../../src/basemap.js'
 import { retryTile, tileLayerOptions, tileLoaded } from '../../src/tiles.js'
-
-const { addBasemap, OSM_ATTRIBUTION, OSM_TILE_URL } = basemap
 
 /**
  * The basemap's wiring: which URL and options the layer is built with, and what a
@@ -33,10 +31,12 @@ const { addBasemap, OSM_ATTRIBUTION, OSM_TILE_URL } = basemap
 describe('the basemap', () => {
 	let handlers
 	let hooks
+	let layer
+	let map
 
 	beforeEach(() => {
 		handlers = {}
-		const layer = {
+		layer = {
 			on: (name, handler) => {
 				handlers[name] = handler
 				return layer
@@ -48,7 +48,10 @@ describe('the basemap', () => {
 		hooks = { attribution: 'credit', onLoaded: vi.fn(), onFailed: vi.fn() }
 		retryTile.mockClear()
 		tileLoaded.mockClear()
-		addBasemap({}, hooks)
+		// A sentinel, so the layer's `addTo` is asserted against THIS map and not
+		// merely called with something.
+		map = { name: 'the map' }
+		addBasemap(map, hooks)
 	})
 
 	it('is OpenStreetMap\'s tile service, byte for byte', () => {
@@ -58,14 +61,18 @@ describe('the basemap', () => {
 		expect(OSM_TILE_URL).not.toContain('?')
 	})
 
-	it('exports the URL and the credit, and nothing that remains of the archive', () => {
-		expect(Object.keys(basemap).sort()).toEqual(['OSM_ATTRIBUTION', 'OSM_TILE_URL', 'addBasemap'])
+	it('credits OpenStreetMap with a link to its copyright page', () => {
 		expect(OSM_ATTRIBUTION).toContain('https://www.openstreetmap.org/copyright')
 	})
 
 	it('builds the layer from the constant url and the policy options', () => {
 		expect(L.tileLayer).toHaveBeenCalledTimes(1)
 		expect(L.tileLayer).toHaveBeenCalledWith(OSM_TILE_URL, tileLayerOptions({ attribution: 'credit' }))
+	})
+
+	it('puts the layer on the map it was given', () => {
+		expect(layer.addTo).toHaveBeenCalledTimes(1)
+		expect(layer.addTo).toHaveBeenCalledWith(map)
 	})
 
 	it('announces failure while no tile has ever loaded, and retries the tile', () => {

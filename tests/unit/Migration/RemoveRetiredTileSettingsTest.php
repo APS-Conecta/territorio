@@ -15,7 +15,8 @@ use Psr\Log\LoggerInterface;
  *
  * It is data-destructive and Nextcloud cannot downgrade an app, so the log is
  * the only record of what an administrator had set. The cases pin the order
- * (log, THEN delete), that a second run is silent, and that an empty value is
+ * (log, THEN delete), that the log is at warning level (the lowest a default
+ * install keeps), that a second run is silent, and that an empty value is
  * still a stored key and still goes.
  */
 final class RemoveRetiredTileSettingsTest extends TestCase {
@@ -58,8 +59,14 @@ final class RemoveRetiredTileSettingsTest extends TestCase {
 			},
 		);
 
-		$logger = $this->createStub(LoggerInterface::class);
-		$logger->method('info')->willReturnCallback(
+		// WARNING, and nothing else. A default Nextcloud logs at loglevel 2 (warning)
+		// and drops everything below it, and these lines are the only record of a
+		// value the step is about to destroy: a call at info level would pass a
+		// stub that listens to info() and be written nowhere. So any other level
+		// fails here.
+		$logger = $this->createMock(LoggerInterface::class);
+		$logger->expects(self::never())->method(self::logicalNot(self::equalTo('warning')));
+		$logger->method('warning')->willReturnCallback(
 			function (string|\Stringable $message, array $context = []): void {
 				$this->events[] = 'log';
 				$this->logged[] = (string)$message;

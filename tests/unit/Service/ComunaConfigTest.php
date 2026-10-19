@@ -69,7 +69,7 @@ final class ComunaConfigTest extends TestCase {
 		$config->set(Comuna::of('13101', 'Santiago'));
 
 		self::assertEquals(ComunaExtent::forCut('13101'), $config->extent());
-		self::assertSame([[-33.479, -70.692], [-33.426, -70.625]], $config->extent()?->jsonSerialize());
+		self::assertSame([[-33.479, -70.693], [-33.426, -70.625]], $config->extent()?->jsonSerialize());
 	}
 
 	public function testAComunaChangedLaterMovesTheExtentAtOnce(): void {

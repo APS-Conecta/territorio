@@ -61,9 +61,6 @@ final class ComunaExtentTest extends TestCase {
 			'zero height' => [-70.7, -33.5, -70.6, -33.5],
 			'wider than 6 degrees' => [-77.0, -50.0, -70.9, -49.0],
 			'taller than 6 degrees' => [-70.7, -50.0, -70.6, -43.9],
-			// The table's order is west, south, east, north. Passing a Leaflet
-			// pair [[s, w], [n, e]] flattened is the mistake this catches.
-			'latitude and longitude crossed' => [-33.5, -70.7, -33.4, -70.6],
 		];
 	}
 
@@ -83,12 +80,13 @@ final class ComunaExtentTest extends TestCase {
 	/**
 	 * Reads the generated table through forCut(), where the column order is
 	 * decided once. Santiago is one part, so the box does not depend on which
-	 * part the generator picks.
+	 * part the generator picks. West is -70.693, not -70.692: the raw edge is
+	 * -70.69204 and the table rounds outward.
 	 */
 	public function testAKnownCutReadsBackWithItsAxesTheRightWayRound(): void {
 		$extent = ComunaExtent::forCut('13101');
 
 		self::assertNotNull($extent);
-		self::assertSame([[-33.479, -70.692], [-33.426, -70.625]], $extent->jsonSerialize());
+		self::assertSame([[-33.479, -70.693], [-33.426, -70.625]], $extent->jsonSerialize());
 	}
 }

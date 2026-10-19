@@ -15,17 +15,16 @@ if (!args || !args.issue || !args.propuesta) {
   throw new Error('decidir needs args {issue: <n or slug>, propuesta: <one paragraph>, contexto?: <measured facts>}')
 }
 
-const REPO = '/opt/aps-conecta-org/gestion/apps/territorio'
 const ISSUE = String(args.issue)
 const PROPUESTA = String(args.propuesta)
 const CONTEXTO = args.contexto ? String(args.contexto) : '(ninguno)'
 
 // The ground every role stands on. The ladder is quoted rather than referenced so
 // the three agents argue about the same seven rungs.
-const SUELO = `Repo: ${REPO} (Nextcloud app "territorio"). Issue: ${ISSUE} — read it first:
+const SUELO = `Repo: the current working directory, the checkout this workflow was started in (Nextcloud app "territorio"). Issue: ${ISSUE} — read it first:
   gh api repos/APS-Conecta/territorio/issues/${ISSUE} --jq .body  (if numeric; otherwise the issue text is in "propuesta")
   and its comments: gh api repos/APS-Conecta/territorio/issues/${ISSUE}/comments --jq '.[].body'
-Vocabulary: ${REPO}/CONTEXT.md. Decisions: ${REPO}/docs/adr/ (an issue that an ADR already decides is not debated — it is followed).
+Vocabulary: CONTEXT.md. Decisions: docs/adr/ — both relative to the repo root (an issue that an ADR already decides is not debated — it is followed).
 Measured facts from the orchestrator (trust these over the plan): ${CONTEXTO}
 
 La escalera ponytail — parar en el primer peldaño que aguante:

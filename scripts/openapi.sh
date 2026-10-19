@@ -44,7 +44,7 @@ run sh -c 'php tools/openapi/vendor/bin/generate-spec . openapi.json'
 # has none — epi's exact lesson, where the published contract advertised 0.0.1
 # while the app shipped 0.4.0. Taking the version from info.xml here keeps it a
 # generated field rather than a hand-edited one: regenerating re-applies it
-# instead of undoing it. tests/unit/MetadataTest.php fails if the two ever
+# instead of undoing it. tests/unit/VersionAgreementTest.php fails if the two ever
 # disagree again.
 run sh -c 'php -r "
 	\$version = (string)simplexml_load_file(\"appinfo/info.xml\")->version;

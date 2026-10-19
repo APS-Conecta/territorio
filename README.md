@@ -122,8 +122,8 @@ says which Unidad Vecinal it falls in, when there is one, and how many tramos it
 chosen for the person: Enter with no row active does nothing.
 
 The names come from `GET /apps/territorio/boundaries/names` — names and boxes, never geometry —
-fetched once, the first time somebody focuses the box; matching happens in the browser from then
-on. It is a plain route beside the Sector editor's, not OCS: the published surface stays at three
+fetched once, when the browser is idle after the page loads (or on the first keystroke in the box,
+if that comes first); matching happens in the browser from then on. It is a plain route beside the Sector editor's, not OCS: the published surface stays at three
 ([ADR-0020](docs/adr/0020-rest-is-the-published-surface.md)).
 
 **Empty until the Boundary features are imported.** Without them the route answers an empty list

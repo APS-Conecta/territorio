@@ -8,7 +8,6 @@ use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Domain\BoundingBox;
 use OCA\Territorio\Domain\Geometry;
-use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\PointInPolygon;
 use OCA\Territorio\Exception\InvalidGeometryException;
 

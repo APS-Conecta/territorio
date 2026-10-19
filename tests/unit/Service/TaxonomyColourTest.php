@@ -7,7 +7,6 @@ namespace OCA\Territorio\Tests\Unit\Service;
 use OCA\Territorio\Db\Category;
 use OCA\Territorio\Db\CategoryMapper;
 use OCA\Territorio\Db\FeatureMapper;
-use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Migration\EnsureSeedData;
 use OCA\Territorio\Service\TaxonomyPolicy;

@@ -1,24 +1,23 @@
 /**
  * Pure functions for Community Assets (Activos Comunitarios) management,
- * proactive duplicate prevention, filtering, sorting, and Omnibox search.
+ * proactive duplicate prevention, sorting, and Omnibox search.
  *
  * Adheres to DRY, KISS, YAGNI, and SOLID.
  */
 import { fold } from './filters.js'
-import { textMatches } from './aps/filters.js'
 import { boundsOfGeometry } from './taxonomy.js'
 
 /** Metres per degree of latitude in Chile (matches BoundingBox::METRES_PER_DEGREE in backend). */
-export const METRES_PER_DEGREE = 111320.0
+const METRES_PER_DEGREE = 111320.0
 
 /** Threshold in metres where two pins are considered the exact same physical place. */
-export const SAME_PLACE_METRES = 25.0
+const SAME_PLACE_METRES = 25.0
 
 /** Threshold in metres where an alike name is considered a likely duplicate candidate. */
-export const SAME_BLOCK_METRES = 150.0
+const SAME_BLOCK_METRES = 150.0
 
 /** Name similarity threshold. An early warning only: the server's DuplicateFinder decides (ADR-0011). */
-export const ALIKE_THRESHOLD = 0.85
+const ALIKE_THRESHOLD = 0.85
 
 /**
  * Calculates equirectangular distance in metres between two coordinate pairs.
@@ -214,101 +213,6 @@ export function findDuplicateCandidate(draft, existingFeatures = [], options = {
 	}
 
 	return null
-}
-
-/**
- * Returns true if the draft has a potential duplicate.
- */
-export function isPotentialDuplicate(draft, existingFeatures = [], options = {}) {
-	return findDuplicateCandidate(draft, existingFeatures, options) !== null
-}
-
-/**
- * Filters community assets by multi-faceted criteria.
- *
- * @param {Array<object>} features
- * @param {object} criteria
- * @param {Map<number, object>} subcategories
- * @return {Array<object>}
- */
-export function filterAssets(features = [], criteria = {}, subcategories = new Map()) {
-	const {
-		sectorId,
-		unidadVecinalId,
-		locationQuality,
-		subcategoryId,
-		categoryId,
-		query,
-		showRetired = false,
-	} = criteria
-
-	const needle = query ? fold(query).trim() : ''
-
-	return features.filter((feature) => {
-		// Retired status gate
-		const isRetired = Boolean(feature.retired)
-		if (showRetired !== isRetired) {
-			return false
-		}
-
-		// Sector filter
-		if (sectorId !== undefined) {
-			if (sectorId === null) {
-				if (feature.sectorId != null) {
-					return false
-				}
-			} else if (feature.sectorId !== sectorId) {
-				return false
-			}
-		}
-
-		// Unidad Vecinal filter
-		if (unidadVecinalId !== undefined) {
-			if (unidadVecinalId === null) {
-				if (feature.unidadVecinalId != null) {
-					return false
-				}
-			} else if (feature.unidadVecinalId !== unidadVecinalId) {
-				return false
-			}
-		}
-
-		// Location quality filter
-		if (locationQuality && feature.locationQuality !== locationQuality) {
-			return false
-		}
-
-		// Subcategory filter
-		if (subcategoryId != null && feature.subcategoryId !== subcategoryId) {
-			return false
-		}
-
-		// Category filter
-		if (categoryId != null) {
-			const sub = subcategories.get(feature.subcategoryId)
-			if (!sub || sub.categoryId !== categoryId) {
-				return false
-			}
-		}
-
-		// Query text search
-		if (needle !== '') {
-			const sub = subcategories.get(feature.subcategoryId)
-			const matchesText = textMatches(needle, [
-				feature.name,
-				feature.address,
-				feature.contactPerson,
-				feature.notes,
-				sub?.label,
-				sub?.categoryLabel,
-			])
-			if (!matchesText) {
-				return false
-			}
-		}
-
-		return true
-	})
 }
 
 /**

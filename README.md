@@ -18,23 +18,11 @@ Contains no patient information.
 - **Vocabulary** — [`CONTEXT.md`](CONTEXT.md). Use these words; they are chosen, not incidental.
 - **Decisions** — [`docs/adr/`](docs/adr/). Read the ones touching what you are about to change.
 
-## Status — 2026-08-08
+## Status
 
-Version 0.78.0. `appinfo/info.xml` is where the version lives; `openapi.json` repeats it.
-
-Working: the app shell and the map; Places created, edited, retired and restored, with history and
-a polled change cursor behind them; the Capas panel and text search driving map, Datos and Análisis
-from one filtered set; GeoJSON, KML and CSV import as a Dataset, revertible batch by batch; the Comuna
-setting and the Unidad Vecinal cadastre import; Sectores drawn by hand or polygonized from picked
-boundary features, with their Limit kept in words; assignment to Sector and Unidad Vecinal derived
-from geometry and stored; the duplicate review queue; exports to GeoJSON, CSV and KML with their
-log; and a Maki pictogram per Category. That is issues #1–#20.
-
-Not working yet, and all of it visible on screen rather than in the model: legibility and
-accessibility defects (#21–#25, #29, #35, #37), an editor for the taxonomy itself (#36), the
-ODbL notice OpenStreetMap-derived exports owe (#28), and dead code with two silent re-import
-defects (#34). Open issues carry the current list; this paragraph is a snapshot, they are the
-record.
+The version is in `appinfo/info.xml` (`openapi.json` repeats it); what each release changed is in
+[`CHANGELOG.md`](CHANGELOG.md). What is left to do is the open issues on GitHub, which are the
+record; this section does not list them.
 
 ## Quickstart
 

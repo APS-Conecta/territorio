@@ -79,7 +79,16 @@ export default [
 		languageOptions: {
 			ecmaVersion: 2022,
 			sourceType: 'module',
-			globals: { process: 'readonly', URL: 'readonly', Blob: 'readonly', console: 'readonly' },
+			globals: {
+				process: 'readonly',
+				URL: 'readonly',
+				Blob: 'readonly',
+				console: 'readonly',
+				// The OSM guard test and the always-failing-host harness.
+				fetch: 'readonly',
+				Request: 'readonly',
+				setTimeout: 'readonly',
+			},
 		},
 		rules: {
 			'no-undef': 'error',

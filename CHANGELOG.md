@@ -121,6 +121,16 @@ The basemap stops being somebody else's public service.
 
 ### Added
 
+- **The map opens on the Comuna it serves (0.78.0).** With a Comuna chosen, the map opens on its
+  extent, a box the app derives from the comuna's CUT code from a table it ships (ADR-0021), so
+  an install provisioned before this release opens in the right place without being provisioned
+  again, and a comuna an administrator changes moves the opening view at once. A comuna of
+  several islands or pieces of land opens on the part where its health establishments are. The
+  Unidad Vecinal bounds remain the next source, then the bounds of the records themselves, then the
+  middle of the country; the hard-coded view of central Santiago is gone, which did not belong in
+  a product that serves any comuna.
+  Nothing restricts where a person may pan afterwards.
+
 - **«¿Dónde estoy?» puts the person holding the phone on the map.** A button under the zoom
   control, Leaflet's own `locate({ watch: true })`, and no dependency.
 
@@ -185,6 +195,27 @@ The basemap stops being somebody else's public service.
   webpack bundle mounted, and nothing for a JS-disabled browser.
 
 ### Fixed
+
+- **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
+  policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
+  being blocked, so each rule it states is now either behaviour or a check:
+  - *No scan.* A `flyTo` from zoom 12 to 17 asked for tiles at every zoom it crossed: **255
+    requests**, measured. With `updateWhenZooming: false` it asks for where it lands: **65**.
+    Zoom is limited to 8–18, and the layer does not wrap.
+  - *Do not hammer a refusing host.* The retry ladder (1, 4, 12 s) kept its per-tile bound but
+    every failed tile climbed it together: against a host that answered 503 a page sent **170
+    requests in 24 seconds**. The page now has one budget of 16 retries, spent when the retry
+    fires and refilled by one for each tile that loads.
+  - *Attribution not under other UI.* On a phone the docked panel covered the whole credit
+    (measured at 360 and 320 px). Below 810 px the panel now stops short of it.
+  - *Never scrape OpenStreetMap from a test.* A unit test that reaches `openstreetmap.org` now
+    fails instead of connecting. The browser gate asserts what it sent (a bare https URL, a
+    Referer on every request, at most one screen of tiles, an `img-src` naming only the tile
+    host), measures the credit at five widths with the panel open and collapsed in both
+    themes, and checks that a tile service that is down costs at most the budget and that the
+    app recovers when it returns. A block by OpenStreetMap arrives as a 403 carrying an image, which
+    a browser loads without error: the app cannot see it, and a test pins that so the runbook
+    note stays true.
 
 - **The dev map is no longer grey, and the browser gate no longer touches OpenStreetMap.**
   `make instance-up` pinned `tile_url` to a PMTiles archive on a tailnet host, so the map was

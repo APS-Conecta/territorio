@@ -1614,6 +1614,14 @@ export default {
 	&--collapsed {
 		transform: translateX(-100%);
 	}
+
+	// Below the breakpoint the panel is as wide as the screen allows and meets the
+	// OpenStreetMap credit, which Leaflet draws at the map's bottom-right: at 360px the
+	// panel covered most of it. The Tile Usage Policy asks that the credit never sit under
+	// other UI, so the panel stops short of the strip the credit lives in.
+	@media (max-width: 810px) {
+		bottom: 28px;
+	}
 }
 
 .territorio-docked-panel__toggle {

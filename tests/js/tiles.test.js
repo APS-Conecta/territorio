@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+	TILE_RETRY_BUDGET,
 	TILE_RETRY_DELAYS_MS,
-	TILE_RETRY_GIVE_UP_AFTER,
-	hasGivenUpOnTiles,
 	isSpentTile,
 	resetTileRetries,
 	retryTile,
+	tileLayerOptions,
+	tileLoaded,
 } from '../../src/tiles.js'
 
 /**
@@ -136,41 +137,172 @@ describe('retryTile', () => {
 		expect(retryTile(tile)).toBe(false)
 		expect(tile.writes).toEqual([])
 	})
-	it('stops retrying altogether once enough tiles have failed outright', () => {
-		// One tile failing is a blip. This many is the host refusing us — and the
-		// answer to being refused is not four times the requests. `403` is what
-		// makes it matter: OpenStreetMap blocks applications, and a blocked client
-		// that retries harder is deepening its own block.
-		const exhaust = () => {
-			const tile = tileStub()
-			for (const delay of TILE_RETRY_DELAYS_MS) {
-				retryTile(tile)
-				vi.advanceTimersByTime(delay)
-			}
-			return tile
-		}
 
-		for (let i = 0; i < TILE_RETRY_GIVE_UP_AFTER; i++) {
-			exhaust()
-		}
+	it('does not retry a tile that already used its attempts, however full the budget', () => {
+		const tile = tileStub()
+		tile._territorioRetries = TILE_RETRY_DELAYS_MS.length
 
-		expect(hasGivenUpOnTiles()).toBe(true)
-
-		// A brand new tile, with every attempt still unspent, is not retried.
-		const fresh = tileStub()
-		expect(retryTile(fresh)).toBe(false)
+		expect(retryTile(tile)).toBe(false)
 		vi.runAllTimers()
-		expect(fresh.writes).toEqual([])
+		expect(tile.writes).toEqual([])
+	})
+})
+
+describe('the global retry budget', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+		resetTileRetries()
 	})
 
-	it('keeps retrying while failures stay occasional', () => {
-		const tile = tileStub()
+	afterEach(() => {
+		vi.useRealTimers()
+	})
 
-		// Well under the ceiling: a few scattered holes must still heal.
-		expect(retryTile(tile)).toBe(true)
-		expect(hasGivenUpOnTiles()).toBe(false)
+	/**
+	 * A host that refuses everything. Each write to `src` is one request on the
+	 * wire, and each request fails 50 ms later, the way an <img> error does, and
+	 * goes back through the same handler `basemap.js` wires to `tileerror`.
+	 */
+	const alwaysFailingHost = (count) => {
+		const requests = []
+		const tiles = Array.from({ length: count }, (_, i) => {
+			const tile = tileStub(`https://tile.openstreetmap.org/12/${1244 + i}/2452.png`)
+			const origin = `https://tile.openstreetmap.org/12/${1244 + i}/2452.png`
+			Object.defineProperty(tile, 'src', {
+				get: () => origin,
+				set: (value) => {
+					requests.push(value)
+					setTimeout(() => retryTile(tile), 50)
+				},
+			})
+			return { tile, origin }
+		})
+		for (const { tile } of tiles) {
+			retryTile(tile)
+		}
+		return { requests, tiles }
+	}
+
+	it('caps the whole page, not each tile, at 16 retries against a host that always fails', () => {
+		// Measured before this budget existed: 170 requests in 24 s against an
+		// always-503 host, because every tile climbed the ladder in lockstep.
+		const { requests } = alwaysFailingHost(30)
+
+		vi.advanceTimersByTime(60_000)
+
+		expect(TILE_RETRY_BUDGET).toBe(16)
+		expect(requests).toHaveLength(TILE_RETRY_BUDGET)
+	})
+
+	it('never modifies a tile url: the retry is the original, with no query string', () => {
+		// A unique query string misses OpenStreetMap's CDN on every retry, and the
+		// Tile Usage Policy asks clients to honour the cache.
+		const { requests, tiles } = alwaysFailingHost(30)
+
+		vi.advanceTimersByTime(60_000)
+
+		const originals = new Set(tiles.map(({ origin }) => origin))
+		expect(requests.length).toBeGreaterThan(0)
+		for (const url of requests) {
+			expect(originals.has(url)).toBe(true)
+			expect(url).not.toContain('?')
+		}
+	})
+
+	it('accepts every retry when scheduled and spends the budget only when the timer fires', () => {
+		const tiles = Array.from({ length: TILE_RETRY_BUDGET + 4 }, () => tileStub())
+
+		// Scheduling consults nothing: all of them are "still trying".
+		expect(tiles.map((tile) => retryTile(tile))).toEqual(tiles.map(() => true))
+		expect(tiles.flatMap((tile) => tile.writes)).toEqual([])
 
 		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
-		expect(tile.writes).toHaveLength(1)
+
+		expect(tiles.flatMap((tile) => tile.writes)).toHaveLength(TILE_RETRY_BUDGET)
+	})
+
+	it('lets a later fire do nothing once earlier fires spent the budget', () => {
+		const early = Array.from({ length: TILE_RETRY_BUDGET }, () => tileStub())
+		const late = tileStub()
+
+		early.forEach((tile) => retryTile(tile))
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0] / 2)
+		// Scheduled while the budget is still full: a check made now would pass it.
+		expect(retryTile(late)).toBe(true)
+
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+
+		expect(early.flatMap((tile) => tile.writes)).toHaveLength(TILE_RETRY_BUDGET)
+		expect(late.writes).toEqual([])
+	})
+
+	it('sees a refill that arrives between scheduling and firing', () => {
+		const early = Array.from({ length: TILE_RETRY_BUDGET }, () => tileStub())
+		const late = tileStub()
+
+		early.forEach((tile) => retryTile(tile))
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0] / 2)
+		retryTile(late)
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0] / 2)
+		// The early fires just spent everything; one tile loads before `late` fires.
+		tileLoaded()
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+
+		expect(late.writes).toHaveLength(1)
+	})
+
+	it('refills one retry per loaded tile', () => {
+		const spenders = Array.from({ length: TILE_RETRY_BUDGET }, () => tileStub())
+		spenders.forEach((tile) => retryTile(tile))
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+
+		tileLoaded()
+		tileLoaded()
+		tileLoaded()
+		const fresh = Array.from({ length: 5 }, () => tileStub())
+		fresh.forEach((tile) => retryTile(tile))
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+
+		expect(fresh.flatMap((tile) => tile.writes)).toHaveLength(3)
+	})
+
+	it('never refills above the budget', () => {
+		// A page that loads hundreds of tiles must not bank a hundred retries for
+		// the day the host starts refusing.
+		for (let i = 0; i < 100; i++) {
+			tileLoaded()
+		}
+		const tiles = Array.from({ length: TILE_RETRY_BUDGET + 10 }, () => tileStub())
+		tiles.forEach((tile) => retryTile(tile))
+		vi.advanceTimersByTime(TILE_RETRY_DELAYS_MS[0])
+
+		expect(tiles.flatMap((tile) => tile.writes)).toHaveLength(TILE_RETRY_BUDGET)
+	})
+})
+
+describe('tileLayerOptions', () => {
+	it('is exactly the set the OpenStreetMap Tile Usage Policy review settled on', () => {
+		expect(tileLayerOptions({ attribution: 'osm' })).toEqual({
+			attribution: 'osm',
+			minZoom: 8,
+			maxZoom: 18,
+			noWrap: true,
+			updateWhenIdle: true,
+			updateWhenZooming: false,
+			referrerPolicy: 'origin',
+		})
+	})
+
+	it.each([
+		'crossOrigin',
+		'detectRetina',
+		'errorTileUrl',
+		'maxNativeZoom',
+		'minNativeZoom',
+		'bounds',
+		'keepBuffer',
+		'subdomains',
+	])('does not set %s', (key) => {
+		expect(tileLayerOptions({ attribution: 'osm' })).not.toHaveProperty(key)
 	})
 })

@@ -43,36 +43,85 @@ const EMPTY_TILE_SRC_PREFIX = 'data:image/gif'
 export const TILE_RETRY_DELAYS_MS = [1000, 4000, 12000]
 
 /**
- * How many tiles may exhaust their attempts before we stop retrying at all.
+ * How many retries the whole page may spend, however many tiles are failing.
  *
- * A handful of holes is a blip worth re-asking about. This many is not a blip:
- * the host is down, firewalled, or refusing us — and `403` is the one that makes
- * this a correctness matter rather than a nicety. A blocked client that answers
- * by sending four times the requests is deepening its own block, which is the
- * behaviour OpenStreetMap's Blocked applications page describes. An <img> error
- * carries no status, so the app cannot tell a 403 from a 503; it can tell «one
- * tile failed» from «everything is failing», and that is enough to stop.
+ * The ladder above bounds one tile; this bounds the page. Measured against an
+ * always-503 host, the ladder alone plus «give up after 8 spent tiles» produced
+ * 170 requests in 24 s: the give-up check ran when a retry was SCHEDULED, so
+ * every tile climbed its rungs together before any of them was counted spent.
+ * `403` is what makes this a correctness matter: a blocked client that answers
+ * by sending more requests is deepening its own block (OpenStreetMap's Blocked
+ * applications page). An <img> error carries no status, so the app cannot tell a
+ * 403 from a 503; it can tell «a few tiles failed» from «everything is failing».
+ *
+ * 16 covers a screenful of scattered blips; `tileLoaded` earns retries back.
  */
-export const TILE_RETRY_GIVE_UP_AFTER = 8
+export const TILE_RETRY_BUDGET = 16
 
 /**
- * Tiles that have used up every attempt, this page load.
+ * Retries still available this page load.
  *
  * ponytail: module state, because there is exactly one map per page. Hand it to
  * the layer if a second map ever shares the page.
  */
-let spentTiles = 0
+let budget = TILE_RETRY_BUDGET
 
-/** Only for tests, which would otherwise inherit the count from each other. */
+/** Only for tests, which would otherwise inherit the budget from each other. */
 export const resetTileRetries = () => {
-	spentTiles = 0
+	budget = TILE_RETRY_BUDGET
+}
+
+/**
+ * A tile loaded: the host is answering, so give one retry back.
+ *
+ * Capped at the budget so a long healthy session cannot bank retries for the day
+ * the host starts refusing.
+ */
+export const tileLoaded = () => {
+	budget = Math.min(budget + 1, TILE_RETRY_BUDGET)
 }
 
 /** Whether this tile has used up its attempts. */
 export const isSpentTile = (tile) => (tile?._territorioRetries ?? 0) >= TILE_RETRY_DELAYS_MS.length
 
-/** Whether enough tiles have failed outright that we have stopped asking. */
-export const hasGivenUpOnTiles = () => spentTiles >= TILE_RETRY_GIVE_UP_AFTER
+/**
+ * The options for the OpenStreetMap raster layer, in one place so a test can pin
+ * every one of them against the Tile Usage Policy
+ * (https://operations.osmfoundation.org/policies/tiles/).
+ *
+ * What is deliberately ABSENT matters as much: `crossOrigin` (turns tile loads
+ * into CORS requests), `detectRetina` (asks for z+1 tiles, four times the
+ * requests), `errorTileUrl` (a placeholder over a tile Leaflet then calls done),
+ * `maxNativeZoom`/`minNativeZoom` (upscaling instead of asking), `subdomains`
+ * (OSM has one host), and `bounds`, which is absent because the owner decided
+ * there is no pan lock: people may pan anywhere.
+ */
+export const tileLayerOptions = ({ attribution }) => ({
+	attribution,
+	// The owner capped zoom at 18; the app itself navigates to 17 at most, and
+	// the deepest levels are the ones that cost OpenStreetMap the most. z8 stops a
+	// zoomed-out view from requesting a whole country's tiles. L.map sets no
+	// zoom limits of its own: the map picks these up because GridLayer.onAdd calls
+	// map._addZoomLimit(this) and getMinZoom/getMaxZoom fall back to the layer's
+	// (Leaflet 1.9.4), so they bind map and layer alike.
+	minZoom: 8,
+	maxZoom: 18,
+	// Without it the world repeats sideways and every copy is another set of
+	// requests for tiles already on screen.
+	noWrap: true,
+	// Tiles are requested when a pan or zoom ends, not on every frame of it.
+	updateWhenIdle: true,
+	// Leaflet 1.9.4, measured: a flyTo from z12 to z17 drops from ~255 to ~65
+	// tile requests, because the layer stops loading each intermediate zoom.
+	updateWhenZooming: false,
+	// Nextcloud sends `Referrer-Policy: no-referrer`, so without this a tile
+	// request has no `Referer`, and OSM's policy requires one. `origin` sends
+	// scheme, host and port only, never which page or record was open.
+	//
+	// `keepBuffer` is left at its default on purpose: it only prunes tiles that
+	// are already loaded and is NOT a guard against prefetching.
+	referrerPolicy: 'origin',
+})
 
 /**
  * Schedule one more request for a tile that just failed.
@@ -90,7 +139,7 @@ export const hasGivenUpOnTiles = () => spentTiles >= TILE_RETRY_GIVE_UP_AFTER
 export function retryTile(tile) {
 	// No parent means Leaflet removed the tile: the view moved on, and the fetch
 	// would be for a square nobody is looking at.
-	if (!tile || !tile.parentNode || isSpentTile(tile) || hasGivenUpOnTiles()) {
+	if (!tile || !tile.parentNode || isSpentTile(tile)) {
 		return false
 	}
 
@@ -101,10 +150,6 @@ export function retryTile(tile) {
 	const attempt = tile._territorioRetries ?? 0
 	tile._territorioRetries = attempt + 1
 
-	if (isSpentTile(tile)) {
-		spentTiles += 1
-	}
-
 	// Captured now, because by the time the timer runs Leaflet may have pointed
 	// this element at its blank.
 	const url = tile.src
@@ -113,6 +158,15 @@ export function retryTile(tile) {
 		if (!tile.parentNode) {
 			return
 		}
+
+		// The budget is spent here and not when the retry is scheduled: a check at
+		// schedule time lets every failing tile climb its ladder together before
+		// anything has been counted, which is the 170-request run this replaced.
+		if (budget <= 0) {
+			return
+		}
+
+		budget -= 1
 
 		// The same url, with nothing appended. A cache-busting parameter would miss
 		// OpenStreetMap's CDN on every retry and turn each failed tile into a

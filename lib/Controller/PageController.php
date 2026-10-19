@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace OCA\Territorio\Controller;
 
 use OCA\Territorio\AppInfo\Application;
+use OCA\Territorio\Domain\Comuna;
+use OCA\Territorio\Domain\ComunaExtent;
 use OCA\Territorio\Service\BasemapConfig;
+use OCA\Territorio\Service\ComunaConfig;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Controller;
@@ -23,10 +26,10 @@ use OCP\Util;
 /**
  * The single page the map lives on.
  *
- * The basemap arrives as initial state rather than through a fetch: it is two
- * strings known before the document is written, and a request for them would
- * add a spinner, an error path and a route to no purpose. The Registry's own
- * data will need a route; this does not.
+ * The basemap and the Comuna arrive as initial state rather than through a
+ * fetch: they are a few values known before the document is written, and a
+ * request for them would add a spinner, an error path and a route to no
+ * purpose. The Registry's own data will need a route; this does not.
  *
  * #[NoAdminRequired] is deliberate — the map is for everyone who can open the
  * app, and most clinic staff are not administrators.
@@ -37,6 +40,7 @@ class PageController extends Controller {
 		IRequest $request,
 		private IInitialState $initialState,
 		private BasemapConfig $basemapConfig,
+		private ComunaConfig $comunaConfig,
 		private TaxonomyService $taxonomy,
 		private FeatureService $features,
 	) {
@@ -49,6 +53,7 @@ class PageController extends Controller {
 		$basemap = $this->basemapConfig->get();
 
 		$this->initialState->provideInitialState('basemap', $basemap->jsonSerialize());
+		$this->initialState->provideInitialState('comuna', self::comunaState($this->comunaConfig->get()));
 		$this->initialState->provideInitialState('taxonomy', $this->taxonomy->tree());
 		// The cursor is read BEFORE the Features, and the order matters. Read
 		// after, a change landing between the two reads is missing from the list
@@ -114,5 +119,26 @@ class PageController extends Controller {
 		$policy->addAllowedGeoLocationDomain("'self'");
 
 		return $policy;
+	}
+
+	/**
+	 * The `comuna` initial state: which Comuna this install serves, and the box
+	 * the map opens on (ADR-0021).
+	 *
+	 * Only the chosen Comuna's own box is looked up and sent, never the table:
+	 * it is a few hundred rows the browser has no use for. `extent` is null when
+	 * none is chosen or the table has no box for the CUT, and the client then
+	 * opens on the next source. It is read from the Comuna passed in, not from
+	 * ComunaConfig again, so the name and the box cannot come from two reads of
+	 * a setting that changed between them.
+	 *
+	 * Public and static for the same reason as geolocationPolicy().
+	 *
+	 * @return array{cut: string, name: string, chosen: bool, extent: ?array{array{float, float}, array{float, float}}}
+	 */
+	public static function comunaState(Comuna $comuna): array {
+		return array_merge($comuna->jsonSerialize(), [
+			'extent' => ComunaExtent::forCut($comuna->cut)?->jsonSerialize(),
+		]);
 	}
 }

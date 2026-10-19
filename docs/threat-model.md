@@ -24,8 +24,7 @@ work.*
    through stored names, notes or imported KML/CSV rendered on the map, or a forged request.
 3. **Silent tampering**: changing or deleting features, categories or boundaries without a revision,
    or reverting an import, so the map the CESFAM uses is wrong.
-4. **Admin-only actions** (basemap URL, comuna, the export log) by a non-admin. The basemap URL is also an SSRF and
-   tile-injection surface.
+4. **Admin-only actions** (comuna, the export log) by a non-admin.
 
 ## Entry points
 
@@ -42,18 +41,26 @@ A route without `#[NoAdminRequired]` is admin-only: that attribute is what opens
 | Duplicates: list, merge, dismiss (`DuplicateController`) | every logged-in user | `#[NoAdminRequired]` |
 | Boundaries: `GET /boundaries`, `GET /boundaries/names`; changes: `GET /changes` | every logged-in user | `#[NoAdminRequired]` |
 | OCS `GET /api/v1/counts`, `/api/v1/features/{id}`, `/api/v1/subcategories/{category}/{subcategory}/features` (`ApiController`) | logged-in users | `#[NoAdminRequired]`, `#[UserRateLimit]` |
-| Admin settings: `PUT /settings/basemap`, `PUT /settings/comuna` (`AdminSettingsController`) | **admins only** | no `#[NoAdminRequired]` and no `#[NoCSRFRequired]`, on purpose (`AdminSettingsController.php:20`) |
+| Admin settings: `PUT /settings/comuna` (`AdminSettingsController`) | **admins only** | no `#[NoAdminRequired]` and no `#[NoCSRFRequired]`, on purpose (`AdminSettingsController.php:20`) |
 | CLI `occ territorio:import` (`lib/Command/Import.php`) | server operators | shell access |
 
 ## Trust boundaries
 
 - **Imported files are untrusted:** KML/KMZ (zip), CSV and XML from any staff member. Parse with
   network access off; reject entity expansion and zip bombs.
-- **Stored text is untrusted on output:** names, notes and attributions are shown in Leaflet popups
-  and attribution, and Leaflet writes string content with `innerHTML`. Attribution is escaped
-  (`src/basemap.js:14`, `src/components/TerritorioMap.vue:195`); popups get a DOM text node, which
-  cannot be parsed as markup (`TerritorioMap.vue:510`, #62).
-- **The basemap URL is admin-supplied** but fetched by every user's browser.
+- **Stored text is untrusted on output:** names and notes are shown in Leaflet popups, and Leaflet
+  writes string content with `innerHTML`. Popups get a DOM text node, which cannot be parsed as
+  markup (`TerritorioMap.vue:510`, #62). The map's credit is markup the app owns, a constant in
+  `src/basemap.js`, never stored text.
+- **The basemap is OpenStreetMap's tile service, loaded by every user's browser** (ADR-0021). No
+  setting names it, so an administrator cannot point browsers at a host of their choosing: there is
+  no tile-injection or server-side-request surface from configuration, and the page's
+  Content-Security-Policy allows images from that one host and adds nothing else.
+- **Tile privacy:** each tile request tells OpenStreetMap which tile is wanted and which instance
+  asked. A tile coordinate places a viewport to roughly 300 m at zoom 17, and the instance's origin
+  travels as `Referer` (`referrerPolicy: 'origin'`, which the Tile Usage Policy asks for). No record,
+  name or contact detail does. This is accepted with the dependency; the alternative was a
+  self-hosted archive (ADR-0019, superseded).
 - **The platform (Nextcloud)** owns authentication, sessions, CSRF tokens and password confirmation.
 
 ## Accepted risks

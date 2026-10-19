@@ -945,7 +945,7 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
  * §2's label rule (docs/design/map-legibility.md) binds a ring sitting on
  * those tiles as surely as a label — and the white this replaces measured
  * 1.15–1.69:1 against them, under the 3:1 contour floor of WCAG 1.4.11 in
- * both themes. The ink clears 10.58:1 at its floor (park_b, bare) and 3:1
+ * both themes. The ink clears 11.18:1 at its floor (raster water) and 3:1
  * over every legal fill — measured, not asserted, by tools/ramp-check.py,
  * which fails if this declaration or its wearers drift.
  */

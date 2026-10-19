@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "territorio",
-        "version": "0.78.1",
+        "version": "0.79.0",
         "description": "Mapa territorial de un CESFAM",
         "license": {
             "name": "AGPL-3.0-or-later"
@@ -510,7 +510,7 @@
         },
         {
             "name": "admin_settings",
-            "description": "Saves the settings an administrator chooses: which Comuna this install serves, and where the map's tiles come from. Carries no #[NoAdminRequired] and no #[NoCSRFRequired] on purpose: both of those are how a route is opened up, so their absence is what makes this administrator-only and CSRF-protected."
+            "description": "Saves the setting an administrator chooses: which Comuna this install serves. Carries no #[NoAdminRequired] and no #[NoCSRFRequired] on purpose: both of those are how a route is opened up, so their absence is what makes this administrator-only and CSRF-protected."
         },
         {
             "name": "api",

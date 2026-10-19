@@ -319,7 +319,7 @@ def self_test():
     assert table['99001']['name'] == 'Uno'
 
     # A place the register lacks counts like a register row.
-    extra = build_table(shp, dbf, cuts, {}, {'99002': [(0.5, 0.5)]})
+    extra = build_table(shp, dbf, cuts, {}, {'99002': ('a place', [(0.5, 0.5)])})
     assert extra['99002']['box'] == ('0.000', '0.000', '1.000', '1.000'), 'extra place'
 
     # The CUT list is the authority: a missing or an extra comuna is refused.
@@ -329,21 +329,46 @@ def self_test():
     _expect_refusal('truncated shapefile', build_table, shp[:-9], dbf, cuts, {})
 
     # Deterministic, sorted, quoted keys, header facts present.
-    text = render(table, 'f' * 64, 7)
-    assert text == render(dict(reversed(list(table.items()))), 'f' * 64, 7), 'order of input does not matter'
+    placed = {'99002': ('Dos is on the small part', [(0.5, 0.5)])}
+    text = render(table, 'f' * 64, 7, placed)
+    assert text == render(dict(reversed(list(table.items()))), 'f' * 64, 7, placed), 'order of input does not matter'
+    assert '99002 Dos: Dos is on the small part' in text, 'hand-placed places are listed with their reason'
     assert text.index("'99001'") < text.index("'99002'") < text.index("'99003'")
     assert "'99001' => [0.000, 0.000, 1.000, 1.000], // Uno" in text, 'row format'
-    for fact in (ZIP_ID, ZIP_ORIGIN, ZIP_SHA256, '3 records', 'most DEIS establishments', 'python3 -I tools/comuna-extents.py'):
+    for fact in (ZIP_ID, ZIP_ORIGIN, ZIP_SHA256, '3 records', 'most DEIS establishments', 'hand-placed', 'register snapshot', 'python3 -I tools/comuna-extents.py'):
         assert fact in text, 'header lacks ' + fact
 
-    # The sha is checked before anything is read: a file that is not even a ZIP
-    # is refused for its hash, not for being unreadable.
+    # The hand-placed places are pinned: emptying or moving one reopens a comuna on the wrong land.
+    for cut in ('12201', '10210'):
+        why, places = EXTRA_PLACES[cut]
+        assert why and places, cut + ': a place needs its reason'
+        assert all(-110 <= lon <= -66 and -56 <= lat <= -17 for lon, lat in places), cut + ': not in Chile'
+
     with tempfile.TemporaryDirectory() as tmp:
+        # The sha is checked before anything is read: a file that is not even a ZIP
+        # is refused for its hash, not for being unreadable. And the bytes that are
+        # hashed are the bytes that are parsed.
         path = os.path.join(tmp, 'x.zip')
         with open(path, 'wb') as f:
             f.write(b'not a zip')
         _expect_refusal('wrong sha', read_boundary_zip, path, '0' * 64)
-        assert verify_sha256(path, hashlib.sha256(b'not a zip').hexdigest()) is None, 'right sha passes'
+        with zipfile.ZipFile(path, 'w') as z:
+            z.writestr(SHP_MEMBER, shp)
+            z.writestr(DBF_MEMBER, dbf)
+        with open(path, 'rb') as f:
+            pinned = hashlib.sha256(f.read()).hexdigest()
+        assert read_boundary_zip(path, pinned) == (shp, dbf), 'right sha passes'
+
+        # The register: no coordinates, nan, inf or text are skipped; the CUT is stripped.
+        path = os.path.join(tmp, 'r.csv')
+        rows = ['codigo,comuna_codigo,latitud,longitud', '1, 01101 ,-33.5,-70.6', '2,01101,,', '3,01101,nan,-70.6',
+                '4,01101,-33.5,inf', '5,01101,abc,-70.6', '6,01101,-33.5,-inf']
+        with open(path, 'w', newline='') as f:
+            f.write('\r\n'.join(rows) + '\r\n')
+        by_cut, count, sha = read_register(path)
+        assert (by_cut, count) == ({'01101': [(-70.6, -33.5)]}, 1), 'register rows kept and skipped'
+        with open(path, 'rb') as f:
+            assert sha == hashlib.sha256(f.read()).hexdigest(), 'register sha'
     print('self-test ok')
 
 

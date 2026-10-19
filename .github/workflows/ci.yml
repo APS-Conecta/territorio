@@ -78,17 +78,6 @@ jobs:
       - name: Unit tests
         run: make test
 
-      # `make lint` also runs tools/ramp-check.py on the host — the runner's own
-      # python3 — and that check reads the Protomaps flavours out of
-      # node_modules/@protomaps/basemaps (the basemap's own surfaces are what the
-      # ramp is measured against, ADR-0019). Without the install it found no
-      # surfaces and failed on every run since the PMTiles basemap landed.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-
       - name: Lint
         run: make lint
 

@@ -77,27 +77,20 @@ describe('initialView skips what it cannot trust', () => {
 			.toEqual({ bounds: EXTENT, source: 'extent' })
 	})
 
-	it('never throws, even when called with nothing at all', () => {
+	it('treats an empty argument object as having neither source', () => {
 		expect(initialView({})).toEqual({ bounds: CHILE_BOUNDS, source: 'chile' })
 	})
 })
 
 describe('CHILE_BOUNDS', () => {
-	it('is a valid box in Leaflet order, south-west first', () => {
-		const [[south, west], [north, east]] = CHILE_BOUNDS
-
-		expect(south).toBeLessThan(north)
-		expect(west).toBeLessThan(east)
-		expect(south).toBe(-56)
-		expect(west).toBe(-76)
-	})
-
-	it('excludes Rapa Nui, which would make the box unfittable', () => {
-		// Isla de Pascua sits near lon -109.4; a box reaching it would span ~40 degrees.
-		expect(CHILE_BOUNDS[0][1]).toBeGreaterThan(-109.4)
-	})
-
-	it('is itself something initialView would accept', () => {
+	it('is a usable box: the module accepts it by its own validity rule', () => {
 		expect(initialView({ extent: CHILE_BOUNDS, unitBounds: null }).source).toBe('extent')
+	})
+
+	it('is frozen, corners included, so a caller cannot change the shared fallback', () => {
+		expect(Object.isFrozen(CHILE_BOUNDS)).toBe(true)
+		expect(Object.isFrozen(CHILE_BOUNDS[0])).toBe(true)
+		expect(Object.isFrozen(CHILE_BOUNDS[1])).toBe(true)
+		expect(() => { CHILE_BOUNDS[0][0] = 0 }).toThrow(TypeError)
 	})
 })

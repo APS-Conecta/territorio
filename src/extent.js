@@ -8,13 +8,17 @@
 /**
  * Continental Chile, `[[south, west], [north, east]]` as Leaflet wants it.
  *
- * A country fact, not an establishment fact: it is what an install with no
- * known Comuna and no imported Unidades Vecinales opens on, and it says nothing
- * about any clinic. It leaves out Rapa Nui, Juan Fernandez and Antartica on
- * purpose: a box reaching Rapa Nui (about -109 longitude) spans some 40 degrees
- * of longitude, so fitting it lands on a zoom that shows nothing useful.
+ * What an install with no known Comuna and no imported Unidades Vecinales opens
+ * on: the middle of the country at the widest zoom the map allows. The OSM
+ * layer's minZoom (8) clamps what fitBounds can choose, so any Chile-sized box
+ * lands on its centre (about -36.75, -71.2) at that zoom; the numbers only fix
+ * the centre. A country fact, not a clinic fact. It is frozen because callers
+ * receive it by reference and one mutation would change every later opening.
  */
-export const CHILE_BOUNDS = [[-56, -76], [-17.5, -66.4]]
+export const CHILE_BOUNDS = Object.freeze([
+	Object.freeze([-56, -76]),
+	Object.freeze([-17.5, -66.4]),
+])
 
 /**
  * A corner pair is usable only when both corners are finite numbers and the box
@@ -43,6 +47,9 @@ function isUsable(bounds) {
  * `extent` is the Comuna extent the server derived from the CUT, or null.
  * `unitBounds` is what `boundsOf` answers: `[[s, w], [n, e]]` or null.
  * The source is returned so a caller (and a test) can tell which one won.
+ *
+ * Callers always pass an object; `= {}` only covers an omitted argument, so
+ * `initialView(null)` throws by design rather than being quietly tolerated.
  */
 export function initialView({ extent, unitBounds } = {}) {
 	if (isUsable(extent)) {

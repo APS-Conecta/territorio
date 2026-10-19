@@ -23,12 +23,12 @@ final class ComunaExtentTest extends TestCase {
 	 * them in the constructor changes a value this test reads back.
 	 */
 	public function testEachCornerLandsOnTheAxisItBelongsTo(): void {
-		$box = ComunaExtent::of(-70.692, -33.479, -70.625, -33.426)->box();
+		[[$south, $west], [$north, $east]] = ComunaExtent::of(-70.692, -33.479, -70.625, -33.426)->jsonSerialize();
 
-		self::assertSame(-70.692, $box->minLon());
-		self::assertSame(-33.479, $box->minLat());
-		self::assertSame(-70.625, $box->maxLon());
-		self::assertSame(-33.426, $box->maxLat());
+		self::assertSame(-70.692, $west);
+		self::assertSame(-33.479, $south);
+		self::assertSame(-70.625, $east);
+		self::assertSame(-33.426, $north);
 	}
 
 	/** Leaflet's fitBounds order: [[south, west], [north, east]]. */
@@ -40,10 +40,12 @@ final class ComunaExtentTest extends TestCase {
 	}
 
 	public function testItAcceptsTheLargestSpanAllowed(): void {
-		$box = ComunaExtent::of(-76.0, -50.0, -70.0, -44.0)->box();
+		$span = ComunaExtent::MAX_SPAN_DEGREES;
 
-		self::assertSame(-76.0, $box->minLon());
-		self::assertSame(-44.0, $box->maxLat());
+		self::assertSame(
+			[[-50.0, -70.0 - $span], [-50.0 + $span, -70.0]],
+			ComunaExtent::of(-70.0 - $span, -50.0, -70.0, -50.0 + $span)->jsonSerialize(),
+		);
 	}
 
 	/** @return array<string, array{float, float, float, float}> */
@@ -59,8 +61,8 @@ final class ComunaExtentTest extends TestCase {
 			'south and north swapped' => [-70.7, -33.4, -70.6, -33.5],
 			'zero width' => [-70.7, -33.5, -70.7, -33.4],
 			'zero height' => [-70.7, -33.5, -70.6, -33.5],
-			'wider than 6 degrees' => [-77.0, -50.0, -70.9, -49.0],
-			'taller than 6 degrees' => [-70.7, -50.0, -70.6, -43.9],
+			'wider than the cap' => [-70.0 - ComunaExtent::MAX_SPAN_DEGREES - 0.1, -50.0, -70.0, -49.0],
+			'taller than the cap' => [-70.7, -50.0, -70.6, -50.0 + ComunaExtent::MAX_SPAN_DEGREES + 0.1],
 		];
 	}
 

@@ -6,7 +6,6 @@ namespace OCA\Territorio\Service;
 
 use OCA\Territorio\AppInfo\Application;
 use OCA\Territorio\Domain\Comuna;
-use OCA\Territorio\Domain\ComunaExtent;
 use OCA\Territorio\Exception\InvalidComunaException;
 use OCP\IAppConfig;
 
@@ -37,16 +36,6 @@ class ComunaConfig {
 			// reachable from there and a broken value is fixed by choosing again.
 			return Comuna::none();
 		}
-	}
-
-	/**
-	 * Where the map opens for the chosen Comuna, derived from its CUT on every
-	 * call: nothing is stored or cached, so a comuna changed in admin moves the
-	 * view at once and an install provisioned earlier needs nothing (ADR-0021).
-	 * Null when none is chosen or the table has no box for the CUT.
-	 */
-	public function extent(): ?ComunaExtent {
-		return ComunaExtent::forCut($this->get()->cut);
 	}
 
 	public function set(Comuna $comuna): void {

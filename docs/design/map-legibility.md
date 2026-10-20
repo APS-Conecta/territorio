@@ -228,11 +228,6 @@ cartography and costs no dependency.
 
 ### 2.2 The position dot and the pin ring
 
-> The re-measurement against the Protomaps basemap that stood here was retired with that basemap
-> ([ADR-0021](../adr/0021-the-basemap-is-openstreetmaps-tile-service-used-as-its-policy-asks.md)):
-> the basemap is OpenStreetMap's raster again, so § 2's numbers are the measurement. What follows
-> is what the code and the gates still cite.
-
 **The «¿Dónde estoy?» dot** is new and measured on the same terms. `#1a73e8` sits ΔE **0.113** from
 its nearest Category (`educacion`) against the 0.05 floor at which two 18px dots read as one
 colour, and **4.07:1** against the basemap. It is deliberately outside the Category ramp: hue in
@@ -317,18 +312,6 @@ are seen by the same people over time, which is the whole point of drawing one" 
 carries one. A Sector today is a name, a
 boundary and a colour. Not needed for anything here; worth knowing before someone designs a
 "who covers this address" feature and finds the answer is not stored.
-
-> **This section held a second item until 2026-09-15: "the taxonomy is not editable".** It recorded
-> that there was no taxonomy route in `appinfo/routes.php` and no UI, that the eleven Categories were
-> seeded and in practice fixed, and that this was why a palette could be specified at all and
-> expected to survive. #36 built the thing it described as missing: six taxonomy routes, and a Capas
-> panel that adds, renames and removes both a Category and a Subcategory. Its closing sentence —
-> that taxonomy editing would need a rule for what colour a new Category gets, and that ADR-0013's
-> honest answer is an existing family plus a glyph that tells it apart — is now #43 and ADR-0017.
-> The note is gone because the code caught up with the glossary, not because it was ever wrong, and
-> what survives of it is in §1.2. This is a design reference rather than a dated record, so a claim
-> that stopped being true is removed rather than annotated in place; the removal is dated here
-> because the reasoning it carried is still load-bearing.
 
 ## 6. Verification
 

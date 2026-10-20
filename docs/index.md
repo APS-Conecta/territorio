@@ -23,17 +23,10 @@ the same fact, the one named here as its authority wins and the other should lin
 | GitHub issues | status | everyone | What is left. The README's Status section only points here; it lists nothing itself |
 
 > **Note:** The organisation's contributing doctrine and security policy are not here: they are
-> **to be** served to every repository from
+> served to every repository from
 > [`APS-Conecta/.github`](https://github.com/APS-Conecta/.github), and a local copy would be a
 > second owner of the same facts. Org-wide decisions — the licence, the trunk, the release model —
 > live in [`APS-Conecta/gestion`](https://github.com/APS-Conecta/gestion/tree/main/docs/adr).
-
-> **Warning:** Not live yet. GitHub serves organisation defaults only from the default branch of
-> `APS-Conecta/.github`, and both files are still on an unmerged branch there
-> ([PR #1](https://github.com/APS-Conecta/.github/pull/1)). Until it merges this repository has
-> no contributing or security document from any source. The docs gate reads the local clone, so
-> it already counts them as present — that is deliberate, to keep the check offline, and it is
-> why these close on **merge**, not on commit.
 
 > **Note:** ADR numbers are never reused and never renumbered. `0001` is the oldest decision here
 > and one of its premises turned out to be wrong rather than superseded: it claimed a REST surface

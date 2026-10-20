@@ -872,13 +872,6 @@ The umbrella closes: the Category tree is editable data, and the design doc stop
   existed to say out loud that it was aspirational. With the note gone the glossary is a description
   again, which is the point of the criterion.
 
-  **Removed rather than annotated, and dated where it stood.** `docs/index.md` says dated records —
-  the ADRs and the CHANGELOG — are not rewritten when the world moves, and that a correction is
-  added with its own date. A design reference is neither: leaving a false claim in place with a
-  correction under it makes the next reader work out which half to believe, and this document is
-  read to build from. So the claim goes, and a dated paragraph in its place says what it held, why
-  it is gone, and where what survives of it now lives.
-
   § 5 keeps its second item and becomes *One thing…*. **A Sector still has no team** — nothing in
   `Feature.php` or the schema carries one — so the surviving item was checked against the code
   before it was kept rather than kept because it was already there.

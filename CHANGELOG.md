@@ -9,6 +9,30 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Changed
 
+- **First signed release (0.80.0).** Releases are built and signed by the org's shared
+  workflow (instalador #31), called from `.github/workflows/release.yml` pinned by commit
+  SHA: a pull request builds the frontend and packs the tarball; a `v*` tag — which must
+  equal `v` + the `appinfo/info.xml` version — signs `SHA256SUMS` with the app key inside
+  the repo's `release` environment and publishes exactly four assets (`territorio.tar.gz`,
+  `info.xml`, `SHA256SUMS`, `SHA256SUMS.minisig`), proven against the suite's `apps.pub`.
+  The tarball's contents come from `.nextcloudignore`, added with this change: the
+  development tree (`src/`, `tests/`, `docs/`, `tools/`, `scripts/`, the agent files, the
+  configs) stays out; `appinfo/`, `lib/`, `templates/`, `img/`, the built `js/`, the
+  vendored `vendor/aps/common/src`, the licences and the notices travel.
+
+  **`js/` is build output now, not a committed artifact.** The five tracked bundle files
+  (including the terser `.LICENSE.txt` notices) leave git and `js/` is ignored: the
+  release builds the bundle before packing, and `pack-app` refuses a committed one. CI's
+  rebuild-no-drift arm goes with them — the release workflow's pack step now fails a PR
+  whose build produces no bundle — and installing from a clone needs
+  `npm ci && npm run build` first (README says so).
+
+  **The vendored docs checker and canon are gone** (`instalador #32`): the checker, its
+  profiles and the documentation workflow under `.github/`, the issue forms, the
+  pull-request template and the code-owners file — the org defaults in
+  `APS-Conecta/.github` serve the community files now. No `guard.yml`: the repo is
+  public, so secret scanning and push protection are GitHub's, not a workflow's.
+
 - **The basemap is OpenStreetMap's tile service and nothing else (0.79.0).** One constant,
   `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, loaded directly by each user's browser under the
   Tile Usage Policy (ADR-0021). There is no setting, no second form and no archive.

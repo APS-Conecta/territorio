@@ -145,10 +145,10 @@ Re-run the suites and the browser gate after fixing.
 
 ```bash
 git push -u origin feat/<n>-<slug>
-gh pr create                            # opens an editor pre-filled with PULL_REQUEST_TEMPLATE.md
-#                                         NOT --fill: that takes title and body from the commits
-#                                         and bypasses the template entirely
-gh pr checks --watch                    # php tests+lint, js lint+tests+no-drift, docs gate
+gh pr create                            # opens an editor pre-filled with the org PR template
+#                                         (APS-Conecta/.github); NOT --fill: that takes title and
+#                                         body from the commits and bypasses the template entirely
+gh pr checks --watch                    # php tests+lint, js lint+tests+notices, build (release.yml)
 gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"
 ```

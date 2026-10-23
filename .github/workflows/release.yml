@@ -1,0 +1,29 @@
+# The app's release: build and pack on every pull request, sign and publish on a v* tag.
+#
+# The work itself lives in the org's shared workflow (instalador #31), pinned by commit
+# SHA, so the signing and packing rules are written once for every app. A pull request
+# only builds the frontend and packs the tarball — that is the PR build check. A v* tag
+# must equal v + the version in appinfo/info.xml, and then, inside this repo's `release`
+# environment (the app key's only home, with the owner as required reviewer), the shared
+# workflow signs SHA256SUMS with the app key, proves the signature against the suite's
+# apps.pub, and publishes exactly four assets: territorio.tar.gz, info.xml, SHA256SUMS
+# and SHA256SUMS.minisig. The build job never sees the key.
+#
+# What lands in the tarball is governed by .nextcloudignore at the repo root.
+name: Release
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    uses: APS-Conecta/.github/.github/workflows/app-release.yml@7884528d4e283decc2c8e639cb6e9ca6ed180c80 # 2026-10-22
+    permissions:
+      contents: write
+    with:
+      app-id: territorio
+    secrets:
+      APP_SIGNING_KEY: ${{ secrets.APP_SIGNING_KEY }}
+      APP_SIGNING_KEY_PASSWORD: ${{ secrets.APP_SIGNING_KEY_PASSWORD }}

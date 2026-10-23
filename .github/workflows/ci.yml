@@ -1,10 +1,11 @@
 # The gates this repository already has, run by a machine instead of by hand.
 #
 # Every check below existed as a Makefile target and had never run on a pull request:
-# `.github/workflows/` held docs.yml alone, so a green PR meant "the markdown links
-# resolve" and nothing more — past 219 PHP tests, 138 JS tests, two linters and a
-# committed bundle that IS the deployment. epidemiologia/.github/workflows/ci.yml
-# already made this argument for the sibling app; this is the same argument here.
+# `.github/workflows/` once held the documentation checker alone, so a green PR meant
+# "the markdown links resolve" and nothing more — past 219 PHP tests, 138 JS tests, two
+# linters and a committed bundle that was then the deployment (untracked now; the
+# release workflow builds it). epidemiologia/.github/workflows/ci.yml already made this
+# argument for the sibling app; this is the same argument here.
 #
 # What is deliberately NOT here: `make test-integration` and `make test-browser`.
 # Both need `make instance-up` — a whole Nextcloud 34 + PostgreSQL 18 stack — which is
@@ -104,27 +105,12 @@ jobs:
       - name: Frontend unit tests
         run: make test-js
 
-      # js/ is committed — that IS the deployment (.gitignore says so), so src/ moving
-      # without a rebuild means the running app is not the code in this repo.
-      #
-      # `git status --porcelain` and NOT `git diff --exit-code`: a rebuild after a real
-      # change can write a NEW file and delete the old one. `git diff` reports the
-      # deletion and is blind to the addition, so it can pass on precisely the drift that
-      # matters.
-      - name: Rebuild and require no drift
-        run: |
-          make build
-          drift="$(git status --porcelain -- js/)"
-          if [ -n "$drift" ]; then
-            printf '%s\n' "$drift"
-            echo "::error::js/ is behind src/. Run 'make build' and commit the result."
-            exit 1
-          fi
-
       # THIRD-PARTY-NOTICES.md is an attribution obligation, and the way it went stale was
       # that keeping it current was a documented procedure nobody was made to run: 51
       # packages shipped and 18 were named (#87). This is that procedure, run by a machine.
-      # It re-runs `make build` — seconds, on a bundle the step above just built.
+      # It runs `make build` first (its dependency) — seconds — and the bundle lands
+      # ignored in js/, so no drift gate is possible or needed here: the release
+      # workflow's pack step refuses a PR whose build produces no bundle.
       - name: Every shipped package is attributed
         run: make notices
 

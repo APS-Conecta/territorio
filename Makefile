@@ -117,11 +117,11 @@ aps-drift: aps-sync
 		exit 1; \
 	fi
 
-# js/ is committed (Nextcloud apps ship built assets), so it is not cleaned here —
-# removing it would just dirty the working tree. `npm run build` overwrites it.
-# vendor/aps/common/src is COMMITTED too (the js/ doctrine) — it is not
-# cleaned either, removing it would just dirty the tree. git clean removes every
-# untracked/ignored build product under vendor/ and leaves tracked files alone.
+# js/ is build output now (ignored; the release packs it), left alone here so a dev needs
+# no rebuild — `npm run build` overwrites it. vendor/aps/common/src is COMMITTED (the js/
+# doctrine is gone, the vendor one stays: the tarball ships it) — it is not cleaned
+# either, removing it would just dirty the tree. git clean removes every untracked/
+# ignored build product under vendor/ and leaves tracked files alone.
 clean:
 	git clean -xfd -- vendor
 	rm -rf node_modules js/*.map .phpunit.cache

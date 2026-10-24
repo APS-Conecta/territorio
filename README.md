@@ -50,7 +50,9 @@ checkout:
     git clone https://github.com/APS-Conecta/territorio.git apps/territorio
     docker compose exec --user www-data nextcloud php occ app:enable territorio
 
-`js/` is committed — Nextcloud apps ship built assets — so no build step is needed to install.
+`js/` is not committed — the release workflow builds it into the tarball — so installing from
+a clone needs `npm ci && npm run build` first. A release tarball carries the built bundle
+already.
 Enabling runs the `EnsureSeedData` repair step, which writes the eleven Categories, the División
 territorial category, their Subcategories, the revision cursor and the colour ramp. It is
 idempotent and runs again after every migration.

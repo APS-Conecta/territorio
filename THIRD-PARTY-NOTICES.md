@@ -48,16 +48,14 @@ unattributed.
 - **`package.json`.** It names 12 packages. 65 ship. Only the manifests were read until
   2026-08-08, which is exactly how three components shipped unattributed — the words "Apache"
   and "MPL" did not appear in this file while a dual-licensed component was in every page
-  load. The organisation's docs gate
-  ([`APS-Conecta/repo-docs`](https://github.com/APS-Conecta/repo-docs)) can summarise the
-  manifests with `docs.py licences territorio`, but it reads manifests only and would not have
-  caught it either.
+  load. A manifest summary — the organisation's retired checker's `docs.py licences`
+  was one — reads manifests only and would not have caught it either.
 - **`js/territorio-main.js.LICENSE.txt` and `js/territorio-admin.js.LICENSE.txt`.** Webpack
   writes an entry there only for code carrying a `/*!` banner, and most packages carry none.
-  Those two files are still committed and still ship — they are notices that travel inside the
-  distribution — but as a *census* they saw 18 of 51 when #87 was filed. Reconciling this file
-  against them, which is what this section told you to do until today, reproduces that gap
-  forever.
+  Those two files still ship — webpack writes them on every build, and they are notices that
+  travel inside the distribution — but as a *census* they saw 18 of 51 when #87 was filed.
+  Reconciling this file against them, which is what this section told you to do until today,
+  reproduces that gap forever.
 - **The source maps alone.** They cannot see the 16 packages inlined into a published `dist`,
   and they cannot see a package that ships as bytes rather than as a module.
 
@@ -666,9 +664,9 @@ Seven of the eight packages that publish the file publish byte-identical copies 
 `@nextcloud/axios` ships an older copy differing only in `http://fsf.org/` for `https://fsf.org/`.
 
 It is the one text here that sits beside this file rather than inside it, and the reason is worth
-recording rather than hiding: the organisation's docs gate reads every fenced block in a governed
-`.md` as commands, and the GPL says "make sure", "make you", "make such" — eight phrases it
-reports as `make` targets that do not exist. Modifying a licence text to please a linter is not an
+recording rather than hiding: the organisation's retired documentation checker read every
+fenced block in a governed `.md` as commands, and the GPL says "make sure", "make you", "make
+such" — eight phrases it reported as `make` targets that did not exist. Modifying a licence text to please a linter is not an
 option, and silencing a rule that is right the rest of the time is worse, so the text is a `.txt`
 file, which is how it travels anyway.
 

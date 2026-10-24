@@ -20,15 +20,10 @@ browser gate is a step you do not skip rather than a gate that stops you. It exi
 because `Guardar` did nothing for eight slices while every other check passed.
 `.claude/skills/slice/SKILL.md` § 7 has the landing sequence.
 
-CI runs the PHP tests and lint, the JS lint and tests, and a rebuild that fails the
-PR if committed `js/` has drifted from `src/` (`.github/workflows/ci.yml`). The
-integration and browser suites stay manual, on purpose: they need a whole instance.
-
-The other mechanical check is the `docs` workflow, and **it passes**:
-`python3 .github/repo-docs.py check . --offline` exits 0 with 0 errors (measured
-2026-09-13). Both `profiles/aps-conecta.json` and `profiles/_base.json` — which holds
-the `levels` key — are vendored at `.github/profiles/`. Both are canon and are
-overwritten by `--fix`, so they are not edited here.
+CI runs the PHP tests and lint, the JS lint and tests, and the release workflow builds and
+packs the bundle on every pull request (`.github/workflows/ci.yml`,
+`.github/workflows/release.yml`). The integration and browser suites stay manual, on
+purpose: they need a whole instance.
 
 ## Agent skills
 

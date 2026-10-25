@@ -676,7 +676,7 @@ file, which is how it travels anyway.
 The Nextcloud packages under GPL-3.0-or-later are likewise linked into them. This is why
 this app is AGPL-3.0-or-later and could not be licensed otherwise: the obligation is
 inherited from what it links, not chosen — see
-[ADR-0010 in gestion](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0010-agpl-across-the-org.md).
+[ADR-0006 in the suite repository](https://github.com/APS-Conecta/instalador/blob/main/docs/adr/0006-agpl-across-the-org.md).
 
 ## †  No licence file in the published package
 

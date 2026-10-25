@@ -43,16 +43,11 @@ Everything runs from this directory. Steps 1 and 4–6 need Docker; steps 2 and 
 
 Nextcloud **34 only** (`appinfo/info.xml` pins `min-version` and `max-version`), PHP 8.1 or later.
 
-In the gestion stack, `./apps` is bind-mounted at `/var/www/html/custom_apps`, so installing is
-cloning this repo to `gestion/apps/territorio` and enabling it. Both commands run from the gestion
-checkout:
+In the suite, territorio installs from its own signed release: the suite manifest is the
+only app list, and the wizard installs the newest compatible release without the app store.
+A release tarball carries the built bundle already; installing from a clone instead needs
+`npm ci && npm run build` first, because `js/` is not committed.
 
-    git clone https://github.com/APS-Conecta/territorio.git apps/territorio
-    docker compose exec --user www-data nextcloud php occ app:enable territorio
-
-`js/` is not committed — the release workflow builds it into the tarball — so installing from
-a clone needs `npm ci && npm run build` first. A release tarball carries the built bundle
-already.
 Enabling runs the `EnsureSeedData` repair step, which writes the eleven Categories, the División
 territorial category, their Subcategories, the revision cursor and the colour ramp. It is
 idempotent and runs again after every migration.
@@ -275,7 +270,7 @@ AGPL-3.0-or-later — see [`LICENSE`](LICENSE).
 This is not a free choice. The app compiles `@nextcloud/vue` (AGPL-3.0-or-later) into the
 bundles under `js/`, along with Nextcloud packages under GPL-3.0-or-later, so the copyleft
 is inherited from what it links.
-[ADR-0010 in gestion](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0010-agpl-across-the-org.md)
+[ADR-0006 in the suite repository](https://github.com/APS-Conecta/instalador/blob/main/docs/adr/0006-agpl-across-the-org.md)
 records the organisation-wide decision that followed from it.
 
 Because the AGPL's section 13 covers network use, staff who use this app over the intranet

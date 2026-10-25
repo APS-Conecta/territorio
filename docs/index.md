@@ -26,7 +26,7 @@ the same fact, the one named here as its authority wins and the other should lin
 > served to every repository from
 > [`APS-Conecta/.github`](https://github.com/APS-Conecta/.github), and a local copy would be a
 > second owner of the same facts. Org-wide decisions — the licence, the trunk, the release model —
-> live in [`APS-Conecta/gestion`](https://github.com/APS-Conecta/gestion/tree/main/docs/adr).
+> live in the suite repository, [`APS-Conecta/instalador`](https://github.com/APS-Conecta/instalador/tree/main/docs/adr).
 
 > **Note:** ADR numbers are never reused and never renumbered. `0001` is the oldest decision here
 > and one of its premises turned out to be wrong rather than superseded: it claimed a REST surface

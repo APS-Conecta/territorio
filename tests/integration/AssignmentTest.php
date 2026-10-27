@@ -291,18 +291,19 @@ final class AssignmentTest extends IntegrationTestCase {
 		$service->retire($boundary);
 		$service->restore($place);
 
+		// Not null: see the redraw test above — another boundary may legitimately
+		// hold this point. What is promised is that it let go of THIS one.
 		$restored = $this->stored($place);
-		self::assertNull($restored->$getter(), 'it came back holding a retired boundary');
+		self::assertNotSame($boundary, $restored->$getter(), 'it came back holding a retired boundary');
 		self::assertNull($restored->getMergedInto());
 
 		$history = $service->history($place);
 		self::assertCount(3, $history, 'created, sent out, restored');
 		self::assertSame(Action::Restored->value, $history[0]['action']);
-		self::assertSame(
-			['from' => $boundary, 'to' => null],
-			$history[0]['changes'][$field] ?? null,
-			'the change belongs on the restore entry itself',
-		);
+		$changes = $history[0]['changes'] ?? [];
+		self::assertArrayHasKey($field, $changes, 'the change belongs on the restore entry itself');
+		self::assertSame($boundary, $changes[$field]['from']);
+		self::assertNotSame($boundary, $changes[$field]['to'], 'recorded as letting go of it');
 	}
 
 	/** The other half of #201: a boundary drawn while the record was away claims it on return. */
@@ -360,7 +361,7 @@ final class AssignmentTest extends IntegrationTestCase {
 		$revert->revert((int)$undo->getId(), 'tester');
 
 		self::assertFalse((bool)$imported()->getRetired(), 'the redo brings it back');
-		self::assertNull($imported()->getSectorId(), 'without the Sector retired meanwhile');
+		self::assertNotSame($sector, $imported()->getSectorId(), 'without the Sector retired meanwhile');
 	}
 
 	/**

@@ -381,6 +381,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
   when only the geometry was prefixed (#209).
 
+- **A picked Point or zero-length street fragment no longer keeps «Generar el polígono»
+  disabled (#214).** `canPolygonize` asked every picked row for an edge, so a Boundary feature
+  that holds none, picked along with its street's name, blocked generating for good. A picked
+  row now needs a held line-work or Point shape, and the pick as a whole at least one edge. A
+  missing shape, a Polygon or an untyped one still blocks.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

@@ -6,10 +6,12 @@ namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Server;
 
 /**
@@ -329,5 +331,140 @@ final class ImportTest extends IntegrationTestCase {
 		} finally {
 			self::assertSame($before, $this->revisions->current(), 'nothing may be written');
 		}
+	}
+
+	/**
+	 * #203: a value the write door would refuse is refused for the whole file,
+	 * in the write door's own sentence and naming the row. The bad row comes
+	 * last, so a check made row by row as each is written would already have
+	 * committed the three before it.
+	 *
+	 * @dataProvider overLongFields
+	 */
+	public function testAnOverLongFieldRefusesTheWholeFile(array $bad, string $expected): void {
+		$this->assertImportsNothing(
+			fn () => $this->import(self::threeGoodThen($bad)),
+			self::DATASET,
+			$expected,
+		);
+	}
+
+	/** @return array<string, array{array<string, string>, string}> the bad row's properties, and the refusal */
+	public static function overLongFields(): array {
+		$name = str_repeat('n', 300);
+
+		return [
+			'phone' => [
+				['uid' => 't:malo', 'name' => 'Malo', 'phone' => str_repeat('9', 72)],
+				'Malo: El teléfono no puede pasar de 64 caracteres.',
+			],
+			'name' => [
+				['uid' => 't:malo', 'name' => $name],
+				$name . ': El nombre no puede pasar de 255 caracteres.',
+			],
+		];
+	}
+
+	/** The external id column is VARCHAR 128: a longer uid was the database's
+	 *  error after the rows before it had committed. */
+	public function testAnOverLongExplicitIdRefusesTheWholeFile(): void {
+		$this->assertImportsNothing(
+			fn () => $this->import(self::threeGoodThen(['uid' => str_repeat('u', 200), 'name' => 'Malo'])),
+			self::DATASET,
+			'Malo: el identificador del registro no puede pasar de 128 caracteres.',
+		);
+	}
+
+	/** Each cap is the column's own width, so a value exactly at it imports —
+	 *  counted in characters, which is how PostgreSQL counts a VARCHAR. */
+	public function testValuesAtTheirCapsImport(): void {
+		$name = str_repeat('á', 255);
+		$batch = $this->import(json_encode(['type' => 'FeatureCollection', 'features' => [
+			self::feature(['uid' => str_repeat('u', 128), 'name' => $name, 'phone' => str_repeat('9', 64)]),
+		]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+
+		self::assertSame(1, $batch->getCreated());
+		self::assertSame($name, $this->features->findByDataset($batch->getDatasetId())[str_repeat('u', 128)]->getName());
+
+		$slug = str_repeat('s', 64);
+		$this->datasets[] = $slug;
+		$batch = $this->import->importFile(
+			json_encode(['type' => 'FeatureCollection', 'features' => [
+				self::feature(['uid' => 't:largo', 'name' => 'Sede del conjunto largo']),
+			]], JSON_THROW_ON_ERROR),
+			'datos.geojson',
+			$slug,
+		);
+		self::assertSame(1, $batch->getCreated());
+	}
+
+	/** The Dataset slug column is VARCHAR 64; the name is refused where an
+	 *  empty one is, before the file is read — the browser route and `occ`
+	 *  both come through there. */
+	public function testAnOverLongDatasetNameImportsNothing(): void {
+		$slug = str_repeat('d', 76);
+		$this->datasets[] = $slug;
+
+		$this->assertImportsNothing(
+			fn () => $this->import->importFile(self::ONE, 'datos.geojson', $slug, 'Prueba', 'tester'),
+			$slug,
+			'no puede pasar de 64 caracteres',
+		);
+	}
+
+	/** Three rows that import, then `$bad`, as one GeoJSON file. */
+	private static function threeGoodThen(array $bad): string {
+		$features = [];
+		foreach (['Uno', 'Dos', 'Tres'] as $name) {
+			$features[] = self::feature(['uid' => "t:{$name}", 'name' => "Plaza {$name}"]);
+		}
+		$features[] = self::feature($bad);
+
+		return json_encode(
+			['type' => 'FeatureCollection', 'features' => $features],
+			JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE,
+		);
+	}
+
+	/** @param array<string, string> $properties */
+	private static function feature(array $properties): array {
+		return [
+			'type' => 'Feature',
+			'geometry' => ['type' => 'Point', 'coordinates' => [-70.58, -33.52]],
+			'properties' => $properties + ['source' => 'prueba'],
+		];
+	}
+
+	/**
+	 * Refused with `$expected` in the sentence, and nothing written: no
+	 * Revision, no Import batch, no Dataset under `$slug`.
+	 */
+	private function assertImportsNothing(callable $import, string $slug, string $expected): void {
+		$cursor = $this->revisions->current();
+		$lastBatch = $this->lastBatchId();
+
+		try {
+			$import();
+			self::fail('the file should have been refused');
+		} catch (InvalidImportException $e) {
+			self::assertStringContainsString($expected, $e->getMessage());
+		}
+
+		self::assertSame($cursor, $this->revisions->current(), 'no Revision may be spent');
+		self::assertSame($lastBatch, $this->lastBatchId(), 'no Import batch may be recorded');
+		try {
+			Server::get(DatasetMapper::class)->findBySlug($slug);
+			self::fail('no Dataset may be created');
+		} catch (DoesNotExistException) {
+			// Expected.
+		}
+	}
+
+	/** The newest Import batch's id — compared, not counted: findRecent() is
+	 *  capped, so a count can stand still while a batch is written. */
+	private function lastBatchId(): ?int {
+		$recent = Server::get(ImportBatchMapper::class)->findRecent(1);
+
+		return $recent === [] ? null : (int)$recent[0]->getId();
 	}
 }

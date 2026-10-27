@@ -78,10 +78,13 @@ export default {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
-		// The shape the open draft carries, drawn dashed and with its vertices
-		// draggable. Owned by App.vue: this component renders it and reports the
-		// user's edits back, so there is one geometry and not two.
+		// The shape the open draft carries, drawn dashed, its vertices draggable
+		// while `draftEditable` says so. Owned by App.vue: this component renders
+		// it and reports the user's edits back, so there is one geometry and not two.
 		draftGeometry: { type: Object, default: null },
+		// Whether those vertices may be dragged: the record is new, or «Editar» was
+		// pressed. Owned by App.vue, which alone knows the form's edit state (#195).
+		draftEditable: { type: Boolean, default: false },
 		draftColour: { type: String, default: null },
 		// What the drafted record is FILED as, so the draft layer draws it the way
 		// drawShapes would have. `draftFrom` copies the geometry of any opened
@@ -232,6 +235,12 @@ export default {
 			this.drawDraft()
 			this.drawShapes()
 		},
+		// Redrawn, never `pm.disable()` on the live layer: disable() fires
+		// pm:update after a drag and would report the cancelled shape onto the
+		// rebuilt draft (see drawDraft's unbind-first note).
+		draftEditable() {
+			this.drawDraft()
+		},
 		draftColour() {
 			this.draftLayer?.setStyle(shapeStyle(this.draftSlug, this.draftColour ?? UNKNOWN_COLOUR, true))
 		},
@@ -329,9 +338,7 @@ export default {
 		this.drawShapes()
 		this.drawDraft()
 
-		this.map.on('click', (event) => {
-			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
-		})
+		this.map.on('click', (event) => this.emitMapClick({ lat: event.latlng.lat, lon: event.latlng.lng }))
 
 		// The editor asks for the Boundary features on screen, so it has to know
 		// when "on screen" changes. moveend covers panning and zooming both.
@@ -358,6 +365,20 @@ export default {
 	},
 
 	methods: {
+		/**
+		 * The only place `map-click` is emitted: by a map click, and by a pin click while placing.
+		 *
+		 * @param {{lat: number, lon: number}} coordinate where the click lands
+		 */
+		emitMapClick({ lat, lon }) {
+			// While drawing, the click is Geoman's vertex, not a coordinate or a seed (its listener runs after the map's).
+			if (this.map.pm.globalDrawModeEnabled()) {
+				return
+			}
+
+			this.$emit('map-click', { lat, lon })
+		},
+
 		/**
 		 * The registries' signature half, as diffLayers wants it: the rows hold
 		 * the live layer beside the signature it was drawn from, and the diff
@@ -420,7 +441,15 @@ export default {
 						colour: colourOf(feature, this.subcategories),
 						approximate: isApproximate(feature),
 					},
-				}).on('click', () => this.$emit('select', feature.id))
+				}).on('click', () => {
+					// A Marker does not bubble its click, so it takes the map's path itself (#196), at the
+					// stored coordinate: in a spiderfied cluster the event's latlng is the spider leg.
+					if (this.placing || this.map.pm.globalDrawModeEnabled()) {
+						this.emitMapClick({ lat, lon })
+						return
+					}
+					this.$emit('select', feature.id)
+				})
 
 				return [id, { layer: marker, signature }]
 			})
@@ -497,7 +526,8 @@ export default {
 					// the click here would make it impossible to place a record by
 					// clicking — and worse, it would select a cadastre boundary and
 					// hand the next save to that instead.
-					if (this.placing) {
+					// While drawing, the click is Geoman's too: it becomes a snapped vertex.
+					if (this.placing || this.map.pm.globalDrawModeEnabled()) {
 						return
 					}
 
@@ -648,7 +678,8 @@ export default {
 		},
 
 		/**
-		 * Draw the open draft's shape, dashed, with its vertices draggable.
+		 * Draw the open draft's shape, dashed, its vertices draggable while the
+		 * draft is editable.
 		 *
 		 * The layer is built fresh every time rather than kept and patched, so
 		 * there is exactly one draft layer with exactly one set of handlers on it —
@@ -691,13 +722,16 @@ export default {
 				layer.bindTooltip(document.createTextNode(this.draftName), labelOptions(this.draftSlug))
 			}
 			// ponytail: geoman is enabled for whatever is on this layer, so an opened
-			// Unidad Vecinal gets draggable vertices and save() writes the result —
-			// on a record CONTEXT.md says the clinic only reads. It predates #21 (the
-			// draft has always copied any opened shape's geometry) and it is a
-			// write-permission question, not a figure-and-ground one: issue #109.
-			layer.pm.enable({ allowSelfIntersection: false })
-			// pm:edit covers a dragged vertex, pm:update the end of a move.
-			layer.on('pm:edit pm:update', () => this.report(layer))
+			// Unidad Vecinal gets draggable vertices once «Editar» is pressed, and
+			// save() writes the result — on a record CONTEXT.md says the clinic only
+			// reads. It predates #21 (the draft has always copied any opened shape's
+			// geometry) and it is a write-permission question, not a figure-and-ground
+			// one: issue #109.
+			if (this.draftEditable) {
+				layer.pm.enable({ allowSelfIntersection: false })
+				// pm:edit covers a dragged vertex, pm:update the end of a move.
+				layer.on('pm:edit pm:update', () => this.report(layer))
+			}
 			this.draftLayer = layer
 		},
 

@@ -53,6 +53,7 @@
 							:taxonomy="taxonomy"
 							:selected-id="selectedId"
 							:draft-geometry="draftGeometry"
+							:draft-editable="draftEditable"
 							:draft-colour="draft?.colour ?? null"
 							:draft-subcategory-id="draft?.subcategoryId ?? null"
 							:draft-name="draft?.name ?? ''"
@@ -105,6 +106,7 @@
 
 									<FeatureDetail
 										:draft="draft"
+										:editing="editing"
 										:taxonomy="taxonomy"
 										:divisions="divisions"
 										:features="features"
@@ -113,6 +115,7 @@
 										:history="history"
 										:history-failed="historyFailed"
 										:retired="selectedIsRetired"
+										@update:editing="setEditing"
 										@save="save"
 										@retire="retire"
 										@retry="loadHistory(selectedId)"
@@ -435,6 +438,10 @@ export default {
 			history: [],
 			selectedId: null,
 			draft: null,
+			// The record form's edit mode, here because `placing` (#194) and
+			// `draftEditable` (#195) read it. A new record (id null) is editable
+			// without it; nothing to do with `editingLimit`.
+			editing: false,
 			saving: false,
 			error: '',
 			// Separate from `error`: that one renders in the panel's list and only
@@ -616,9 +623,17 @@ export default {
 			return suggestions(this.cadastreLines, this.boundaryQuery)
 		},
 
-		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
+		/** The shape the map draws as the draft — a Sector being drawn, shown or adjusted. */
 		draftGeometry() {
 			return this.draft?.geometry ?? null
+		},
+
+		/**
+		 * Whether the map lets the draft's shape be reshaped (#195). A new record
+		 * is editable without «Editar»; the map has no other way to know.
+		 */
+		draftEditable() {
+			return this.draft !== null && (this.editing || this.draft.id === null)
 		},
 
 		/**
@@ -626,14 +641,25 @@ export default {
 		 * it lands on — a Sector or a Unidad Vecinal would otherwise take it to
 		 * select themselves.
 		 *
-		 * Two reasons for that, and they are different things: a draft with no
-		 * geometry is waiting for its coordinate, and a Sector being built is
-		 * waiting for the click that says which block it is (issue #14). Both want
+		 * Two reasons for that, and they are different things: a Place's draft is
+		 * waiting for its coordinate while its form is editable — new, or after
+		 * «Editar» (#194) — and a Sector being built is waiting for the click that
+		 * says which block it is (issue #14). Both want
 		 * the same thing from the map, which is why they share one flag; anything
 		 * that replaces the draft clears the second (see stopSeeding).
 		 */
 		placing() {
-			return (this.draft !== null && this.draft.geometry === null) || this.seeding
+			return (this.draft !== null && this.draft.geometry === null
+				&& (this.draft.id === null || this.editing)) || this.seeding
+		},
+	},
+
+	watch: {
+		// Opening another record, creating one (null to N) or closing clears edit
+		// mode; an update save keeps it. Reopening the same record goes through
+		// select(), which clears it itself («Cancelar», #195).
+		'draft.id'() {
+			this.editing = false
 		},
 	},
 
@@ -781,6 +807,7 @@ export default {
 			this.selectedId = id
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			this.draft = feature === undefined ? null : draftFrom(feature, this.taxonomy)
+			this.editing = false
 			this.error = ''
 			this.history = []
 			this.historyFailed = false
@@ -795,6 +822,21 @@ export default {
 			}
 		},
 
+		/**
+		 * «Editar» and «Cancelar» on the record form (#195). False can only mean
+		 * «Cancelar», because App clears the flag on every other path, so it
+		 * reopens the stored record the way the list does: select() rebuilds the
+		 * draft from the Registry, stops seeding, clears the error and the Limit
+		 * picker's state, and reloads history.
+		 */
+		setEditing(editing) {
+			if (editing) {
+				this.editing = true
+			} else {
+				this.select(this.selectedId)
+			}
+		},
+
 		async selectAndPan(id) {
 			this.select(id)
 			this.panelOpen = true
@@ -805,9 +847,17 @@ export default {
 				this.pane = 'mapa'
 				await this.$nextTick()
 			}
+			this.panToFeature(id)
+		},
+
+		/**
+		 * Bring a stored record into view: pan to a Place, fit a Zone or a Route.
+		 * The map stays where it is when the record has no geometry or is not found.
+		 */
+		panToFeature(id) {
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			// A record has GeoJSON `geometry`, not `lat`/`lon`, and may have none:
-			// then it is selected and the map stays where it is.
+			// then the map stays where it is.
 			const target = viewTargetOf(feature?.geometry)
 			const map = this.$refs.mapComponent
 			if (target === null || !map) {
@@ -820,14 +870,8 @@ export default {
 			}
 		},
 
-		centerSelected(coords) {
-			if (this.$refs.mapComponent) {
-				const lat = coords?.lat ?? this.draft?.lat
-				const lon = coords?.lon ?? this.draft?.lon
-				if (lat && lon) {
-					this.$refs.mapComponent.panToLocation(lat, lon, 17)
-				}
-			}
+		centerSelected() {
+			this.panToFeature(this.selectedId)
 		},
 
 		goToStreet(street) {
@@ -1406,8 +1450,8 @@ export default {
 				return
 			}
 
-			// Straight into the ordinary draft, so every vertex is draggable from
-			// this moment on and nothing downstream knows this shape was generated.
+			// Straight into the ordinary draft, so nothing downstream knows this
+			// shape was generated.
 			this.draft.geometry = face
 			this.error = ''
 		},
@@ -1433,9 +1477,10 @@ export default {
 		},
 
 		/**
-		 * Clicking the map fills in the open draft's coordinates — unless the draft
-		 * is a drawn shape, which has no single coordinate to fill in and is edited
-		 * by dragging its vertices instead.
+		 * Clicking the map fills in the open draft's coordinates only while
+		 * `placing`, the same predicate the map's click guards read: a saved Place
+		 * in the read-only card is not waiting for one (#194), and a drawn shape has
+		 * no single coordinate — it is edited by dragging its vertices instead.
 		 */
 		placeDraft({ lat, lon }) {
 			// The seed comes first: while the editor is waiting for one, that click
@@ -1445,7 +1490,7 @@ export default {
 				return
 			}
 
-			if (this.draft === null || this.draft.geometry !== null) {
+			if (!this.placing) {
 				return
 			}
 
@@ -1472,29 +1517,29 @@ export default {
 		async save() {
 			this.saving = true
 			this.error = ''
+			// loadHistory()'s capture-then-compare, by identity: a new record has no id until the response (#198).
+			const sent = this.draft
 
 			try {
-				const isNew = this.draft.id === null
+				const isNew = sent.id === null
 				const { data } = isNew
 					? await axios.post(generateUrl('/apps/territorio/features'),
-						payload(this.draft, this.taxonomy))
+						payload(sent, this.taxonomy))
 					: await axios.put(
-						generateUrl(`/apps/territorio/features/${this.draft.id}`),
-						payload(this.draft, this.taxonomy),
+						generateUrl(`/apps/territorio/features/${sent.id}`),
+						payload(sent, this.taxonomy),
 					)
 
-				// Read before the merge, never after: mergeFeature() can close the
-				// draft, and this line used to run on the null it left behind — so a
-				// save the server had already accepted ended in the catch, telling
-				// the user to check their connection.
-				const picked = this.draft.picked
-				const pickedGeometry = this.draft.pickedGeometry
 				this.mergeFeature(data)
 				// The cursor is deliberately NOT advanced here. Jumping it to our
 				// own Revision skips every change that landed between our last poll
 				// and this save — a colleague's edit at Revision 11 is lost for good
 				// once our save banks 12. Letting the next poll re-deliver our own
 				// record costs one merge, and mergeFeature is idempotent.
+				// Closed or replaced meanwhile: the open draft is left alone, as poll() leaves it.
+				if (this.draft !== sent) {
+					return
+				}
 				this.selectedId = data.id
 				// Carried across the save. draftFrom() rebuilds the draft from what
 				// the server returned, and the server does not know about picks yet —
@@ -1504,13 +1549,13 @@ export default {
 				// ponytail: they live in the draft and die with it, so closing the
 				// sidebar still loses them. #15 is what gives a Limit somewhere to be.
 				this.draft = draftFrom(data, this.taxonomy)
-				if (picked !== undefined) {
-					this.draft.picked = picked
+				if (sent.picked !== undefined) {
+					this.draft.picked = sent.picked
 					// The shapes too, not only the ids. Carrying half of it left the
 					// draft able to say WHICH lines were picked and unable to say what
 					// they look like, so Generar failed on a Sector whose lines had
 					// just been chosen — and blamed the lines (issue #49).
-					this.draft.pickedGeometry = pickedGeometry
+					this.draft.pickedGeometry = sent.pickedGeometry
 				}
 				// This save wrote a Revision, and the sidebar is still showing the
 				// ones from before it. That was merely incomplete while history was

@@ -7,6 +7,8 @@ namespace OCA\Territorio\Tests\Integration;
 use OCA\Territorio\Db\DatasetMapper;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
+use OCA\Territorio\Db\ImportBatchMapper;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
 use OCP\Server;
@@ -27,14 +29,20 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 	private ImportService $import;
 	private RevertService $revert;
 	private FeatureMapper $features;
+	private ImportBatchMapper $batches;
 
 	/** A square around (-70.58, -33.52), where IntegrationTestCase::place() puts things. */
 	private const SECTOR_RING = '[[[-70.59,-33.53],[-70.57,-33.53],[-70.57,-33.51],[-70.59,-33.51],[-70.59,-33.53]]]';
+
+	/** An L beside that square, around (-70.56, -33.50): its bounding box covers
+	 *  (-70.58, -33.52), its polygon does not. */
+	private const UV_L_RING = '[[[-70.59,-33.51],[-70.59,-33.49],[-70.55,-33.49],[-70.55,-33.53],[-70.57,-33.53],[-70.57,-33.51],[-70.59,-33.51]]]';
 
 	protected function setUp(): void {
 		$this->import = Server::get(ImportService::class);
 		$this->revert = Server::get(RevertService::class);
 		$this->features = Server::get(FeatureMapper::class);
+		$this->batches = Server::get(ImportBatchMapper::class);
 		$this->forgetDataset(self::DATASET);
 	}
 
@@ -57,6 +65,57 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 
 	private function ring(): string {
 		return self::SECTOR_RING;
+	}
+
+	/** A Place and then a Sector that covers it, in one batch. */
+	private function importPlaceAndSector(): ImportBatch {
+		$json = <<<JSON
+		{"type":"FeatureCollection","features":[
+		  {"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},
+		   "properties":{"uid":"ra:place","name":"Plaza del lote"}},
+		  {"type":"Feature","geometry":{"type":"Polygon","coordinates":{$this->ring()}},
+		   "properties":{"uid":"ra:boundary","name":"Sector del lote",
+		     "category":"division_territorial","subcategory":"sector"}}
+		]}
+		JSON;
+
+		return $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
+	}
+
+	/**
+	 * Two adjacent Unidades Vecinales in one batch: ra:uv1 is the square, ra:uv2
+	 * the L beside it, whose box reaches over ra:uv1's Place. With $place, a Place
+	 * inside ra:uv1 comes first, so it is the batch-end sweep that assigns it.
+	 */
+	private function importUnidadesVecinales(bool $place = false): ImportBatch {
+		$first = $place
+			? '{"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},'
+				. '"properties":{"uid":"ra:place","name":"Plaza del lote"}},'
+			: '';
+		$ring = self::UV_L_RING;
+		$json = <<<JSON
+		{"type":"FeatureCollection","features":[{$first}
+		  {"type":"Feature","geometry":{"type":"Polygon","coordinates":{$this->ring()}},
+		   "properties":{"uid":"ra:uv1","name":"Unidad Vecinal cuadrada",
+		     "category":"division_territorial","subcategory":"unidad_vecinal"}},
+		  {"type":"Feature","geometry":{"type":"Polygon","coordinates":{$ring}},
+		   "properties":{"uid":"ra:uv2","name":"Unidad Vecinal en L",
+		     "category":"division_territorial","subcategory":"unidad_vecinal"}}
+		]}
+		JSON;
+
+		return $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
+	}
+
+	/** @return list<int> the newest batch ids, newest first */
+	private function recentBatchIds(int $limit): array {
+		return array_map(static fn (ImportBatch $batch): int => (int)$batch->getId(), $this->batches->findRecent($limit));
+	}
+
+	private function stored(string $uid): \OCA\Territorio\Db\Feature {
+		$datasetId = (int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId();
+
+		return $this->features->findByDataset($datasetId)[$uid];
 	}
 
 	private function reload(int $id): \OCA\Territorio\Db\Feature {
@@ -160,17 +219,7 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 	 * map, reported as "omitido", which reads as deliberately protected.
 	 */
 	public function testABatchThatTouchedARecordTwiceIsFullyUndone(): void {
-		$json = <<<JSON
-		{"type":"FeatureCollection","features":[
-		  {"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},
-		   "properties":{"uid":"ra:place","name":"Plaza del lote"}},
-		  {"type":"Feature","geometry":{"type":"Polygon","coordinates":{$this->ring()}},
-		   "properties":{"uid":"ra:boundary","name":"Sector del lote",
-		     "category":"division_territorial","subcategory":"sector"}}
-		]}
-		JSON;
-
-		$batch = $this->import->importFile($json, 'datos.geojson', self::DATASET, 'Prueba', 'tester');
+		$batch = $this->importPlaceAndSector();
 		self::assertSame(2, $batch->getCreated());
 
 		$datasetId = (int)Server::get(DatasetMapper::class)->findBySlug(self::DATASET)->getId();
@@ -186,5 +235,110 @@ final class RevertAssignmentTest extends IntegrationTestCase {
 		);
 		self::assertTrue((bool)$after['ra:boundary']->getRetired(), 'the boundary should be gone too');
 		self::assertSame(0, $revert->getSkipped(), 'nothing here belonged to anybody else');
+	}
+
+	/**
+	 * A revert sweeps its boundaries once, at the end of its walk, inside its own
+	 * batch (#200).
+	 *
+	 * Swept per boundary instead, retiring ra:uv2 handed the Place back to ra:uv1,
+	 * still live, and retiring ra:uv1 let it go again, each under a «reasignación
+	 * de límite» batch of its own. The walk then reached the Place's Created entry,
+	 * found that sweep's write on it, took it for a colleague's and skipped it: the
+	 * import read «deshecha» with the Place still on the map.
+	 */
+	public function testUndoingAnImportOfAPlaceAndTwoAdjacentUnidadesVecinalesRetiresThePlace(): void {
+		$batch = $this->importUnidadesVecinales(place: true);
+		self::assertSame(3, $batch->getCreated());
+		self::assertSame(
+			(int)$this->stored('ra:uv1')->getId(),
+			$this->stored('ra:place')->getUnidadVecinalId(),
+			'the batch-end sweep should have given the Place to the square',
+		);
+
+		$revert = $this->revert->revert((int)$batch->getId(), 'tester');
+
+		self::assertTrue(
+			(bool)$this->stored('ra:place')->getRetired(),
+			'the Place the batch created is still on the map after undoing that batch',
+		);
+		self::assertSame(0, $revert->getSkipped(), 'nothing here belonged to anybody else');
+		self::assertSame(
+			[(int)$revert->getId(), (int)$batch->getId()],
+			$this->recentBatchIds(2),
+			'the revert recorded a batch besides its own',
+		);
+	}
+
+	/**
+	 * Undo, redo, undo of the Place-and-Sector batch, each skipping nothing.
+	 *
+	 * The redo restores the Sector, and swept at once that claimed the Place under
+	 * a batch of its own — so the redo then skipped the entry that puts the
+	 * Place's assignment back, and the second undo skipped the Place's own.
+	 */
+	public function testUndoRedoUndoOfABoundaryImportSkipsNothing(): void {
+		$batch = $this->importPlaceAndSector();
+		$sectorId = (int)$this->stored('ra:boundary')->getId();
+
+		$undo = $this->revert->revert((int)$batch->getId(), 'tester');
+		self::assertSame(0, $undo->getSkipped());
+
+		$redo = $this->revert->revert((int)$undo->getId(), 'tester');
+		self::assertSame(0, $redo->getSkipped(), 'the redo skipped an entry of its own undo');
+		self::assertFalse((bool)$this->stored('ra:place')->getRetired(), 'the redo should have put the Place back');
+		self::assertSame(
+			$sectorId,
+			$this->stored('ra:place')->getSectorId(),
+			'the redo should end with the assignment the import produced',
+		);
+
+		$again = $this->revert->revert((int)$redo->getId(), 'tester');
+		self::assertTrue((bool)$this->stored('ra:place')->getRetired(), 'the Place is still on the map');
+		self::assertTrue($this->batches->isUndone((int)$batch->getId()), 'the import should read as undone');
+		self::assertSame(0, $again->getSkipped(), 'nothing here belonged to anybody else');
+	}
+
+	/**
+	 * Undoing a batch of adjacent boundaries leaves its sweep's writes under the
+	 * revert's own id and records no batch but the revert (#200).
+	 *
+	 * Swept per boundary, each one that moved a Place recorded a «reasignación de
+	 * límite» batch with its own «Deshacer»; undoing a 40-UV cadastre pushed the
+	 * import and its revert out of the dialog's recent list.
+	 */
+	public function testUndoingAnImportOfAdjacentBoundariesStampsItsSweepAndRecordsOneBatch(): void {
+		$batch = $this->importUnidadesVecinales();
+		$inSquare = $this->place('Plaza en la unidad cuadrada ' . uniqid());
+		$inL = $this->place('Plaza en la unidad en L ' . uniqid(), [
+			'geometry' => ['type' => 'Point', 'coordinates' => [-70.56, -33.50]],
+		]);
+		self::assertSame((int)$this->stored('ra:uv1')->getId(), $this->reload($inSquare)->getUnidadVecinalId());
+		self::assertSame((int)$this->stored('ra:uv2')->getId(), $this->reload($inL)->getUnidadVecinalId());
+		$newestId = (int)$this->batches->findRecent(1)[0]->getId();
+
+		$revert = $this->revert->revert((int)$batch->getId(), 'tester');
+
+		self::assertSame([(int)$revert->getId(), $newestId], $this->recentBatchIds(2), 'the revert recorded a batch besides its own');
+		self::assertSame(0, $revert->getSkipped(), 'nothing here belonged to anybody else');
+
+		foreach ([$inSquare, $inL] as $placeId) {
+			$place = $this->reload($placeId);
+			// Invariant style, for the reason the first test gives: which boundary
+			// holds the Place afterwards is a fact about the shared instance.
+			foreach ([$place->getSectorId(), $place->getUnidadVecinalId()] as $boundaryId) {
+				if ($boundaryId !== null) {
+					self::assertFalse(
+						(bool)$this->reload((int)$boundaryId)->getRetired(),
+						'the Place points at a retired boundary, which no read will resolve',
+					);
+				}
+			}
+			self::assertSame(
+				(int)$revert->getId(),
+				Server::get(RevisionLog::class)->newestFor($placeId)['importId'],
+				'the sweep should have written the Place under the revert\'s own batch',
+			);
+		}
 	}
 }

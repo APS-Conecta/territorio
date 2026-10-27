@@ -4,10 +4,18 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Tests\Integration;
 
+use OCA\Territorio\Db\DatasetMapper;
+use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\ImportBatchMapper;
+use OCA\Territorio\Db\RevisionLog;
+use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RegistryService;
+use OCA\Territorio\Service\RevertService;
 use OCP\Server;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * A Place's Sector, derived from where it is (ADR-0008).
@@ -236,6 +244,159 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->restore($sector);
 		self::assertSame($sector, $this->stored($place)->getSectorId(), 'and takes it back');
+	}
+
+	/** @return array<string, array{string, string, string}> slug, history field, getter */
+	public static function divisions(): array {
+		return [
+			'Sector' => ['sector', 'sectorId', 'getSectorId'],
+			'Unidad Vecinal' => ['unidad_vecinal', 'unidadVecinalId', 'getUnidadVecinalId'],
+		];
+	}
+
+	/** @return array<string, array{string, string, string, string}> division, then the door out */
+	public static function divisionsAndDoors(): array {
+		$rows = [];
+		foreach (self::divisions() as $division => $row) {
+			foreach (['retire', 'merge'] as $door) {
+				$rows["$division, $door"] = [...$row, $door];
+			}
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * A record that comes back derives its own assignment again (#201). Boundary
+	 * sweeps skip retired records, so retiring the boundary it held never reached
+	 * it; restoring must not bring back an id no read resolves (ADR-0008). Undoing
+	 * a merge is the same door.
+	 */
+	#[DataProvider('divisionsAndDoors')]
+	public function testRestoringARecordLetsGoOfABoundaryRetiredMeanwhile(
+		string $slug,
+		string $field,
+		string $getter,
+		string $door,
+	): void {
+		$service = Server::get(FeatureService::class);
+		$boundary = $this->sector('Límite que se retira', [
+			'geometry' => self::REMOTE,
+			'subcategoryId' => $this->subcategoryIdBySlug($slug),
+		]);
+		$place = $this->place('Escuela que vuelve', ['geometry' => self::at(-71.00, -29.50)]);
+		self::assertSame($boundary, $this->stored($place)->$getter());
+
+		$door === 'merge'
+			? $service->merge($place, $this->place('Escuela que se conserva'))
+			: $service->retire($place);
+		$service->retire($boundary);
+		$service->restore($place);
+
+		// Not null: see the redraw test above — another boundary may legitimately
+		// hold this point. What is promised is that it let go of THIS one.
+		$restored = $this->stored($place);
+		self::assertNotSame($boundary, $restored->$getter(), 'it came back holding a retired boundary');
+		self::assertNull($restored->getMergedInto());
+
+		$history = $service->history($place);
+		self::assertCount(3, $history, 'created, sent out, restored');
+		self::assertSame(Action::Restored->value, $history[0]['action']);
+		$changes = $history[0]['changes'] ?? [];
+		self::assertArrayHasKey($field, $changes, 'the change belongs on the restore entry itself');
+		self::assertSame($boundary, $changes[$field]['from']);
+		self::assertNotSame($boundary, $changes[$field]['to'], 'recorded as letting go of it');
+	}
+
+	/** The other half of #201: a boundary drawn while the record was away claims it on return. */
+	#[DataProvider('divisions')]
+	public function testRestoringARecordTakesABoundaryCreatedMeanwhile(string $slug, string $field, string $getter): void {
+		$service = Server::get(FeatureService::class);
+		$place = $this->place('Escuela que vuelve', ['geometry' => self::at(-71.00, -29.50)]);
+		$service->retire($place);
+
+		$boundary = $this->sector('Límite que llega mientras tanto', [
+			'geometry' => self::REMOTE,
+			'subcategoryId' => $this->subcategoryIdBySlug($slug),
+		]);
+		$service->restore($place);
+
+		self::assertSame($boundary, $this->stored($place)->$getter());
+	}
+
+	/** Deriving again is not reassigning: an answer that did not change is not history. */
+	public function testRestoringARecordWhoseBoundariesHeldRecordsNoAssignmentChange(): void {
+		$service = Server::get(FeatureService::class);
+		$sector = $this->sector('Sector que se queda', ['geometry' => self::REMOTE]);
+		$place = $this->place('Escuela que vuelve', ['geometry' => self::at(-71.00, -29.50)]);
+
+		$service->retire($place);
+		$service->restore($place);
+
+		self::assertSame($sector, $this->stored($place)->getSectorId());
+		$changes = $service->history($place)[0]['changes'] ?? [];
+		self::assertArrayNotHasKey('sectorId', $changes);
+		self::assertArrayNotHasKey('unidadVecinalId', $changes);
+	}
+
+	/** Redoing an undone import restores through the same door, so it derives again too. */
+	public function testRedoingAnUndoneImportDerivesTheAssignmentAgain(): void {
+		$sector = $this->sector('Sector que se retira', ['geometry' => self::REMOTE]);
+
+		$slug = 'redo-assignment-' . uniqid();
+		$json = <<<JSON
+		{"type":"FeatureCollection","features":[
+		  {"type":"Feature","geometry":{"type":"Point","coordinates":[-71.00,-29.50]},
+		   "properties":{"uid":"redo:place","name":"Escuela importada"}}
+		]}
+		JSON;
+		$batch = Server::get(ImportService::class)->importFile($json, 'datos.geojson', $slug, 'Prueba', 'tester');
+		$this->datasets[] = $slug;
+
+		$datasetId = (int)Server::get(DatasetMapper::class)->findBySlug($slug)->getId();
+		$imported = static fn (): Feature => Server::get(FeatureMapper::class)->findByDataset($datasetId)['redo:place'];
+		self::assertSame($sector, $imported()->getSectorId());
+
+		$revert = Server::get(RevertService::class);
+		$undo = $revert->revert((int)$batch->getId(), 'tester');
+		Server::get(FeatureService::class)->retire($sector);
+		$revert->revert((int)$undo->getId(), 'tester');
+
+		self::assertFalse((bool)$imported()->getRetired(), 'the redo brings it back');
+		self::assertNotSame($sector, $imported()->getSectorId(), 'without the Sector retired meanwhile');
+	}
+
+	/**
+	 * Outside an import or a revert, a boundary still sweeps at once, under a
+	 * «reasignación de límite» batch of its own, so the sweep is undoable from the
+	 * batch list like an import (L1-16). The guard on #200: deferring the revert's
+	 * sweep must not reach the sidebar's retire and restore.
+	 */
+	public function testRetiringOrRestoringASectorByHandRecordsASweepBatch(): void {
+		$sector = $this->sector('Sector retirado a mano', ['geometry' => self::WEST]);
+		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
+		$noted = (int)(Server::get(ImportBatchMapper::class)->findRecent(1)[0] ?? null)?->getId();
+
+		Server::get(FeatureService::class)->retire($sector);
+		$retired = $this->assertSweptUnderANewBatch($place, $noted, 'retiring');
+
+		Server::get(FeatureService::class)->restore($sector);
+		$this->assertSweptUnderANewBatch($place, $retired, 'restoring');
+	}
+
+	/** @return int the sweep batch's id */
+	private function assertSweptUnderANewBatch(int $place, int $after, string $what): int {
+		$batch = Server::get(ImportBatchMapper::class)->findRecent(1)[0];
+
+		self::assertNull($batch->getDatasetId(), "$what the Sector should have recorded a sweep batch");
+		self::assertGreaterThan($after, (int)$batch->getId(), "$what the Sector recorded no new batch");
+		self::assertSame(
+			(int)$batch->getId(),
+			Server::get(RevisionLog::class)->newestFor($place)['importId'],
+			"$what the Sector should have moved the Place under that batch",
+		);
+
+		return (int)$batch->getId();
 	}
 
 	/**

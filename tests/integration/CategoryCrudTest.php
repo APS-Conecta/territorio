@@ -499,7 +499,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			$this->taxonomy()->addSubcategory(self::CATEGORY, '  HUERTA VECINAL  ');
 			self::fail('a second «Huerta vecinal» was accepted into the same Category');
 		} catch (InvalidTaxonomyException $e) {
-			self::assertStringContainsString('Ya existe', $e->getMessage());
+			self::assertSame('Ya existe una subcategoría con ese nombre en esta categoría.', $e->getMessage());
 		}
 
 		self::assertCount(
@@ -510,6 +510,65 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			),
 			'the refusal still wrote a second row, and the index did not stop it',
 		);
+	}
+
+	/**
+	 * #210 for a Subcategory: the slug a rename leaves behind is held within its
+	 * Category, so adding the old name there names the renamed row, and that
+	 * slug still resolves to it. Every other Category's «Otro» still shows
+	 * «Otro», so a lookup that ignored the Category would answer «Ya existe».
+	 */
+	public function testAddingTheNameARenamedSubcategoryWasCreatedWithNamesTheRowThatHoldsIt(): void {
+		$this->remember(self::CATEGORY . '/otro');
+		$id = $this->servedSub(self::CATEGORY, 'otro')['id'];
+		$this->taxonomy()->renameSubcategory(self::CATEGORY, 'otro', 'Varios');
+
+		try {
+			$this->taxonomy()->addSubcategory(self::CATEGORY, 'Otro');
+			self::fail('«Otro» was added although «Varios» still holds its slug');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertSame(
+				'Ese nombre está reservado por la subcategoría «Varios» de esta categoría. Elija otro nombre.',
+				$e->getMessage(),
+			);
+		}
+
+		$held = array_values(array_filter(
+			$this->served(self::CATEGORY)['subcategories'],
+			static fn (array $row): bool => $row['slug'] === 'otro',
+		));
+		self::assertCount(1, $held, 'the refusal still wrote a second row, and the index did not stop it');
+		self::assertSame($id, $held[0]['id'], 'the slug no longer resolves to the renamed Subcategory');
+		self::assertSame('Varios', $held[0]['label']);
+	}
+
+	/**
+	 * A slug is cut at `Text::SLUG_LENGTH` while a label runs to 128 characters,
+	 * so two names that differ only past the cut derive one slug. No shown row
+	 * carries the second name, so the refusal names the row holding the slug: the
+	 * same-name rule is the fold, not the slug.
+	 */
+	public function testANameThatOnlySharesItsCutSlugNamesTheRowThatHoldsIt(): void {
+		$north = 'Taller de reciclaje y compostaje para juntas de vecinos del sector norte';
+		$south = 'Taller de reciclaje y compostaje para juntas de vecinos del sector sur';
+		$this->add(self::CATEGORY, $north);
+		self::assertSame(TaxonomyService::slugFor($north), TaxonomyService::slugFor($south),
+			'the two names no longer share a slug, so nothing below is measuring anything');
+
+		try {
+			$this->taxonomy()->addSubcategory(self::CATEGORY, $south);
+			self::fail('a second row was accepted under a slug already held');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertSame(
+				"Ese nombre está reservado por la subcategoría «{$north}» de esta categoría. Elija otro nombre.",
+				$e->getMessage(),
+			);
+		}
+
+		self::assertCount(1, array_filter(
+			$this->served(self::CATEGORY)['subcategories'],
+			static fn (array $row): bool => $row['slug'] === TaxonomyService::slugFor($north),
+		), 'the refusal still wrote a second row, and the index did not stop it');
 	}
 
 	/**
@@ -763,11 +822,38 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			$this->taxonomy()->addCategory('  COMITE DE ADELANTO  ');
 			self::fail('a second «Comité de adelanto» was accepted');
 		} catch (InvalidTaxonomyException $e) {
-			self::assertStringContainsString('Ya existe', $e->getMessage());
+			self::assertSame('Ya existe una categoría con ese nombre.', $e->getMessage());
 		}
 
 		self::assertCount($before, $this->taxonomy()->tree(),
 			'the refusal wrote a Category anyway, and the index did not stop it');
+	}
+
+	/**
+	 * #210: a rename moves the label and leaves the slug (#40), so the name a
+	 * Category was created with still derives a slug that row holds. The refusal
+	 * names the row the clinic can see rather than claiming a «Ya existe» no
+	 * shown row bears out, and nothing is written.
+	 */
+	public function testAddingTheNameARenamedCategoryWasCreatedWithNamesTheRowThatHoldsIt(): void {
+		$this->remember('religion');
+		$this->taxonomy()->renameCategory('religion', 'Culto');
+		$before = count($this->taxonomy()->tree());
+
+		try {
+			$this->taxonomy()->addCategory('Religión');
+			self::fail('«Religión» was added although «Culto» still holds its slug');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertSame(
+				'Ese nombre está reservado por la categoría «Culto». Elija otro nombre.',
+				$e->getMessage(),
+			);
+		}
+
+		self::assertCount($before, $this->taxonomy()->tree(),
+			'the refusal wrote a Category anyway, and the index did not stop it');
+		self::assertSame('Culto', $this->served('religion')['label'],
+			'the slug no longer resolves to the renamed Category');
 	}
 
 	/** @dataProvider blankLabels */

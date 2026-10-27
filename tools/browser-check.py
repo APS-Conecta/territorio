@@ -100,6 +100,8 @@ NUDGE = int(RUN, 16) % 120
 # and a menu full of list items, and unscoped selectors find those first.
 ROWS = ".app-content-list .list-item"
 MARKERS = ".leaflet-marker-icon"
+# One record's own pin; MARKERS matches the cluster bubbles too.
+PIN = ".territorio-pin__dot"
 SEARCH = ".territorio-list__search input"
 # The docked panel covers the map's left 408px and the topbar its top ~110px, so
 # a click placed there lands on them. Canvas positions below start clear of both.
@@ -973,7 +975,7 @@ def save(page, failures, what):
         failures.append(f"saving {what} was refused: {refusal.first.inner_text().strip()}")
 
 
-def create_a_place(page, name, failures):
+def create_a_place(page, name, failures, lat=None, lon=None):
     """The #2 criterion nobody ever exercised: create a record end to end.
 
     The coordinate is typed, not clicked. The form offers both — "Haga clic en el
@@ -981,12 +983,14 @@ def create_a_place(page, name, failures):
     half that does not depend on what happens to be drawn under the cursor. What
     a click does is checked on its own in clicking_places_the_coordinate(), where
     it is the subject rather than a step on the way to something else.
+
+    `lat` and `lon` are typed as given; left out, they are the run's NUDGE spot.
     """
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
-    page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
-    page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
+    page.get_by_label("Latitud").fill(lat or f"-33.5{300 + NUDGE}")
+    page.get_by_label("Longitud").fill(lon or f"-70.5{300 + NUDGE}")
     save(page, failures, "the Place")
     # Dismiss the sidebar so it does not overlay the map for the next click.
     #
@@ -1222,6 +1226,11 @@ def _draw(page, name, failures, colour, save_it):
         page.wait_for_timeout(400)
         return False
 
+    # A new record is editable without «Editar»: the map has only App's word for
+    # it, so a Sector drawn a moment ago must already have its handles (#195).
+    if page.locator(".leaflet-marker-pane .marker-icon").count() == 0:
+        failures.append("a Sector drawn a moment ago has no draggable vertices (#195)")
+
     page.get_by_label("Nombre").fill(name)
     # The colour input is native, so set it directly — a colour picker cannot be
     # driven by clicking.
@@ -1280,6 +1289,128 @@ def a_tramo_typed_before_the_first_save_is_kept(page, failures):
     page.wait_for_timeout(400)
 
 
+def a_save_that_lands_after_leaving_the_record_still_lists_it(page, failures):
+    """#198: a new record left for the list while its POST is in flight is listed.
+
+    `save()` applied the response to whichever draft was open when it arrived, and
+    after «← Volver a la lista» none is. Reading its picks threw, the catch called a
+    save the server had accepted «No se pudo guardar», and the record stayed out of
+    the list until the next poll, so people saved it again and made a duplicate.
+
+    The change feed is held too: a poll is the only other path that lists the
+    record, and one landing in the window would turn the bug green on some runs.
+    """
+    name = f"Guardado tardío {RUN}"
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.get_by_label("Nombre").fill(name)
+    # Clear of this run's other typed records: create_a_place and the Cúmulo
+    # pins sit at 300, the export pair at 600 and 700.
+    page.get_by_label("Latitud").fill(f"-33.5{800 + NUDGE}")
+    page.get_by_label("Longitud").fill(f"-70.5{800 + NUDGE}")
+
+    with hold(page, "**/apps/territorio/changes**", "GET"), \
+            hold(page, "**/apps/territorio/features", "POST") as (posts, release):
+        page.get_by_role("button", name="Guardar").click()
+        if not settles(page, lambda: len(posts) == 1, timeout=5_000):
+            failures.append("«Guardar» on a new record sent no POST to hold (#198)")
+            dismiss(page)
+            return
+
+        dismiss(page)
+        page.locator(SEARCH).fill(name)
+        # Empty first, or the row read below is the list from before the search
+        # (it waits 150 ms) and proves nothing about the response.
+        if not settles(page, lambda: page.locator(ROWS).count() == 0, timeout=2_000):
+            failures.append(f"{name!r} was listed before its POST was answered (#198)")
+        with page.expect_response(
+            lambda response: response.request.method == "POST"
+            and response.url.endswith("/apps/territorio/features"),
+        ):
+            release()
+
+        if not settles(page, lambda: page.locator(ROWS).count() > 0, timeout=1_500):
+            failures.append(f"{name!r} saved after its record was left is not in the list (#198)")
+        panel = page.locator(".territorio-docked-panel")
+        if (panel.locator(".territorio-main__error").count() > 0
+                or panel.get_by_text("No se pudo guardar").count() > 0):
+            failures.append("a save that succeeded after its record was left reported an error (#198)")
+
+    saved = [feature for feature in registry_features(page) if feature.get("name") == name]
+    if len(saved) != 1:
+        failures.append(f"the Registry holds {len(saved)} records named {name!r}, expected 1 (#198)")
+
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def a_save_that_lands_on_another_record_leaves_it_alone(page, failures):
+    """#198: Sector A's PUT landing while Sector B is open leaves B on screen.
+
+    The response rebuilt the open draft from A whatever was open: the panel jumped
+    back to A, and A's draft carried B's picks, which a Limit toggle or «Generar»
+    and then «Guardar» would have written onto A.
+
+    Misses: the Registry assertion is green on the old code too. Carried picks
+    reach a Limit only through a toggle or «Generar» followed by a save, and this
+    check makes neither. The jump back to A is what was red.
+    """
+    a, b = f"Sector a mano {RUN}", f"Sector Navegador {RUN}"
+    sector_a, sector_b = registry_feature(page, a), registry_feature(page, b)
+    if sector_a is None or sector_b is None:
+        failures.append(f"{a!r} or {b!r} is not in the Registry, so #198's second check did not run")
+        return
+
+    picks = any("featureId" in part for part in sector_b.get("limit") or [])
+    if not picks:
+        skip(f"{b!r} cites no boundary feature; its picked lines after a late save are unchecked")
+
+    page.locator(SEARCH).fill(a)
+    page.wait_for_timeout(800)
+    open_first_row(page)
+    page.wait_for_timeout(800)
+
+    rows = page.locator('[data-testid="boundary-picker"] .territorio-picker__parts li')
+    with hold(page, f"**/apps/territorio/features/{sector_a['id']}", "PUT") as (puts, release):
+        page.get_by_role("button", name="Guardar").click()
+        if not settles(page, lambda: len(puts) == 1, timeout=5_000):
+            failures.append(f"«Guardar» on {a!r} sent no PUT to hold (#198)")
+            dismiss(page)
+            page.locator(SEARCH).fill("")
+            return
+
+        dismiss(page)
+        page.locator(SEARCH).fill(b)
+        page.wait_for_timeout(800)
+        open_first_row(page)
+        settles(page, lambda: rows.count() > 0, timeout=5_000)
+        page.wait_for_timeout(1200)
+        before = [rows.nth(index).inner_text() for index in range(rows.count())]
+
+        with page.expect_response(
+            lambda response: response.request.method == "PUT"
+            and response.url.endswith(f"/apps/territorio/features/{sector_a['id']}"),
+        ):
+            release()
+        page.wait_for_timeout(600)
+
+    field = page.get_by_label("Nombre")
+    shown = field.input_value() if field.count() > 0 else None
+    if shown != b:
+        failures.append(f"{a!r}'s save landing while {b!r} was open left «Nombre» at {shown!r} (#198)")
+    if picks:
+        after = [rows.nth(index).inner_text() for index in range(rows.count())]
+        if after != before:
+            failures.append(f"{a!r}'s late save changed {b!r}'s Limit rows: {before} became {after} (#198)")
+
+    stored = (registry_feature(page, a) or {}).get("limit")
+    if stored != sector_a.get("limit"):
+        failures.append(f"{a!r}'s Limit is not its own after the late save: {stored} (#198)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def clicking_places_the_coordinate(page, failures):
     """A click on the map belongs to the draft that is waiting for a coordinate.
 
@@ -1303,6 +1434,432 @@ def clicking_places_the_coordinate(page, failures):
     # behind for it would only be more to tidy.
     dismiss(page)
     page.wait_for_timeout(400)
+
+    _a_pin_click_is_a_map_click_while_placing(page, failures)
+
+    # And only a draft that IS waiting (#194). A saved Place has no geometry in
+    # its draft either — its coordinate is in lat/lon — so with its read-only card
+    # open every map click quietly rewrote that coordinate, and the next «Editar»
+    # + «Guardar» moved the record and had its Sector and Unidad Vecinal
+    # re-derived (ADR-0008). Asserted on the Registry, which is where that lands.
+    name = f"Prueba lectura {RUN}"
+    create_a_place(page, name, failures)
+    before = registry_feature(page, name)
+    if before is None:
+        failures.append(f"{name!r} was not saved, so the read-only card click check could not run")
+        return
+
+    def read_only():
+        editar = page.get_by_role("button", name="Editar", exact=True)
+        return editar.count() > 0 and editar.first.is_visible() and page.get_by_label("Latitud").count() == 0
+
+    def coordinate():
+        return float(page.get_by_label("Latitud").input_value()), float(page.get_by_label("Longitud").input_value())
+
+    lon0, lat0 = before["geometry"]["coordinates"]
+    canvas = page.locator('[data-testid="map-canvas"]')
+    # Before any record is open: only the pins are left under the click.
+    hidden = hide_divisions(page)
+    try:
+        # From the search box, not the list: a row opens the form, and the list's
+        # own query would also take this run's Sector off the map (#19).
+        titles, problem = _omnibox_pick(page, name, name)
+        if problem:
+            failures.append(f"{name!r} could not be reopened: {problem} (offered {titles})")
+            return
+        if not read_only():
+            failures.append(f"{name!r} reopened from the search box did not show its read-only card")
+            return
+
+        canvas.click(position=MAP_CLEAR)
+        page.wait_for_timeout(400)
+        edit(page)
+        lat, lon = coordinate()
+        if abs(lat - lat0) > 1e-7 or abs(lon - lon0) > 1e-7:
+            failures.append(
+                f"a map click with {name!r}'s read-only card open moved its form from "
+                f"{lat0}, {lon0} to {lat}, {lon} (#194)",
+            )
+
+        save(page, failures, f"{name!r} with no change typed")
+        after = registry_feature(page, name) or {}
+        for what, was, now in (
+            ("coordinate", before["geometry"]["coordinates"], (after.get("geometry") or {}).get("coordinates")),
+            ("Sector", before["sectorId"], after.get("sectorId")),
+            ("Unidad Vecinal", before["unidadVecinalId"], after.get("unidadVecinalId")),
+        ):
+            if now != was:
+                failures.append(
+                    f"«Editar» + «Guardar» with no change typed moved {name!r}'s {what} "
+                    f"from {was!r} to {now!r} (#194)",
+                )
+
+        # Still editable after that save, so a click places it again, and with the
+        # divisions back on the map: no Sector or Unidad Vecinal may take the click.
+        show_divisions(page, hidden)
+        canvas.click(position={"x": MAP_CLEAR["x"] + 100, "y": 300})
+        page.wait_for_timeout(400)
+        field = page.get_by_label("Nombre")
+        if field.count() == 0 or field.input_value() != name:
+            failures.append(f"a map click after «Editar» on {name!r} did not stay with its form")
+        else:
+            lat, lon = coordinate()
+            if abs(lat - lat0) <= 1e-7 or abs(lon - lon0) <= 1e-7:
+                failures.append(f"a map click after «Editar» on {name!r} did not fill «Latitud»/«Longitud»")
+        dismiss(page)
+
+        # Closed and reopened, the card is read-only again, and a click on a Sector
+        # opens it exactly as with no record open.
+        titles, problem = _omnibox_pick(page, name, name)
+        if problem:
+            failures.append(f"{name!r} could not be reopened: {problem} (offered {titles})")
+            return
+        if not read_only():
+            failures.append(f"{name!r} reopened after an edit still showed its form")
+            return
+
+        # The search box flew to the Place at zoom 17, where this run's Sector is off
+        # screen (Leaflet leaves it an empty path), so zoom out the way a person
+        # would until all of it is on the map beside the panel.
+        shape = page.locator('.leaflet-overlay-pane path[stroke="#16a34a"]')
+
+        def on_the_map():
+            if shape.count() == 0:
+                return False
+            box, view = largest(shape).bounding_box(), page.viewport_size
+            # Clear of the panel and the topbar (MAP_CLEAR), the zoom buttons and the credit.
+            return (box["width"] >= 8 and box["x"] >= MAP_CLEAR["x"] and box["y"] >= MAP_CLEAR["y"]
+                    and box["x"] + box["width"] <= view["width"] - 60
+                    and box["y"] + box["height"] <= view["height"] - 40)
+
+        for _ in range(9):
+            if on_the_map():
+                break
+            page.locator(".leaflet-control-zoom-out").click()
+            page.wait_for_timeout(600)
+        if not on_the_map():
+            failures.append(f"Sector Navegador {RUN} is not on the map, so the Sector click check could not run")
+            page.screenshot(path=str(SHOTS / "read-only-card-sector-click.png"), full_page=False)
+            return
+        largest(shape).click(force=True)
+        title = page.locator(".territorio-detail__place-title")
+
+        def shown():
+            return title.first.inner_text().strip() if title.count() > 0 else None
+
+        if not settles(page, lambda: shown() not in (None, name), timeout=6_000):
+            failures.append(
+                f"a click inside Sector Navegador {RUN} with {name!r}'s read-only card open "
+                f"did not open it: the panel shows {shown()!r} (#194)",
+            )
+        dismiss(page)
+    finally:
+        # Once the Place is retired the typed name matches nothing, and the status
+        # line the search box then shows covers «← Volver a la lista».
+        page.locator(OMNIBOX_INPUT).fill("")
+        show_divisions(page, hidden)
+        retire_the_runs_record(page, name)
+
+
+def _a_click_opens(page, point, name, when, failures):
+    """Click a point on the map and say whether it opened the named record."""
+    page.mouse.click(*point)
+    if not settles(page, lambda: page.locator(".territorio-history").count() > 0, timeout=6_000):
+        failures.append(f"a click on {name!r} {when} opened nothing")
+        return
+
+    edit(page)
+    opened = page.get_by_label("Nombre").input_value().strip()
+    if opened != name:
+        failures.append(f"a click on {name!r} {when} opened {opened!r}")
+    dismiss(page)
+
+
+def a_click_inside_a_sector_while_drawing_is_a_vertex(page, failures):
+    """#197: while «Dibujar Sector» is armed, a click inside another Sector is a vertex.
+
+    Snapping draws the cursor on the shared edge while the pointer is still inside
+    the neighbour's fill, so that is where a person clicks. The Sector's own click
+    handler stopped that click and opened the neighbour, and no vertex was placed.
+
+    A is the only shape on the map: `_draw` draws every Sector of this run in the
+    same rectangle, and the search box filters out those, the pins and the
+    Unidades Vecinales together. Both Sectores are retired on the way out, as
+    every Sector a run draws is (`retire_the_runs_record`).
+    """
+    a = f"Sector Arce {RUN}"
+    b = f"Sector Boldo {RUN}"
+    if not draw_a_sector(page, a, failures):
+        return
+    dismiss(page)
+
+    draw = page.locator(".territorio-draw-sector__button")
+    handles = page.locator(".leaflet-marker-pane .marker-icon:not(.cursor-marker)")
+    try:
+        # Read before arming: Geoman adds its own working path to the overlay pane.
+        path = _only_shape(page, a).first
+        box = path.bounding_box()
+        stroke = path.evaluate("(element) => parseFloat(getComputedStyle(element).strokeWidth)")
+        edge_x = box["x"] + box["width"] - stroke / 2
+        mid_y = box["y"] + box["height"] / 2
+
+        draw.click()
+        page.wait_for_timeout(300)
+        if handles.count() != 0:
+            failures.append(f"{handles.count()} vertices on the map before drawing began, so none could be counted")
+            return
+
+        # Inside A's fill, 10 px in from its right edge and clear of its corners:
+        # within the snap distance, so the vertex lands ON the edge.
+        page.mouse.click(edge_x - 10, mid_y)
+        page.wait_for_timeout(400)
+        found = []
+        if handles.count() != 1:
+            found.append(f"a click inside {a!r} while drawing left {handles.count()} vertex handles on the map, not 1")
+        else:
+            handle = handles.first.bounding_box()
+            x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+            if abs(x - edge_x) > 2 or not box["y"] <= y <= box["y"] + box["height"]:
+                found.append(f"the vertex is at ({x:.0f}, {y:.0f}), not snapped onto {a!r}'s edge at x={edge_x:.0f}")
+        if page.locator(".territorio-history").count() > 0 or page.locator(".territorio-detail__back").count() > 0:
+            found.append(f"a click inside {a!r} while drawing opened a record")
+        if "Cancelar Dibujo" not in draw.inner_text():
+            found.append(f"a click inside {a!r} while drawing left drawing mode")
+        if found:
+            failures.extend(found)
+            page.screenshot(path=str(SHOTS / "draw-inside-a-sector.png"), full_page=False)
+            return
+
+        # Out on clear map, more than the snap distance from A, then the first vertex closes the ring.
+        page.mouse.click(edge_x + 60, mid_y - 35)
+        page.mouse.click(edge_x + 60, mid_y + 35)
+        handles.first.click()
+        try:
+            page.wait_for_selector('input[type="color"]', timeout=5_000)
+        except PlaywrightTimeout:
+            failures.append(f"a ring begun on {a!r}'s edge did not become a Sector draft")
+            return
+        if page.locator(".territorio-history").count() > 0:
+            failures.append(f"closing a ring begun on {a!r}'s edge opened an existing record")
+            return
+
+        page.get_by_label("Nombre").fill(b)
+        save(page, failures, "the Sector begun on another Sector's edge")
+        drawn = registry_feature(page, b)
+        if drawn is None or (drawn.get("geometry") or {}).get("type") != "Polygon":
+            failures.append(f"{b!r}, begun on {a!r}'s edge, is not a Polygon in the Registry")
+        dismiss(page)
+
+        # Drawing ended, finished or cancelled: a click on A opens it again.
+        box = _only_shape(page, a).first.bounding_box()
+        centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        _a_click_opens(page, centre, a, "after a finished drawing", failures)
+
+        draw.click()
+        page.wait_for_timeout(300)
+        draw.click()
+        page.wait_for_timeout(300)
+        _a_click_opens(page, centre, a, "after a cancelled drawing", failures)
+    finally:
+        if "Cancelar Dibujo" in draw.inner_text():
+            draw.click()
+        retire_the_runs_record(page, a)
+        retire_the_runs_record(page, b)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+
+def a_cancelled_drawing_leaves_the_place_coordinate(page, failures):
+    """#197: a vertex click is the drawing's, never the open Place's coordinate.
+
+    Every map click reached App's `placeDraft` as `map-click`, vertex clicks
+    included, so drawing a Sector with a Place open moved the Place, and
+    «Cancelar Dibujo» took the drawing away and left the move behind.
+    """
+    hidden = hide_divisions(page)
+    draw = page.locator(".territorio-draw-sector__button")
+    try:
+        page.get_by_role("button", name="Agregar", exact=True).click()
+        page.get_by_label("Nombre").fill(f"Prueba de dibujo {RUN}")
+        page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
+        page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
+        fields = ("Nombre", "Latitud", "Longitud")
+        typed = {label: page.get_by_label(label).input_value() for label in fields}
+
+        draw.click()
+        canvas = page.locator('[data-testid="map-canvas"]')
+        canvas.click(position={"x": MAP_CLEAR["x"] + 100, "y": 300})
+        canvas.click(position={"x": MAP_CLEAR["x"] + 160, "y": 300})
+        page.wait_for_timeout(400)
+        draw.click()
+        page.wait_for_timeout(300)
+
+        for label in fields:
+            kept = page.get_by_label(label).input_value()
+            if kept != typed[label]:
+                failures.append(
+                    f"drawing a Sector and cancelling it changed the open Place's «{label}» "
+                    f"from {typed[label]!r} to {kept!r}",
+                )
+        # Nothing is saved, as in clicking_places_the_coordinate.
+        dismiss(page)
+    finally:
+        if "Cancelar Dibujo" in draw.inner_text():
+            draw.click()
+        show_divisions(page, hidden)
+
+
+def _click_a_pin(page, pin, what, failures):
+    """Click `pin` once it is one pin of its own where a click reaches it.
+
+    Waited for first, so a red is the answer to what a pin click does and not a pin
+    hidden in a bubble, under the docked panel or off the canvas, nor a thirty-
+    second Playwright timeout. Says why in `failures` and returns False if not.
+    Other pins in view do not matter: `pin` alone has to be unambiguous.
+    """
+    canvas = page.locator('[data-testid="map-canvas"]')
+
+    def reachable():
+        if pin.count() != 1:
+            return False
+        area, box = canvas.bounding_box(), pin.bounding_box()
+        # Clear of the docked panel and the topbar (MAP_CLEAR), and inside the canvas.
+        return box is not None and (area["x"] + MAP_CLEAR["x"] <= box["x"]
+                                    and area["y"] + MAP_CLEAR["y"] <= box["y"]
+                                    and box["x"] + box["width"] <= area["x"] + area["width"]
+                                    and box["y"] + box["height"] <= area["y"] + area["height"])
+
+    if not settles(page, reachable, timeout=6_000):
+        drawn = pin.count()
+        failures.append(
+            f"{what}: {drawn} pins match, " + (f"the one at {pin.bounding_box()} is not on the map canvas "
+                                               f"{canvas.bounding_box()} beside the panel" if drawn == 1
+                                               else "expected exactly one unclustered pin"),
+        )
+        return False
+
+    try:
+        pin.click(timeout=5_000)
+    except PlaywrightTimeout:
+        failures.append(f"{what}: the pin is on the canvas but cannot be clicked")
+        return False
+    page.wait_for_timeout(600)
+    return True
+
+
+def _a_pin_click_is_a_map_click_while_placing(page, failures):
+    """#196: while a draft waits for its coordinate, a pin is the map at that pin.
+
+    A Leaflet Marker does not bubble its click to the map, so a pin opened its own
+    record instead and the typed draft was replaced with no word said. The same pin
+    with no record open still opens it.
+    """
+    plaza, typed = f"Plaza del Navegador {RUN}", f"Prueba de clic {RUN}"
+    stored = registry_feature(page, plaza)
+    if stored is None:
+        failures.append(f"{plaza!r} is not in the Registry, so the pin click checks could not run")
+        return
+    lon0, lat0 = stored["geometry"]["coordinates"]
+    title = page.locator(".territorio-detail__place-title")
+
+    page.locator(SEARCH).fill(plaza)
+    page.wait_for_timeout(700)
+    try:
+        # Its row flies the map to it (selectAndPan), and the list's search leaves it the only pin.
+        page.locator(ROWS).first.click()
+        page.wait_for_timeout(1500)
+        dismiss(page)
+
+        page.get_by_role("button", name="Agregar", exact=True).click()
+        page.get_by_label("Nombre").fill(typed)
+        if not _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with a new record's form open", failures):
+            return
+
+        name, lat, lon = (page.get_by_label(label) for label in ("Nombre", "Latitud", "Longitud"))
+        if name.count() == 0 or name.input_value() != typed:
+            failures.append(
+                f"a click on {plaza!r}'s pin replaced the new record's form with "
+                f"{title.first.inner_text().strip() if title.count() > 0 else 'nothing'!r} (#196)",
+            )
+        else:
+            try:
+                placed = float(lat.input_value()), float(lon.input_value())
+                off = abs(placed[0] - lat0) > 1e-7 or abs(placed[1] - lon0) > 1e-7
+            except ValueError:
+                placed, off = (lat.input_value(), lon.input_value()), True
+            if off:
+                failures.append(
+                    f"a click on {plaza!r}'s pin filled «Latitud»/«Longitud» with {placed}, "
+                    f"expected its coordinate {lat0}, {lon0} (#196)",
+                )
+        if page.get_by_role("button", name="Editar", exact=True).count() > 0 \
+                or page.locator(".territorio-detail__inspection").count() > 0:
+            failures.append(f"a click on {plaza!r}'s pin with a new record's form open showed a read-only card (#196)")
+        # Cancelled, never saved: «← Volver a la lista» closes the new record's draft.
+        dismiss(page)
+
+        # With the list showing, the same pin opens its record exactly as before.
+        if _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with no record open", failures) \
+                and not settles(page, lambda: title.count() > 0 and title.first.inner_text().strip() == plaza,
+                                timeout=6_000):
+            failures.append(f"a click on {plaza!r}'s pin with no record open did not open its card")
+    finally:
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+
+def a_pin_opens_its_record_while_a_place_card_is_open(page, failures):
+    """#196 next to #194: with a saved Place's read-only card open, a pin opens its own record.
+
+    That card waits for no coordinate, so a pin click there is «open this
+    record», never a placement; were it one, every pin click made with a card
+    open would move the Place behind it.
+
+    Two Places of its own 167 m apart (past the duplicate shield's 150 m), off
+    the diagonal the run's other Places sit on: at the zoom 17 a row flies to,
+    that is two pins and never one bubble.
+    """
+    names = (f"Pin {RUN} A", f"Pin {RUN} B")
+    typed = {names[0]: ("-33.5600000", "-70.5200000"), names[1]: ("-33.5600000", "-70.5182000")}
+    for name, (lat, lon) in typed.items():
+        create_a_place(page, name, failures, lat=lat, lon=lon)
+
+    title = page.locator(".territorio-detail__place-title")
+    try:
+        page.locator(SEARCH).fill(f"Pin {RUN}")
+        page.wait_for_timeout(700)
+        row = page.locator(ROWS).filter(has=page.get_by_text(names[0], exact=True))
+        if row.count() != 1:
+            failures.append(f"{names[0]!r} is not in the list, so the read-only card pin check could not run")
+            return
+        row.click()
+        page.wait_for_timeout(1500)
+
+        selected = page.locator(f"{PIN}.territorio-pin__dot--selected")
+        if not settles(page, lambda: selected.count() == 1, timeout=6_000):
+            failures.append(f"{names[0]!r} opened from its row did not select its pin")
+            return
+        if not _click_a_pin(page, page.locator(f"{PIN}:not(.territorio-pin__dot--selected)"),
+                            f"{names[1]!r}'s pin with {names[0]!r}'s read-only card open", failures):
+            return
+
+        if not settles(page, lambda: title.count() > 0 and title.first.inner_text().strip() == names[1],
+                       timeout=6_000):
+            failures.append(
+                f"a click on {names[1]!r}'s pin with {names[0]!r}'s read-only card open did not open it: "
+                f"the panel shows {title.first.inner_text().strip() if title.count() > 0 else None!r} (#196, #194)",
+            )
+
+        lat, lon = typed[names[0]]
+        coordinates = ((registry_feature(page, names[0]) or {}).get("geometry") or {}).get("coordinates")
+        if coordinates is None or abs(coordinates[0] - float(lon)) > 1e-7 or abs(coordinates[1] - float(lat)) > 1e-7:
+            failures.append(f"{names[0]!r} is stored at {coordinates}, not where it was typed: {lon}, {lat}")
+    finally:
+        for name in names:
+            retire_the_runs_record(page, name)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
 
 
 def the_assignment_is_shown_and_not_editable(page, failures):
@@ -1498,6 +2055,36 @@ def settles(page, predicate, timeout=15_000):
         waited += 250
 
     return predicate()
+
+
+@contextmanager
+def hold(page, url_glob, method):
+    """Leave every `method` request to `url_glob` unanswered until `release()` (#198).
+
+    A response that lands after the person has moved on is a race, and holding the
+    request is what makes it happen on every run instead of on a slow day. Other
+    methods to the same URL go on as usual. Whatever is still held is let through
+    on the way out, so a check that stops half-way leaves no request hanging.
+    """
+    held = []
+
+    def handler(route):
+        if route.request.method == method:
+            held.append(route)
+        else:
+            route.fallback()
+
+    def release():
+        for route in held:
+            route.continue_()
+        held.clear()
+
+    page.route(url_glob, handler)
+    try:
+        yield held, release
+    finally:
+        release()
+        page.unroute(url_glob, handler)
 
 
 def the_duplicate_queue_works(page, failures):
@@ -2047,94 +2634,122 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
     page.wait_for_timeout(1500)
 
-    # Open the Sector this run drew earlier, which is what opens the picker.
-    if not open_the_runs_sector(page, failures):
-        return
-    go_to_the_square(page, failures)
+    # The seed is a pin click (#196): a Place inside the square, half a kilometre
+    # east of its middle so that what seeds is the pin's coordinate, and the list's
+    # search narrows the map to it alone.
+    seed = f"Semilla {RUN}"
+    create_a_place(page, seed, failures, lat="-33.5200000", lon="-70.5750000")
+    try:
+        page.locator(SEARCH).fill(seed)
+        page.wait_for_timeout(700)
 
-    picker = page.locator('[data-testid="boundary-picker"]')
-    # By label: the picker has a second field now, for the stretches of a limit
-    # that follow nothing anybody could pick (issue #15).
-    box = picker.get_by_label("Buscar una calle")
-    box.fill(name)
-    page.wait_for_timeout(800)
-    offered = picker.locator(".territorio-picker__suggestions li")
-    if offered.count() == 0:
-        skip("the imported square is not in view; polygonize unchecked")
+        # Open the Sector this run drew earlier, which is what opens the picker —
+        # from the search box, which looks past the list's search.
+        sector = f"Sector Navegador {RUN}"
+        titles, problem = _omnibox_pick(page, sector, sector)
+        if problem:
+            failures.append(f"{sector!r} could not be opened: {problem} (offered {titles})")
+            return
+        edit(page)
+        page.wait_for_timeout(1500)
+        if page.locator('[data-testid="boundary-picker"]').count() == 0:
+            failures.append("opening a Sector did not open the Limit picker")
+            return
+        go_to_the_square(page, failures)
+
+        picker = page.locator('[data-testid="boundary-picker"]')
+        # By label: the picker has a second field now, for the stretches of a limit
+        # that follow nothing anybody could pick (issue #15).
+        box = picker.get_by_label("Buscar una calle")
+        box.fill(name)
+        page.wait_for_timeout(800)
+        offered = picker.locator(".territorio-picker__suggestions li")
+        if offered.count() == 0:
+            skip("the imported square is not in view; polygonize unchecked")
+            return
+
+        # One click picks all four sides, because they share a name.
+        offered.first.locator("button").click()
+        page.wait_for_timeout(600)
+
+        # #15's first criterion, on the actual picking path: choosing a name records
+        # it as what the Sector runs along. Everything else that tests the Limit
+        # hands one to the service or types a stretch; this is the only place a real
+        # Boundary feature is picked and the result read.
+        said = picker.locator(".territorio-picker__limit")
+        if said.count() == 0 or name not in said.inner_text():
+            failures.append(
+                "picking a boundary feature did not record it as the Sector's Limit: "
+                + (said.inner_text() if said.count() > 0 else "nothing shown"),
+            )
+
+        # And it says the name ONCE, though it stands for four separate lines.
+        parts = picker.locator(".territorio-picker__parts li")
+        if parts.count() != 1:
+            failures.append(
+                f"a street picked as four lines is {parts.count()} rows in the Limit, expected 1",
+            )
+
+        generate = picker.get_by_role("button", name="Generar el polígono")
+        if generate.count() == 0:
+            failures.append("picking lines did not offer to generate the polygon")
+            return
+
+        if generate.is_disabled():
+            failures.append("Generar is greyed out on lines picked a moment ago")
+            return
+
+        generate.click()
+        page.wait_for_timeout(400)
+        if picker.get_by_text("Haga clic dentro del sector").count() == 0:
+            failures.append("pressing Generar did not ask where the sector is")
+
+        if not _click_a_pin(page, page.locator(PIN), f"{seed!r}'s pin as the seed", failures):
+            return
+        page.wait_for_timeout(600)
+        # The seed, not «open this record»: the Sector's form stays, and no read-only card opens.
+        if page.locator(".territorio-detail__inspection").count() > 0:
+            title = page.locator(".territorio-detail__place-title")
+            failures.append(
+                f"a click on {seed!r}'s pin while {sector!r} waited for its seed opened "
+                f"{title.first.inner_text().strip() if title.count() > 0 else None!r} instead (#196)",
+            )
+            return
+
+        if page.get_by_text("no cierran", exact=False).count() != 0:
+            failures.append("generating over a closed square said the lines do not close")
+
+        # Saved and read back, because the Sector this opens ALREADY had a shape —
+        # it was drawn by hand earlier in this run. "The draft now has a geometry"
+        # was true before the button was pressed, so the only honest question is
+        # whether the shape became THIS square, and the only way to ask it is to
+        # look at what was stored.
+        save(page, failures, "the generated sector")
+
+        # #49's first half, asserted while the draft is still open: `save()` rebuilds
+        # the draft from what the server returned, and the server knows the Limit's
+        # NAMES and not the shapes behind them. Carrying only the ids across left the
+        # picker unable to generate a second time, on lines picked a moment earlier.
+        # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
+        # RAISES when nothing matches, and there is no try/except around a check — so an
+        # unguarded ask aborts the run and skips the retire at the end of main(), leaving
+        # this run's four-kilometre Sector live on the map (issue #58).
+        kept = picker.get_by_role("button", name="Generar el polígono")
+        if kept.count() == 0:
+            failures.append("saving a Sector closed the Limit picker (#49)")
+        elif kept.is_disabled():
+            failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
+
+        # #50's middle case, and the only place anything generates one: this save
+        # wrote the geometry and the Limit in the same revision. Read here, with the
+        # draft still open, because the editable-polygon check below drags a vertex
+        # and saves again — which makes it the third case instead.
+        a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
+    finally:
         dismiss(page)
+        page.wait_for_timeout(600)
+        retire_the_runs_record(page, seed)
         page.locator(SEARCH).fill("")
-        return
-
-    # One click picks all four sides, because they share a name.
-    offered.first.locator("button").click()
-    page.wait_for_timeout(600)
-
-    # #15's first criterion, on the actual picking path: choosing a name records
-    # it as what the Sector runs along. Everything else that tests the Limit
-    # hands one to the service or types a stretch; this is the only place a real
-    # Boundary feature is picked and the result read.
-    said = picker.locator(".territorio-picker__limit")
-    if said.count() == 0 or name not in said.inner_text():
-        failures.append(
-            "picking a boundary feature did not record it as the Sector's Limit: "
-            + (said.inner_text() if said.count() > 0 else "nothing shown"),
-        )
-
-    # And it says the name ONCE, though it stands for four separate lines.
-    parts = picker.locator(".territorio-picker__parts li")
-    if parts.count() != 1:
-        failures.append(
-            f"a street picked as four lines is {parts.count()} rows in the Limit, expected 1",
-        )
-
-    generate = picker.get_by_role("button", name="Generar el polígono")
-    if generate.count() == 0:
-        failures.append("picking lines did not offer to generate the polygon")
-        return
-
-    if generate.is_disabled():
-        failures.append("Generar is greyed out on lines picked a moment ago")
-        return
-
-    generate.click()
-    page.wait_for_timeout(400)
-    if picker.get_by_text("Haga clic dentro del sector").count() == 0:
-        failures.append("pressing Generar did not ask where the sector is")
-
-    click_inside_the_square(page)
-
-    if page.get_by_text("no cierran", exact=False).count() != 0:
-        failures.append("generating over a closed square said the lines do not close")
-
-    # Saved and read back, because the Sector this opens ALREADY had a shape —
-    # it was drawn by hand earlier in this run. "The draft now has a geometry"
-    # was true before the button was pressed, so the only honest question is
-    # whether the shape became THIS square, and the only way to ask it is to
-    # look at what was stored.
-    save(page, failures, "the generated sector")
-
-    # #49's first half, asserted while the draft is still open: `save()` rebuilds
-    # the draft from what the server returned, and the server knows the Limit's
-    # NAMES and not the shapes behind them. Carrying only the ids across left the
-    # picker unable to generate a second time, on lines picked a moment earlier.
-    # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
-    # RAISES when nothing matches, and there is no try/except around a check — so an
-    # unguarded ask aborts the run and skips the retire at the end of main(), leaving
-    # this run's four-kilometre Sector live on the map (issue #58).
-    kept = picker.get_by_role("button", name="Generar el polígono")
-    if kept.count() == 0:
-        failures.append("saving a Sector closed the Limit picker (#49)")
-    elif kept.is_disabled():
-        failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
-
-    # #50's middle case, and the only place anything generates one: this save
-    # wrote the geometry and the Limit in the same revision. Read here, with the
-    # draft still open, because the editable-polygon check below drags a vertex
-    # and saves again — which makes it the third case instead.
-    a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
-
-    dismiss(page)
-    page.wait_for_timeout(600)
 
     corners = exported_corners(page, f"Sector Navegador {RUN}", failures)
     if corners is None:
@@ -2659,7 +3274,8 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
         page.mouse.up()
         page.wait_for_timeout(500)
     else:
-        # A failure, not a skip. An open Sector always has draggable vertices —
+        # A failure, not a skip. An opened Sector has draggable vertices once
+        # «Editar» is pressed, which open_the_runs_sector() does —
         # a_generated_polygon_is_editable asserts exactly that — so "no handle"
         # here means something is broken, and skipping would let this check
         # report green having adjusted nothing.
@@ -2798,6 +3414,64 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
         dismiss(page)
         page.locator(SEARCH).fill("")
         page.wait_for_timeout(400)
+
+
+def stored_times_are_shown_in_local_time(page, failures):
+    """#211: a Revision's and an Import batch's time is the viewer's local time.
+
+    Both columns hold UTC wall-clock time with no zone. The API now sends each
+    with its offset, and the screen must say what the page itself makes of that
+    instant, not the string as sent. Read off the API rather than typed in here,
+    so the check stands whatever zone the instance and the browser are in.
+    """
+    def local(moment):
+        return page.evaluate("(moment) => new Date(moment).toLocaleString()", moment)
+
+    def says(where, shown, sent):
+        if local(sent) not in shown or sent in shown:
+            failures.append(f"{where} shows {shown!r} for {sent!r}, not the local {local(sent)!r} (#211)")
+
+    name = f"Sector Navegador {RUN}"
+    feature = registry_feature(page, name)
+    if feature is None:
+        failures.append(f"{name!r} is not in the Registry, so there is no history to read (#211)")
+    elif open_the_runs_sector(page, failures):
+        entries = page.locator(".territorio-history__entry")
+        if not settles(page, lambda: entries.count() > 0, timeout=10_000):
+            failures.append("the Sector's history shows no entry to read a time off (#211)")
+        else:
+            history = page.evaluate(
+                """async (id) => {
+                    const response = await fetch(
+                        `/index.php/apps/territorio/features/${id}/history`,
+                        { headers: { requesttoken: window.OC.requestToken } },
+                    )
+                    return await response.json()
+                }""",
+                feature["id"],
+            )
+            says("the history", entries.first.inner_text(), history[0]["changedAt"])
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    rows = page.locator(".territorio-import__batch")
+    if not settles(page, lambda: rows.count() > 0, timeout=10_000):
+        failures.append("the Importar dialog lists no batch to read a time off (#211)")
+    else:
+        batches = page.evaluate(
+            """async () => {
+                const response = await fetch(
+                    '/index.php/apps/territorio/import/batches',
+                    { headers: { requesttoken: window.OC.requestToken } },
+                )
+                return await response.json()
+            }""",
+        )
+        says("the newest Import batch", rows.first.inner_text(), batches[0]["startedAt"])
+    dismiss(page)
+    page.wait_for_timeout(400)
 
 
 def an_imported_sector_says_it_came_from_the_catastro(page, failures):
@@ -4723,6 +5397,150 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
     page.wait_for_timeout(400)
 
 
+def cancelling_an_edit_restores_the_stored_place(page, failures):
+    """#195: «Cancelar» on a saved record discards the edit.
+
+    The form edits the draft box in place, and «Cancelar» used to flip only the
+    form's own flag. The read-only card went on showing the cancelled name, and
+    the next «Guardar» saved it along with the edit that followed.
+
+    Asserted on the Registry as well as the card: the card re-reads the draft,
+    so only the Registry says what «Guardar» wrote. Each half returns on its
+    failure, so a red run never presses «Guardar» on the cancelled name.
+    """
+    name = f"Plaza del Navegador {RUN}"
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is not in the list to edit (#195)")
+        page.locator(SEARCH).fill("")
+        return
+
+    open_first_row(page)
+    page.get_by_label("Nombre").fill(f"Nombre cancelado {RUN}")
+    page.locator(".territorio-detail__actions").get_by_role("button", name="Cancelar", exact=True).click()
+    page.wait_for_timeout(400)
+
+    shown = page.locator(".territorio-detail__place-title").inner_text().strip()
+    if shown != name:
+        failures.append(f"«Cancelar» kept the edit: the card says {shown!r}, the Registry {name!r} (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    notes = f"Notas tras cancelar {RUN}"
+    # Notas sits in «Más información», which opens closed.
+    page.locator("details.territorio-detail__section", has_text="Más información").evaluate(
+        "node => { node.open = true }",
+    )
+    page.get_by_label("Notas").fill(notes)
+    save(page, failures, "the Place after a cancelled edit")
+
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} is not in the Registry after «Guardar»: the cancelled name was saved (#195)")
+    elif stored.get("notes") != notes:
+        failures.append(f"{name!r} was saved with Notas {stored.get('notes')!r}, not {notes!r} (#195)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def cancelling_a_dragged_sector_restores_its_shape(page, failures):
+    """#195: a vertex dragged and then cancelled must not reach a later «Guardar».
+
+    The drag writes straight into the draft's geometry, and «Cancelar» used to
+    leave it there with the vertices still draggable in the read-only card. The
+    next «Editar» + «Guardar» then saved the cancelled shape.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    name = f"Sector Navegador {RUN}"
+    before = (registry_feature(page, name) or {}).get("geometry")
+    # A vertex the pointer can reach. The Sector is fitted to the whole map, so a
+    # corner can sit under the docked panel, and a drag that lands on the panel
+    # moves nothing: the Registry comparison below would then pass on no drag.
+    vertex = page.evaluate_handle(
+        """() => [...document.querySelectorAll('.leaflet-marker-pane .marker-icon')].find((el) => {
+            const box = el.getBoundingClientRect()
+            return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === el
+        }) ?? null""",
+    ).as_element()
+    if before is None or vertex is None:
+        failures.append(f"{name!r} has no stored geometry or no reachable vertex, so nothing was dragged (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    start = vertex.bounding_box()
+    page.mouse.move(start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(start["x"] + 40, start["y"] + 40, steps=6)
+    page.mouse.up()
+    page.wait_for_timeout(500)
+    end = vertex.bounding_box()
+    if end is None or abs(end["x"] - start["x"]) + abs(end["y"] - start["y"]) < 10:
+        failures.append("the drag moved no vertex, so «Cancelar» had nothing to discard (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    page.locator(".territorio-detail__actions").get_by_role("button", name="Cancelar", exact=True).click()
+    page.wait_for_timeout(600)
+    if handles.count() > 0:
+        failures.append("the Sector still has draggable vertices after «Cancelar» (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    save(page, failures, "the Sector after a cancelled drag")
+    after = (registry_feature(page, name) or {}).get("geometry")
+    if after != before:
+        failures.append("«Guardar» after «Cancelar» saved the cancelled vertex drag (#195)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def a_read_only_sector_has_no_vertex_handles(page, failures):
+    """#195: a Sector shown in the read-only card cannot be reshaped; after «Editar» it can.
+
+    Opened by its row alone, because open_first_row() presses «Editar», which is
+    the second half. That half catches a map that never redraws when the record
+    becomes editable.
+    """
+    name = f"Sector Navegador {RUN}"
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is not in the list to open (#195)")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    if handles.count() > 0:
+        failures.append("a Sector shown in the read-only card has draggable vertices (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    if not settles(page, lambda: handles.count() > 0, timeout=5_000):
+        failures.append("«Editar» did not make the Sector's vertices draggable (#195)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 # The neutral a Sector with no colour of its own is washed in, and the grey the
 # Unidad Vecinal hairline is drawn in. Read from src/ rather than copied, for
 # the reason the Category colours are read from the taxonomy the app serves
@@ -5593,6 +6411,134 @@ def _imported(name, category, subcategory, geometry):
             "geometry": geometry,
         }],
     }), f"{subcategory}-{RUN}", boundary=False)
+
+
+def _extent(polygon):
+    """A Polygon's bounding box, keyed the way VIEW_RECORDER keys a view."""
+    lons, lats = zip(*polygon["coordinates"][0])
+    return {"south": min(lats), "west": min(lons), "north": max(lats), "east": max(lons)}
+
+
+def _overlaps(view, box):
+    """Whether any of a box (a point is a box with no area) is inside a view."""
+    return (view["south"] <= box["north"] and box["south"] <= view["north"]
+            and view["west"] <= box["east"] and box["west"] <= view["east"])
+
+
+def _contains(view, box):
+    """Whether the whole of a box is inside a view."""
+    return (view["south"] <= box["south"] and box["north"] <= view["north"]
+            and view["west"] <= box["west"] and box["east"] <= view["east"])
+
+
+def the_centre_button_brings_the_record_into_view(page, failures):
+    """«Centrar» moves the map the way opening the record from the list does (#199).
+
+    It read the draft's `lat`/`lon`, which only a Place has, so on a Sector or a
+    Unidad Vecinal it did nothing at all. Each record is opened from its row in
+    the list, the map is dragged until the record is out of view, and «Centrar»
+    must bring it back: a Zone's whole box in the view, a Place at the view's
+    centre at zoom 17. Where the map went is read off Leaflet (VIEW_RECORDER),
+    not off the button.
+
+    Seeded through occ at a spot no other check in this file uses, and the two
+    divisions are retired on the way out: a live Unidad Vecinal widens the
+    extent the map opens on (ADR-0021), and a division claims every Place it
+    covers (ADR-0008).
+    """
+    sector, unidad, place = f"Sector Centrar {RUN}", f"UV Centrar {RUN}", f"Cesfam Centrar {RUN}"
+    sector_box, unidad_box = _a_boundary_box(-33.84, -70.92), _a_boundary_box(-33.86, -70.92)
+    point = (-33.875, -70.915)  # latitude, longitude: outside both boxes
+    seeded = import_dataset(json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "properties": {"id": f"centrar-{subcategory}-{RUN}", "name": name,
+                       "category": category, "subcategory": subcategory},
+        "geometry": geometry,
+    } for name, category, subcategory, geometry in (
+        (sector, "division_territorial", "sector", sector_box),
+        (unidad, "division_territorial", "unidad_vecinal", unidad_box),
+        (place, "salud", "cesfam", {"type": "Point", "coordinates": [point[1], point[0]]}),
+    )]}), f"centrar-{RUN}", boundary=False)
+    if not seeded:
+        failures.append("could not import the Sector, Unidad Vecinal and Place «Centrar» is checked on (#199)")
+        return
+
+    def views():
+        return page.evaluate("() => window.__territorioViews")
+
+    def last_view():
+        return (views() or [None])[-1]
+
+    def on_the_point(view):
+        lat, lon = (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
+        return abs(lat - point[0]) <= 1e-4 and abs(lon - point[1]) <= 1e-4 and view["zoom"] >= 17
+
+    sector_extent, unidad_extent = _extent(sector_box), _extent(unidad_box)
+    records = (
+        (sector, sector_extent, lambda view: _contains(view, sector_extent)),
+        (unidad, unidad_extent, lambda view: _contains(view, unidad_extent)),
+        (place, {"south": point[0], "west": point[1], "north": point[0], "east": point[1]}, on_the_point),
+    )
+
+    try:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+        if not page.evaluate(VIEW_RECORDER):
+            failures.append("the page has no window.L, so nothing could read where «Centrar» took the map")
+            return
+        show_divisions(page, ["Sector", "Unidad Vecinal"])
+
+        for name, box, landed in records:
+            to_list(page)
+            page.locator(SEARCH).fill(name)
+            rows = page.locator(ROWS)
+            if not settles(page, lambda: rows.count() > 0 and name in rows.first.inner_text()):
+                failures.append(f"{name}: not in the list, so «Centrar» was not checked on it")
+                continue
+
+            # The row is FeatureList's `@select="selectAndPan"`; not open_first_row,
+            # whose «Editar» swaps «Centrar» for «Guardar».
+            before = len(views())
+            rows.first.click()
+            centre = page.get_by_role("button", name="Centrar", exact=True)
+            if not settles(page, lambda: centre.count() > 0 and centre.first.is_visible(), timeout=5_000):
+                failures.append(f"{name}: the record card shows no «Centrar»")
+                continue
+            # Opening the record moves the map too. Let it land: a drag cuts the
+            # flight short, and its moveend never comes.
+            settles(page, lambda: len(views()) > before, timeout=5_000)
+
+            # Pressed right of the record, which opens centred, and of the docked
+            # panel, which is on the left; dragged left, so the record leaves west.
+            canvas = page.locator('[data-testid="map-canvas"]').bounding_box()
+            x, y = canvas["x"] + canvas["width"] - 150, canvas["y"] + canvas["height"] / 2
+            for _ in range(6):
+                count = len(views())
+                page.mouse.move(x, y)
+                page.mouse.down()
+                page.mouse.move(x - 400, y, steps=12)
+                # Held before letting go, as a person ends a pan: released mid-move,
+                # Leaflet's inertia flings the map on, for seconds, past the 400 px.
+                page.wait_for_timeout(150)
+                page.mouse.up()
+                settles(page, lambda: len(views()) > count, timeout=5_000)
+                view = last_view()
+                if view is not None and not _overlaps(view, box):
+                    break
+            else:
+                failures.append(f"{name}: the drag did not take the record out of view")
+                continue
+
+            # Only a move made after this click can bring the record back.
+            centre.first.click()
+            if not settles(page, lambda: landed(last_view()), timeout=5_000):
+                failures.append(f"{name}: «Centrar» left the map on {last_view()}, the record is at {box} (#199)")
+    finally:
+        retire_the_runs_record(page, sector)
+        retire_the_runs_record(page, unidad)
+        # The reload also resets the search and the Capas toggles: a View is per session.
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
 
 def _contrast(front, back):
@@ -7731,10 +8677,17 @@ def main():
         run(the_zoom_controls_are_in_spanish, page, failures)
 
         run(clicking_places_the_coordinate, page, failures)
+        # Retires its own two Sectores, so the exact counts in search_narrows_everything hold.
+        run(a_click_inside_a_sector_while_drawing_is_a_vertex, page, failures)
+        run(a_cancelled_drawing_leaves_the_place_coordinate, page, failures)
+        run(a_pin_opens_its_record_while_a_place_card_is_open, page, failures)
         run(the_assignment_is_shown_and_not_editable, page, failures)
         run(search_narrows_everything, page, failures)
         run(the_limit_can_be_picked, page, failures)
         run(the_duplicate_queue_works, page, failures)
+        # After it, which imports through the dialog: the batch list needs one to
+        # show, and this run's Sector already has a history.
+        run(stored_times_are_shown_in_local_time, page, failures)
         run(exports_ask_for_a_password_only_when_earned, page, failures)
         run(an_export_of_osm_data_names_the_licence, page, failures)
         run(the_export_offers_the_live_set_with_retirados_on, page, failures)
@@ -7747,6 +8700,10 @@ def main():
         # Which has just dragged a vertex and saved, so the line is now newer
         # than the Limit — #50's third case, the one a person would ask about.
         run(a_sector_says_how_its_boundary_came_to_be, page, "adjusted", failures)
+        # After it, so neither cancelled edit can touch the history it reads.
+        run(cancelling_an_edit_restores_the_stored_place, page, failures)
+        run(cancelling_a_dragged_sector_restores_its_shape, page, failures)
+        run(a_read_only_sector_has_no_vertex_handles, page, failures)
         # After both: this one retires a line the Sector's Limit cites, and every
         # check above needs those lines live to pick and generate from.
         run(a_gone_line_says_so_and_keeps_its_name, page, failures)
@@ -7758,9 +8715,14 @@ def main():
         # SAVED Sector nobody tinted, to read the neutral wash off, and it
         # imports the Unidad Vecinal beside it.
         run(a_division_renders_as_a_division, page, failures)
+        run(the_centre_button_brings_the_record_into_view, page, failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         run(a_tramo_typed_before_the_first_save_is_kept, page, failures)
+        # Right after it: the second opens the Sector it just saved, and both come
+        # after every check that clicks this run's pins.
+        run(a_save_that_lands_after_leaving_the_record_still_lists_it, page, failures)
+        run(a_save_that_lands_on_another_record_leaves_it_alone, page, failures)
 
         run(the_map_survives_churn, page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)

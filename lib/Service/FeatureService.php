@@ -573,12 +573,26 @@ class FeatureService {
 	 *  problems hears about the name before anything else (L1-19: same door,
 	 *  same order, same sentences). */
 	private function applyName(Feature $feature, array $input): void {
-		$name = trim((string)($input['name'] ?? ''));
+		$name = self::text($input['name'] ?? '');
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
 		self::refuseOverLong($name, 'El nombre', self::NAME_LENGTH);
 		$feature->setName($name);
+	}
+
+	/** A text parameter as trimmed text — the one type check the name and
+	 *  every optional field share. `(string)` on an array gives the literal
+	 *  "Array" plus an E_WARNING Nextcloud logs and then continues past
+	 *  (#207), so a hand-crafted `name[]=x` request would otherwise store a
+	 *  Feature named "Array" through a 200. Refused instead, at this door,
+	 *  like every other problem a save refuses — and one sentence serves
+	 *  every field, because `notes` carries no label in OPTIONAL_TEXT. */
+	private static function text(mixed $value): string {
+		if (is_array($value)) {
+			throw new InvalidFeatureException('Eso es una lista, no un texto.');
+		}
+		return trim((string)$value);
 	}
 
 	/** The one copy of the over-long refusal and its sentence (L1-21). */
@@ -612,7 +626,7 @@ class FeatureService {
 			if (!array_key_exists($key, $input)) {
 				continue;
 			}
-			$value = trim((string)$input[$key]);
+			$value = self::text($input[$key]);
 			if ($cap !== null) {
 				self::refuseOverLong($value, $label, $cap);
 			}

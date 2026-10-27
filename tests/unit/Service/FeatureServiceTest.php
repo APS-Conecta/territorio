@@ -351,6 +351,41 @@ final class FeatureServiceTest extends TestCase {
 		$this->service->update(3, $this->valid(['name' => str_repeat('a', 300)]));
 	}
 
+	/** #207: `(string)` on an array gives the literal "Array" plus an
+	 *  E_WARNING Nextcloud logs and then continues past, so a hand-crafted
+	 *  `name[]=x` request used to store a Feature named "Array" through a
+	 *  200. Refused here, at the same door as every other name problem,
+	 *  before any write. */
+	public function testANameThatArrivesAsAListIsRefused(): void {
+		$this->features->expects(self::never())->method('insert');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Eso es una lista, no un texto.');
+
+		$this->service->create($this->valid(['name' => ['Plaza']]));
+	}
+
+	/** #207, the optional fields: an array `notes` used to be stored as the
+	 *  text "Array" through an ordinary 200 edit, with a history entry
+	 *  recording it as one. The name here is valid, so this is the text
+	 *  policy refusing on its own — nothing is written, nothing logged, the
+	 *  stored notes are left exactly as they were. */
+	public function testAnOptionalFieldThatArrivesAsAListIsRefusedAndWritesNothing(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Antiguo');
+		$existing->setSubcategoryId(7);
+		$existing->setNotes('Nota guardada');
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+		$this->revisions->expects(self::never())->method(self::anything());
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Eso es una lista, no un texto.');
+
+		$this->service->update(3, $this->valid(['notes' => ['x']]));
+	}
+
 	/** Characters, not bytes, and the cap itself is allowed: 255 two-byte
 	 *  letters fill the column exactly. */
 	public function testANameAtItsCapIsKept(): void {
@@ -373,6 +408,12 @@ final class FeatureServiceTest extends TestCase {
 		self::assertSame(
 			'El registro necesita un nombre.',
 			$this->refusalOf(['name' => '  ', 'phone' => '961111111']),
+		);
+		// #207: a file row whose name arrives as a list hears the same sentence
+		// a save would, before any of its rows is written.
+		self::assertSame(
+			'Eso es una lista, no un texto.',
+			$this->refusalOf(['name' => 'Sede', 'notes' => ['x']]),
 		);
 		$this->service->checkNameAndText($this->valid(['phone' => str_repeat('9', 64)]));
 	}

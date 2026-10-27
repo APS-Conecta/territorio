@@ -1265,6 +1265,154 @@ def clicking_places_the_coordinate(page, failures):
     page.wait_for_timeout(400)
 
 
+def _a_click_opens(page, point, name, when, failures):
+    """Click a point on the map and say whether it opened the named record."""
+    page.mouse.click(*point)
+    if not settles(page, lambda: page.locator(".territorio-history").count() > 0, timeout=6_000):
+        failures.append(f"a click on {name!r} {when} opened nothing")
+        return
+
+    edit(page)
+    opened = page.get_by_label("Nombre").input_value().strip()
+    if opened != name:
+        failures.append(f"a click on {name!r} {when} opened {opened!r}")
+    dismiss(page)
+
+
+def a_click_inside_a_sector_while_drawing_is_a_vertex(page, failures):
+    """#197: while «Dibujar Sector» is armed, a click inside another Sector is a vertex.
+
+    Snapping draws the cursor on the shared edge while the pointer is still inside
+    the neighbour's fill, so that is where a person clicks. The Sector's own click
+    handler stopped that click and opened the neighbour, and no vertex was placed.
+
+    A is the only shape on the map: `_draw` draws every Sector of this run in the
+    same rectangle, and the search box filters out those, the pins and the
+    Unidades Vecinales together. Both Sectores are retired on the way out, as
+    every Sector a run draws is (`retire_the_runs_record`).
+    """
+    a = f"Sector Arce {RUN}"
+    b = f"Sector Boldo {RUN}"
+    if not draw_a_sector(page, a, failures):
+        return
+    dismiss(page)
+
+    draw = page.locator(".territorio-draw-sector__button")
+    handles = page.locator(".leaflet-marker-pane .marker-icon:not(.cursor-marker)")
+    try:
+        # Read before arming: Geoman adds its own working path to the overlay pane.
+        path = _only_shape(page, a).first
+        box = path.bounding_box()
+        stroke = path.evaluate("(element) => parseFloat(getComputedStyle(element).strokeWidth)")
+        edge_x = box["x"] + box["width"] - stroke / 2
+        mid_y = box["y"] + box["height"] / 2
+
+        draw.click()
+        page.wait_for_timeout(300)
+        if handles.count() != 0:
+            failures.append(f"{handles.count()} vertices on the map before drawing began, so none could be counted")
+            return
+
+        # Inside A's fill, 10 px in from its right edge and clear of its corners:
+        # within the snap distance, so the vertex lands ON the edge.
+        page.mouse.click(edge_x - 10, mid_y)
+        page.wait_for_timeout(400)
+        found = []
+        if handles.count() != 1:
+            found.append(f"a click inside {a!r} while drawing left {handles.count()} vertex handles on the map, not 1")
+        else:
+            handle = handles.first.bounding_box()
+            x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+            if abs(x - edge_x) > 2 or not box["y"] <= y <= box["y"] + box["height"]:
+                found.append(f"the vertex is at ({x:.0f}, {y:.0f}), not snapped onto {a!r}'s edge at x={edge_x:.0f}")
+        if page.locator(".territorio-history").count() > 0 or page.locator(".territorio-detail__back").count() > 0:
+            found.append(f"a click inside {a!r} while drawing opened a record")
+        if "Cancelar Dibujo" not in draw.inner_text():
+            found.append(f"a click inside {a!r} while drawing left drawing mode")
+        if found:
+            failures.extend(found)
+            page.screenshot(path=str(SHOTS / "draw-inside-a-sector.png"), full_page=False)
+            return
+
+        # Out on clear map, more than the snap distance from A, then the first vertex closes the ring.
+        page.mouse.click(edge_x + 60, mid_y - 35)
+        page.mouse.click(edge_x + 60, mid_y + 35)
+        handles.first.click()
+        try:
+            page.wait_for_selector('input[type="color"]', timeout=5_000)
+        except PlaywrightTimeout:
+            failures.append(f"a ring begun on {a!r}'s edge did not become a Sector draft")
+            return
+        if page.locator(".territorio-history").count() > 0:
+            failures.append(f"closing a ring begun on {a!r}'s edge opened an existing record")
+            return
+
+        page.get_by_label("Nombre").fill(b)
+        save(page, failures, "the Sector begun on another Sector's edge")
+        drawn = registry_feature(page, b)
+        if drawn is None or (drawn.get("geometry") or {}).get("type") != "Polygon":
+            failures.append(f"{b!r}, begun on {a!r}'s edge, is not a Polygon in the Registry")
+        dismiss(page)
+
+        # Drawing ended, finished or cancelled: a click on A opens it again.
+        box = _only_shape(page, a).first.bounding_box()
+        centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        _a_click_opens(page, centre, a, "after a finished drawing", failures)
+
+        draw.click()
+        page.wait_for_timeout(300)
+        draw.click()
+        page.wait_for_timeout(300)
+        _a_click_opens(page, centre, a, "after a cancelled drawing", failures)
+    finally:
+        if "Cancelar Dibujo" in draw.inner_text():
+            draw.click()
+        retire_the_runs_record(page, a)
+        retire_the_runs_record(page, b)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+
+def a_cancelled_drawing_leaves_the_place_coordinate(page, failures):
+    """#197: a vertex click is the drawing's, never the open Place's coordinate.
+
+    Every map click reached App's `placeDraft` as `map-click`, vertex clicks
+    included, so drawing a Sector with a Place open moved the Place, and
+    «Cancelar Dibujo» took the drawing away and left the move behind.
+    """
+    hidden = hide_divisions(page)
+    draw = page.locator(".territorio-draw-sector__button")
+    try:
+        page.get_by_role("button", name="Agregar", exact=True).click()
+        page.get_by_label("Nombre").fill(f"Prueba de dibujo {RUN}")
+        page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
+        page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
+        fields = ("Nombre", "Latitud", "Longitud")
+        typed = {label: page.get_by_label(label).input_value() for label in fields}
+
+        draw.click()
+        canvas = page.locator('[data-testid="map-canvas"]')
+        canvas.click(position={"x": MAP_CLEAR["x"] + 100, "y": 300})
+        canvas.click(position={"x": MAP_CLEAR["x"] + 160, "y": 300})
+        page.wait_for_timeout(400)
+        draw.click()
+        page.wait_for_timeout(300)
+
+        for label in fields:
+            kept = page.get_by_label(label).input_value()
+            if kept != typed[label]:
+                failures.append(
+                    f"drawing a Sector and cancelling it changed the open Place's «{label}» "
+                    f"from {typed[label]!r} to {kept!r}",
+                )
+        # Nothing is saved, as in clicking_places_the_coordinate.
+        dismiss(page)
+    finally:
+        if "Cancelar Dibujo" in draw.inner_text():
+            draw.click()
+        show_divisions(page, hidden)
+
+
 def the_assignment_is_shown_and_not_editable(page, failures):
     """#11: Sector and Unidad Vecinal are shown, never typed (ADR-0008)."""
     page.locator(SEARCH).fill(f"Plaza del Navegador {RUN}")
@@ -7698,6 +7846,9 @@ def main():
         run(the_zoom_controls_are_in_spanish, page, failures)
 
         run(clicking_places_the_coordinate, page, failures)
+        # Retires its own two Sectores, so the exact counts in search_narrows_everything hold.
+        run(a_click_inside_a_sector_while_drawing_is_a_vertex, page, failures)
+        run(a_cancelled_drawing_leaves_the_place_coordinate, page, failures)
         run(the_assignment_is_shown_and_not_editable, page, failures)
         run(search_narrows_everything, page, failures)
         run(the_limit_can_be_picked, page, failures)

@@ -88,7 +88,7 @@ class ImportBatch extends Entity {
 			'id' => (int)$this->getId(),
 			'datasetId' => $this->getDatasetId(),
 			'actor' => $this->getActor(),
-			'startedAt' => $this->getStartedAt()?->format('Y-m-d H:i:s'),
+			'startedAt' => $this->getStartedAt()?->format(\DateTimeInterface::ATOM),
 			'revisionFrom' => $this->getRevisionFrom(),
 			'revisionTo' => $this->getRevisionTo(),
 			'created' => $this->getCreated(),

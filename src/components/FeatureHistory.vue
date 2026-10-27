@@ -22,7 +22,7 @@
 					{{ ACTIONS[entry.action] || entry.action }}
 				</span>
 				<span class="territorio-history__who">
-					{{ entry.actor || 'el sistema' }} · {{ entry.changedAt }}
+					{{ entry.actor || 'el sistema' }} · {{ when(entry.changedAt) }}
 				</span>
 
 				<ul v-if="entry.changes" class="territorio-history__changes">
@@ -51,6 +51,7 @@ import { nameOf } from '../boundaries.js'
 import { QUALITY_LABELS } from '../indice.js'
 import { readable } from '../limit.js'
 import { indexSubcategories } from '../taxonomy.js'
+import { when } from '../when.js'
 
 /**
  * The Limit's parts out of what history recorded.
@@ -123,6 +124,8 @@ export default {
 	},
 
 	methods: {
+		when,
+
 		/**
 		 * History stores what the column stored, which is not what a person should
 		 * read: a Subcategory is an id, a location is a GeoJSON document, and an

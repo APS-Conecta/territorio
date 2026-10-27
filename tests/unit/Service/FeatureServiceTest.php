@@ -305,6 +305,67 @@ final class FeatureServiceTest extends TestCase {
 		$this->service->create($this->valid(['name' => '   ']));
 	}
 
+	/** #203: the name column is VARCHAR 255, so a longer name was the
+	 *  database's error through a 500; it is the app's sentence, before any
+	 *  write. */
+	public function testAnOverLongNameIsRefused(): void {
+		$this->features->expects(self::never())->method('insert');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('El nombre no puede pasar de 255 caracteres.');
+
+		$this->service->create($this->valid(['name' => str_repeat('a', 300)]));
+	}
+
+	public function testAnOverLongNameIsRefusedOnUpdate(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Antiguo');
+		$existing->setSubcategoryId(7);
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('El nombre no puede pasar de 255 caracteres.');
+
+		$this->service->update(3, $this->valid(['name' => str_repeat('a', 300)]));
+	}
+
+	/** Characters, not bytes, and the cap itself is allowed: 255 two-byte
+	 *  letters fill the column exactly. */
+	public function testANameAtItsCapIsKept(): void {
+		$name = str_repeat('á', 255);
+
+		self::assertSame($name, $this->service->create($this->valid(['name' => $name]))->getName());
+	}
+
+	/** The import's pre-check (#203) hears the write door's own sentences, and
+	 *  asking writes, reads and logs nothing. */
+	public function testCheckNameAndTextRefusesWhatTheWriteRefusesAndWritesNothing(): void {
+		foreach ([$this->features, $this->subcategories, $this->revisions, $this->assignments] as $collaborator) {
+			$collaborator->expects(self::never())->method(self::anything());
+		}
+
+		self::assertSame(
+			'El teléfono no puede pasar de 64 caracteres.',
+			$this->refusalOf(['name' => 'Sede', 'phone' => str_repeat('9', 65)]),
+		);
+		self::assertSame(
+			'El registro necesita un nombre.',
+			$this->refusalOf(['name' => '  ', 'phone' => '961111111']),
+		);
+		$this->service->checkNameAndText($this->valid(['phone' => str_repeat('9', 64)]));
+	}
+
+	private function refusalOf(array $input): string {
+		try {
+			$this->service->checkNameAndText($input);
+		} catch (InvalidFeatureException $e) {
+			return $e->getMessage();
+		}
+		self::fail('checkNameAndText() accepted ' . json_encode($input));
+	}
+
 	public function testTheSubcategoryMustExist(): void {
 		$this->expectException(InvalidFeatureException::class);
 		$this->service->create($this->valid(['subcategoryId' => 999]));

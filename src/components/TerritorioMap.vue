@@ -339,6 +339,11 @@ export default {
 		this.drawDraft()
 
 		this.map.on('click', (event) => {
+			// While drawing, the click is Geoman's vertex, not a coordinate or a seed (its listener runs after this one).
+			if (this.map.pm.globalDrawModeEnabled()) {
+				return
+			}
+
 			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
 		})
 
@@ -506,7 +511,8 @@ export default {
 					// the click here would make it impossible to place a record by
 					// clicking — and worse, it would select a cadastre boundary and
 					// hand the next save to that instead.
-					if (this.placing) {
+					// While drawing, the click is Geoman's too: it becomes a snapped vertex.
+					if (this.placing || this.map.pm.globalDrawModeEnabled()) {
 						return
 					}
 

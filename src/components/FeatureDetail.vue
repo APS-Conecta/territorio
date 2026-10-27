@@ -292,8 +292,10 @@ export default {
 		historyFailed: { type: Boolean, default: false },
 		retired: { type: Boolean, default: false },
 		draft: { type: Object, required: true },
-		// The form's edit state, owned by App.vue (#195): «Editar» and «Cancelar»
-		// ask for it through `update:editing`, and App alone clears it.
+		// App's, not this form's: whether the next map click places the record
+		// (#194) and whether the map lets its shape be reshaped (#195) depend on
+		// it. «Editar» and «Cancelar» ask for it through `update:editing`, and App
+		// alone clears it. A new record (id null) is editable without it.
 		editing: { type: Boolean, default: false },
 		taxonomy: { type: Array, required: true },
 		divisions: { type: Array, default: () => [] },

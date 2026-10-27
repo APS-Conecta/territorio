@@ -5583,9 +5583,10 @@ def the_centre_button_brings_the_record_into_view(page, failures):
     centre at zoom 17. Where the map went is read off Leaflet (VIEW_RECORDER),
     not off the button.
 
-    Seeded through occ where nothing else in this file is, and the two divisions
-    are retired on the way out: a live Unidad Vecinal widens the extent the map
-    opens on (ADR-0021), and a division claims every Place it covers (ADR-0008).
+    Seeded through occ at a spot no other check in this file uses, and the two
+    divisions are retired on the way out: a live Unidad Vecinal widens the
+    extent the map opens on (ADR-0021), and a division claims every Place it
+    covers (ADR-0008).
     """
     sector, unidad, place = f"Sector Centrar {RUN}", f"UV Centrar {RUN}", f"Cesfam Centrar {RUN}"
     sector_box, unidad_box = _a_boundary_box(-33.84, -70.92), _a_boundary_box(-33.86, -70.92)

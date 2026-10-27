@@ -319,9 +319,9 @@ class FeatureService {
 			return;
 		}
 
-		// An import collects its boundary events and sweeps once at batch end
-		// (L1-13); everybody else sweeps here and now, stamped with a batch of its
-		// own so a crash mid-sweep is revertible like an import (L1-16).
+		// An import or a revert collects its boundary events and sweeps once at
+		// batch end (L1-13); everybody else sweeps here and now, stamped with a
+		// batch of its own so a crash mid-sweep is revertible like an import (L1-16).
 		if ($this->deferredReassignments !== null) {
 			$this->deferredReassignments[(int)$boundary->getId()] = [$boundary, $before];
 
@@ -393,18 +393,18 @@ class FeatureService {
 		return $this->batches->insert($batch);
 	}
 
-	/** Boundary events collected during an import, keyed by record id — null
-	 *  whenever no import is running (L1-13). */
+	/** Boundary events collected during an import or a revert, keyed by record
+	 *  id — null whenever neither is running (L1-13). */
 	private ?array $deferredReassignments = null;
 
 	/**
 	 * Run $work with boundary reassignment DEFERRED (L1-13).
 	 *
-	 * The import's one way in wraps its run in this: reassignAround() collects
-	 * instead of sweeping, and flushDeferredReassignments() — called by the
-	 * importer inside its batch stamp — sweeps once for the whole file. The
-	 * set/restore pair is the same ambient-scope pattern RevisionLog::
-	 * duringImport() uses, correct for the same per-request reason.
+	 * An import and a revert each wrap their run in this: reassignAround()
+	 * collects instead of sweeping, and flushDeferredReassignments() — called by
+	 * the importer or the reverter inside its batch stamp — sweeps once for the
+	 * whole batch. The set/restore pair is the same ambient-scope pattern
+	 * RevisionLog::duringImport() uses, correct for the same per-request reason.
 	 *
 	 * @template T
 	 * @param callable(): T $work
@@ -421,14 +421,14 @@ class FeatureService {
 	}
 
 	/**
-	 * The one sweep an import owes, run inside its batch stamp (L1-13).
+	 * The one sweep an import or a revert owes, run inside its batch stamp (L1-13).
 	 *
 	 * Boundaries created or edited by the batch, keyed by record — one write per
-	 * record per import, so the last write's before/after is the one that counts.
-	 * The union of old and new boxes in affectedBy() is what heals the rows whose
-	 * own assign() ran against the pre-import memo: a Place written before the
-	 * boundary that will cover it is inside that boundary's new box, and the
-	 * sweep reaches it exactly as the per-row sweep used to.
+	 * record per import or revert, so the last write's before/after is the one
+	 * that counts. The union of old and new boxes in affectedBy() is what heals
+	 * the rows whose own assign() ran against the pre-import memo: a Place
+	 * written before the boundary that will cover it is inside that boundary's
+	 * new box, and the sweep reaches it exactly as the per-row sweep used to.
 	 */
 	public function flushDeferredReassignments(): void {
 		$deferred = $this->deferredReassignments ?? [];
@@ -436,7 +436,7 @@ class FeatureService {
 			return;
 		}
 
-		// Once, for the whole file: this is the invalidation the per-row sweep
+		// Once, for the whole batch: this is the invalidation the per-row sweep
 		// used to pay M times.
 		$this->assignments->forget();
 

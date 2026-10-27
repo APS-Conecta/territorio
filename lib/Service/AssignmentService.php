@@ -60,14 +60,14 @@ class AssignmentService {
 	) {
 	}
 
-	/** A boundary has changed, so what was read before is no longer true. */
 	/** A boundary has changed, so what was read before is no longer true.
 	 *
-	 * Called ONCE per import now, at batch end (L1-13) — FeatureService::
-	 * flushDeferredReassignments() — and still per boundary write everywhere
-	 * else. The memo this clears is what makes "read once per request" true in
-	 * both worlds: during an import nothing invalidates it, so the file pays one
-	 * registry read, and the flush re-reads once for the sweep.
+	 * Called ONCE per import or revert now, at batch end (L1-13) —
+	 * FeatureService::flushDeferredReassignments() — and still per boundary
+	 * write everywhere else. The memo this clears is what makes "read once per
+	 * request" true in both worlds: during an import or a revert nothing
+	 * invalidates it, so the batch pays one registry read, and the flush
+	 * re-reads once for the sweep.
 	 */
 	public function forget(): void {
 		$this->known = null;

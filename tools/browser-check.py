@@ -8464,6 +8464,39 @@ def the_redesigned_controls_work(page, errors, failures):
         failures.append("the taxonomy drawer is on the page before anyone opened it")
 
     # --- the search box: an asset, a polygon and a street ---
+    # First by the keyboard, because that is where #213 bit: the arrows move a
+    # highlight that focus never follows — it stays in the input — so what a
+    # screen reader hears about the rows is aria-activedescendant, and Enter was
+    # taking a street the person never heard named. Three arrows land on the
+    # second row, one comes back, and the pointer must follow and be named well.
+    box = page.locator(OMNIBOX_INPUT)
+    box.click()
+    box.press_sequentially(f"Rediseño {REDESIGN}", delay=40)
+    page.wait_for_timeout(400)
+    named = box.get_attribute("aria-activedescendant")
+    if named is not None:
+        failures.append(f"before any arrow, aria-activedescendant already names {named!r}")
+    box.press("ArrowDown")
+    box.press("ArrowDown")
+    named = box.get_attribute("aria-activedescendant")
+    list_id = page.locator(".territorio-omnibox__dropdown").get_attribute("id")
+    if box.get_attribute("aria-controls") != list_id:
+        failures.append(
+            f"the input's aria-controls is {box.get_attribute('aria-controls')!r}, "
+            f"not the list's id {list_id!r}")
+    highlighted = page.locator(".territorio-omnibox__item--highlighted")
+    if named is None:
+        failures.append("ArrowDown highlighted a row a screen reader is never told about")
+    elif highlighted.count() != 1:
+        failures.append(f"{highlighted.count()} rows are highlighted, not one")
+    elif highlighted.first.get_attribute("id") != named:
+        failures.append(f"aria-activedescendant names {named!r}, not the highlighted row")
+    box.press("ArrowUp")
+    up = box.get_attribute("aria-activedescendant")
+    if named is not None and up == named:
+        failures.append(f"ArrowUp did not move aria-activedescendant, still {up!r}")
+    box.press("Escape")
+
     titles, problem = _omnibox_pick(page, f"Rediseño {REDESIGN}", place)
     if problem:
         failures.append(f"Omnibox, picking the Place: {problem} (rows: {titles})")

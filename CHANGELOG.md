@@ -345,6 +345,13 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   Registry holds it, so cancelled edits no longer reach a later «Guardar». A Sector shown in
   the read-only card has no vertex handles; «Editar» brings them back.
 
+- **Restoring a Merged record reopens the pair it lost, not one it won (#206).** The lookup took
+  the newest Merged pair the record was on, so a record that had survived one merge and lost a
+  later one reopened the pair it won. That pair then sat pending but hidden, because its other
+  member was still retired, and the pair actually undone stayed Merged and was never offered again.
+  The lookup now names both members, the restored record and the survivor its `mergedInto`
+  points at, and matches only while that pair is Merged.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

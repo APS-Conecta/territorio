@@ -222,8 +222,9 @@ class FeatureService {
 		// Read from the record BEFORE the restore cleared it, and only for the
 		// record that lost: restoring the survivor of a merge, retired later for
 		// some unrelated reason, must not reopen a pair whose other member is
-		// still gone.
-		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id);
+		// still gone. The pair reopened is the one this record and its survivor
+		// form, and only while it is Merged: not a pair this record won (#206).
+		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id, $mergedInto);
 		if ($merge !== null) {
 			$merge->setStatus(Duplicate::PENDING);
 			$merge->setResolvedBy(null);

@@ -377,6 +377,10 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   name. It now says, e.g., «Ese nombre está reservado por la categoría «Culto». Elija otro
   nombre.»
 
+- A KML or KMZ whose elements carry a namespace prefix (`kml:Placemark`, `kml:Point`) imports
+  its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
+  when only the geometry was prefixed (#209).
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

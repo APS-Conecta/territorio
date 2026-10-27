@@ -11,9 +11,13 @@ use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\RevertService;
+use OCA\Territorio\Service\TaxonomyService;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Server;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use ZipArchive;
 
 /**
@@ -30,12 +34,11 @@ final class KmlImportTest extends IntegrationTestCase {
 	/** @var int[] */
 	private array $datasetIds = [];
 
+	/** @var int[] Subcategories this test added, to be removed after its Features */
+	private array $addedSubcategories = [];
+
 	protected function tearDown(): void {
 		parent::tearDown();
-
-		if ($this->datasetIds === []) {
-			return;
-		}
 
 		$db = Server::get(IDBConnection::class);
 		foreach ($this->datasetIds as $id) {
@@ -47,6 +50,20 @@ final class KmlImportTest extends IntegrationTestCase {
 			}
 		}
 		$this->datasetIds = [];
+
+		// Not behind the Dataset sweep: a run that throws before its Dataset is
+		// recorded has still added the Subcategory. Raw SQL, not
+		// `removeSubcategory()`, which refuses while anything is filed under the
+		// row (CategoryCrudTest, #134).
+		if ($this->addedSubcategories !== []) {
+			$qb = $db->getQueryBuilder();
+			$qb->delete('territorio_subcategory')
+				->where($qb->expr()->in('id', $qb->createNamedParameter(
+					$this->addedSubcategories, IQueryBuilder::PARAM_INT_ARRAY,
+				)))
+				->executeStatement();
+			$this->addedSubcategories = [];
+		}
 	}
 
 	/** The criterion: Points, LineStrings and Polygons all arrive. */
@@ -145,6 +162,102 @@ final class KmlImportTest extends IntegrationTestCase {
 		}
 
 		self::assertSame('Movilidad y transporte · Ciclovía', $labels['Ciclovía de Prueba']);
+		self::assertSame('Deporte y recreación · Plaza o parque', $labels['Plaza de Prueba']);
+	}
+
+	/**
+	 * A MyMaps folder of sector polygons is not a set of Sectors: a Sector is
+	 * drawn by the clinic from picked Boundary features (ADR-0007), and a file
+	 * reaches a division only by naming «División territorial» and the
+	 * Subcategory. «Colegios» still answers, being the first word that names
+	 * exactly one Subcategory (#204).
+	 */
+	public function testAFolderNamingASectorNeverReachesTheDivision(): void {
+		$kml = <<<'XML'
+			<?xml version="1.0" encoding="UTF-8"?>
+			<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+			  <Folder><name>Sector Norte</name>
+			    <Placemark><name>Polígono Norte</name>
+			      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+			        -70.62,-33.50 -70.61,-33.50 -70.61,-33.49 -70.62,-33.50
+			      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Sector 1</name>
+			    <Placemark><name>Polígono Uno</name>
+			      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+			        -70.60,-33.50 -70.59,-33.50 -70.59,-33.49 -70.60,-33.50
+			      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Sectores</name>
+			    <Placemark><name>Polígono Sectores</name>
+			      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+			        -70.58,-33.50 -70.57,-33.50 -70.57,-33.49 -70.58,-33.50
+			      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Unidad vecinal</name>
+			    <Placemark><name>Polígono Unidad</name>
+			      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+			        -70.62,-33.56 -70.61,-33.56 -70.61,-33.55 -70.62,-33.56
+			      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Sector Sur - Colegios</name>
+			    <Placemark><name>Polígono Colegios</name>
+			      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+			        -70.60,-33.56 -70.59,-33.56 -70.59,-33.55 -70.60,-33.56
+			      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+			    </Placemark>
+			  </Folder>
+			</Document></kml>
+			XML;
+
+		$labels = $this->importFolders($kml);
+
+		self::assertSame([
+			'Polígono Colegios' => 'Educación · Colegio',
+			'Polígono Norte' => 'Sin clasificar · Otro',
+			'Polígono Sectores' => 'Sin clasificar · Otro',
+			'Polígono Unidad' => 'Sin clasificar · Otro',
+			'Polígono Uno' => 'Sin clasificar · Otro',
+		], $labels);
+	}
+
+	/**
+	 * A plural in «-es» loses «-es», not only its «s»: «Parques» is `parque`,
+	 * not `parqu` (#204).
+	 *
+	 * In its own process because the taxonomy is written mid-request here and
+	 * nowhere in the app: `TaxonomyService::subcategoryIndex()` is memoised, and
+	 * the imports earlier in the suite have already filled it without «Parque».
+	 */
+	#[RunInSeparateProcess]
+	#[PreserveGlobalState(false)]
+	public function testAPluralFolderFindsAClinicAddedSubcategory(): void {
+		Server::get(TaxonomyService::class)->addSubcategory('deporte_recreacion', 'Parque');
+		$this->addedSubcategories[] = $this->subcategoryIdBySlug('parque');
+
+		$kml = <<<'XML'
+			<?xml version="1.0" encoding="UTF-8"?>
+			<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+			  <Folder><name>Parques</name>
+			    <Placemark><name>Parque de Prueba</name>
+			      <Point><coordinates>-70.60,-33.52</coordinates></Point>
+			    </Placemark>
+			  </Folder>
+			  <Folder><name>Plazas y parques</name>
+			    <Placemark><name>Plaza de Prueba</name>
+			      <Point><coordinates>-70.59,-33.52</coordinates></Point>
+			    </Placemark>
+			  </Folder>
+			</Document></kml>
+			XML;
+
+		$labels = $this->importFolders($kml);
+
+		self::assertSame('Deporte y recreación · Parque', $labels['Parque de Prueba']);
 		self::assertSame('Deporte y recreación · Plaza o parque', $labels['Plaza de Prueba']);
 	}
 
@@ -316,6 +429,24 @@ final class KmlImportTest extends IntegrationTestCase {
 		$this->track();
 
 		return $batch;
+	}
+
+	/**
+	 * Import a KML of Folders and answer where each record was filed.
+	 *
+	 * @return array<string, string> record name => "Category · Subcategory", by name
+	 */
+	private function importFolders(string $kml): array {
+		Server::get(ImportService::class)->importFile($kml, 'folders.kml', self::SLUG, null, 'prueba');
+		$this->track();
+
+		$labels = [];
+		foreach ($this->stored() as $feature) {
+			$labels[$feature->getName()] = $this->labelOf($feature->getSubcategoryId());
+		}
+		ksort($labels);
+
+		return $labels;
 	}
 
 	/** Whatever this run's Dataset now holds, so tearDown can take it away again. */

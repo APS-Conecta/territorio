@@ -163,6 +163,44 @@ final class CsvImportTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * «Otro» names a Subcategory every Category has, so it names none of them.
+	 * The first Category by label used to keep the slug, and these rows were
+	 * filed under «Comercio y economía · Otro» (#204).
+	 */
+	public function testARowNamingOnlyOtroLandsInSinClasificar(): void {
+		$this->import("Nombre,Categoría,Subcategoría,Latitud,Longitud\n"
+			. "Fila Otros,Otros,,-33.520,-70.580\n"
+			. "Fila Otro,Otro,,-33.521,-70.581\n"
+			. "Fila Otros servicios,Otros servicios,,-33.522,-70.582\n");
+
+		$labels = [];
+		foreach ($this->stored() as $feature) {
+			$labels[$feature->getName()] = $this->labelOf($feature->getSubcategoryId());
+		}
+		ksort($labels);
+
+		self::assertSame([
+			'Fila Otro' => 'Sin clasificar · Otro',
+			'Fila Otros' => 'Sin clasificar · Otro',
+			'Fila Otros servicios' => 'Sin clasificar · Otro',
+		], $labels);
+	}
+
+	/**
+	 * The word heuristic never reaches a División territorial Subcategory, so
+	 * naming both halves is the one way a file files a Sector, as the cadastre
+	 * cutter's output does. A CSV carries a point at most, and the row needs
+	 * none: the label pair is what is under test.
+	 */
+	public function testARowNamingTheDivisionAndSectorStillFilesAsASector(): void {
+		$this->import("Nombre,Categoría,Subcategoría\nSector de Prueba,División territorial,Sector\n");
+
+		$stored = array_values($this->stored());
+		self::assertCount(1, $stored);
+		self::assertSame('División territorial · Sector', $this->labelOf($stored[0]->getSubcategoryId()));
+	}
+
+	/**
 	 * A row with no coordinates is a record, not an error — and the Registry
 	 * derives its Location quality rather than storing what the file said.
 	 */

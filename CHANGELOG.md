@@ -267,6 +267,18 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **An over-long value refuses the whole import, and nothing is written** (#203). The import's
+  pre-check knew geometry, an empty name and «ubicación», but not the caps the write door
+  enforces, so a 72-character phone in row 4 left rows 1–3 committed behind a 422 that named no
+  row. A name over 255 characters and an explicit id over 128 were capped nowhere and reached
+  PostgreSQL as a 500 after the same partial write. The pre-check now runs the write door's own
+  name and text checks (`FeatureService::checkNameAndText()`, so each cap and sentence is still
+  stated once) plus the external id's width, and the file is refused with «no se importó
+  nada», naming each row and field: «Malo: El teléfono no puede pasar de 64 caracteres.». A
+  Dataset name over 64 characters is refused beside the empty one, before the file is read,
+  from the browser and from `occ`. Creating or updating a record with an over-long name answers
+  422 with «El nombre no puede pasar de 255 caracteres.» instead of a 500.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

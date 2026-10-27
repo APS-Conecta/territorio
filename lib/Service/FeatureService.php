@@ -50,6 +50,10 @@ class FeatureService {
 	public const LIMIT_PARTS = 500;
 	private const LIMIT_NAME = 200;
 
+	/** The record name's column width (VARCHAR 255, Version000200) — the
+	 *  Feature's own name, not LIMIT_NAME, which bounds a Limit part's. */
+	private const NAME_LENGTH = 255;
+
 	/**
 	 * Optional free-text columns, all handled identically: trim, blank becomes
 	 * null — and a value the column cannot store is refused with the app's own
@@ -515,6 +519,21 @@ class FeatureService {
 		return $written;
 	}
 
+	/**
+	 * The write door's own name and text checks, on a record nobody keeps: the
+	 * import's pre-check comes in here (#203), so a file is refused with the
+	 * sentence a save would give before any of its rows is written, and the
+	 * caps and sentences stay in this class. Writes and persists nothing.
+	 *
+	 * @param array<string, mixed> $input
+	 * @throws InvalidFeatureException
+	 */
+	public function checkNameAndText(array $input): void {
+		$scratch = new Feature();
+		$this->applyName($scratch, $input);
+		$this->applyText($scratch, $input);
+	}
+
 	/** Import-only: says which Dataset this record belongs to and what the
 	 *  authority published, which is kept even when a local edit wins. */
 	private function applyProvenance(Feature $feature, ?Provenance $provenance): void {
@@ -555,7 +574,17 @@ class FeatureService {
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
+		self::refuseOverLong($name, 'El nombre', self::NAME_LENGTH);
 		$feature->setName($name);
+	}
+
+	/** The one copy of the over-long refusal and its sentence (L1-21). */
+	private static function refuseOverLong(string $value, string $label, int $cap): void {
+		if (mb_strlen($value) > $cap) {
+			throw new InvalidFeatureException(sprintf(
+				'%s no puede pasar de %d caracteres.', $label, $cap,
+			));
+		}
 	}
 
 	private function applySubcategory(Feature $feature, array $input): void {
@@ -581,10 +610,8 @@ class FeatureService {
 				continue;
 			}
 			$value = trim((string)$input[$key]);
-			if ($cap !== null && mb_strlen($value) > $cap) {
-				throw new InvalidFeatureException(sprintf(
-					'%s no puede pasar de %d caracteres.', $label, $cap,
-				));
+			if ($cap !== null) {
+				self::refuseOverLong($value, $label, $cap);
 			}
 			$feature->$setter($value === '' ? null : $value);
 		}

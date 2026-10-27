@@ -67,6 +67,31 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		return [$first, $second, $pair];
 	}
 
+	/**
+	 * Three records at one coordinate, and the three pairs among them.
+	 *
+	 * (a,b) is recorded first, so each record also sits on a newer pair: the
+	 * shape in which a restore that took the newest Merged pair reopened the
+	 * wrong one (#206). The two later pairs are looked up right after their scan,
+	 * while `pairOf()` can still see them; once resolved, read them by id.
+	 *
+	 * @return array{int, int, int, Duplicate, Duplicate, Duplicate} a, b, c, (a,b), (a,c), (b,c)
+	 */
+	private function tripletsAt(string $one, string $other, string $third): array {
+		[$a, $b, $ab] = $this->twinsAt($one, $other);
+		$c = $this->place($third);
+
+		$this->service->scan();
+		$ac = $this->pairOf($a, $c);
+		$bc = $this->pairOf($b, $c);
+		self::assertNotNull($ac, 'the scan should have offered a and c');
+		self::assertNotNull($bc, 'the scan should have offered b and c');
+		$this->pairs[] = (int)$ac->getId();
+		$this->pairs[] = (int)$bc->getId();
+
+		return [$a, $b, $c, $ab, $ac, $bc];
+	}
+
 	/** The pair naming exactly these two, whatever else the instance holds. */
 	private function pairOf(int $one, int $other): ?Duplicate {
 		foreach ($this->duplicates->findPending() as $pair) {
@@ -251,6 +276,49 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		$this->features->restore($second);
 
 		self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	/**
+	 * A record that won one merge and lost a later one is on two Merged pairs, and
+	 * restoring it undoes only the merge it lost (#206).
+	 */
+	public function testRestoringALoserReopensThePairItLostNotOneItWon(): void {
+		[$a, $b, , $ab, $ac] = $this->tripletsAt('Balneario Municipal', 'Piscina Municipal', 'Gimnasio Municipal');
+
+		$this->service->merge((int)$ac->getId(), $a);
+		$this->service->merge((int)$ab->getId(), $b);
+		$this->features->restore($a);
+
+		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$ab->getId())->getStatus());
+		self::assertContains((int)$ab->getId(), array_column($this->service->outstanding()['pairs'], 'id'));
+		self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$ac->getId())->getStatus());
+	}
+
+	/** The same when the restored loser holds the higher id, the second side of its pair. */
+	public function testRestoringTheHigherIdLoserReopensThePairItLost(): void {
+		[$a, $b, , $ab, , $bc] = $this->tripletsAt('Balneario Municipal', 'Piscina Municipal', 'Gimnasio Municipal');
+
+		$this->service->merge((int)$bc->getId(), $b);
+		$this->service->merge((int)$ab->getId(), $a);
+		$this->features->restore($b);
+
+		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$ab->getId())->getStatus());
+		self::assertContains((int)$ab->getId(), array_column($this->service->outstanding()['pairs'], 'id'));
+		self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$bc->getId())->getStatus());
+	}
+
+	/** A dismissal is final (ADR-0011): a restore whose pair is not Merged reopens nothing. */
+	public function testRestoringALoserWhosePairIsNotMergedChangesNoPair(): void {
+		[$a, $b, , $ab, $ac] = $this->tripletsAt('Balneario Municipal', 'Piscina Municipal', 'Gimnasio Municipal');
+
+		$this->service->merge((int)$ac->getId(), $a);
+		$this->service->dismiss((int)$ab->getId());
+		// Builds a mergedInto whose pair is not Merged, as the #208 race leaves it.
+		$this->features->merge($a, $b);
+		$this->features->restore($a);
+
+		self::assertSame(Duplicate::DISMISSED, $this->duplicates->find((int)$ab->getId())->getStatus());
+		self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$ac->getId())->getStatus());
 	}
 
 	/** A pair whose records are no longer visible is not a question anybody can answer. */

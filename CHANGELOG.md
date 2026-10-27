@@ -267,6 +267,11 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
+  Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
+  discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is
+  armed, a pin click no longer opens its record either (#197).
+
 - **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
   Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
   only inside `FeatureDetail`, so App took every open Place for one being placed. A map click
@@ -345,6 +350,13 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   Registry holds it, so cancelled edits no longer reach a later «Guardar». A Sector shown in
   the read-only card has no vertex handles; «Editar» brings them back.
 
+- **Restoring a Merged record reopens the pair it lost, not one it won (#206).** The lookup took
+  the newest Merged pair the record was on, so a record that had survived one merge and lost a
+  later one reopened the pair it won. That pair then sat pending but hidden, because its other
+  member was still retired, and the pair actually undone stayed Merged and was never offered again.
+  The lookup now names both members, the restored record and the survivor its `mergedInto`
+  points at, and matches only while that pair is Merged.
+
 - **A save that lands after the record was left no longer reports a false error or carries
   over the wrong picks (#198).** `save()` applied its response to whichever draft was open
   when the response arrived. After «← Volver a la lista» there was none: the save the server
@@ -352,6 +364,18 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   next poll. With another Sector open, the panel jumped back to the saved one carrying the
   other Sector's picked lines. The response now always reaches the list, and rebuilds the
   draft only if that draft is still the one that was sent.
+
+- **A restored record derives its own Sector and Unidad Vecinal again (#201).** A restored record
+  kept the Sector and Unidad Vecinal it had when it was retired, because boundary sweeps skip
+  retired records. That left it pointing at a boundary retired since, or unassigned although a
+  boundary drawn since covers it. `FeatureService::restore()` now derives the assignment again
+  (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
+  «Ver retirados», merge undo, and redo of an undone import.
+
+- **Adding the name a renamed Category or Subcategory was created with names the row that holds
+  it (#210).** The refusal said «Ya existe … con ese nombre» although no shown row carried that
+  name. It now says, e.g., «Ese nombre está reservado por la categoría «Culto». Elija otro
+  nombre.»
 
 - A KML or KMZ whose elements carry a namespace prefix (`kml:Placemark`, `kml:Point`) imports
   its Placemarks with their geometry instead of being refused as empty, or arriving shapeless

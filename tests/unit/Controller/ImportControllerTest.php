@@ -229,6 +229,21 @@ final class ImportControllerTest extends TestCase {
 	}
 
 	/**
+	 * #207: `path[]=x` is no path, as `label[]=x` is no label. `(string)` made it
+	 * "Array" and looked that up in the caller's Files.
+	 */
+	public function testAPathThatIsAListCountsAsNoPathAndNeverTouchesFiles(): void {
+		$this->params = ['dataset' => 'catastro', 'path' => ['x']];
+		$this->home->expects(self::never())->method('get');
+		$this->import->expects(self::never())->method('importFile');
+
+		$response = $this->controller->upload();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('No llegó ningún archivo.', $response->getData()['message']);
+	}
+
+	/**
 	 * And the upload it shares its body with still imports — the branch is a
 	 * second source for the same call, not a second import path.
 	 */

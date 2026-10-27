@@ -381,6 +381,14 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
   when only the geometry was prefixed (#209).
 
+- **A list or a bool sent for a text field is refused, not saved as "Array" (#207).** A
+  record's name or any optional text field sent as a list, an object or a bool now gets «Un
+  campo de texto recibió algo que no es texto.» and nothing is written. Before, a list was
+  stored as the text "Array", `false` cleared the field and `true` stored "1". Strings,
+  numbers and empty values save as before. On import, a `dataset` or `path` that is not a
+  string counts as not given, as `label` already did: a list `dataset` gets «Indique a qué
+  conjunto de datos importar.» instead of creating a Dataset called "Array".
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

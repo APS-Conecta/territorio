@@ -573,7 +573,7 @@ class FeatureService {
 	 *  problems hears about the name before anything else (L1-19: same door,
 	 *  same order, same sentences). */
 	private function applyName(Feature $feature, array $input): void {
-		$name = trim((string)($input['name'] ?? ''));
+		$name = self::text($input['name'] ?? '');
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
@@ -612,7 +612,7 @@ class FeatureService {
 			if (!array_key_exists($key, $input)) {
 				continue;
 			}
-			$value = trim((string)$input[$key]);
+			$value = self::text($input[$key]);
 			if ($cap !== null) {
 				self::refuseOverLong($value, $label, $cap);
 			}
@@ -789,6 +789,20 @@ class FeatureService {
 		}
 
 		return $colour;
+	}
+
+	/**
+	 * Free text, trimmed, or a refusal. Text arrives as a string, a number or
+	 * nothing; anything else (an array from `field[]=x` or a JSON list or
+	 * object, a bool) is refused, because `(string)` would store "Array", "1"
+	 * or '' with nobody to blame (#207).
+	 */
+	private static function text(mixed $value): string {
+		if ($value !== null && !is_string($value) && !is_int($value) && !is_float($value)) {
+			throw new InvalidFeatureException('Un campo de texto recibió algo que no es texto.');
+		}
+
+		return trim((string)$value);
 	}
 
 	/**

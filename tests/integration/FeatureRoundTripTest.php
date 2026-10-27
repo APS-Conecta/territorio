@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Integration;
 
 use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
@@ -157,5 +158,28 @@ final class FeatureRoundTripTest extends IntegrationTestCase {
 		);
 
 		self::assertContains('Plaza de prueba', $names);
+	}
+
+	/**
+	 * #207: `notes[]=x` was a 200 that stored the text "Array". It is refused
+	 * before the write, so the stored notes and the history stay as they were.
+	 */
+	public function testAListInNotesIsRefusedAndTheStoredNotesAndHistoryAreUntouched(): void {
+		$id = $this->place('Plaza con notas', ['notes' => 'Abre a las 9']);
+		$entries = count($this->service->history($id));
+
+		try {
+			$this->service->update($id, [
+				'name' => 'Plaza con notas',
+				'subcategoryId' => $this->anySubcategoryId(),
+				'notes' => ['x'],
+			]);
+			self::fail('a list in notes was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame('Abre a las 9', $this->features->find($id)->getNotes());
+		self::assertCount($entries, $this->service->history($id), 'the refused update added a history entry');
 	}
 }

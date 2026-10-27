@@ -44,13 +44,13 @@ class ImportController extends Controller {
 		// The empty-dataset rule lives in ImportService now (L1-02): this door and
 		// `occ territorio:import` both pass through the one refusal, with the same
 		// sentence, and a third entry point inherits it for free.
-		$dataset = trim((string)$this->request->getParam('dataset', ''));
+		$dataset = $this->stringParam('dataset');
 
 		// A path means the file is already in the caller's own Files tree (#104),
 		// so there is nothing to upload a second time. It is the ONLY difference:
 		// past this point the name picks the reader and the batch is recorded and
 		// revertible (ADR-0009) exactly as an upload's is.
-		$path = trim((string)$this->request->getParam('path', ''));
+		$path = $this->stringParam('path');
 
 		// A file rejected during reading wrote nothing at all. One that failed
 		// part-way through writing left a batch behind that can be reverted —
@@ -64,15 +64,24 @@ class ImportController extends Controller {
 				$contents,
 				$filename,
 				$dataset,
-				// is_string, not a cast (L1-12): `(string)` on a `label[]=x` request
-				// turns garbage into a Dataset labelled "Array" plus an E_WARNING,
-				// against Refuses' own "never a silent 200". The empty label is the
-				// one ImportService already refuses on a NEW dataset with its own
-				// sentence; trim normalises what a form sends as whitespace.
-				is_string($label = $this->request->getParam('label', '')) ? trim($label) : '',
+				$this->stringParam('label'),
 				$this->userSession->getUser()?->getUID(),
 			)->toClient();
 		});
+	}
+
+	/**
+	 * is_string, not a cast (L1-12, #207): `(string)` on a `dataset[]=x`,
+	 * `path[]=x` or `label[]=x` request turns garbage into "Array" plus an
+	 * E_WARNING, against Refuses' own "never a silent 200". '' is what each of
+	 * them already reads as not given: ImportService refuses an empty dataset
+	 * (and an empty label on a NEW dataset) with its own sentence, and an empty
+	 * path means an upload. trim normalises what a form sends as whitespace.
+	 */
+	private function stringParam(string $key): string {
+		$value = $this->request->getParam($key, '');
+
+		return is_string($value) ? trim($value) : '';
 	}
 
 	#[NoAdminRequired]

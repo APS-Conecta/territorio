@@ -21,6 +21,7 @@ use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Domain\Provenance;
 use OCP\AppFramework\Db\DoesNotExistException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -339,6 +340,16 @@ final class FeatureServiceTest extends TestCase {
 		self::assertSame($name, $this->service->create($this->valid(['name' => $name]))->getName());
 	}
 
+	/** #207: `name[]=x` or a JSON list was stored as the text "Array". */
+	public function testAListForANameIsRefusedAndNothingIsInserted(): void {
+		$this->features->expects(self::never())->method('insert');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
+
+		$this->service->create($this->valid(['name' => ['x']]));
+	}
+
 	/** The import's pre-check (#203) hears the write door's own sentences, and
 	 *  asking writes, reads and logs nothing. */
 	public function testCheckNameAndTextRefusesWhatTheWriteRefusesAndWritesNothing(): void {
@@ -388,6 +399,14 @@ final class FeatureServiceTest extends TestCase {
 		self::assertSame('Calle de Prueba 123', $feature->getAddress());
 		self::assertNull($feature->getPhone());
 		self::assertNull($feature->getEmail());
+	}
+
+	/** A number is still text written as digits: #207 refuses lists and
+	 *  bools, not everything that is not a string. */
+	public function testANumberInATextFieldIsStillStoredAsItsDigits(): void {
+		$feature = $this->service->create($this->valid(['phone' => 221234567]));
+
+		self::assertSame('221234567', $feature->getPhone());
 	}
 
 	public function testUpdateChangesFieldsAndRederivesTheBoundingBox(): void {
@@ -808,6 +827,38 @@ final class FeatureServiceTest extends TestCase {
 		]);
 
 		self::assertNull($updated->getAddress());
+	}
+
+	/** @return array<string, array{string, mixed}> */
+	public static function notText(): array {
+		$rows = ['a list for the name' => ['name', ['x']]];
+		foreach (['address', 'phone', 'email', 'contactPerson', 'contactRole', 'openingHours', 'notes', 'sourceRef'] as $key) {
+			$rows["a list for $key"] = [$key, ['x']];
+		}
+
+		// A bool is no text either: false read as '' would silently clear the
+		// stored notes, and true would store the name "1".
+		return $rows + [
+			'false for notes' => ['notes', false],
+			'true for the name' => ['name', true],
+		];
+	}
+
+	/** #207: anything but text in a text field is refused, not cast. */
+	#[DataProvider('notText')]
+	public function testAnythingButTextInATextFieldIsRefusedAndNothingIsWritten(string $key, mixed $value): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Antiguo');
+		$existing->setSubcategoryId(7);
+		$existing->setNotes('Abre a las 9');
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
+
+		$this->service->update(3, $this->valid([$key => $value]));
 	}
 
 	public function testUpdatingSomethingThatDoesNotExistIsNotSwallowed(): void {

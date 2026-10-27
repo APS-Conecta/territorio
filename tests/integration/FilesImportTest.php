@@ -10,6 +10,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Service\ImportFiles;
 use OCA\Territorio\Service\ImportService;
 use OCA\Territorio\Service\RevertService;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
@@ -57,6 +58,8 @@ final class FilesImportTest extends IntegrationTestCase {
 	protected function tearDown(): void {
 		$this->removeFile();
 		$this->forgetDataset(self::DATASET);
+		// What a `dataset[]=x` became before #207, so a red run leaves nothing behind.
+		$this->forgetDataset('Array');
 		parent::tearDown();
 	}
 
@@ -100,6 +103,27 @@ final class FilesImportTest extends IntegrationTestCase {
 			'No se encontró ese archivo en sus archivos de Nextcloud.',
 			$response->getData()['message'],
 		);
+	}
+
+	/**
+	 * #207: `dataset[]=x` became a Dataset called "Array" holding the file. It
+	 * counts as no dataset, so the one empty-dataset refusal answers before any
+	 * Dataset or Import batch exists.
+	 */
+	public function testADatasetThatIsAListIsRefusedBeforeAnythingIsWritten(): void {
+		$this->root->getUserFolder(self::UID)->newFile(self::NAME, self::GEOJSON);
+		$import = Server::get(ImportService::class);
+		// The newest batch, not a count: recentBatches() is capped, so a count
+		// can stay flat while a batch is written.
+		$before = $import->recentBatches()[0]['id'] ?? null;
+
+		$response = $this->controller(['dataset' => ['x'], 'path' => '/' . self::NAME])->upload();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('Indique a qué conjunto de datos importar.', $response->getData()['message']);
+		self::assertSame($before, $import->recentBatches()[0]['id'] ?? null, 'an Import batch was recorded');
+		$this->expectException(DoesNotExistException::class);
+		Server::get(DatasetMapper::class)->findBySlug('Array');
 	}
 
 	/** The controller as the app wires it, with this test's parameters and user. */

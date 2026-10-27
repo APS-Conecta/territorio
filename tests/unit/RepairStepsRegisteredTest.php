@@ -10,9 +10,11 @@ use PHPUnit\Framework\TestCase;
  * A repair step that is not registered never runs.
  *
  * RemoveRetiredTileSettings is the only thing that deletes a clinic's stale tile
- * settings, so deleting its line from `appinfo/info.xml` would leave every unit
- * test green and every old key in place. `install` and `post-migration` are both
- * needed, for the reason EnsureSeedData's registration gives.
+ * settings, and RekeyCoordinateLessRecords the only thing that carries a record
+ * #202 collapsed to its ADR-0022 id, so deleting either line from
+ * `appinfo/info.xml` would leave every unit test green and the old data in
+ * place. `install` and `post-migration` are both needed, for the reason
+ * EnsureSeedData's registration gives.
  */
 final class RepairStepsRegisteredTest extends TestCase {
 	/** @return list<string> the step classes registered under one repair-steps event */
@@ -36,6 +38,11 @@ final class RepairStepsRegisteredTest extends TestCase {
 	/** @dataProvider events */
 	public function testTheTileSettingsStepRunsOnBothEvents(string $event): void {
 		self::assertContains('OCA\\Territorio\\Migration\\RemoveRetiredTileSettings', self::steps($event));
+	}
+
+	/** @dataProvider events */
+	public function testTheReKeyStepRunsOnBothEvents(string $event): void {
+		self::assertContains('OCA\\Territorio\\Migration\\RekeyCoordinateLessRecords', self::steps($event));
 	}
 
 	/** @dataProvider events */

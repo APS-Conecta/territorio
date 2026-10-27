@@ -17,6 +17,7 @@ use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Db\ImportBatch;
 use OCA\Territorio\Db\ImportBatchMapper;
 use OCA\Territorio\Db\RevisionLog;
+use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Exception\InvalidImportException;
 use OCA\Territorio\Migration\EnsureSeedData;
@@ -52,7 +53,11 @@ use OCA\Territorio\Migration\EnsureSeedData;
  * its counts are written even when the run throws.
  */
 class ImportService {
+	/** territorio_feature.external_id (VARCHAR 128, Version000600). */
+	private const EXTERNAL_ID_LENGTH = 128;
 
+	/** territorio_dataset.slug (VARCHAR 64, Version000600). */
+	private const DATASET_SLUG_LENGTH = 64;
 
 	public function __construct(
 		private GeoJsonReader $reader,
@@ -86,13 +91,15 @@ class ImportService {
 	 * ORDER, because a failure part-way leaves different debris at each step:
 	 *   1. the comuna claim is refused first, before a single row is written
 	 *      (a file cut for another comuna is a mistake, not a partial import);
-	 *   2. rows the file repeats verbatim collapse, and the count is reported;
+	 *   2. rows that name the same place collapse (see `collapseDuplicates()`),
+	 *      and the count is reported;
 	 *   3. the Dataset is found or created — the first write of the run;
 	 *   4. the ImportBatch is written BEFORE the first row, per ADR-0009: each
 	 *      row commits its own transaction, so a file that fails at row 400
 	 *      leaves 399 behind, and the batch is what makes those revertible;
-	 *   5. rows apply — name and «ubicación» are checked with the rest, in
-	 *      `prepare()`, before any of them is (L1-15);
+	 *   5. rows apply — the write door's name and text checks, the external
+	 *      id's width and «ubicación» run with the rest, in `prepare()`, before
+	 *      any of them is (L1-15);
 	 *   6. counts are recorded in a `finally`, so a run that threw still says
 	 *      what it did;
 	 *   7. the duplicate scan runs last, after the batch has closed.
@@ -129,6 +136,13 @@ class ImportService {
 		// and the L0-05 OCS route, when it exists, inherits it for free.
 		if (trim($datasetSlug) === '') {
 			throw new InvalidImportException('Indique a qué conjunto de datos importar.');
+		}
+		// Measured raw, because findOrCreate() stores it raw.
+		if (mb_strlen($datasetSlug) > self::DATASET_SLUG_LENGTH) {
+			throw new InvalidImportException(sprintf(
+				'El nombre del conjunto de datos no puede pasar de %d caracteres.',
+				self::DATASET_SLUG_LENGTH,
+			));
 		}
 
 		// `?:` and not `??`: an empty label is a label the caller did not give,
@@ -261,7 +275,10 @@ class ImportService {
 	}
 
 	/**
-	 * Rows the file repeated verbatim collapse to one.
+	 * Rows that name the same place collapse to one, the last row winning: same
+	 * name and coordinate, or, without a coordinate, same name and address
+	 * (notes where there is no address). The external id says which place a row
+	 * names (`GeoJsonReader::derivedId()`, ADR-0022), so it is the only key.
 	 *
 	 * The La Florida catastro contains 18 of these across 865 features —
 	 * "Balneario Municipal" three times with the same address and coordinate,
@@ -285,8 +302,9 @@ class ImportService {
 	}
 
 	/**
-	 * Resolve every row against the taxonomy and check its geometry, before
-	 * anything is written.
+	 * Resolve every row against the taxonomy and check it — geometry, the write
+	 * door's name and text checks, the external id's width and «ubicación» —
+	 * before anything is written.
 	 *
 	 * @param array<string, array<string, mixed>> $rows
 	 * @return array{0: array<string, array<string, mixed>>, 1: int}
@@ -331,14 +349,29 @@ class ImportService {
 				continue;
 			}
 
-			// L1-15: name and location quality are checked HERE, pre-write, so
-			// the class docblock's "checked in full before a single row is
-			// written" is literally true. Today's readers refuse nameless rows
-			// themselves — this is the one-way-in check that stays true when a
-			// reader changes.
+			// L1-15: the write door's own name and text checks run HERE, pre-write,
+			// through FeatureService — the caps and their sentences live there,
+			// once — so the class docblock's "checked in full before a single row
+			// is written" is literally true. Classified first: input() carries the
+			// Subcategory. A row is named by its name, or by its id where it has
+			// none, as the person can find it in the file.
+			$row['subcategoryId'] = $this->classify($row, $subcategories, $byLabel, $fallback);
 			$name = trim((string)($row['name'] ?? ''));
-			if ($name === '') {
-				$problems[] = sprintf('%s: el registro no tiene nombre.', $externalId);
+			try {
+				$this->featureService->checkNameAndText($this->input($row));
+			} catch (InvalidFeatureException $e) {
+				$problems[] = sprintf('%s: %s', $name !== '' ? $name : $externalId, $e->getMessage());
+				continue;
+			}
+
+			// Import-only: no other door gives a record an external id. Cast
+			// because collapseDuplicates() keys a numeric uid as an int.
+			if (mb_strlen((string)$externalId) > self::EXTERNAL_ID_LENGTH) {
+				$problems[] = sprintf(
+					'%s: el identificador del registro no puede pasar de %d caracteres.',
+					$name,
+					self::EXTERNAL_ID_LENGTH,
+				);
 				continue;
 			}
 
@@ -372,7 +405,6 @@ class ImportService {
 				}
 			}
 
-			$row['subcategoryId'] = $this->classify($row, $subcategories, $byLabel, $fallback);
 			$prepared[$externalId] = $row;
 		}
 

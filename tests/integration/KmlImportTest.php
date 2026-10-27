@@ -290,6 +290,18 @@ final class KmlImportTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Without geometry a placemark's description, which the reader keeps as
+	 * notes, is the only "where" it has, so three of them are three places
+	 * (ADR-0022, #202).
+	 */
+	public function testSameNamedPlacemarksWithoutGeometryAndDifferentDescriptionsAreDifferentPlaces(): void {
+		$batch = $this->import(self::UNLOCATED_KML);
+
+		self::assertSame(3, $batch->getCreated());
+		self::assertSame(0, $batch->getDuplicates());
+	}
+
+	/**
 	 * It is a batch like any other, so ADR-0009's undo works on it.
 	 *
 	 * This asserted `revisionTo > revisionFrom` and never called revert — green whether or not
@@ -417,9 +429,9 @@ final class KmlImportTest extends IntegrationTestCase {
 		return $batch;
 	}
 
-	private function import(): \OCA\Territorio\Db\ImportBatch {
+	private function import(string $kml = self::KML): \OCA\Territorio\Db\ImportBatch {
 		$batch = Server::get(ImportService::class)->importFile(
-			self::KML,
+			$kml,
 			'Catastro_de_Prueba.kml',
 			self::SLUG,
 			'MyMaps de prueba',
@@ -492,6 +504,28 @@ final class KmlImportTest extends IntegrationTestCase {
 		        </coordinates></LineString>
 		      </Placemark>
 		    </Folder>
+		  </Document>
+		</kml>
+		XML;
+
+	/** Three same-named placemarks, none of them located; only the description differs. */
+	private const UNLOCATED_KML = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2">
+		  <Document>
+		    <Placemark>
+		      <name>Sede social</name>
+		      <description>Villa Los Aromos</description>
+		    </Placemark>
+		    <Placemark>
+		      <name>Sede social</name>
+		      <description>Villa El Bosque</description>
+		    </Placemark>
+		    <Placemark>
+		      <name>Sede social</name>
+		      <description>Población La Higuera</description>
+		      <Point><coordinates></coordinates></Point>
+		    </Placemark>
 		  </Document>
 		</kml>
 		XML;

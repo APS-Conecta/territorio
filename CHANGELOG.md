@@ -267,12 +267,10 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
-- **A «Sector» or «Unidad vecinal» Subcategory outside «División territorial» is an ordinary
-  Subcategory (#205).** The server picked divisions by Subcategory slug alone, so such a
-  Subcategory under «Organización social» acted as a division: its polygons claimed the Places
-  inside them, and a «Unidad vecinal» one's pins could not be moved. `AssignmentService` now
-  also requires the «División territorial» Category, which is where ADR-0010 files divisions
-  and where the browser's `isDivision()` already looks.
+- **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
+  Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
+  discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is
+  armed, a pin click no longer opens its record either (#197).
 
 - **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
   Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
@@ -334,6 +332,60 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   (ISO 8601, as the export log already did) and all three lists share one formatter. The
   Limit provenance sentence dates a save on the local day it happened, so an evening save no
   longer reads as the next day. Stored rows are read as UTC and none is rewritten.
+
+- **An import Folder or Categoría that names only a shared Subcategory or a division word lands in
+  «Sin clasificar · Otro» (#204).** «Otros» used to file under «Comercio y economía · Otro», and
+  «Sector…» or «Unidad vecinal» under División territorial. A plural in «-es» («Parques») now finds
+  its Subcategory. Re-importing an older file moves the rows filed that way to Sin clasificar;
+  rows a person edited keep their edits (ADR-0003).
+
+- **«Centrar» brings a Sector, a Unidad Vecinal or a Route into view, not only a Place** (#199).
+  It read the draft's `lat`/`lon`, which a record with no Point geometry leaves empty, so on
+  those records it did nothing. It now moves the map from the stored record exactly as opening
+  it from the list does: pan to a Place at zoom 17, fit a Zone or a Route. An unsaved edit no
+  longer changes where it goes. The browser gate opens a Sector, a Unidad Vecinal and a Place
+  from the list, drags each out of view, and asserts where Leaflet lands after «Centrar».
+
+- **«Cancelar» on a saved record discards the edit (#195).** The record reopens as the
+  Registry holds it, so cancelled edits no longer reach a later «Guardar». A Sector shown in
+  the read-only card has no vertex handles; «Editar» brings them back.
+
+- **Restoring a Merged record reopens the pair it lost, not one it won (#206).** The lookup took
+  the newest Merged pair the record was on, so a record that had survived one merge and lost a
+  later one reopened the pair it won. That pair then sat pending but hidden, because its other
+  member was still retired, and the pair actually undone stayed Merged and was never offered again.
+  The lookup now names both members, the restored record and the survivor its `mergedInto`
+  points at, and matches only while that pair is Merged.
+
+- **A save that lands after the record was left no longer reports a false error or carries
+  over the wrong picks (#198).** `save()` applied its response to whichever draft was open
+  when the response arrived. After «← Volver a la lista» there was none: the save the server
+  had accepted said «No se pudo guardar…», and the record stayed out of the list until the
+  next poll. With another Sector open, the panel jumped back to the saved one carrying the
+  other Sector's picked lines. The response now always reaches the list, and rebuilds the
+  draft only if that draft is still the one that was sent.
+
+- **A restored record derives its own Sector and Unidad Vecinal again (#201).** A restored record
+  kept the Sector and Unidad Vecinal it had when it was retired, because boundary sweeps skip
+  retired records. That left it pointing at a boundary retired since, or unassigned although a
+  boundary drawn since covers it. `FeatureService::restore()` now derives the assignment again
+  (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
+  «Ver retirados», merge undo, and redo of an undone import.
+
+- **Adding the name a renamed Category or Subcategory was created with names the row that holds
+  it (#210).** The refusal said «Ya existe … con ese nombre» although no shown row carried that
+  name. It now says, e.g., «Ese nombre está reservado por la categoría «Culto». Elija otro
+  nombre.»
+
+- A KML or KMZ whose elements carry a namespace prefix (`kml:Placemark`, `kml:Point`) imports
+  its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
+  when only the geometry was prefixed (#209).
+
+- **A picked Point or zero-length street fragment no longer keeps «Generar el polígono»
+  disabled (#214).** `canPolygonize` asked every picked row for an edge, so a Boundary feature
+  that holds none, picked along with its street's name, blocked generating for good. A picked
+  row now needs a held line-work or Point shape, and the pick as a whole at least one edge. A
+  missing shape, a Polygon or an untyped one still blocks.
 
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from

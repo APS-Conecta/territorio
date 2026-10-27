@@ -108,7 +108,7 @@ class KmlReader {
 	 * @return ?array<string, mixed>
 	 */
 	private function feature(SimpleXMLElement $placemark): ?array {
-		$name = trim((string)$placemark->name);
+		$name = trim((string)($this->elementsAt($placemark, 'name')[0] ?? ''));
 		if ($name === '') {
 			return null;
 		}
@@ -116,7 +116,7 @@ class KmlReader {
 		$geometry = $this->geometry($placemark);
 		$properties = ['name' => $name];
 
-		$description = trim((string)$placemark->description);
+		$description = trim((string)($this->elementsAt($placemark, 'description')[0] ?? ''));
 		if ($description !== '') {
 			// The one field a person may have typed. It goes to notes, which is
 			// where free text belongs — guessing that it is an address would be
@@ -150,12 +150,14 @@ class KmlReader {
 	 * @return ?array<string, mixed>
 	 */
 	private function geometry(SimpleXMLElement $placemark): ?array {
-		if (!isset($placemark->MultiGeometry)) {
+		$inside = $this->elementsAt($placemark, 'MultiGeometry')[0] ?? null;
+		if ($inside === null) {
 			return $this->shapeIn($placemark);
 		}
 
-		$inside = $placemark->MultiGeometry;
-		$shapes = count($inside->Point) + count($inside->LineString) + count($inside->Polygon);
+		$shapes = count($this->elementsAt($inside, 'Point'))
+			+ count($this->elementsAt($inside, 'LineString'))
+			+ count($this->elementsAt($inside, 'Polygon'));
 
 		if ($shapes === 1) {
 			return $this->shapeIn($inside);
@@ -171,19 +173,26 @@ class KmlReader {
 	 * @return ?array<string, mixed>
 	 */
 	private function shapeIn(SimpleXMLElement $container): ?array {
-		if (isset($container->Point->coordinates)) {
-			$positions = $this->positions((string)$container->Point->coordinates);
+		$coordinates = $this->elementsAt($container, 'Point', 'coordinates')[0] ?? null;
+		if ($coordinates !== null) {
+			$positions = $this->positions((string)$coordinates);
 
 			return $positions === [] ? null : ['type' => 'Point', 'coordinates' => $positions[0]];
 		}
 
-		if (isset($container->LineString->coordinates)) {
-			$positions = $this->positions((string)$container->LineString->coordinates);
+		$coordinates = $this->elementsAt($container, 'LineString', 'coordinates')[0] ?? null;
+		if ($coordinates !== null) {
+			$positions = $this->positions((string)$coordinates);
 
 			return $positions === [] ? null : ['type' => 'LineString', 'coordinates' => $positions];
 		}
 
-		$ring = $container->Polygon->outerBoundaryIs->LinearRing->coordinates ?? null;
+		$polygon = $this->elementsAt($container, 'Polygon')[0] ?? null;
+		if ($polygon === null) {
+			return null;
+		}
+
+		$ring = $this->elementsAt($polygon, 'outerBoundaryIs', 'LinearRing', 'coordinates')[0] ?? null;
 		if ($ring === null) {
 			return null;
 		}
@@ -199,8 +208,8 @@ class KmlReader {
 		// standing in the lagoon it was drawn around. Nothing said so: the shape
 		// still drew and still assigned, just wrongly.
 		$rings = [$outer];
-		foreach ($container->Polygon->innerBoundaryIs ?? [] as $inner) {
-			$hole = $this->positions((string)($inner->LinearRing->coordinates ?? ''));
+		foreach ($this->elementsAt($polygon, 'innerBoundaryIs') as $inner) {
+			$hole = $this->positions((string)($this->elementsAt($inner, 'LinearRing', 'coordinates')[0] ?? ''));
 			if ($hole !== []) {
 				$rings[] = $hole;
 			}
@@ -239,6 +248,20 @@ class KmlReader {
 		$name = trim((string)($folders[0] ?? ''));
 
 		return $name === '' ? null : $name;
+	}
+
+	/**
+	 * Descendants along a path of local names: SimpleXML's `->name` does not see a prefixed `kml:name`.
+	 * The path is relative, child-axis only and built from literals only. Each step scans its context's
+	 * children, so call it on a Placemark or its geometry, never on a Folder or Document.
+	 *
+	 * @return list<SimpleXMLElement>
+	 */
+	private function elementsAt(SimpleXMLElement $element, string ...$localNames): array {
+		return $element->xpath(implode('/', array_map(
+			static fn (string $name): string => '*[local-name()="' . $name . '"]',
+			$localNames,
+		))) ?: [];
 	}
 
 }

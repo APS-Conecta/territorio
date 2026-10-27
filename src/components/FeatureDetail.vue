@@ -29,7 +29,10 @@
 				<NcButton variant="primary" :disabled="saving" type="submit">
 					{{ saving ? 'Guardando…' : 'Guardar' }}
 				</NcButton>
-				<NcButton v-if="draft.id !== null" variant="tertiary" @click="$emit('update:editing', false)">
+				<NcButton v-if="draft.id !== null"
+					variant="tertiary"
+					:disabled="saving"
+					@click="$emit('update:editing', false)">
 					Cancelar
 				</NcButton>
 			</template>
@@ -290,7 +293,9 @@ export default {
 		retired: { type: Boolean, default: false },
 		draft: { type: Object, required: true },
 		// App's, not this form's: whether the next map click places the record
-		// depends on it (#194). A new record (id null) is editable without it.
+		// (#194) and whether the map lets its shape be reshaped (#195) depend on
+		// it. «Editar» and «Cancelar» ask for it through `update:editing`, and App
+		// alone clears it. A new record (id null) is editable without it.
 		editing: { type: Boolean, default: false },
 		taxonomy: { type: Array, required: true },
 		divisions: { type: Array, default: () => [] },

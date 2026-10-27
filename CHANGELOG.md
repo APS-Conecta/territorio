@@ -267,6 +267,13 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A «Sector» or «Unidad vecinal» Subcategory outside «División territorial» is an ordinary
+  Subcategory (#205).** The server picked divisions by Subcategory slug alone, so such a
+  Subcategory under «Organización social» acted as a cadastre Unidad Vecinal: its pins could
+  not be moved, its polygons claimed the Places inside them, and each save ran a reassignment
+  sweep. `AssignmentService` now also requires the «División territorial» Category, which is
+  where ADR-0010 files divisions and what the browser already checked.
+
 - **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
   Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
   only inside `FeatureDetail`, so App took every open Place for one being placed. A map click

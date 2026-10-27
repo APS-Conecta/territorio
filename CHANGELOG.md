@@ -306,6 +306,14 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   from the browser and from `occ`. Creating or updating a record with an over-long name answers
   422 with «El nombre no puede pasar de 255 caracteres.» instead of a 500.
 
+- **History and Import batch times show in the viewer's local time (#211).** Nextcloud runs
+  PHP in UTC, so a Revision's `changed_at` and an Import batch's `started_at` hold UTC
+  wall-clock time with no zone, and the history panel and the Importar list printed it as if
+  it were local: 3 to 4 hours ahead in Chile. The API now sends both with their offset
+  (ISO 8601, as the export log already did) and all three lists share one formatter. The
+  Limit provenance sentence dates a save on the local day it happened, so an evening save no
+  longer reads as the next day. Stored rows are read as UTC and none is rewritten.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

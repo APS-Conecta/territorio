@@ -94,6 +94,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { messageFrom, warnError } from './api.js'
+import { when } from './when.js'
 
 export default {
 	name: 'AdminSettings',
@@ -124,6 +125,8 @@ export default {
 	},
 
 	methods: {
+		when,
+
 		async loadExports() {
 			this.exportsFailed = false
 			try {
@@ -133,11 +136,6 @@ export default {
 				warnError('could not read the export log', error)
 				this.exportsFailed = true
 			}
-		},
-
-		/** The moment, in the reader's own locale rather than an ISO string. */
-		when(moment) {
-			return moment === null ? '' : new Date(moment).toLocaleString()
 		},
 
 		async saveComuna() {

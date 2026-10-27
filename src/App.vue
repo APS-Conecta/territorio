@@ -439,7 +439,7 @@ export default {
 			selectedId: null,
 			draft: null,
 			// The record form's edit state (#195). App is its only owner and clears
-			// it whenever it opens or closes a record (#194 reuses it). `editingLimit`
+			// it whenever it opens or closes a record. `editingLimit`
 			// does not follow it: the Limit picker opens for any Sector.
 			editing: false,
 			saving: false,

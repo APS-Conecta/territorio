@@ -2569,6 +2569,8 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     happens to be fitted to. Its four sides share one name, so picking the name
     picks all four — which is also the "duplicate names need no intervention"
     half of the criterion.
+
+    A Point of that name on a corner, as a KML import leaves one, must not block «Generar» (#214).
     """
     name = f"Cuadro {RUN}"
     south, west, north, east = -33.54, -70.60, -33.50, -70.56
@@ -2584,7 +2586,12 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         }
         for index in range(4)
     ]
-    geojson = json.dumps({"type": "FeatureCollection", "features": sides})
+    corner = {
+        "type": "Feature",
+        "properties": {"id": f"cuadro-{RUN}-point", "name": name},
+        "geometry": {"type": "Point", "coordinates": list(corners[0])},
+    }
+    geojson = json.dumps({"type": "FeatureCollection", "features": [*sides, corner]})
 
     if not import_dataset(geojson, f"cuadro-{RUN}", boundary=True):
         skip("could not import boundary lines through occ; polygonize unchecked")

@@ -5555,6 +5555,133 @@ def _imported(name, category, subcategory, geometry):
     }), f"{subcategory}-{RUN}", boundary=False)
 
 
+def _extent(polygon):
+    """A Polygon's bounding box, keyed the way VIEW_RECORDER keys a view."""
+    lons, lats = zip(*polygon["coordinates"][0])
+    return {"south": min(lats), "west": min(lons), "north": max(lats), "east": max(lons)}
+
+
+def _overlaps(view, box):
+    """Whether any of a box (a point is a box with no area) is inside a view."""
+    return (view["south"] <= box["north"] and box["south"] <= view["north"]
+            and view["west"] <= box["east"] and box["west"] <= view["east"])
+
+
+def _contains(view, box):
+    """Whether the whole of a box is inside a view."""
+    return (view["south"] <= box["south"] and box["north"] <= view["north"]
+            and view["west"] <= box["west"] and box["east"] <= view["east"])
+
+
+def the_centre_button_brings_the_record_into_view(page, failures):
+    """«Centrar» moves the map the way opening the record from the list does (#199).
+
+    It read the draft's `lat`/`lon`, which only a Place has, so on a Sector or a
+    Unidad Vecinal it did nothing at all. Each record is opened from its row in
+    the list, the map is dragged until the record is out of view, and «Centrar»
+    must bring it back: a Zone's whole box in the view, a Place at the view's
+    centre at zoom 17. Where the map went is read off Leaflet (VIEW_RECORDER),
+    not off the button.
+
+    Seeded through occ where nothing else in this file is, and the two divisions
+    are retired on the way out: a live Unidad Vecinal widens the extent the map
+    opens on (ADR-0021), and a division claims every Place it covers (ADR-0008).
+    """
+    sector, unidad, place = f"Sector Centrar {RUN}", f"UV Centrar {RUN}", f"Cesfam Centrar {RUN}"
+    sector_box, unidad_box = _a_boundary_box(-33.84, -70.92), _a_boundary_box(-33.86, -70.92)
+    point = (-33.875, -70.915)  # latitude, longitude: outside both boxes
+    seeded = import_dataset(json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "properties": {"id": f"centrar-{subcategory}-{RUN}", "name": name,
+                       "category": category, "subcategory": subcategory},
+        "geometry": geometry,
+    } for name, category, subcategory, geometry in (
+        (sector, "division_territorial", "sector", sector_box),
+        (unidad, "division_territorial", "unidad_vecinal", unidad_box),
+        (place, "salud", "cesfam", {"type": "Point", "coordinates": [point[1], point[0]]}),
+    )]}), f"centrar-{RUN}", boundary=False)
+    if not seeded:
+        failures.append("could not import the Sector, Unidad Vecinal and Place «Centrar» is checked on (#199)")
+        return
+
+    def views():
+        return page.evaluate("() => window.__territorioViews")
+
+    def last_view():
+        return (views() or [None])[-1]
+
+    def on_the_point(view):
+        lat, lon = (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
+        return abs(lat - point[0]) <= 1e-4 and abs(lon - point[1]) <= 1e-4 and view["zoom"] >= 17
+
+    sector_extent, unidad_extent = _extent(sector_box), _extent(unidad_box)
+    records = (
+        (sector, sector_extent, lambda view: _contains(view, sector_extent)),
+        (unidad, unidad_extent, lambda view: _contains(view, unidad_extent)),
+        (place, {"south": point[0], "west": point[1], "north": point[0], "east": point[1]}, on_the_point),
+    )
+
+    try:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+        if not page.evaluate(VIEW_RECORDER):
+            failures.append("the page has no window.L, so nothing could read where «Centrar» took the map")
+            return
+        show_divisions(page, ["Sector", "Unidad Vecinal"])
+
+        for name, box, landed in records:
+            to_list(page)
+            page.locator(SEARCH).fill(name)
+            rows = page.locator(ROWS)
+            if not settles(page, lambda: rows.count() > 0 and name in rows.first.inner_text()):
+                failures.append(f"{name}: not in the list, so «Centrar» was not checked on it")
+                continue
+
+            # The row is FeatureList's `@select="selectAndPan"`; not open_first_row,
+            # whose «Editar» swaps «Centrar» for «Guardar».
+            before = len(views())
+            rows.first.click()
+            centre = page.get_by_role("button", name="Centrar", exact=True)
+            if not settles(page, lambda: centre.count() > 0 and centre.first.is_visible(), timeout=5_000):
+                failures.append(f"{name}: the record card shows no «Centrar»")
+                continue
+            # Opening the record moves the map too. Let it land: a drag cuts the
+            # flight short, and its moveend never comes.
+            settles(page, lambda: len(views()) > before, timeout=5_000)
+
+            # Pressed right of the record, which opens centred, and of the docked
+            # panel, which is on the left; dragged left, so the record leaves west.
+            canvas = page.locator('[data-testid="map-canvas"]').bounding_box()
+            x, y = canvas["x"] + canvas["width"] - 150, canvas["y"] + canvas["height"] / 2
+            for _ in range(6):
+                count = len(views())
+                page.mouse.move(x, y)
+                page.mouse.down()
+                page.mouse.move(x - 400, y, steps=12)
+                # Held before letting go, as a person ends a pan: released mid-move,
+                # Leaflet's inertia flings the map on, for seconds, past the 400 px.
+                page.wait_for_timeout(150)
+                page.mouse.up()
+                settles(page, lambda: len(views()) > count, timeout=5_000)
+                view = last_view()
+                if view is not None and not _overlaps(view, box):
+                    break
+            else:
+                failures.append(f"{name}: the drag did not take the record out of view")
+                continue
+
+            # Only a move made after this click can bring the record back.
+            centre.first.click()
+            if not settles(page, lambda: landed(last_view()), timeout=5_000):
+                failures.append(f"{name}: «Centrar» left the map on {last_view()}, the record is at {box} (#199)")
+    finally:
+        retire_the_runs_record(page, sector)
+        retire_the_runs_record(page, unidad)
+        # The reload also resets the search and the Capas toggles: a View is per session.
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+
 def _contrast(front, back):
     """WCAG 2 contrast ratio between two `rgb(r, g, b)` strings.
 
@@ -7725,6 +7852,7 @@ def main():
         # SAVED Sector nobody tinted, to read the neutral wash off, and it
         # imports the Unidad Vecinal beside it.
         run(a_division_renders_as_a_division, page, failures)
+        run(the_centre_button_brings_the_record_into_view, page, failures)
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         run(a_tramo_typed_before_the_first_save_is_kept, page, failures)

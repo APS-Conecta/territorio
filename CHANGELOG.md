@@ -267,6 +267,13 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **«Centrar» brings a Sector, a Unidad Vecinal or a Route into view, not only a Place** (#199).
+  It read the draft's `lat`/`lon`, which a record with no Point geometry leaves empty, so on
+  those records it did nothing. It now moves the map from the stored record exactly as opening
+  it from the list does: pan to a Place at zoom 17, fit a Zone or a Route. An unsaved edit no
+  longer changes where it goes. The browser gate opens each from the list, drags it out of
+  view, and asserts where Leaflet lands after «Centrar».
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

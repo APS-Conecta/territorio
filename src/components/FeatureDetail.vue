@@ -25,16 +25,16 @@
 			     button type and `variant` carries the appearance; `nativeType` was the
 			     v8 prop and no longer exists, so it fell through as an inert attribute
 			     and left the button a type="button" that never submitted its form. -->
-			<template v-if="isEditing || draft.id === null">
+			<template v-if="editing || draft.id === null">
 				<NcButton variant="primary" :disabled="saving" type="submit">
 					{{ saving ? 'Guardando…' : 'Guardar' }}
 				</NcButton>
-				<NcButton v-if="draft.id !== null" variant="tertiary" @click="isEditing = false">
+				<NcButton v-if="draft.id !== null" variant="tertiary" @click="$emit('update:editing', false)">
 					Cancelar
 				</NcButton>
 			</template>
 			<template v-else>
-				<NcButton variant="primary" @click="isEditing = true">
+				<NcButton variant="primary" @click="$emit('update:editing', true)">
 					Editar
 				</NcButton>
 				<NcButton variant="tertiary" @click="$emit('center')">
@@ -75,7 +75,7 @@
 		</NcNoteCard>
 
 		<!-- Inspection Mode: Place Card -->
-		<div v-if="!isEditing && draft.id !== null" class="territorio-detail__inspection">
+		<div v-if="!editing && draft.id !== null" class="territorio-detail__inspection">
 			<div class="territorio-detail__place-badge">
 				{{ currentSubcategoryLabel }}
 			</div>
@@ -122,7 +122,7 @@
 		</div>
 
 		<!-- Edit Mode Fields -->
-		<template v-if="isEditing || draft.id === null">
+		<template v-if="editing || draft.id === null">
 			<!-- Proactive Duplicate Shield Warning -->
 			<NcNoteCard v-if="duplicateCandidate" type="warning" class="territorio-detail__duplicate-alert">
 				<strong>⚠️ Posible duplicado detectado:</strong>
@@ -289,6 +289,9 @@ export default {
 		historyFailed: { type: Boolean, default: false },
 		retired: { type: Boolean, default: false },
 		draft: { type: Object, required: true },
+		// App's, not this form's: whether the next map click places the record
+		// depends on it (#194). A new record (id null) is editable without it.
+		editing: { type: Boolean, default: false },
 		taxonomy: { type: Array, required: true },
 		divisions: { type: Array, default: () => [] },
 		features: { type: Array, default: () => [] },
@@ -296,19 +299,17 @@ export default {
 		error: { type: String, default: '' },
 	},
 
-	emits: ['save', 'retire', 'retry', 'center', 'cancel'],
+	emits: ['save', 'retire', 'retry', 'center', 'cancel', 'update:editing'],
 
 	data() {
 		return {
 			confirmingRetire: false,
-			isEditing: this.draft.id === null,
 		}
 	},
 
 	watch: {
 		'draft.id'() {
 			this.confirmingRetire = false
-			this.isEditing = (this.draft.id === null)
 		},
 	},
 

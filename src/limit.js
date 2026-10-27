@@ -249,19 +249,27 @@ function wrote(entry, field) {
 }
 
 /**
- * A stored timestamp as a date is said out loud here: 12-08-2026.
+ * A Revision's instant as a date is said out loud here: 12-08-2026.
  *
- * Split on either separator, and nothing said at all when the shape is not the
- * one expected. History hands this over exactly as the database returned it —
- * `RevisionLog` reads the raw column — so the separator is the driver's choice,
- * and a date rendered as «el 12T09:30:00+00:00-08-2026» is worse than a sentence
- * with no date in it.
+ * The API sends the instant with its UTC offset, and this says the reader's own
+ * local date of it (#211): a save on a Chilean evening is already the next day
+ * in UTC. Nothing is said at all when it is not a date, because a sentence with
+ * no date in it is better than one with a wrong date.
  */
 function said(changedAt) {
-	const [date] = String(changedAt ?? '').split(/[ T]/)
-	const parts = date.split('-')
+	if (changedAt == null) {
+		return ''
+	}
 
-	return parts.length === 3 ? ` el ${parts[2]}-${parts[1]}-${parts[0]}` : ''
+	const moment = new Date(changedAt)
+	if (Number.isNaN(moment.getTime())) {
+		return ''
+	}
+
+	const dd = String(moment.getDate()).padStart(2, '0')
+	const mm = String(moment.getMonth() + 1).padStart(2, '0')
+
+	return ` el ${dd}-${mm}-${moment.getFullYear()}`
 }
 
 /**

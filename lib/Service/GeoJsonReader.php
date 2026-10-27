@@ -124,9 +124,11 @@ class GeoJsonReader {
 
 		$geometry = is_array($feature['geometry'] ?? null) ? $feature['geometry'] : null;
 		$source = trim((string)($properties['source'] ?? '')) ?: $datasetSlug;
+		$address = $this->text($properties['address'] ?? null);
+		$notes = $this->text($properties['notes'] ?? null);
 
 		return [
-			'externalId' => $this->externalId($feature, $properties, $source, $name, $geometry),
+			'externalId' => $this->externalId($feature, $properties, $source, $name, $geometry, $address, $notes),
 			'name' => $name,
 			// Raw label or slug, as the file carries it — classify() owns the
 			// matching vocabularies (L1-06). Our own export writes slugs here
@@ -141,13 +143,13 @@ class GeoJsonReader {
 			// preserved and the judgement folds it, so «EXACTA» behaves the same as
 			// it always did.
 			'locationQuality' => trim((string)($properties['ubicacion'] ?? '')) ?: null,
-			'address' => $this->text($properties['address'] ?? null),
+			'address' => $address,
 			'phone' => $this->text($properties['phone'] ?? null),
 			'email' => $this->text($properties['email'] ?? null),
 			'contactPerson' => $this->text($properties['contact_person'] ?? null),
 			'contactRole' => $this->text($properties['contact_role'] ?? null),
 			'openingHours' => $this->text($properties['opening_hours'] ?? null),
-			'notes' => $this->text($properties['notes'] ?? null),
+			'notes' => $notes,
 			'sourceRef' => $this->sourceRef($properties, $source),
 			// Which comuna the FILE says it is for, or '' where it does not say.
 			// Only the Unidad Vecinal cadastre says (issue #9).
@@ -160,17 +162,8 @@ class GeoJsonReader {
 	 *
 	 * An explicit id in the file always wins. Where there is none — which is the
 	 * case for the whole La Florida catastro, checked rather than assumed — it is
-	 * derived from the source, the name and the position, so reading the same
-	 * file twice produces the same id and the second import updates instead of
-	 * duplicating.
-	 *
-	 * Name and position together, not name alone: two plazas called "Plaza" at
-	 * opposite ends of the comuna are two plazas, and merging them on every
-	 * import would be silent.
-	 *
-	 * ponytail: a correction upstream to a name or a coordinate reads as a new
-	 * record. That is the price of a file with no ids; a Dataset that carries
-	 * real ones is matched on those instead.
+	 * derived (see derivedId()), so reading the same file twice produces the same
+	 * id and the second import updates instead of duplicating.
 	 *
 	 * @param array<string, mixed> $properties
 	 */
@@ -180,6 +173,8 @@ class GeoJsonReader {
 		string $source,
 		string $name,
 		?array $geometry,
+		?string $address,
+		?string $notes,
 	): string {
 		foreach ([$properties['uid'] ?? null, $feature['id'] ?? null] as $explicit) {
 			if (is_string($explicit) && trim($explicit) !== '') {
@@ -190,13 +185,46 @@ class GeoJsonReader {
 			}
 		}
 
-		$digest = substr(
-			sha1($name . '|' . $this->position($geometry['coordinates'] ?? null)),
-			0,
-			self::DIGEST_LENGTH,
-		);
+		return self::derivedId($source, $name, $geometry['coordinates'] ?? null, $address, $notes);
+	}
 
-		return $source . ':' . $digest;
+	/**
+	 * The one derivation of an id for a row the file gives none (ADR-0022).
+	 *
+	 * A place is its name plus the best "where" the row has: the coordinate;
+	 * without one, the address; without an address, the notes. Name alone is not
+	 * enough: two plazas called "Plaza" at opposite ends of the comuna are two
+	 * plazas, and so are fifteen «Multicancha» rows at fifteen addresses with no
+	 * coordinate. Only the "where" counts, so the same name at the same
+	 * coordinate is one place whatever its phone or address says.
+	 *
+	 * Notes count only where there is no address: it is free text and the column
+	 * most likely to change between files, and keying on it would leave the
+	 * record and its Local override behind on every edit (ADR-0003).
+	 *
+	 * A coordinate-bearing row, and a coordinate-less one with neither address
+	 * nor notes, hash exactly as they did before ADR-0022, so their stored ids
+	 * still match. `RekeyCoordinateLessRecords` calls this too, so the repair and
+	 * the import cannot disagree about the new id.
+	 *
+	 * ponytail: a correction upstream to a name, a coordinate or (without a
+	 * coordinate) an address reads as a new record. That is the price of a file
+	 * with no ids; a Dataset that carries real ones is matched on those instead.
+	 */
+	public static function derivedId(
+		string $source,
+		string $name,
+		mixed $coordinates,
+		?string $address,
+		?string $notes,
+	): string {
+		$key = $name . '|' . self::position($coordinates);
+		$where = $address ?? $notes;
+		if (!is_array($coordinates) && $where !== null) {
+			$key .= '|' . $where;
+		}
+
+		return $source . ':' . substr(sha1($key), 0, self::DIGEST_LENGTH);
 	}
 
 	/**
@@ -205,7 +233,7 @@ class GeoJsonReader {
 	 * rather than special-cased per geometry type: the id only needs to be
 	 * stable and distinct, not meaningful.
 	 */
-	private function position(mixed $coordinates): string {
+	private static function position(mixed $coordinates): string {
 		if (!is_array($coordinates)) {
 			return 'sin-coordenadas';
 		}

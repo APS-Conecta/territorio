@@ -104,6 +104,7 @@
 									</NcNoteCard>
 
 									<FeatureDetail
+										v-model:editing="editing"
 										:draft="draft"
 										:taxonomy="taxonomy"
 										:divisions="divisions"
@@ -435,6 +436,9 @@ export default {
 			history: [],
 			selectedId: null,
 			draft: null,
+			// The record form's edit mode, here because `placing` reads it (#194). A new
+			// record (id null) is editable without it; nothing to do with `editingLimit`.
+			editing: false,
 			saving: false,
 			error: '',
 			// Separate from `error`: that one renders in the panel's list and only
@@ -626,14 +630,24 @@ export default {
 		 * it lands on — a Sector or a Unidad Vecinal would otherwise take it to
 		 * select themselves.
 		 *
-		 * Two reasons for that, and they are different things: a draft with no
-		 * geometry is waiting for its coordinate, and a Sector being built is
-		 * waiting for the click that says which block it is (issue #14). Both want
+		 * Two reasons for that, and they are different things: a Place's draft is
+		 * waiting for its coordinate while its form is editable — new, or after
+		 * «Editar» (#194) — and a Sector being built is waiting for the click that
+		 * says which block it is (issue #14). Both want
 		 * the same thing from the map, which is why they share one flag; anything
 		 * that replaces the draft clears the second (see stopSeeding).
 		 */
 		placing() {
-			return (this.draft !== null && this.draft.geometry === null) || this.seeding
+			return (this.draft !== null && this.draft.geometry === null
+				&& (this.draft.id === null || this.editing)) || this.seeding
+		},
+	},
+
+	watch: {
+		// Opening another record, creating one (null to N) or closing clears edit
+		// mode; reselecting the same record and an update save keep it.
+		'draft.id'() {
+			this.editing = false
 		},
 	},
 
@@ -805,9 +819,17 @@ export default {
 				this.pane = 'mapa'
 				await this.$nextTick()
 			}
+			this.panToFeature(id)
+		},
+
+		/**
+		 * Bring a stored record into view: pan to a Place, fit a Zone or a Route.
+		 * The map stays where it is when the record has no geometry or is not found.
+		 */
+		panToFeature(id) {
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			// A record has GeoJSON `geometry`, not `lat`/`lon`, and may have none:
-			// then it is selected and the map stays where it is.
+			// then the map stays where it is.
 			const target = viewTargetOf(feature?.geometry)
 			const map = this.$refs.mapComponent
 			if (target === null || !map) {
@@ -820,14 +842,8 @@ export default {
 			}
 		},
 
-		centerSelected(coords) {
-			if (this.$refs.mapComponent) {
-				const lat = coords?.lat ?? this.draft?.lat
-				const lon = coords?.lon ?? this.draft?.lon
-				if (lat && lon) {
-					this.$refs.mapComponent.panToLocation(lat, lon, 17)
-				}
-			}
+		centerSelected() {
+			this.panToFeature(this.selectedId)
 		},
 
 		goToStreet(street) {
@@ -1433,9 +1449,10 @@ export default {
 		},
 
 		/**
-		 * Clicking the map fills in the open draft's coordinates — unless the draft
-		 * is a drawn shape, which has no single coordinate to fill in and is edited
-		 * by dragging its vertices instead.
+		 * Clicking the map fills in the open draft's coordinates only while
+		 * `placing`, the same predicate the map's click guards read: a saved Place
+		 * in the read-only card is not waiting for one (#194), and a drawn shape has
+		 * no single coordinate — it is edited by dragging its vertices instead.
 		 */
 		placeDraft({ lat, lon }) {
 			// The seed comes first: while the editor is waiting for one, that click
@@ -1445,7 +1462,7 @@ export default {
 				return
 			}
 
-			if (this.draft === null || this.draft.geometry !== null) {
+			if (!this.placing) {
 				return
 			}
 

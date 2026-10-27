@@ -353,6 +353,10 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   other Sector's picked lines. The response now always reaches the list, and rebuilds the
   draft only if that draft is still the one that was sent.
 
+- A KML or KMZ whose elements carry a namespace prefix (`kml:Placemark`, `kml:Point`) imports
+  its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
+  when only the geometry was prefixed (#209).
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

@@ -210,6 +210,8 @@ class FeatureService {
 		}
 
 		$mergedInto = $feature->getMergedInto();
+		// Sweeps skip retired records, so a returning record derives its own assignment again (ADR-0008).
+		$this->assignments->assign($feature);
 		$restored = $this->features->restore($feature);
 		// And a restored one takes back what falls inside it.
 		$this->reassignAround($restored, null, $this->assignments->divisionOf($restored));
@@ -222,8 +224,9 @@ class FeatureService {
 		// Read from the record BEFORE the restore cleared it, and only for the
 		// record that lost: restoring the survivor of a merge, retired later for
 		// some unrelated reason, must not reopen a pair whose other member is
-		// still gone.
-		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id);
+		// still gone. The pair reopened is the one this record and its survivor
+		// form, and only while it is Merged: not a pair this record won (#206).
+		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id, $mergedInto);
 		if ($merge !== null) {
 			$merge->setStatus(Duplicate::PENDING);
 			$merge->setResolvedBy(null);

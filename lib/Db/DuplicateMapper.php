@@ -47,24 +47,24 @@ class DuplicateMapper extends QBMapper {
 	 * back in the queue, or the two would be visible again with nothing saying
 	 * they might be one place.
 	 *
-	 * Only the loser, which is why the caller checks `mergedInto` before asking.
-	 * Matching either side would reopen a pair when the SURVIVOR is restored
-	 * after an unrelated retirement — and the loser is still retired, so the
-	 * queue would then hold a pair with one visible member and offer a card with
-	 * one side and no question.
+	 * The pair is named by both of its members: the loser being restored and the
+	 * survivor its `mergedInto` points at. Rows are stored lowest id first, the
+	 * order `DuplicateFinder` emits them in, under the unique terr_dup_pair_idx,
+	 * so this is an exact match on one row. A pair the record won, a newer merge
+	 * it was on, or a pair that is not Merged (a dismissal is final, ADR-0011)
+	 * never matches (#206).
 	 */
-	public function findMergeOf(int $featureId): ?Duplicate {
+	public function findMergeOf(int $loserId, int $survivorId): ?Duplicate {
 		$qb = $this->db->getQueryBuilder();
-		$id = $qb->createNamedParameter($featureId, IQueryBuilder::PARAM_INT);
 		$qb->select('*')
 			->from($this->getTableName())
 			->where($qb->expr()->eq('status', $qb->createNamedParameter(Duplicate::MERGED)))
-			->andWhere($qb->expr()->orX(
-				$qb->expr()->eq('first_id', $id),
-				$qb->expr()->eq('second_id', $id),
-			))
-			->orderBy('id', 'DESC')
-			->setMaxResults(1);
+			->andWhere($qb->expr()->eq('first_id', $qb->createNamedParameter(
+				min($loserId, $survivorId), IQueryBuilder::PARAM_INT,
+			)))
+			->andWhere($qb->expr()->eq('second_id', $qb->createNamedParameter(
+				max($loserId, $survivorId), IQueryBuilder::PARAM_INT,
+			)));
 
 		try {
 			return $this->findEntity($qb);

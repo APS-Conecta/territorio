@@ -11,7 +11,7 @@ organizaciones sociales.
 
 No contiene información de pacientes.
     ]]></description>
-    <version>0.80.0</version>
+    <version>0.80.1</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Territorio</namespace>
@@ -44,16 +44,19 @@ No contiene información de pacientes.
       one case where the seed matters most. Registered for both events; the step
       is guarded and idempotent. RemoveRetiredTileSettings is registered for both
       for the same reason: an install that skips the upgrade path must not keep
-      the retired tile settings.
+      the retired tile settings; so is RekeyCoordinateLessRecords, which must
+      reach every record imported under an id #202 collapsed (ADR-0022).
     -->
     <repair-steps>
         <install>
             <step>OCA\Territorio\Migration\EnsureSeedData</step>
             <step>OCA\Territorio\Migration\RemoveRetiredTileSettings</step>
+            <step>OCA\Territorio\Migration\RekeyCoordinateLessRecords</step>
         </install>
         <post-migration>
             <step>OCA\Territorio\Migration\EnsureSeedData</step>
             <step>OCA\Territorio\Migration\RemoveRetiredTileSettings</step>
+            <step>OCA\Territorio\Migration\RekeyCoordinateLessRecords</step>
         </post-migration>
     </repair-steps>
 </info>

@@ -50,6 +50,10 @@ class FeatureService {
 	public const LIMIT_PARTS = 500;
 	private const LIMIT_NAME = 200;
 
+	/** The record name's column width (VARCHAR 255, Version000200) — the
+	 *  Feature's own name, not LIMIT_NAME, which bounds a Limit part's. */
+	private const NAME_LENGTH = 255;
+
 	/**
 	 * Optional free-text columns, all handled identically: trim, blank becomes
 	 * null — and a value the column cannot store is refused with the app's own
@@ -317,9 +321,9 @@ class FeatureService {
 			return;
 		}
 
-		// An import collects its boundary events and sweeps once at batch end
-		// (L1-13); everybody else sweeps here and now, stamped with a batch of its
-		// own so a crash mid-sweep is revertible like an import (L1-16).
+		// An import or a revert collects its boundary events and sweeps once at
+		// batch end (L1-13); everybody else sweeps here and now, stamped with a
+		// batch of its own so a crash mid-sweep is revertible like an import (L1-16).
 		if ($this->deferredReassignments !== null) {
 			$this->deferredReassignments[(int)$boundary->getId()] = [$boundary, $before];
 
@@ -391,18 +395,18 @@ class FeatureService {
 		return $this->batches->insert($batch);
 	}
 
-	/** Boundary events collected during an import, keyed by record id — null
-	 *  whenever no import is running (L1-13). */
+	/** Boundary events collected during an import or a revert, keyed by record
+	 *  id — null whenever neither is running (L1-13). */
 	private ?array $deferredReassignments = null;
 
 	/**
 	 * Run $work with boundary reassignment DEFERRED (L1-13).
 	 *
-	 * The import's one way in wraps its run in this: reassignAround() collects
-	 * instead of sweeping, and flushDeferredReassignments() — called by the
-	 * importer inside its batch stamp — sweeps once for the whole file. The
-	 * set/restore pair is the same ambient-scope pattern RevisionLog::
-	 * duringImport() uses, correct for the same per-request reason.
+	 * An import and a revert each wrap their run in this: reassignAround()
+	 * collects instead of sweeping, and flushDeferredReassignments() — called by
+	 * the importer or the reverter inside its batch stamp — sweeps once for the
+	 * whole batch. The set/restore pair is the same ambient-scope pattern
+	 * RevisionLog::duringImport() uses, correct for the same per-request reason.
 	 *
 	 * @template T
 	 * @param callable(): T $work
@@ -419,14 +423,14 @@ class FeatureService {
 	}
 
 	/**
-	 * The one sweep an import owes, run inside its batch stamp (L1-13).
+	 * The one sweep an import or a revert owes, run inside its batch stamp (L1-13).
 	 *
 	 * Boundaries created or edited by the batch, keyed by record — one write per
-	 * record per import, so the last write's before/after is the one that counts.
-	 * The union of old and new boxes in affectedBy() is what heals the rows whose
-	 * own assign() ran against the pre-import memo: a Place written before the
-	 * boundary that will cover it is inside that boundary's new box, and the
-	 * sweep reaches it exactly as the per-row sweep used to.
+	 * record per import or revert, so the last write's before/after is the one
+	 * that counts. The union of old and new boxes in affectedBy() is what heals
+	 * the rows whose own assign() ran against the pre-import memo: a Place
+	 * written before the boundary that will cover it is inside that boundary's
+	 * new box, and the sweep reaches it exactly as the per-row sweep used to.
 	 */
 	public function flushDeferredReassignments(): void {
 		$deferred = $this->deferredReassignments ?? [];
@@ -434,7 +438,7 @@ class FeatureService {
 			return;
 		}
 
-		// Once, for the whole file: this is the invalidation the per-row sweep
+		// Once, for the whole batch: this is the invalidation the per-row sweep
 		// used to pay M times.
 		$this->assignments->forget();
 
@@ -517,6 +521,21 @@ class FeatureService {
 		return $written;
 	}
 
+	/**
+	 * The write door's own name and text checks, on a record nobody keeps: the
+	 * import's pre-check comes in here (#203), so a file is refused with the
+	 * sentence a save would give before any of its rows is written, and the
+	 * caps and sentences stay in this class. Writes and persists nothing.
+	 *
+	 * @param array<string, mixed> $input
+	 * @throws InvalidFeatureException
+	 */
+	public function checkNameAndText(array $input): void {
+		$scratch = new Feature();
+		$this->applyName($scratch, $input);
+		$this->applyText($scratch, $input);
+	}
+
 	/** Import-only: says which Dataset this record belongs to and what the
 	 *  authority published, which is kept even when a local edit wins. */
 	private function applyProvenance(Feature $feature, ?Provenance $provenance): void {
@@ -557,7 +576,17 @@ class FeatureService {
 		if ($name === '') {
 			throw new InvalidFeatureException('El registro necesita un nombre.');
 		}
+		self::refuseOverLong($name, 'El nombre', self::NAME_LENGTH);
 		$feature->setName($name);
+	}
+
+	/** The one copy of the over-long refusal and its sentence (L1-21). */
+	private static function refuseOverLong(string $value, string $label, int $cap): void {
+		if (mb_strlen($value) > $cap) {
+			throw new InvalidFeatureException(sprintf(
+				'%s no puede pasar de %d caracteres.', $label, $cap,
+			));
+		}
 	}
 
 	private function applySubcategory(Feature $feature, array $input): void {
@@ -583,10 +612,8 @@ class FeatureService {
 				continue;
 			}
 			$value = trim((string)$input[$key]);
-			if ($cap !== null && mb_strlen($value) > $cap) {
-				throw new InvalidFeatureException(sprintf(
-					'%s no puede pasar de %d caracteres.', $label, $cap,
-				));
+			if ($cap !== null) {
+				self::refuseOverLong($value, $label, $cap);
 			}
 			$feature->$setter($value === '' ? null : $value);
 		}

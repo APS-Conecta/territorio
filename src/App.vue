@@ -1472,29 +1472,29 @@ export default {
 		async save() {
 			this.saving = true
 			this.error = ''
+			// loadHistory()'s capture-then-compare, by identity: a new record has no id until the response (#198).
+			const sent = this.draft
 
 			try {
-				const isNew = this.draft.id === null
+				const isNew = sent.id === null
 				const { data } = isNew
 					? await axios.post(generateUrl('/apps/territorio/features'),
-						payload(this.draft, this.taxonomy))
+						payload(sent, this.taxonomy))
 					: await axios.put(
-						generateUrl(`/apps/territorio/features/${this.draft.id}`),
-						payload(this.draft, this.taxonomy),
+						generateUrl(`/apps/territorio/features/${sent.id}`),
+						payload(sent, this.taxonomy),
 					)
 
-				// Read before the merge, never after: mergeFeature() can close the
-				// draft, and this line used to run on the null it left behind — so a
-				// save the server had already accepted ended in the catch, telling
-				// the user to check their connection.
-				const picked = this.draft.picked
-				const pickedGeometry = this.draft.pickedGeometry
 				this.mergeFeature(data)
 				// The cursor is deliberately NOT advanced here. Jumping it to our
 				// own Revision skips every change that landed between our last poll
 				// and this save — a colleague's edit at Revision 11 is lost for good
 				// once our save banks 12. Letting the next poll re-deliver our own
 				// record costs one merge, and mergeFeature is idempotent.
+				// Closed or replaced meanwhile: the open draft is left alone, as poll() leaves it.
+				if (this.draft !== sent) {
+					return
+				}
 				this.selectedId = data.id
 				// Carried across the save. draftFrom() rebuilds the draft from what
 				// the server returned, and the server does not know about picks yet —
@@ -1504,13 +1504,13 @@ export default {
 				// ponytail: they live in the draft and die with it, so closing the
 				// sidebar still loses them. #15 is what gives a Limit somewhere to be.
 				this.draft = draftFrom(data, this.taxonomy)
-				if (picked !== undefined) {
-					this.draft.picked = picked
+				if (sent.picked !== undefined) {
+					this.draft.picked = sent.picked
 					// The shapes too, not only the ids. Carrying half of it left the
 					// draft able to say WHICH lines were picked and unable to say what
 					// they look like, so Generar failed on a Sector whose lines had
 					// just been chosen — and blamed the lines (issue #49).
-					this.draft.pickedGeometry = pickedGeometry
+					this.draft.pickedGeometry = sent.pickedGeometry
 				}
 				// This save wrote a Revision, and the sidebar is still showing the
 				// ones from before it. That was merely incomplete while history was

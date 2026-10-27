@@ -1240,6 +1240,131 @@ def a_tramo_typed_before_the_first_save_is_kept(page, failures):
     page.wait_for_timeout(400)
 
 
+def a_save_that_lands_after_leaving_the_record_still_lists_it(page, failures):
+    """#198: a new record left for the list while its POST is in flight is listed.
+
+    `save()` applied the response to whichever draft was open when it arrived, and
+    after «← Volver a la lista» none is. Reading its picks threw, the catch called a
+    save the server had accepted «No se pudo guardar», and the record stayed out of
+    the list until the next poll, so people saved it again and made a duplicate.
+
+    The change feed is held too: a poll is the only other path that lists the
+    record, and one landing in the window would turn the bug green on some runs.
+    """
+    name = f"Guardado tardío {RUN}"
+    page.get_by_role("button", name="Agregar", exact=True).click()
+    page.get_by_label("Nombre").fill(name)
+    # Clear of this run's other typed records: create_a_place and the Cúmulo
+    # pins sit at 300, the export pair at 600 and 700.
+    page.get_by_label("Latitud").fill(f"-33.5{800 + NUDGE}")
+    page.get_by_label("Longitud").fill(f"-70.5{800 + NUDGE}")
+
+    with hold(page, "**/apps/territorio/changes**", "GET"), \
+            hold(page, "**/apps/territorio/features", "POST") as (posts, release):
+        page.get_by_role("button", name="Guardar").click()
+        if not settles(page, lambda: len(posts) == 1, timeout=5_000):
+            failures.append("«Guardar» on a new record sent no POST to hold (#198)")
+            dismiss(page)
+            return
+
+        dismiss(page)
+        page.locator(SEARCH).fill(name)
+        # Empty first, or the row read below is the list from before the search
+        # (it waits 150 ms) and proves nothing about the response.
+        if not settles(page, lambda: page.locator(ROWS).count() == 0, timeout=2_000):
+            failures.append(f"{name!r} was listed before its POST was answered (#198)")
+        with page.expect_response(
+            lambda response: response.request.method == "POST"
+            and response.url.endswith("/apps/territorio/features"),
+        ):
+            release()
+
+        if not settles(page, lambda: page.locator(ROWS).count() > 0, timeout=1_500):
+            failures.append(f"{name!r} saved after its record was left is not in the list (#198)")
+        panel = page.locator(".territorio-docked-panel")
+        if (panel.locator(".territorio-main__error").count() > 0
+                or panel.get_by_text("No se pudo guardar").count() > 0):
+            failures.append("a save that succeeded after its record was left reported an error (#198)")
+
+    saved = [feature for feature in registry_features(page) if feature.get("name") == name]
+    if len(saved) != 1:
+        failures.append(f"the Registry holds {len(saved)} records named {name!r}, expected 1 (#198)")
+
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def a_save_that_lands_on_another_record_leaves_it_alone(page, failures):
+    """#198: Sector A's PUT landing while Sector B is open leaves B on screen.
+
+    The response rebuilt the open draft from A whatever was open: the panel jumped
+    back to A, and A's draft carried B's picks, which a Limit toggle or «Generar»
+    and then «Guardar» would have written onto A.
+
+    Misses: the Registry assertion is green on the old code too. Carried picks
+    reach a Limit only through a toggle or «Generar» followed by a save, and this
+    check makes neither. The jump back to A is what was red.
+    """
+    a, b = f"Sector a mano {RUN}", f"Sector Navegador {RUN}"
+    sector_a, sector_b = registry_feature(page, a), registry_feature(page, b)
+    if sector_a is None or sector_b is None:
+        failures.append(f"{a!r} or {b!r} is not in the Registry, so #198's second check did not run")
+        return
+
+    picks = any("featureId" in part for part in sector_b.get("limit") or [])
+    if not picks:
+        skip(f"{b!r} cites no boundary feature; its picked lines after a late save are unchecked")
+
+    page.locator(SEARCH).fill(a)
+    page.wait_for_timeout(800)
+    open_first_row(page)
+    page.wait_for_timeout(800)
+
+    rows = page.locator('[data-testid="boundary-picker"] .territorio-picker__parts li')
+    with hold(page, f"**/apps/territorio/features/{sector_a['id']}", "PUT") as (puts, release):
+        page.get_by_role("button", name="Guardar").click()
+        if not settles(page, lambda: len(puts) == 1, timeout=5_000):
+            failures.append(f"«Guardar» on {a!r} sent no PUT to hold (#198)")
+            dismiss(page)
+            page.locator(SEARCH).fill("")
+            return
+
+        dismiss(page)
+        page.locator(SEARCH).fill(b)
+        page.wait_for_timeout(800)
+        open_first_row(page)
+        settles(page, lambda: rows.count() > 0, timeout=5_000)
+        page.wait_for_timeout(1200)
+        before = [rows.nth(index).inner_text() for index in range(rows.count())]
+
+        with page.expect_response(
+            lambda response: response.request.method == "PUT"
+            and response.url.endswith(f"/apps/territorio/features/{sector_a['id']}"),
+        ):
+            release()
+        page.wait_for_timeout(600)
+
+    # Whichever is on screen: a record swapped in under the form drops it back to
+    # the inspection card, which names the record in its title and has no field.
+    field, title = page.get_by_label("Nombre"), page.locator(".territorio-detail__place-title")
+    shown = (field.input_value() if field.count() > 0
+             else title.inner_text().strip() if title.count() > 0 else None)
+    if shown != b:
+        failures.append(f"{a!r}'s save landing while {b!r} was open put {shown!r} in the panel (#198)")
+    if picks:
+        after = [rows.nth(index).inner_text() for index in range(rows.count())]
+        if after != before:
+            failures.append(f"{a!r}'s late save changed {b!r}'s Limit rows: {before} became {after} (#198)")
+
+    stored = (registry_feature(page, a) or {}).get("limit")
+    if stored != sector_a.get("limit"):
+        failures.append(f"{a!r}'s Limit is not its own after the late save: {stored} (#198)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def clicking_places_the_coordinate(page, failures):
     """A click on the map belongs to the draft that is waiting for a coordinate.
 
@@ -1458,6 +1583,36 @@ def settles(page, predicate, timeout=15_000):
         waited += 250
 
     return predicate()
+
+
+@contextmanager
+def hold(page, url_glob, method):
+    """Leave every `method` request to `url_glob` unanswered until `release()` (#198).
+
+    A response that lands after the person has moved on is a race, and holding the
+    request is what makes it happen on every run instead of on a slow day. Other
+    methods to the same URL go on as usual. Whatever is still held is let through
+    on the way out, so a check that stops half-way leaves no request hanging.
+    """
+    held = []
+
+    def handler(route):
+        if route.request.method == method:
+            held.append(route)
+        else:
+            route.fallback()
+
+    def release():
+        for route in held:
+            route.continue_()
+        held.clear()
+
+    page.route(url_glob, handler)
+    try:
+        yield held, release
+    finally:
+        release()
+        page.unroute(url_glob, handler)
 
 
 def the_duplicate_queue_works(page, failures):
@@ -7728,6 +7883,10 @@ def main():
         # After the checks that need this run's Sector: this one draws its own
         # and leaves the list filtered while it works.
         run(a_tramo_typed_before_the_first_save_is_kept, page, failures)
+        # Right after it: the second opens the Sector it just saved, and both come
+        # after every check that clicks this run's pins.
+        run(a_save_that_lands_after_leaving_the_record_still_lists_it, page, failures)
+        run(a_save_that_lands_on_another_record_leaves_it_alone, page, failures)
 
         run(the_map_survives_churn, page, errors, failures)
         page.screenshot(path=str(SHOTS / "search.png"), full_page=False)

@@ -267,6 +267,14 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A save that lands after the record was left no longer reports a false error or carries
+  over the wrong picks (#198).** `save()` applied its response to whichever draft was open
+  when the response arrived. After «← Volver a la lista» there was none: the save the server
+  had accepted said «No se pudo guardar…», and the record stayed out of the list until the
+  next poll. With another Sector open, the panel jumped back to the saved one carrying the
+  other Sector's picked lines. The response now always reaches the list, and rebuilds the
+  draft only if that draft is still the one that was sent.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

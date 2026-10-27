@@ -206,6 +206,8 @@ class FeatureService {
 		}
 
 		$mergedInto = $feature->getMergedInto();
+		// Sweeps skip retired records, so a returning record derives its own assignment again (ADR-0008).
+		$this->assignments->assign($feature);
 		$restored = $this->features->restore($feature);
 		// And a restored one takes back what falls inside it.
 		$this->reassignAround($restored, null, $this->assignments->divisionOf($restored));

@@ -267,6 +267,45 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
+  Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
+  only inside `FeatureDetail`, so App took every open Place for one being placed. A map click
+  silently rewrote the coordinate, the next «Editar» + «Guardar» moved the record and the
+  server re-derived its Sector and Unidad Vecinal (ADR-0008), and a click on a Sector went to
+  the map instead of opening it. App now owns the edit mode (`v-model:editing`), `placing` is
+  true only for a new Place, one after «Editar» or a pending Sector seed, and `placeDraft()`
+  writes only while `placing`. The browser gate's click-placement check now asserts that the
+  Registry keeps the coordinate and the assignment, that a Sector click opens the Sector, and
+  that a click after «Editar» still places the Place.
+
+- **While «Dibujar Sector» is armed, a click on a Sector or a Unidad Vecinal places a vertex
+  instead of opening it (#197).** Nor does that click move an open Place's coordinate any more,
+  whether the drawing is then finished or cancelled: `TerritorioMap` asks Geoman whether it is
+  drawing before it selects a shape or emits `map-click`, so a vertex click belongs to the
+  drawing alone.
+
+- **Undoing a batch no longer leaves the records it created on the map (#200).** A revert swept
+  each boundary it retired or restored at once, under a «reasignación de límite» batch of its
+  own, outside the revert's lineage. The walk then found that write on a Place the undone batch
+  had created, took it for a colleague's and counted the entry as «omitidos»: the import read «ya
+  deshecha» with the Place still live, a redo skipped the same way, and every boundary that moved
+  something added its own batch, with its own «Deshacer», to the dialog's list. A revert now
+  sweeps once at the end of its walk, inside its own batch, the way an import does (L1-13), also
+  when the walk throws part-way. A boundary retired or restored from the sidebar still sweeps at
+  once under a batch of its own.
+
+- **An over-long value refuses the whole import, and nothing is written** (#203). The import's
+  pre-check knew geometry, an empty name and «ubicación», but not the caps the write door
+  enforces, so a 72-character phone in row 4 left rows 1–3 committed behind a 422 that named no
+  row. A name over 255 characters and an explicit id over 128 were capped nowhere and reached
+  PostgreSQL as a 500 after the same partial write. The pre-check now runs the write door's own
+  name and text checks (`FeatureService::checkNameAndText()`, so each cap and sentence is still
+  stated once) plus the external id's width, and the file is refused with «no se importó
+  nada», naming each row and field: «Malo: El teléfono no puede pasar de 64 caracteres.». A
+  Dataset name over 64 characters is refused beside the empty one, before the file is read,
+  from the browser and from `occ`. Creating or updating a record with an over-long name answers
+  422 with «El nombre no puede pasar de 255 caracteres.» instead of a 500.
+
 - **History and Import batch times show in the viewer's local time (#211).** Nextcloud runs
   PHP in UTC, so a Revision's `changed_at` and an Import batch's `started_at` hold UTC
   wall-clock time with no zone, and the history panel and the Importar list printed it as if
@@ -274,6 +313,7 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   (ISO 8601, as the export log already did) and all three lists share one formatter. The
   Limit provenance sentence dates a save on the local day it happened, so an evening save no
   longer reads as the next day. Stored rows are read as UTC and none is rewritten.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

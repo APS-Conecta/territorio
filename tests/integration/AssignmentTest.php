@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Integration;
 
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\ImportBatchMapper;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\RegistryService;
 use OCP\Server;
@@ -236,6 +238,39 @@ final class AssignmentTest extends IntegrationTestCase {
 
 		Server::get(FeatureService::class)->restore($sector);
 		self::assertSame($sector, $this->stored($place)->getSectorId(), 'and takes it back');
+	}
+
+	/**
+	 * Outside an import or a revert, a boundary still sweeps at once, under a
+	 * «reasignación de límite» batch of its own, so the sweep is undoable from the
+	 * batch list like an import (L1-16). The guard on #200: deferring the revert's
+	 * sweep must not reach the sidebar's retire and restore.
+	 */
+	public function testRetiringOrRestoringASectorByHandRecordsASweepBatch(): void {
+		$sector = $this->sector('Sector retirado a mano', ['geometry' => self::WEST]);
+		$place = $this->place('Escuela dentro', ['geometry' => self::at(-70.58, -33.52)]);
+		$noted = (int)(Server::get(ImportBatchMapper::class)->findRecent(1)[0] ?? null)?->getId();
+
+		Server::get(FeatureService::class)->retire($sector);
+		$retired = $this->assertSweptUnderANewBatch($place, $noted, 'retiring');
+
+		Server::get(FeatureService::class)->restore($sector);
+		$this->assertSweptUnderANewBatch($place, $retired, 'restoring');
+	}
+
+	/** @return int the sweep batch's id */
+	private function assertSweptUnderANewBatch(int $place, int $after, string $what): int {
+		$batch = Server::get(ImportBatchMapper::class)->findRecent(1)[0];
+
+		self::assertNull($batch->getDatasetId(), "$what the Sector should have recorded a sweep batch");
+		self::assertGreaterThan($after, (int)$batch->getId(), "$what the Sector recorded no new batch");
+		self::assertSame(
+			(int)$batch->getId(),
+			Server::get(RevisionLog::class)->newestFor($place)['importId'],
+			"$what the Sector should have moved the Place under that batch",
+		);
+
+		return (int)$batch->getId();
 	}
 
 	/**

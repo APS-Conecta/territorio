@@ -329,9 +329,7 @@ export default {
 		this.drawShapes()
 		this.drawDraft()
 
-		this.map.on('click', (event) => {
-			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
-		})
+		this.map.on('click', (event) => this.emitMapClick({ lat: event.latlng.lat, lon: event.latlng.lng }))
 
 		// The editor asks for the Boundary features on screen, so it has to know
 		// when "on screen" changes. moveend covers panning and zooming both.
@@ -358,6 +356,15 @@ export default {
 	},
 
 	methods: {
+		/**
+		 * The only place `map-click` is emitted: by a map click, and by a pin click while placing.
+		 *
+		 * @param {{lat: number, lon: number}} coordinate where the click lands
+		 */
+		emitMapClick({ lat, lon }) {
+			this.$emit('map-click', { lat, lon })
+		},
+
 		/**
 		 * The registries' signature half, as diffLayers wants it: the rows hold
 		 * the live layer beside the signature it was drawn from, and the diff
@@ -420,7 +427,17 @@ export default {
 						colour: colourOf(feature, this.subcategories),
 						approximate: isApproximate(feature),
 					},
-				}).on('click', () => this.$emit('select', feature.id))
+				}).on('click', () => {
+					// The shapes' `placing` guard, for a pin (#196). A Marker does not
+					// bubble its click to the map, so it hands the click to the map's
+					// path itself. The stored coordinate, not the event's: Enter on a
+					// focused pin arrives here as a click with no latlng.
+					if (this.placing) {
+						this.emitMapClick({ lat, lon })
+						return
+					}
+					this.$emit('select', feature.id)
+				})
 
 				return [id, { layer: marker, signature }]
 			})

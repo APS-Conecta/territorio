@@ -267,6 +267,17 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A pin click while a record waits for its coordinate places it there (#196).** A Leaflet
+  Marker does not bubble its click to the map, and the pin's handler lacked the `placing`
+  guard the Sector, Unidad Vecinal and Boundary feature line handlers have, so the click went
+  to `select()` and replaced the draft with the pin's record, with no warning: a typed new
+  Place, or a Sector's polygon, picks and Limit waiting for its «Generar» seed, was lost.
+  While `placing`, a pin click now takes the map click's own path (`emitMapClick`, the only
+  place `map-click` is emitted) at the pin's stored coordinate. It uses the stored coordinate
+  and not the event's because Enter on a focused pin arrives as a click with no position. The
+  browser gate clicks a pin with a new record's form open, with no record open, with a saved
+  Place's read-only card open (two pins of its own, after #194), and as «Generar»'s seed.
+
 - **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
   Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
   only inside `FeatureDetail`, so App took every open Place for one being placed. A map click

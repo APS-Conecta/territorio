@@ -819,9 +819,17 @@ export default {
 				this.pane = 'mapa'
 				await this.$nextTick()
 			}
+			this.panToFeature(id)
+		},
+
+		/**
+		 * Bring a stored record into view: pan to a Place, fit a Zone or a Route.
+		 * The map stays where it is when the record has no geometry or is not found.
+		 */
+		panToFeature(id) {
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			// A record has GeoJSON `geometry`, not `lat`/`lon`, and may have none:
-			// then it is selected and the map stays where it is.
+			// then the map stays where it is.
 			const target = viewTargetOf(feature?.geometry)
 			const map = this.$refs.mapComponent
 			if (target === null || !map) {
@@ -834,14 +842,8 @@ export default {
 			}
 		},
 
-		centerSelected(coords) {
-			if (this.$refs.mapComponent) {
-				const lat = coords?.lat ?? this.draft?.lat
-				const lon = coords?.lon ?? this.draft?.lon
-				if (lat && lon) {
-					this.$refs.mapComponent.panToLocation(lat, lon, 17)
-				}
-			}
+		centerSelected() {
+			this.panToFeature(this.selectedId)
 		},
 
 		goToStreet(street) {

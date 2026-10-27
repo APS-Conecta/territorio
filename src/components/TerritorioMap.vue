@@ -338,14 +338,7 @@ export default {
 		this.drawShapes()
 		this.drawDraft()
 
-		this.map.on('click', (event) => {
-			// While drawing, the click is Geoman's vertex, not a coordinate or a seed (its listener runs after this one).
-			if (this.map.pm.globalDrawModeEnabled()) {
-				return
-			}
-
-			this.$emit('map-click', { lat: event.latlng.lat, lon: event.latlng.lng })
-		})
+		this.map.on('click', (event) => this.emitMapClick({ lat: event.latlng.lat, lon: event.latlng.lng }))
 
 		// The editor asks for the Boundary features on screen, so it has to know
 		// when "on screen" changes. moveend covers panning and zooming both.
@@ -372,6 +365,20 @@ export default {
 	},
 
 	methods: {
+		/**
+		 * The only place `map-click` is emitted: by a map click, and by a pin click while placing.
+		 *
+		 * @param {{lat: number, lon: number}} coordinate where the click lands
+		 */
+		emitMapClick({ lat, lon }) {
+			// While drawing, the click is Geoman's vertex, not a coordinate or a seed (its listener runs after the map's).
+			if (this.map.pm.globalDrawModeEnabled()) {
+				return
+			}
+
+			this.$emit('map-click', { lat, lon })
+		},
+
 		/**
 		 * The registries' signature half, as diffLayers wants it: the rows hold
 		 * the live layer beside the signature it was drawn from, and the diff
@@ -434,7 +441,15 @@ export default {
 						colour: colourOf(feature, this.subcategories),
 						approximate: isApproximate(feature),
 					},
-				}).on('click', () => this.$emit('select', feature.id))
+				}).on('click', () => {
+					// A Marker does not bubble its click, so it takes the map's path itself (#196), at the
+					// stored coordinate: in a spiderfied cluster the event's latlng is the spider leg.
+					if (this.placing || this.map.pm.globalDrawModeEnabled()) {
+						this.emitMapClick({ lat, lon })
+						return
+					}
+					this.$emit('select', feature.id)
+				})
 
 				return [id, { layer: marker, signature }]
 			})

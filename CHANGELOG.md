@@ -294,6 +294,20 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   when the walk throws part-way. A boundary retired or restored from the sidebar still sweeps at
   once under a batch of its own.
 
+- **Same-named rows without a coordinate no longer collapse into one record (0.80.1, #202).** A row
+  with no id and no coordinate was identified by its name alone, so fifteen «Multicancha» rows at
+  fifteen addresses imported as one record and «14 duplicados en el archivo», on every run. Such a
+  row is now identified by its name and address, or its name and notes where it has no address
+  (ADR-0022), so a KML placemark's description tells same-named placemarks apart. The same name at
+  the same coordinate stays one place, and every coordinate-bearing id keeps its bytes.
+
+  **One-time re-key on upgrade.** A repair step moves each record already imported under the
+  collapsed id to its new one, so the next import of its file matches it and its Local override
+  stays attached. It writes no Revision; a record whose new id is already taken in its Dataset is
+  skipped and counted in the upgrade output. **A GeoJSON export made before the upgrade** carries
+  the old id of a re-keyed record, and re-importing it creates a second record: export again after
+  upgrading. The `externalId` the REST surface publishes changes once for those records.
+
 - **An over-long value refuses the whole import, and nothing is written** (#203). The import's
   pre-check knew geometry, an empty name and «ubicación», but not the caps the write door
   enforces, so a 72-character phone in row 4 left rows 1–3 committed behind a 422 that named no

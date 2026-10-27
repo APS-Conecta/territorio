@@ -91,7 +91,8 @@ class ImportService {
 	 * ORDER, because a failure part-way leaves different debris at each step:
 	 *   1. the comuna claim is refused first, before a single row is written
 	 *      (a file cut for another comuna is a mistake, not a partial import);
-	 *   2. rows the file repeats verbatim collapse, and the count is reported;
+	 *   2. rows that name the same place collapse (see `collapseDuplicates()`),
+	 *      and the count is reported;
 	 *   3. the Dataset is found or created — the first write of the run;
 	 *   4. the ImportBatch is written BEFORE the first row, per ADR-0009: each
 	 *      row commits its own transaction, so a file that fails at row 400
@@ -274,7 +275,10 @@ class ImportService {
 	}
 
 	/**
-	 * Rows the file repeated verbatim collapse to one.
+	 * Rows that name the same place collapse to one, the last row winning: same
+	 * name and coordinate, or, without a coordinate, same name and address
+	 * (notes where there is no address). The external id says which place a row
+	 * names (`GeoJsonReader::derivedId()`, ADR-0022), so it is the only key.
 	 *
 	 * The La Florida catastro contains 18 of these across 865 features —
 	 * "Balneario Municipal" three times with the same address and coordinate,

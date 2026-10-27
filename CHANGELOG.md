@@ -278,6 +278,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   Registry keeps the coordinate and the assignment, that a Sector click opens the Sector, and
   that a click after «Editar» still places the Place.
 
+- **While «Dibujar Sector» is armed, a click on a Sector or a Unidad Vecinal places a vertex
+  instead of opening it (#197).** Nor does that click move an open Place's coordinate any more,
+  whether the drawing is then finished or cancelled: `TerritorioMap` asks Geoman whether it is
+  drawing before it selects a shape or emits `map-click`, so a vertex click belongs to the
+  drawing alone.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

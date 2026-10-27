@@ -75,8 +75,9 @@ class ImportController extends Controller {
 	 * `path[]=x` or `label[]=x` request turns garbage into "Array" plus an
 	 * E_WARNING, against Refuses' own "never a silent 200". '' is what each of
 	 * them already reads as not given: ImportService refuses an empty dataset
-	 * (and an empty label on a NEW dataset) with its own sentence, and an empty
-	 * path means an upload. trim normalises what a form sends as whitespace.
+	 * with its own sentence, an empty label falls back to the Dataset's slug,
+	 * and an empty path means an upload. trim normalises what a form sends as
+	 * whitespace.
 	 */
 	private function stringParam(string $key): string {
 		$value = $this->request->getParam($key, '');

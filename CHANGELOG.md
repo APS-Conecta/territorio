@@ -267,6 +267,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A picked Point or zero-length fragment no longer keeps «Generar el polígono» disabled.**
+  Picking a name picks every row of it, and a KML import can leave a Point or a LineString of
+  one repeated position under a street's name. Readiness asked every picked row for an edge,
+  so such a row blocked a block that closes, and panning could never clear it. A held Point
+  or edgeless line now counts as ready, since it adds no edge and the face is the same
+  without it; a picked row with no shape, or a Polygon, still blocks (#214).
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

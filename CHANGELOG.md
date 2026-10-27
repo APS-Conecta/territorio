@@ -328,6 +328,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   Limit provenance sentence dates a save on the local day it happened, so an evening save no
   longer reads as the next day. Stored rows are read as UTC and none is rewritten.
 
+- **An import Folder or Categoría that names only a shared Subcategory or a division word lands in
+  «Sin clasificar · Otro» (#204).** «Otros» used to file under «Comercio y economía · Otro», and
+  «Sector…» or «Unidad vecinal» under División territorial. A plural in «-es» («Parques») now finds
+  its Subcategory. Re-importing an older file moves the rows filed that way to Sin clasificar;
+  rows a person edited keep their edits (ADR-0003).
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

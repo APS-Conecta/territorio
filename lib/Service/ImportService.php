@@ -736,23 +736,26 @@ class ImportService {
 	 * records, 36% of the file, in Sin clasificar while `ciclovia` and `plaza`
 	 * sat in the seed.
 	 *
-	 * ponytail: exact match first, then each word with a Spanish plural taken off
-	 * — enough for "ciclovias" → `ciclovia` and "plazas_parques" → `plaza`, and
-	 * checked against those two real folder names. It is a heuristic and it will
-	 * miss something eventually; a miss costs Sin clasificar, which is where the
-	 * row was going anyway. Match on the Subcategory's label when that is not
-	 * good enough.
+	 * ponytail: the whole name first, then each word — as it stands, then with
+	 * «-s» taken off, then with «-es» taken off ("plazas" → `plaza`, "parques" →
+	 * `parque`). A word answers only when it names exactly one Subcategory: a
+	 * slug two Categories share (`otro`) is no answer. A División territorial
+	 * Subcategory is never an answer; a file reaches a Sector or a Unidad Vecinal
+	 * only by naming both halves. It is a heuristic and it will miss something
+	 * eventually; a miss costs Sin clasificar, which is where the row was going
+	 * anyway. Match on the Subcategory's label when that is not good enough.
 	 *
 	 * @param array<string, int> $subcategories keyed "categorySlug/subcategorySlug"
 	 */
 	private function asSubcategory(string $named, array $subcategories): ?int {
 		$bySlug = [];
 		foreach ($subcategories as $key => $id) {
-			$bySlug[substr($key, (int)strpos($key, '/') + 1)] ??= $id;
+			[$category, $slug] = explode('/', $key, 2);
+			$bySlug[$slug] = (array_key_exists($slug, $bySlug) || $category === EnsureSeedData::DIVISIONS_SLUG) ? null : $id;
 		}
 
 		foreach ([$named, ...explode('_', $named)] as $word) {
-			foreach ([$word, preg_replace('/(es|s)$/', '', $word)] as $candidate) {
+			foreach ([$word, preg_replace('/s$/', '', $word), preg_replace('/es$/', '', $word)] as $candidate) {
 				if ($candidate !== '' && isset($bySlug[$candidate])) {
 					return $bySlug[$candidate];
 				}

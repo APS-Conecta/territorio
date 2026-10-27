@@ -27,9 +27,8 @@ import { safeError } from './api.js'
 const LINES = ['LineString', 'MultiLineString']
 
 /**
- * Whether the picked lines can be polygonized at all: every picked line has a
- * held shape that is line work or a Point, and the pick as a whole gives at least
- * one edge.
+ * Whether the picked lines can be polygonized at all: every one of them has its
+ * shape held on the draft, and together they hold some line work.
  *
  * A separate question from whether generating succeeds, and asked first, because
  * the two failures need different words. `draftFrom()` rebuilds `picked` from the
@@ -44,14 +43,15 @@ const LINES = ['LineString', 'MultiLineString']
  * safe to rehydrate the cache a few lines at a time as the map loads them: a
  * half-filled cache reads as not ready, never as a smaller Sector.
  *
- * A missing or null shape blocks. So does a Polygon or a shape with no type: it
- * may have edges that `stretchesOf` cannot read. A held row that adds no edge — a
- * Point, or line work `stretchesOf` drops entirely — does not block, because
- * `faceAround` skips it and the face is the same. The pick as a whole must still
- * give a stretch.
+ * A held shape must be a GeoJSON type in `LINES`, or a Point. A Point or a line of
+ * one repeated position adds no edge, so `faceAround` gives the same face with or
+ * without it, and readiness agrees with it. A Polygon has edges that `stretchesOf`
+ * drops, so it still blocks: ignoring it could give a larger face. The pick as a
+ * whole needs at least one stretch.
  */
 export function canPolygonize(picked, pickedGeometry) {
 	const held = picked.map((id) => pickedGeometry?.[id])
+
 	return held.every((geometry) => LINES.includes(geometry?.type) || geometry?.type === 'Point')
 		&& held.some((geometry) => stretchesOf(geometry).length > 0)
 }

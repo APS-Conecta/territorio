@@ -196,27 +196,26 @@ describe('faceAround', () => {
  */
 describe('whether the picked lines can be polygonized at all', () => {
 	const shapes = { 7: SQUARE[0], 8: SQUARE[1] }
-	const square = { 1: SQUARE[0], 2: SQUARE[1], 3: SQUARE[2], 4: SQUARE[3] }
+	const block = { 1: SQUARE[0], 2: SQUARE[1], 3: SQUARE[2], 4: SQUARE[3] }
 
 	it('can, when every picked line has its shape', () => {
 		expect(canPolygonize([7, 8], shapes)).toBe(true)
 	})
 
 	/**
-	 * Picking a name picks every Boundary feature of that name (#214), and one of
-	 * them may hold no edge: a LineString of one repeated coordinate, or a Point.
-	 * `faceAround` skips such a row, so it is ready, and the face is the square's.
+	 * Picking a name picks every row of it, and a Boundary Dataset can hold a
+	 * Point or a LineString of one repeated position under a street's name — how
+	 * a KML import lands. Such a fragment adds no edge, so `faceAround` gives the
+	 * same face with or without it, and readiness agrees.
 	 */
-	it.each([
-		{ type: 'LineString', coordinates: [[9, 9], [9, 9]] },
-		{ type: 'Point', coordinates: [2, 2] },
-	])('can, when a row beside lines that close adds no edge (%s)', (shape) => {
-		const held = { ...square, 5: shape }
-		const picked = [1, 2, 3, 4, 5]
+	it('can, when a picked fragment adds no edge', () => {
+		const fragment = { type: 'LineString', coordinates: [[2, 0], [2, 0]] }
+		expect(canPolygonize([1, 2, 3, 4, 5], { ...block, 5: fragment })).toBe(true)
+		expect(faceAround([...SQUARE, fragment], [2, 2])).toEqual(faceAround(SQUARE, [2, 2]))
 
-		expect(canPolygonize(picked, held)).toBe(true)
-		expect(cornersOf(faceAround(picked.map((id) => held[id]), [2, 2])))
-			.toEqual(['0,0', '0,4', '4,0', '4,4'])
+		const point = { type: 'Point', coordinates: [2, 0] }
+		expect(canPolygonize([1, 2, 3, 4, 5], { ...block, 5: point })).toBe(true)
+		expect(faceAround([...SQUARE, point], [2, 2])).toEqual(faceAround(SQUARE, [2, 2]))
 	})
 
 	it('cannot, when nothing has been picked', () => {
@@ -240,6 +239,7 @@ describe('whether the picked lines can be polygonized at all', () => {
 	 */
 	it('cannot, when only some of the picked lines have a shape', () => {
 		expect(canPolygonize([7, 8, 9], shapes)).toBe(false)
+		expect(canPolygonize([1, 2, 3, 4, 5], block)).toBe(false)
 	})
 
 	/**
@@ -251,44 +251,35 @@ describe('whether the picked lines can be polygonized at all', () => {
 	it('cannot, when a picked line has no shape of its own', () => {
 		expect(canPolygonize([7], { 7: null })).toBe(false)
 		expect(canPolygonize([7, 8], { ...shapes, 8: null })).toBe(false)
+		expect(canPolygonize([1, 2, 3, 4, 5], { ...block, 5: null })).toBe(false)
 	})
 
 	/**
-	 * A held row that adds no edge — a Point, or a LineString of one repeated
-	 * coordinate — does not block, but the pick as a whole must give one. An
-	 * untyped shape blocks whatever else is picked.
+	 * Held is not enough on its own. A Polygon's edges are dropped by
+	 * `stretchesOf`, so ignoring it could give a larger face than the one meant;
+	 * a shape with no type is not something this can read at all.
 	 */
-	it('needs an edge somewhere in the pick, not from every picked row', () => {
+	it('cannot, when a picked shape has edges it cannot use', () => {
+		expect(canPolygonize([1, 2, 3, 4, 5], {
+			...block,
+			5: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+		})).toBe(false)
+		expect(canPolygonize([1, 2, 3, 4, 5], { ...block, 5: { coordinates: [[0, 0], [1, 1]] } })).toBe(false)
+	})
+
+	/**
+	 * A pick made only of edgeless or unrecognised rows holds no line work, so
+	 * there is nothing to polygonize.
+	 */
+	it('cannot, when no picked line is line work it can use', () => {
 		expect(canPolygonize([7], { 7: { type: 'Point', coordinates: [2, 2] } })).toBe(false)
 		expect(canPolygonize([7], { 7: { coordinates: [[0, 0], [1, 1]] } })).toBe(false)
 		expect(canPolygonize([7], {
 			7: { type: 'LineString', coordinates: [[2, 2], [2, 2]] },
 		})).toBe(false)
-		expect(canPolygonize([7, 8], { ...shapes, 8: { type: 'Point', coordinates: [2, 2] } })).toBe(true)
-		expect(canPolygonize([7, 8], {
-			7: { type: 'Point', coordinates: [2, 2] },
-			8: { type: 'LineString', coordinates: [[2, 2], [2, 2]] },
+		expect(canPolygonize([5, 6], {
+			5: { type: 'LineString', coordinates: [[2, 2], [2, 2]] },
+			6: { type: 'Point', coordinates: [2, 2] },
 		})).toBe(false)
-	})
-
-	/**
-	 * Every, not some, on a pick that DOES close: the "only some" case above has
-	 * two lines that do not close, so it cannot catch a rule that lets a missing
-	 * shape through beside four that do.
-	 */
-	it('cannot, when a picked line has no shape, even where the others close', () => {
-		expect(canPolygonize([1, 2, 3, 4, 9], square)).toBe(false)
-		expect(canPolygonize([1, 2, 3, 4, 9], { ...square, 9: null })).toBe(false)
-	})
-
-	/**
-	 * A Polygon has edges `stretchesOf` cannot read, and an untyped shape may, so
-	 * skipping either could give a silently larger face.
-	 */
-	it('cannot, beside lines that close, when a picked row is a Polygon or has no type', () => {
-		const polygon = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }
-
-		expect(canPolygonize([1, 2, 3, 4, 9], { ...square, 9: polygon })).toBe(false)
-		expect(canPolygonize([1, 2, 3, 4, 9], { ...square, 9: { coordinates: [[0, 0], [1, 1]] } })).toBe(false)
 	})
 })

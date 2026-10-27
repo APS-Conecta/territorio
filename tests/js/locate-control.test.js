@@ -60,6 +60,18 @@ describe('onLocationError', () => {
 	})
 })
 
+// #212: each watch recentres on its own first fix, not only the page's first.
+// Source text, like the rest of this file, because CI never runs the browser gate.
+describe('toggleLocate', () => {
+	it('lets every watch it starts recentre once, and no fix after that one', () => {
+		const toggle = member('toggleLocate(button) {')
+		const start = toggle.slice(toggle.indexOf('return'))
+
+		expect(start).toContain('this.locatedOnce = false')
+		expect(member('onLocationFound(event) {')).toContain('if (!this.locatedOnce)')
+	})
+})
+
 describe('the two stops that already worked', () => {
 	it('still stops on toggle and on unmount', () => {
 		expect(member('toggleLocate(button) {')).toContain('this.map.stopLocate()')

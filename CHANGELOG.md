@@ -367,6 +367,11 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
   «Ver retirados», merge undo, and redo of an undone import.
 
+- **Adding the name a renamed Category or Subcategory was created with names the row that holds
+  it (#210).** The refusal said «Ya existe … con ese nombre» although no shown row carried that
+  name. It now says, e.g., «Ese nombre está reservado por la categoría «Culto». Elija otro
+  nombre.»
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

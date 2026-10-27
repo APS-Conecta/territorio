@@ -1344,13 +1344,10 @@ def a_save_that_lands_on_another_record_leaves_it_alone(page, failures):
             release()
         page.wait_for_timeout(600)
 
-    # Whichever is on screen: a record swapped in under the form drops it back to
-    # the inspection card, which names the record in its title and has no field.
-    field, title = page.get_by_label("Nombre"), page.locator(".territorio-detail__place-title")
-    shown = (field.input_value() if field.count() > 0
-             else title.inner_text().strip() if title.count() > 0 else None)
+    field = page.get_by_label("Nombre")
+    shown = field.input_value() if field.count() > 0 else None
     if shown != b:
-        failures.append(f"{a!r}'s save landing while {b!r} was open put {shown!r} in the panel (#198)")
+        failures.append(f"{a!r}'s save landing while {b!r} was open left «Nombre» at {shown!r} (#198)")
     if picks:
         after = [rows.nth(index).inner_text() for index in range(rows.count())]
         if after != before:

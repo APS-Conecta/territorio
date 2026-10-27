@@ -2760,6 +2760,64 @@ def a_sector_says_how_its_boundary_came_to_be(page, state, failures, open_it=Tru
         page.wait_for_timeout(400)
 
 
+def stored_times_are_shown_in_local_time(page, failures):
+    """#211: a Revision's and an Import batch's time is the viewer's local time.
+
+    Both columns hold UTC wall-clock time with no zone. The API now sends each
+    with its offset, and the screen must say what the page itself makes of that
+    instant, not the string as sent. Read off the API rather than typed in here,
+    so the check stands whatever zone the instance and the browser are in.
+    """
+    def local(moment):
+        return page.evaluate("(moment) => new Date(moment).toLocaleString()", moment)
+
+    def says(where, shown, sent):
+        if local(sent) not in shown or sent in shown:
+            failures.append(f"{where} shows {shown!r} for {sent!r}, not the local {local(sent)!r} (#211)")
+
+    name = f"Sector Navegador {RUN}"
+    feature = registry_feature(page, name)
+    if feature is None:
+        failures.append(f"{name!r} is not in the Registry, so there is no history to read (#211)")
+    elif open_the_runs_sector(page, failures):
+        entries = page.locator(".territorio-history__entry")
+        if not settles(page, lambda: entries.count() > 0, timeout=10_000):
+            failures.append("the Sector's history shows no entry to read a time off (#211)")
+        else:
+            history = page.evaluate(
+                """async (id) => {
+                    const response = await fetch(
+                        `/index.php/apps/territorio/features/${id}/history`,
+                        { headers: { requesttoken: window.OC.requestToken } },
+                    )
+                    return await response.json()
+                }""",
+                feature["id"],
+            )
+            says("the history", entries.first.inner_text(), history[0]["changedAt"])
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+    page.get_by_role("button", name="Importar / deshacer").click()
+    rows = page.locator(".territorio-import__batch")
+    if not settles(page, lambda: rows.count() > 0, timeout=10_000):
+        failures.append("the Importar dialog lists no batch to read a time off (#211)")
+    else:
+        batches = page.evaluate(
+            """async () => {
+                const response = await fetch(
+                    '/index.php/apps/territorio/import/batches',
+                    { headers: { requesttoken: window.OC.requestToken } },
+                )
+                return await response.json()
+            }""",
+        )
+        says("the newest Import batch", rows.first.inner_text(), batches[0]["startedAt"])
+    dismiss(page)
+    page.wait_for_timeout(400)
+
+
 def an_imported_sector_says_it_came_from_the_catastro(page, failures):
     """#50's third origin: a boundary the municipality published is not a hand.
 
@@ -7702,6 +7760,9 @@ def main():
         run(search_narrows_everything, page, failures)
         run(the_limit_can_be_picked, page, failures)
         run(the_duplicate_queue_works, page, failures)
+        # After it, which imports through the dialog: the batch list needs one to
+        # show, and this run's Sector already has a history.
+        run(stored_times_are_shown_in_local_time, page, failures)
         run(exports_ask_for_a_password_only_when_earned, page, failures)
         run(an_export_of_osm_data_names_the_licence, page, failures)
         run(the_export_offers_the_live_set_with_retirados_on, page, failures)

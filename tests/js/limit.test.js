@@ -1,3 +1,6 @@
+// Before any Date is made: a save late in a Chilean evening is the next day in UTC.
+process.env.TZ = 'America/Santiago'
+
 import { describe, expect, it } from 'vitest'
 import { groups, partsFrom, provenance, readable, sectorFields, withNote, without, withoutNote } from '../../src/limit.js'
 
@@ -385,7 +388,7 @@ describe('the fields a Sector draft carries', () => {
  *
  * History arrives newest first, as `GET /features/{id}/history` returns it.
  */
-const revision = (number, changes, action = 'updated', changedAt = '2026-08-12 09:30:00') => ({
+const revision = (number, changes, action = 'updated', changedAt = '2026-08-12T09:30:00+00:00') => ({
 	revision: number,
 	action,
 	actor: 'ana',
@@ -401,7 +404,7 @@ const DRAWN = [
 	revision(1, {
 		name: { from: null, to: 'Sector 3' },
 		geometry: { from: null, to: SHAPE },
-	}, 'created', '2026-08-05 11:00:00'),
+	}, 'created', '2026-08-05T11:00:00+00:00'),
 ]
 
 /** Generated from picked lines: one revision carries both. */
@@ -410,12 +413,12 @@ const GENERATED = [
 		name: { from: null, to: 'Sector 3' },
 		geometry: { from: null, to: SHAPE },
 		limit: { from: null, to: STREETS },
-	}, 'created', '2026-08-05 11:00:00'),
+	}, 'created', '2026-08-05T11:00:00+00:00'),
 ]
 
 /** Generated, then a vertex dragged: a later revision touches the geometry alone. */
 const DRAGGED = [
-	revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 16:45:00'),
+	revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12T16:45:00+00:00'),
 	...GENERATED,
 ]
 
@@ -426,13 +429,13 @@ const DRAGGED = [
  * No revision ever wrote the two together, which is what makes it hand-drawn.
  */
 const DRAWN_THEN_LIMIT = [
-	revision(4, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20 08:00:00'),
+	revision(4, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20T08:00:00+00:00'),
 	...DRAWN,
 ]
 
 /** Generated, a vertex dragged, and then the Limit edited once more. */
 const DRAGGED_THEN_LIMIT = [
-	revision(5, { limit: { from: STREETS, to: STREETS } }, 'updated', '2026-08-25 08:00:00'),
+	revision(5, { limit: { from: STREETS, to: STREETS } }, 'updated', '2026-08-25T08:00:00+00:00'),
 	...DRAGGED,
 ]
 
@@ -442,8 +445,8 @@ const DRAGGED_THEN_LIMIT = [
  * alone because the Limit it was generated from did not change.
  */
 const REGENERATED = [
-	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 09:30:00'),
-	revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-06 09:00:00'),
+	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12T09:30:00+00:00'),
+	revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-06T09:00:00+00:00'),
 	...DRAWN,
 ]
 
@@ -467,7 +470,7 @@ const IMPORTED_THEN_LIMIT = DRAWN_THEN_LIMIT
  * sentence names neither.
  */
 const IMPORTED_THEN_REDRAWN = [
-	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12 09:30:00'),
+	revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-12T09:30:00+00:00'),
 	...DRAWN,
 ]
 
@@ -542,7 +545,7 @@ describe('provenance', () => {
 	 */
 	it('does not count a Limit that was removed', () => {
 		const history = [
-			revision(2, { limit: { from: STREETS, to: null } }, 'updated', '2026-08-20 08:00:00'),
+			revision(2, { limit: { from: STREETS, to: null } }, 'updated', '2026-08-20T08:00:00+00:00'),
 			...DRAWN,
 		]
 
@@ -550,27 +553,26 @@ describe('provenance', () => {
 	})
 
 	/**
-	 * The timestamp is whatever the database handed back — `RevisionLog` reads the
-	 * column raw — so the date is taken off either shape rather than off a
-	 * separator this driver happens to use today.
+	 * The API sends the instant in UTC, and the date said is the reader's own
+	 * (#211): a line saved at 21:30 on the 12th in Santiago is 01:30 UTC on the
+	 * 13th, and was saved on the 12th.
 	 */
-	it('reads the date whichever separator the timestamp carries', () => {
-		const iso = [revision(1, { geometry: { from: null, to: SHAPE } }, 'created', '2026-08-05T11:00:00+00:00')]
-
-		expect(provenance(iso)).toBe('Línea dibujada a mano.')
+	it('dates the line on the local day it was saved, not the UTC one', () => {
 		expect(provenance([
-			revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-09-01T08:00:00+00:00'),
-			revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-20T08:00:00+00:00'),
-			...iso,
-		])).toBe('Línea guardada el 01-09-2026, después del límite.')
+			revision(3, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', '2026-08-13T01:30:00+00:00'),
+			revision(2, { limit: { from: null, to: STREETS } }, 'updated', '2026-08-06T09:00:00+00:00'),
+			...DRAWN,
+		])).toBe('Línea guardada el 12-08-2026, después del límite.')
 	})
 
 	/** A timestamp that is not a date says nothing, rather than saying nonsense. */
 	it('leaves the date out when the timestamp is not one', () => {
-		expect(provenance([
-			revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', null),
-			...GENERATED,
-		])).toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo.')
+		for (const changedAt of [null, 'ayer']) {
+			expect(provenance([
+				revision(2, { geometry: { from: SHAPE, to: SHAPE } }, 'updated', changedAt),
+				...GENERATED,
+			])).toBe('Línea fijada junto con el límite el 05-08-2026 y guardada de nuevo.')
+		}
 	})
 
 	/** Nothing to say rather than a guess: a record whose history never arrived. */

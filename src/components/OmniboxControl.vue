@@ -17,6 +17,8 @@
 				role="combobox"
 				:aria-expanded="showDropdown ? 'true' : 'false'"
 				aria-autocomplete="list"
+				:aria-controls="showDropdown ? listId : null"
+				:aria-activedescendant="activeOptionId"
 				@focus="onFocus"
 				@blur="onBlur"
 				@keydown.down.prevent="navigateResults(1)"
@@ -74,9 +76,10 @@
 		<p class="territorio-omnibox__status" role="status">{{ status }}</p>
 
 		<!-- Unified Autocomplete Results Dropdown -->
-		<div v-if="showDropdown" class="territorio-omnibox__dropdown" role="listbox">
+		<div v-if="showDropdown" :id="listId" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
 				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
+				:id="`${listId}-option-${index}`"
 				role="option"
 				class="territorio-omnibox__item"
 				:class="{ 'territorio-omnibox__item--highlighted': activeIndex === index }"
@@ -154,6 +157,8 @@ export default {
 		return {
 			isFocused: false,
 			activeIndex: -1,
+			/** The id of the listbox this combobox owns: what aria-controls names, and every option's id builds on. */
+			listId: 'territorio-omnibox-list',
 		}
 	},
 
@@ -201,6 +206,19 @@ export default {
 
 		showDropdown() {
 			return this.isFocused && this.results.length > 0
+		},
+
+		/**
+		 * The option the arrows have highlighted, for a screen reader to announce
+		 * (#213): focus stays in the input, so aria-activedescendant is the only
+		 * pointer to the row Enter would take. Nothing highlighted, or the list
+		 * closed (blur keeps activeIndex) — no attribute at all, never a dangling id.
+		 */
+		activeOptionId() {
+			if (!this.showDropdown || this.activeIndex < 0) {
+				return null
+			}
+			return `${this.listId}-option-${this.activeIndex}`
 		},
 	},
 

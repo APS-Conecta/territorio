@@ -796,7 +796,8 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
     `watchPosition` ×2 and `clearWatch` ×0, one live GPS subscription per retry.
     Granted, with a 30 m fix emulated: the button is pressed, the circle and the
     dot are painted (paint, not the button: c8837c7), no notice; and a second
-    click stops it cleanly. Console errors are read around the clicks, so a
+    click stops it cleanly. A later activation, after the stop, recentres on its
+    own first fix (#212). Console errors are read around the clicks, so a
     permissions-policy violation is attributed to this check and not only to
     the blanket line at the end of the run.
 
@@ -891,6 +892,37 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
             f"{stopped['clear']}, not 2 / 2 — a watch survived the stop",
         )
 
+    # Pressed again, somewhere else: the new watch recentres on its own first fix
+    # (#212). No return on either branch: everything after the view has moved
+    # must reach the reload below.
+    if not page.evaluate(VIEW_RECORDER):
+        failures.append("the page has no window.L, so nothing could read where a second activation took the map")
+    else:
+        # About 2.2 km south, at the same trusted 30 m, so no notice.
+        second = dict(LOCATION_FIX, latitude=LOCATION_FIX["latitude"] - 0.02)
+        page.context.set_geolocation(second)
+        button.click()
+
+        # 0.0001° is about 10 m: far below the 2.2 km between the two fixes, and
+        # above Leaflet's pixel rounding (about 2 m at zoom 16).
+        def on_second():
+            view = _last_view(page)
+            if view is None:
+                return False
+            latitude, longitude = _centre(view)
+            return (abs(latitude - second["latitude"]) <= 0.0001
+                    and abs(longitude - second["longitude"]) <= 0.0001)
+
+        if not settles(page, on_second, timeout=6_000):
+            failures.append(
+                f"pressing «¿Dónde estoy?» again after the stop left the map on {_last_view(page)} "
+                f"(None: it never moved), not centred on {second} — only the first activation "
+                f"on the page recentred (#212)",
+            )
+        # The stop, pass or fail: the teardown revokes the permission, and a watch
+        # still running then can log a locationerror the run counts.
+        button.click()
+
     violations = [line for line in errors[logged_before:] if "ermissions policy" in line]
     if violations:
         failures.append(
@@ -913,6 +945,17 @@ def _holds(view, line):
     latitude, west, east = line
     return (view["south"] <= latitude <= view["north"]
             and view["west"] <= west and east <= view["east"])
+
+
+def _last_view(page):
+    """The last view VIEW_RECORDER saw, or None when the map has not moved since it was installed."""
+    views = page.evaluate("() => window.__territorioViews")
+    return views[-1] if views else None
+
+
+def _centre(view):
+    """A recorded view's centre, as (latitude, longitude)."""
+    return (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
 
 
 def save(page, failures, what):
@@ -8412,13 +8455,6 @@ def the_redesigned_controls_work(page, errors, failures):
         failures.append("the page has no window.L, so nothing could read where the search took the map")
         return
 
-    def last_view():
-        views = page.evaluate("() => window.__territorioViews")
-        return views[-1] if views else None
-
-    def centre(view):
-        return (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
-
     # A taxonomy drawer that is "closed" but mounted covers the whole screen.
     if page.locator(".territorio-taxonomy-drawer").count() != 0:
         failures.append("the taxonomy drawer is on the page before anyone opened it")
@@ -8430,8 +8466,8 @@ def the_redesigned_controls_work(page, errors, failures):
     elif not {place, polygon, street} <= set(titles):
         failures.append(f"Omnibox offered {titles}, which lacks one of the Place, Polygon or street")
     else:
-        view = last_view()
-        lat, lon = centre(view) if view else (None, None)
+        view = _last_view(page)
+        lat, lon = _centre(view) if view else (None, None)
         if view is None or abs(lat - point[0]) > 0.005 or abs(lon - point[1]) > 0.005:
             failures.append(f"picking the Place left the map on {view}, not on {point}")
         if not page.locator(".territorio-docked-panel__sheet").get_by_text(place).first.is_visible():
@@ -8447,7 +8483,7 @@ def the_redesigned_controls_work(page, errors, failures):
             failures.append("«Volver a la lista» did not bring the list back")
 
     _, problem = _omnibox_pick(page, f"Colegio Rediseño {REDESIGN}", polygon)
-    view = last_view()
+    view = _last_view(page)
     if problem:
         failures.append(f"Omnibox, picking the Polygon: {problem}")
     elif view is None or not (view["south"] <= -33.80 and view["north"] >= -33.79
@@ -8458,7 +8494,7 @@ def the_redesigned_controls_work(page, errors, failures):
     # the second one and not the first.
     for index, line in enumerate(lines):
         titles, problem = _omnibox_pick(page, f"Calle Rediseño {REDESIGN}", street, nth=index)
-        view = last_view()
+        view = _last_view(page)
         if problem:
             failures.append(f"Omnibox, picking street row {index + 1}: {problem}")
         elif titles.count(street) != 2:

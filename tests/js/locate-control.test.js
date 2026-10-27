@@ -60,6 +60,17 @@ describe('onLocationError', () => {
 	})
 })
 
+// #212: pins only where the reset sits; the browser gate's second position proves the behaviour.
+describe('toggleLocate', () => {
+	it('re-arms the first-fix recentre in the start branch, so every watch centres on its own first fix', () => {
+		const handler = member('toggleLocate(button) {')
+
+		// Present first: indexOf -1 would slice one character and blame the wrong line.
+		expect(handler).toContain('this.locating = true')
+		expect(handler.slice(handler.indexOf('this.locating = true'))).toContain('this.locatedOnce = false')
+	})
+})
+
 describe('the two stops that already worked', () => {
 	it('still stops on toggle and on unmount', () => {
 		expect(member('toggleLocate(button) {')).toContain('this.map.stopLocate()')

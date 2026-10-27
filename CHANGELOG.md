@@ -267,6 +267,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **«¿Dónde estoy?» recentres on every activation, not only the first (#212).** Once any
+  activation on the page had found the person, a later one (after a stop, or a retry after an
+  error) drew the dot without moving the map, so the button looked dead. Each watch now
+  recentres on its own first fix; later fixes in the same watch still leave the view alone for
+  someone placing vertices.
+
 - **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
   Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
   discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is

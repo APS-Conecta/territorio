@@ -128,7 +128,9 @@ final class RetirementTest extends IntegrationTestCase {
 
 	public function testRetirementIsRecordedAgainstThePersonWhoDidIt(): void {
 		$id = $this->place('Con autor');
+		$before = new \DateTimeImmutable('@' . time());
 		$this->service->retire($id);
+		$after = new \DateTimeImmutable('@' . time());
 
 		$entry = $this->service->history($id)[0];
 
@@ -136,7 +138,11 @@ final class RetirementTest extends IntegrationTestCase {
 		// No session in the test runner, so nobody is the honest answer — null
 		// means "no person behind it", which is also what an occ import records.
 		self::assertNull($entry['actor']);
-		self::assertNotEmpty($entry['changedAt']);
+		// An instant with its offset spelt out, and the real one: a column read in
+		// the wrong zone lands hours outside the bracket (#211).
+		self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/', $entry['changedAt']);
+		$changedAt = new \DateTimeImmutable($entry['changedAt']);
+		self::assertTrue($before <= $changedAt && $changedAt <= $after);
 	}
 
 	/**

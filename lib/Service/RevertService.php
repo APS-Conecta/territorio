@@ -75,17 +75,29 @@ class RevertService {
 		$counts = ['updated' => 0, 'skipped' => 0];
 
 		try {
-			$this->revisions->duringImport(
-				(int)$revert->getId(),
-				// This revert belongs in its own lineage. It could not be read into
-				// it above — it did not exist yet — but from here on it is writing
-				// Revisions, and a batch that touched one record twice would
-				// otherwise undo the newer entry and then find its OWN write sitting
-				// on the record, decide a colleague had been there, and skip the
-				// older one. The record stayed on the map, counted as "omitido",
-				// which reads as deliberately protected rather than missed.
+			$this->featureService->deferringReassignments(
 				function () use ($batchId, $lineage, $revert, &$counts): void {
-					$this->undo($batchId, [...$lineage, (int)$revert->getId()], $counts);
+					$this->revisions->duringImport(
+						(int)$revert->getId(),
+						// This revert belongs in its own lineage. It could not be read into
+						// it above — it did not exist yet — but from here on it is writing
+						// Revisions, and a batch that touched one record twice would
+						// otherwise undo the newer entry and then find its OWN write sitting
+						// on the record, decide a colleague had been there, and skip the
+						// older one. The record stayed on the map, counted as "omitido",
+						// which reads as deliberately protected rather than missed.
+						function () use ($batchId, $lineage, $revert, &$counts): void {
+							try {
+								$this->undo($batchId, [...$lineage, (int)$revert->getId()], $counts);
+							} finally {
+								// Inside the stamp, also on a walk that threw (L1-13, #200): the
+								// sweep's writes then carry this revert's id, so the lineage
+								// check takes them as its own and no «reasignación de límite»
+								// batch is recorded.
+								$this->featureService->flushDeferredReassignments();
+							}
+						},
+					);
 				},
 			);
 		} finally {
@@ -200,6 +212,9 @@ class RevertService {
 	 * id — pointing at something no read will resolve, so the sidebar says "sin
 	 * asignar" about a record the database says is assigned. Registry-wide,
 	 * silent, and the revert counted those records as successfully updated.
+	 *
+	 * During a revert that reassignment is collected and swept once at the end
+	 * of the walk, inside the revert's batch, not once per boundary (#200).
 	 */
 	private function setRetired(Feature $feature, bool $retired): bool {
 		if ((bool)$feature->getRetired() === $retired) {

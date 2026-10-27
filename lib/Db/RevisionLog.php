@@ -160,7 +160,7 @@ class RevisionLog {
 	/**
 	 * One Feature's history, newest first.
 	 *
-	 * @return list<array{revision: int, action: string, actor: ?string, changedAt: ?string, changes: ?array}>
+	 * @return list<array{revision: int, action: string, actor: ?string, changedAt: string, changes: ?array}>
 	 */
 	public function forFeature(int $featureId): array {
 		$qb = $this->db->getQueryBuilder();
@@ -176,7 +176,10 @@ class RevisionLog {
 				'revision' => (int)$row['id'],
 				'action' => (string)$row['action'],
 				'actor' => $row['actor'],
-				'changedAt' => $row['changed_at'],
+				// UTC wall-clock time with no zone: Nextcloud forces the process to UTC,
+				// and allocate() writes `new DateTime()` in it (#211).
+				'changedAt' => (new \DateTimeImmutable((string)$row['changed_at'], new \DateTimeZone('UTC')))
+					->format(\DateTimeInterface::ATOM),
 				'changes' => $row['changes'] === null ? null : json_decode((string)$row['changes'], true),
 			];
 		}

@@ -53,6 +53,7 @@
 							:taxonomy="taxonomy"
 							:selected-id="selectedId"
 							:draft-geometry="draftGeometry"
+							:draft-editable="draftEditable"
 							:draft-colour="draft?.colour ?? null"
 							:draft-subcategory-id="draft?.subcategoryId ?? null"
 							:draft-name="draft?.name ?? ''"
@@ -105,6 +106,7 @@
 
 									<FeatureDetail
 										:draft="draft"
+										:editing="editing"
 										:taxonomy="taxonomy"
 										:divisions="divisions"
 										:features="features"
@@ -113,6 +115,7 @@
 										:history="history"
 										:history-failed="historyFailed"
 										:retired="selectedIsRetired"
+										@update:editing="setEditing"
 										@save="save"
 										@retire="retire"
 										@retry="loadHistory(selectedId)"
@@ -435,6 +438,10 @@ export default {
 			history: [],
 			selectedId: null,
 			draft: null,
+			// The record form's edit state (#195). App is its only owner and clears
+			// it whenever it opens or closes a record (#194 reuses it). `editingLimit`
+			// does not follow it: the Limit picker opens for any Sector.
+			editing: false,
 			saving: false,
 			error: '',
 			// Separate from `error`: that one renders in the panel's list and only
@@ -616,9 +623,17 @@ export default {
 			return suggestions(this.cadastreLines, this.boundaryQuery)
 		},
 
-		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
+		/** The shape the map draws as the draft — a Sector being drawn, shown or adjusted. */
 		draftGeometry() {
 			return this.draft?.geometry ?? null
+		},
+
+		/**
+		 * Whether the map lets the draft's shape be reshaped (#195). A new record
+		 * is editable without «Editar»; the map has no other way to know.
+		 */
+		draftEditable() {
+			return this.draft !== null && (this.editing || this.draft.id === null)
 		},
 
 		/**
@@ -781,6 +796,7 @@ export default {
 			this.selectedId = id
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			this.draft = feature === undefined ? null : draftFrom(feature, this.taxonomy)
+			this.editing = false
 			this.error = ''
 			this.history = []
 			this.historyFailed = false
@@ -792,6 +808,21 @@ export default {
 			}
 			if (feature !== undefined) {
 				this.loadHistory(id)
+			}
+		},
+
+		/**
+		 * «Editar» and «Cancelar» on the record form (#195). False can only mean
+		 * «Cancelar», because App clears the flag on every other path, so it
+		 * reopens the stored record the way the list does: select() rebuilds the
+		 * draft from the Registry, stops seeding, clears the error and the Limit
+		 * picker's state, and reloads history.
+		 */
+		setEditing(editing) {
+			if (editing) {
+				this.editing = true
+			} else {
+				this.select(this.selectedId)
 			}
 		},
 
@@ -1206,6 +1237,7 @@ export default {
 			this.selectedId = null
 			this.error = ''
 			this.draft = { ...blankDraft(), subcategoryId: defaultSubcategoryId(this.taxonomy) }
+			this.editing = false
 			this.panelOpen = true
 		},
 
@@ -1238,6 +1270,7 @@ export default {
 				// these have drifted apart before.
 				...sectorFields(),
 			}
+			this.editing = false
 			this.boundaryQuery = ''
 			this.cadastreLines = []
 			this.goneIds = []
@@ -1406,8 +1439,8 @@ export default {
 				return
 			}
 
-			// Straight into the ordinary draft, so every vertex is draggable from
-			// this moment on and nothing downstream knows this shape was generated.
+			// Straight into the ordinary draft, so nothing downstream knows this
+			// shape was generated.
 			this.draft.geometry = face
 			this.error = ''
 		},
@@ -1458,6 +1491,7 @@ export default {
 			// fetch three thousand rows for nobody.
 			clearTimeout(this.viewTimer)
 			this.draft = null
+			this.editing = false
 			this.selectedId = null
 			this.history = []
 			// Unloaded on leaving the editor, which is the other half of loading

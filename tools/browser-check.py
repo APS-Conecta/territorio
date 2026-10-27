@@ -1182,6 +1182,11 @@ def _draw(page, name, failures, colour, save_it):
         page.wait_for_timeout(400)
         return False
 
+    # A new record is editable without «Editar»: the map has only App's word for
+    # it, so a Sector drawn a moment ago must already have its handles (#195).
+    if page.locator(".leaflet-marker-pane .marker-icon").count() == 0:
+        failures.append("a Sector drawn a moment ago has no draggable vertices (#195)")
+
     page.get_by_label("Nombre").fill(name)
     # The colour input is native, so set it directly — a colour picker cannot be
     # driven by clicking.
@@ -2619,7 +2624,8 @@ def the_limit_is_kept_and_survives_adjustment(page, failures):
         page.mouse.up()
         page.wait_for_timeout(500)
     else:
-        # A failure, not a skip. An open Sector always has draggable vertices —
+        # A failure, not a skip. An opened Sector has draggable vertices once
+        # «Editar» is pressed, which open_the_runs_sector() does —
         # a_generated_polygon_is_editable asserts exactly that — so "no handle"
         # here means something is broken, and skipping would let this check
         # report green having adjusted nothing.
@@ -4677,6 +4683,150 @@ def a_dragged_vertex_stays_with_its_own_record(page, failures):
             f"{place!r} moved from {before['geometry']['coordinates']} to "
             f"{after['geometry']['coordinates']} without anybody editing it",
         )
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def cancelling_an_edit_restores_the_stored_place(page, failures):
+    """#195: «Cancelar» on a saved record discards the edit.
+
+    The form edits the draft box in place, and «Cancelar» used to flip only the
+    form's own flag. The read-only card went on showing the cancelled name, and
+    the next «Guardar» saved it along with the edit that followed.
+
+    Asserted on the Registry as well as the card: the card re-reads the draft,
+    so only the Registry says what «Guardar» wrote. Each half returns on its
+    failure, so a red run never presses «Guardar» on the cancelled name.
+    """
+    name = f"Plaza del Navegador {RUN}"
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(600)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is not in the list to edit (#195)")
+        page.locator(SEARCH).fill("")
+        return
+
+    open_first_row(page)
+    page.get_by_label("Nombre").fill(f"Nombre cancelado {RUN}")
+    page.locator(".territorio-detail__actions").get_by_role("button", name="Cancelar", exact=True).click()
+    page.wait_for_timeout(400)
+
+    shown = page.locator(".territorio-detail__place-title").inner_text().strip()
+    if shown != name:
+        failures.append(f"«Cancelar» kept the edit: the card says {shown!r}, the Registry {name!r} (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    notes = f"Notas tras cancelar {RUN}"
+    # Notas sits in «Más información», which opens closed.
+    page.locator("details.territorio-detail__section", has_text="Más información").evaluate(
+        "node => { node.open = true }",
+    )
+    page.get_by_label("Notas").fill(notes)
+    save(page, failures, "the Place after a cancelled edit")
+
+    stored = registry_feature(page, name)
+    if stored is None:
+        failures.append(f"{name!r} is not in the Registry after «Guardar»: the cancelled name was saved (#195)")
+    elif stored.get("notes") != notes:
+        failures.append(f"{name!r} was saved with Notas {stored.get('notes')!r}, not {notes!r} (#195)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def cancelling_a_dragged_sector_restores_its_shape(page, failures):
+    """#195: a vertex dragged and then cancelled must not reach a later «Guardar».
+
+    The drag writes straight into the draft's geometry, and «Cancelar» used to
+    leave it there with the vertices still draggable in the read-only card. The
+    next «Editar» + «Guardar» then saved the cancelled shape.
+    """
+    if not open_the_runs_sector(page, failures):
+        return
+
+    name = f"Sector Navegador {RUN}"
+    before = (registry_feature(page, name) or {}).get("geometry")
+    # A vertex the pointer can reach. The Sector is fitted to the whole map, so a
+    # corner can sit under the docked panel, and a drag that lands on the panel
+    # moves nothing: the Registry comparison below would then pass on no drag.
+    vertex = page.evaluate_handle(
+        """() => [...document.querySelectorAll('.leaflet-marker-pane .marker-icon')].find((el) => {
+            const box = el.getBoundingClientRect()
+            return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === el
+        }) ?? null""",
+    ).as_element()
+    if before is None or vertex is None:
+        failures.append(f"{name!r} has no stored geometry or no reachable vertex, so nothing was dragged (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    start = vertex.bounding_box()
+    page.mouse.move(start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(start["x"] + 40, start["y"] + 40, steps=6)
+    page.mouse.up()
+    page.wait_for_timeout(500)
+    end = vertex.bounding_box()
+    if end is None or abs(end["x"] - start["x"]) + abs(end["y"] - start["y"]) < 10:
+        failures.append("the drag moved no vertex, so «Cancelar» had nothing to discard (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    page.locator(".territorio-detail__actions").get_by_role("button", name="Cancelar", exact=True).click()
+    page.wait_for_timeout(600)
+    if handles.count() > 0:
+        failures.append("the Sector still has draggable vertices after «Cancelar» (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    save(page, failures, "the Sector after a cancelled drag")
+    after = (registry_feature(page, name) or {}).get("geometry")
+    if after != before:
+        failures.append("«Guardar» after «Cancelar» saved the cancelled vertex drag (#195)")
+
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def a_read_only_sector_has_no_vertex_handles(page, failures):
+    """#195: a Sector shown in the read-only card cannot be reshaped; after «Editar» it can.
+
+    Opened by its row alone, because open_first_row() presses «Editar», which is
+    the second half. That half catches a map that never redraws when the record
+    becomes editable.
+    """
+    name = f"Sector Navegador {RUN}"
+    page.locator(SEARCH).fill(name)
+    page.wait_for_timeout(800)
+    if page.locator(ROWS).count() == 0:
+        failures.append(f"{name!r} is not in the list to open (#195)")
+        page.locator(SEARCH).fill("")
+        return
+
+    page.locator(ROWS).first.click()
+    page.wait_for_timeout(1200)
+    handles = page.locator(".leaflet-marker-pane .marker-icon")
+    if handles.count() > 0:
+        failures.append("a Sector shown in the read-only card has draggable vertices (#195)")
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        return
+
+    edit(page)
+    if not settles(page, lambda: handles.count() > 0, timeout=5_000):
+        failures.append("«Editar» did not make the Sector's vertices draggable (#195)")
 
     dismiss(page)
     page.locator(SEARCH).fill("")
@@ -7714,6 +7864,10 @@ def main():
         # Which has just dragged a vertex and saved, so the line is now newer
         # than the Limit — #50's third case, the one a person would ask about.
         run(a_sector_says_how_its_boundary_came_to_be, page, "adjusted", failures)
+        # After it, so neither cancelled edit can touch the history it reads.
+        run(cancelling_an_edit_restores_the_stored_place, page, failures)
+        run(cancelling_a_dragged_sector_restores_its_shape, page, failures)
+        run(a_read_only_sector_has_no_vertex_handles, page, failures)
         # After both: this one retires a line the Sector's Limit cites, and every
         # check above needs those lines live to pick and generate from.
         run(a_gone_line_says_so_and_keeps_its_name, page, failures)

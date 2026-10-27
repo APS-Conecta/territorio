@@ -63,6 +63,29 @@ describe('what the keyboard can pick', () => {
 	})
 })
 
+/**
+ * #213: focus stays in the input, so the highlighted row reaches a screen reader only
+ * through aria-activedescendant. That a press really moves it is --only redesign's.
+ */
+describe('what a screen reader is told', () => {
+	const tag = (role) => omnibox.match(new RegExp(`<div[^>]*role="${role}"[^>]*>`))?.[0] ?? ''
+
+	it('points the input at the listbox and the highlighted row', () => {
+		expect(omnibox).toContain(':aria-controls="LIST_ID"')
+		expect(omnibox).toContain(':aria-activedescendant="activeOptionId"')
+		expect(tag('listbox')).toContain(':id="LIST_ID"')
+		expect(tag('listbox')).toMatch(/aria-label="[^"]+"/)
+		expect(tag('option')).toContain(':id="`${LIST_ID}-${index}`"')
+	})
+
+	/** Only null removes the attribute; the bounds clause keeps it off a row a props change unrendered. */
+	it('names no row while the list is closed or the index is past it', () => {
+		const active = methodOf(omnibox, 'activeOptionId')
+		expect(active).toContain('this.showDropdown')
+		expect(active).toContain('this.activeIndex < this.results.length')
+	})
+})
+
 describe('what the search says and asks', () => {
 	/** #62: these names come out of an imported cadastre, not from anyone here. */
 	it('writes every name as text, never as markup', () => {

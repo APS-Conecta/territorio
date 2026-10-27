@@ -381,6 +381,14 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
   when only the geometry was prefixed (#209).
 
+- **A screen reader hears the Omnibox row the arrow keys highlight (#213).** Focus stays in
+  the input while ArrowUp and ArrowDown move the highlight, and the input pointed at nothing,
+  so the highlight changed a CSS class and `aria-selected` on a row no one was told about and
+  Enter picked a row never heard. The input now names the listbox with `aria-controls` and
+  the highlighted row with `aria-activedescendant`, each row has an id built from its index,
+  and the listbox is named «Resultados de búsqueda». A screen reader now announces the row the
+  arrow keys reach, as the removed street search did.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

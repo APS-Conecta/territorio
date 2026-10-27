@@ -17,6 +17,8 @@
 				role="combobox"
 				:aria-expanded="showDropdown ? 'true' : 'false'"
 				aria-autocomplete="list"
+				:aria-controls="LIST_ID"
+				:aria-activedescendant="activeOptionId"
 				@focus="onFocus"
 				@blur="onBlur"
 				@keydown.down.prevent="navigateResults(1)"
@@ -74,8 +76,13 @@
 		<p class="territorio-omnibox__status" role="status">{{ status }}</p>
 
 		<!-- Unified Autocomplete Results Dropdown -->
-		<div v-if="showDropdown" class="territorio-omnibox__dropdown" role="listbox">
+		<div v-if="showDropdown"
+			:id="LIST_ID"
+			class="territorio-omnibox__dropdown"
+			role="listbox"
+			aria-label="Resultados de búsqueda">
 			<div v-for="(result, index) in results"
+				:id="`${LIST_ID}-${index}`"
 				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
 				role="option"
 				class="territorio-omnibox__item"
@@ -108,6 +115,9 @@
 <script>
 import { matchOmnibox } from '../assets.js'
 import { hintFor, placeDetail, searchStatus } from '../streets.js'
+
+// Fixed, not generated: App mounts the Omnibox once, so the id is unique on the page.
+const LIST_ID = 'territorio-omnibox-list'
 
 export default {
 	name: 'OmniboxControl',
@@ -152,6 +162,7 @@ export default {
 
 	data() {
 		return {
+			LIST_ID,
 			isFocused: false,
 			activeIndex: -1,
 		}
@@ -201,6 +212,18 @@ export default {
 
 		showDropdown() {
 			return this.isFocused && this.results.length > 0
+		},
+
+		/**
+		 * The highlighted row, for aria-activedescendant: focus stays in the input, so this
+		 * is all a screen reader hears of the arrows. Null removes the attribute; the bounds
+		 * check is selectActiveResult's, so a props change never leaves it naming a gone row.
+		 */
+		activeOptionId() {
+			if (this.showDropdown && this.activeIndex >= 0 && this.activeIndex < this.results.length) {
+				return `${LIST_ID}-${this.activeIndex}`
+			}
+			return null
 		},
 	},
 

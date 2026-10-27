@@ -8466,6 +8466,61 @@ def the_redesigned_controls_work(page, errors, failures):
         elif view is None or not _holds(view, line) or _holds(view, lines[1 - index]):
             failures.append(f"picking street row {index + 1} left the map on {view}, not on {line}")
 
+    # Focus stays in the box while the arrows move the highlight, so a screen reader hears
+    # the highlighted row only through the box's aria-activedescendant (#213). Down, Up,
+    # Down, Down wraps backward and then forward whatever the number of rows.
+    box = page.locator(OMNIBOX_INPUT)
+    box.fill("")
+    box.press_sequentially(street, delay=40)
+    if not settles(page, lambda: page.locator(OMNIBOX_ITEM).count() >= 2):
+        failures.append(f"typing {street!r} offered {page.locator(OMNIBOX_ITEM).count()} rows, "
+                        "so what a screen reader is told went unchecked")
+    else:
+        total = page.locator(OMNIBOX_ITEM).count()
+
+        def announced():
+            return page.evaluate("""([input, item]) => {
+                const box = document.querySelector(input)
+                const rows = [...document.querySelectorAll(item)]
+                const id = box.getAttribute('aria-activedescendant')
+                const option = id && document.getElementById(id)
+                const controls = box.getAttribute('aria-controls')
+                const list = controls && document.getElementById(controls)
+                return {
+                    id,
+                    option: option ? {role: option.getAttribute('role'),
+                                      selected: option.getAttribute('aria-selected'),
+                                      row: rows.indexOf(option)} : null,
+                    highlighted: rows.findIndex((row) => row.matches('.territorio-omnibox__item--highlighted')),
+                    list: list ? {role: list.getAttribute('role'), name: list.getAttribute('aria-label')} : null,
+                }
+            }""", [OMNIBOX_INPUT, OMNIBOX_ITEM])
+
+        if announced()["id"] is not None:
+            failures.append(f"with no row highlighted the search box names {announced()['id']!r} as active")
+
+        heard, row = [], -1
+        for key, delta in (("ArrowDown", 1), ("ArrowUp", -1), ("ArrowDown", 1), ("ArrowDown", 1)):
+            box.press(key)
+            row = (row + delta + total) % total
+            settles(page, lambda expected=row: announced()["highlighted"] == expected, timeout=2_000)
+            state = announced()
+            if state["highlighted"] != row or state["option"] != {"role": "option", "selected": "true", "row": row}:
+                heard.append(f"{key} to row {row + 1} of {total}: row {state['highlighted'] + 1} is highlighted "
+                             f"and aria-activedescendant {state['id']!r} names {state['option']}")
+        if heard:
+            failures.append(f"the search box does not announce the highlighted row: {'; '.join(heard)}")
+
+        listbox = announced()["list"]
+        if not listbox or listbox["role"] != "listbox" or not (listbox["name"] or "").strip():
+            failures.append(f"the search box's aria-controls names no named listbox: {listbox}")
+
+        box.press("Enter")
+        if not settles(page, lambda: page.locator(OMNIBOX_ITEM).count() == 0, timeout=5_000):
+            failures.append("Enter on a highlighted row did not close the list")
+        elif announced()["id"] is not None:
+            failures.append(f"with the list closed the search box still names {announced()['id']!r} as active")
+
     # --- the view tabs ---
     # With a query typed the Índice lists only what matches it, and what was typed
     # last names a street, which is not a record.

@@ -267,6 +267,11 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **«¿Dónde estoy?» recentres on every press, not only the page's first.** The recentre-once flag
+  lasted as long as the component, so after the first watch a press drew the dot, often
+  off-screen, and left the view where it was. Each watch now recentres on its own first fix;
+  later fixes in a watch still leave the view alone. The browser gate presses it a second time
+  from kilometres away (#212).
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

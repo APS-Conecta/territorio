@@ -352,6 +352,21 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   The lookup now names both members, the restored record and the survivor its `mergedInto`
   points at, and matches only while that pair is Merged.
 
+- **A save that lands after the record was left no longer reports a false error or carries
+  over the wrong picks (#198).** `save()` applied its response to whichever draft was open
+  when the response arrived. After «← Volver a la lista» there was none: the save the server
+  had accepted said «No se pudo guardar…», and the record stayed out of the list until the
+  next poll. With another Sector open, the panel jumped back to the saved one carrying the
+  other Sector's picked lines. The response now always reaches the list, and rebuilds the
+  draft only if that draft is still the one that was sent.
+
+- **A restored record derives its own Sector and Unidad Vecinal again (#201).** A restored record
+  kept the Sector and Unidad Vecinal it had when it was retired, because boundary sweeps skip
+  retired records. That left it pointing at a boundary retired since, or unassigned although a
+  boundary drawn since covers it. `FeatureService::restore()` now derives the assignment again
+  (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
+  «Ver retirados», merge undo, and redo of an undone import.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

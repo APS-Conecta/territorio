@@ -267,6 +267,16 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **Undoing a batch no longer leaves the records it created on the map (#200).** A revert swept
+  each boundary it retired or restored at once, under a «reasignación de límite» batch of its
+  own, outside the revert's lineage. The walk then found that write on a Place the undone batch
+  had created, took it for a colleague's and counted the entry as «omitidos»: the import read «ya
+  deshecha» with the Place still live, a redo skipped the same way, and every boundary that moved
+  something added its own batch, with its own «Deshacer», to the dialog's list. A revert now
+  sweeps once at the end of its walk, inside its own batch, the way an import does (L1-13), also
+  when the walk throws part-way. A boundary retired or restored from the sidebar still sweeps at
+  once under a batch of its own.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

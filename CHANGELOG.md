@@ -341,6 +341,10 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   longer changes where it goes. The browser gate opens a Sector, a Unidad Vecinal and a Place
   from the list, drags each out of view, and asserts where Leaflet lands after «Centrar».
 
+- **«Cancelar» on a saved record discards the edit (#195).** The record reopens as the
+  Registry holds it, so cancelled edits no longer reach a later «Guardar». A Sector shown in
+  the read-only card has no vertex handles; «Editar» brings them back.
+
 - **A save that lands after the record was left no longer reports a false error or carries
   over the wrong picks (#198).** `save()` applied its response to whichever draft was open
   when the response arrived. After «← Volver a la lista» there was none: the save the server

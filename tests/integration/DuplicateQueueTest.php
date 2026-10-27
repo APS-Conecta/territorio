@@ -14,7 +14,9 @@ use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Service\ImportService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
+use OCP\IUserSession;
 use OCP\Server;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * The review queue end to end (issue #16).
@@ -361,6 +363,111 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 
 		$this->expectException(InvalidFeatureException::class);
 		$this->service->merge((int)$pair->getId(), $second);
+	}
+
+	/**
+	 * A service whose every read of the pair returns this snapshot: the PENDING
+	 * row a second request read before the first one committed (#208). Two truly
+	 * concurrent requests are not a deterministic seam; a stale read is.
+	 */
+	private function serviceReading(Duplicate $snapshot): DuplicateService {
+		$duplicates = $this->getMockBuilder(DuplicateMapper::class)
+			->setConstructorArgs([Server::get(IDBConnection::class)])
+			->onlyMethods(['find'])
+			->getMock();
+		$duplicates->method('find')->willReturn($snapshot);
+
+		return new DuplicateService(
+			$duplicates,
+			Server::get(FeatureMapper::class),
+			Server::get(FeatureService::class),
+			Server::get(IUserSession::class),
+			Server::get(IDBConnection::class),
+		);
+	}
+
+	public function testAMergeAfterACommittedDismissIsRefusedAndRetiresNothing(): void {
+		[$first, $second, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+		$this->service->dismiss((int)$pair->getId());
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Alguien ya resolvió este par.');
+		try {
+			$this->serviceReading($pair)->merge((int)$pair->getId(), $second);
+		} finally {
+			foreach ([$first, $second] as $id) {
+				$record = Server::get(FeatureMapper::class)->find($id);
+				self::assertFalse($record->getRetired());
+				self::assertNull($record->getMergedInto());
+			}
+			self::assertSame(Duplicate::DISMISSED, $this->duplicates->find((int)$pair->getId())->getStatus());
+			self::assertNotContains(Action::Merged->value, array_column($this->features->history($first), 'action'));
+		}
+	}
+
+	public function testADismissAfterACommittedMergeIsRefusedAndThePairStaysMerged(): void {
+		[$first, $second, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+		$this->service->merge((int)$pair->getId(), $second);
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Alguien ya resolvió este par.');
+		try {
+			$this->serviceReading($pair)->dismiss((int)$pair->getId());
+		} finally {
+			self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$pair->getId())->getStatus());
+			$loser = Server::get(FeatureMapper::class)->find($first);
+			self::assertTrue($loser->getRetired());
+			self::assertSame($second, $loser->getMergedInto());
+		}
+	}
+
+	/** @return array<string, array{string}> */
+	public static function survivors(): array {
+		return [
+			'same' => ['same'],
+			'other' => ['other'],
+		];
+	}
+
+	/** Keeping the other record would retire the first merge's survivor: both gone. */
+	#[DataProvider('survivors')]
+	public function testASecondMergeOfAMergedPairIsRefusedWhicheverSurvivor(string $survivor): void {
+		[$first, $second, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+		$this->service->merge((int)$pair->getId(), $second);
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Alguien ya resolvió este par.');
+		try {
+			$this->serviceReading($pair)->merge((int)$pair->getId(), $survivor === 'same' ? $second : $first);
+		} finally {
+			$loser = Server::get(FeatureMapper::class)->find($first);
+			self::assertTrue($loser->getRetired());
+			self::assertSame($second, $loser->getMergedInto());
+			self::assertFalse(Server::get(FeatureMapper::class)->find($second)->getRetired());
+			self::assertSame(Duplicate::MERGED, $this->duplicates->find((int)$pair->getId())->getStatus());
+			$merges = array_filter(
+				array_column($this->features->history($first), 'action'),
+				static fn (string $action): bool => $action === Action::Merged->value,
+			);
+			self::assertCount(1, $merges);
+		}
+	}
+
+	/**
+	 * The pair is claimed before the records are touched, so a merge the records
+	 * refuse has to give the claim back: this pins the rollback that does.
+	 */
+	public function testAMergeTheRecordsRefuseLeavesThePairPending(): void {
+		[, $second, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
+		$this->features->retire($second);
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('El registro que se conserva está retirado; restáurelo antes de fusionar.');
+		try {
+			$this->service->merge((int)$pair->getId(), $second);
+		} finally {
+			self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+		}
 	}
 
 	/** The survivor has to be one of the two, or nobody compared it with anything. */

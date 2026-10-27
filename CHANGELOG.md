@@ -372,6 +372,12 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
   «Ver retirados», merge undo, and redo of an undone import.
 
+- **Two people resolving one Candidate pair at once no longer both win (#208).** Two merges
+  keeping opposite records retired both, a dismiss could overwrite a committed merge, and a
+  merge could follow a committed dismiss. The pair is now claimed with one conditional update
+  that only a still-pending row accepts, before any record is touched; the second resolution
+  is refused with «Alguien ya resolvió este par.» and writes nothing.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

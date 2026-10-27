@@ -123,4 +123,26 @@ class DuplicateMapper extends QBMapper {
 			throw $e;
 		}
 	}
+
+	/**
+	 * Resolve a pair that is still pending.
+	 *
+	 * The stored row decides, as in record(): of two resolutions that both read
+	 * PENDING, the second changes no row. The status always changes away from
+	 * PENDING, so the affected-row count is 1 exactly when this call won, on
+	 * MySQL/MariaDB, PostgreSQL and SQLite.
+	 *
+	 * @param Duplicate::MERGED|Duplicate::DISMISSED $status
+	 * @return bool whether this call resolved the pair
+	 */
+	public function resolve(int $id, string $status, ?string $resolvedBy): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('status', $qb->createNamedParameter($status))
+			->set('resolved_by', $qb->createNamedParameter($resolvedBy))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->eq('status', $qb->createNamedParameter(Duplicate::PENDING)));
+
+		return $qb->executeStatement() === 1;
+	}
 }

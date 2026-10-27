@@ -31,6 +31,8 @@ use Throwable;
  * This knows about the database and nothing about the rule.
  */
 class DuplicateService {
+	private const ALREADY_RESOLVED = 'Alguien ya resolvió este par.';
+
 	public function __construct(
 		private DuplicateMapper $duplicates,
 		private FeatureMapper $features,
@@ -123,7 +125,7 @@ class DuplicateService {
 	 * Decide that these two are one place, and which one survives.
 	 *
 	 * @throws DoesNotExistException when the pair or either record is gone
-	 * @throws InvalidFeatureException when the survivor is not one of the two
+	 * @throws InvalidFeatureException when the pair is already resolved or the survivor is not one of the two
 	 */
 	public function merge(int $pairId, int $survivorId): Feature {
 		$pair = $this->duplicates->find($pairId);
@@ -138,20 +140,13 @@ class DuplicateService {
 
 		$loserId = $survivorId === $ids[0] ? $ids[1] : $ids[0];
 
-		// One transaction (L1-16): the loser's retirement and the pair's
-		// resolution commit together or not at all. The failure this closes is the
-		// gap between them — a loser retired while the pair sat PENDING, invisible
-		// in outstanding() and never asked again, so the queue forgot a decision it
-		// never finished making. The reads and refusals above stay outside: they
-		// take no locks and write nothing.
+		// The conditional claim decides. It runs first, so a pair someone else
+		// resolved is refused before any record is touched. If the records refuse
+		// the merge, the rollback releases the claim and the pair stays PENDING.
 		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
-			$merged = $this->featureService->merge($loserId, $survivorId);
+			$this->claim($pair, Duplicate::MERGED);
 
-			$pair->setStatus(Duplicate::MERGED);
-			$pair->setResolvedBy($this->actor());
-			$this->duplicates->update($pair);
-
-			return $merged;
+			return $this->featureService->merge($loserId, $survivorId);
 		});
 	}
 
@@ -177,25 +172,32 @@ class DuplicateService {
 	 * a queue that asks the same question every week is a queue nobody opens.
 	 *
 	 * @throws DoesNotExistException
+	 * @throws InvalidFeatureException when the pair is already resolved
 	 */
 	public function dismiss(int $pairId): Duplicate {
 		$pair = $this->duplicates->find($pairId);
 		$this->refuseResolved($pair);
+		$this->claim($pair, Duplicate::DISMISSED);
 
-		$pair->setStatus(Duplicate::DISMISSED);
-		$pair->setResolvedBy($this->actor());
-
-		return $this->duplicates->update($pair);
+		return $pair;
 	}
 
-	/**
-	 * Two people opening the queue at once both see the pair; the second to act
-	 * would otherwise retire a record on the strength of a decision the first had
-	 * already made differently.
-	 */
+	/** @throws InvalidFeatureException when another resolution of the pair committed first */
+	private function claim(Duplicate $pair, string $status): void {
+		$actor = $this->actor();
+		if (!$this->duplicates->resolve((int)$pair->getId(), $status, $actor)) {
+			throw new InvalidFeatureException(self::ALREADY_RESOLVED);
+		}
+
+		// Only once the row is ours: dismiss() hands this entity back to the client.
+		$pair->setStatus($status);
+		$pair->setResolvedBy($actor);
+	}
+
+	/** The early refusal comes from the read; DuplicateMapper::resolve() decides. */
 	private function refuseResolved(Duplicate $pair): void {
 		if ($pair->getStatus() !== Duplicate::PENDING) {
-			throw new InvalidFeatureException('Alguien ya resolvió este par.');
+			throw new InvalidFeatureException(self::ALREADY_RESOLVED);
 		}
 	}
 

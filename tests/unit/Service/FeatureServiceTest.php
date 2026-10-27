@@ -16,6 +16,7 @@ use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Service\TaxonomyService;
 use OCA\Territorio\Domain\Geometry;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
@@ -36,6 +37,7 @@ final class FeatureServiceTest extends TestCase {
 	private SubcategoryMapper&MockObject $subcategories;
 	private RevisionLog&MockObject $revisions;
 	private AssignmentService&MockObject $assignments;
+	private ImportBatchMapper&MockObject $batches;
 	private FeatureService $service;
 
 	/** The Subcategory ids the mapper stub resolves — every test uses 7, and
@@ -66,15 +68,21 @@ final class FeatureServiceTest extends TestCase {
 		$this->features->method('insert')->willReturnArgument(0);
 		$this->features->method('update')->willReturnArgument(0);
 
+		$this->batches = $this->createMock(ImportBatchMapper::class);
+
 		// A real one would need the whole Registry to resolve against; what this
 		// suite is about is what the service builds from what a person typed.
-		$this->service = new FeatureService(
+		$this->service = $this->serviceWith($this->assignments);
+	}
+
+	private function serviceWith(AssignmentService $assignments): FeatureService {
+		return new FeatureService(
 			$this->features,
 			$this->subcategories,
 			$this->revisions,
-			$this->assignments,
+			$assignments,
 			$this->createMock(DuplicateMapper::class),
-			$this->createMock(ImportBatchMapper::class),
+			$this->batches,
 			$this->createStub(IUserSession::class),
 		);
 	}
@@ -174,6 +182,18 @@ final class FeatureServiceTest extends TestCase {
 		);
 
 		return $existing;
+	}
+
+	/** A real AssignmentService, where Subcategory 7 is «Unidad vecinal» under
+	 *  «Organización social», a Category a clinic added (#205). The stub above
+	 *  answers divisionOf() by fiat, and that answer is what #205 is about. */
+	private function assignmentsOverASameNamedSubcategory(): AssignmentService {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('subcategoryIndex')->willReturn([
+			7 => ['category' => 'organizacion_social', 'categoryLabel' => 'Organización social', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad vecinal'],
+		]);
+
+		return new AssignmentService($this->features, $taxonomy);
 	}
 
 	public function testItCreatesAPlaceFromAPoint(): void {
@@ -630,6 +650,58 @@ final class FeatureServiceTest extends TestCase {
 			'subcategoryId' => 8,
 			'geometry' => self::redrawnPolygon(),
 		]));
+	}
+
+	/**
+	 * #205: the #109 refusal is for the cadastre's Unidades Vecinales. A pin
+	 * filed under a same-named Subcategory elsewhere moves like any other.
+	 */
+	public function testAPointUnderASameNamedSubcategoryCanBeMoved(): void {
+		$service = $this->serviceWith($this->assignmentsOverASameNamedSubcategory());
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Junta de Vecinos de Prueba');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setBoundingBox(Geometry::fromJson(self::PLAZA)->boundingBox());
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$moved = $service->update(3, $this->valid([
+			'geometry' => ['type' => 'Point', 'coordinates' => [-70.52, -33.48]],
+		]));
+
+		self::assertEqualsWithDelta(-70.52, $moved->getMinLon(), 1e-9);
+		self::assertEqualsWithDelta(-33.48, $moved->getMinLat(), 1e-9);
+	}
+
+	/**
+	 * #205, the batch half: a polygon filed there is no boundary, so saving it
+	 * reassigns no Place and records no reassignment batch. Through create(),
+	 * which sweeps on every new boundary; findAll() is the Registry right after
+	 * the insert — the new Zone and a Place inside its ring.
+	 */
+	public function testAPolygonUnderASameNamedSubcategorySweepsNothing(): void {
+		$service = $this->serviceWith($this->assignmentsOverASameNamedSubcategory());
+		$zone = new Feature();
+		$zone->setId(3);
+		$zone->setSubcategoryId(7);
+		$zone->setGeometry(self::storedPolygon());
+		$zone->setBoundingBox(Geometry::fromJson(self::storedPolygon())->boundingBox());
+		$zone->setKind(Kind::Zone->value);
+		$place = new Feature();
+		$place->setId(2);
+		$place->setSubcategoryId(7);
+		$place->setGeometry('{"type":"Point","coordinates":[-70.52,-33.48]}');
+		$place->setBoundingBox(Geometry::fromJson($place->getGeometry())->boundingBox());
+		$place->setKind(Kind::Place->value);
+		$this->features->method('findAll')->willReturn([$zone, $place]);
+		$this->batches->expects(self::never())->method('insert');
+
+		$service->create($this->valid(['geometry' => self::polygon()]));
+
+		self::assertNull($place->getUnidadVecinalId());
 	}
 
 	/**

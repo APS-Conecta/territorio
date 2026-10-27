@@ -10,6 +10,7 @@ use OCA\Territorio\Domain\BoundingBox;
 use OCA\Territorio\Domain\Geometry;
 use OCA\Territorio\Domain\PointInPolygon;
 use OCA\Territorio\Exception\InvalidGeometryException;
+use OCA\Territorio\Migration\EnsureSeedData;
 
 /**
  * Which Sector and which Unidad Vecinal a record falls in.
@@ -219,9 +220,13 @@ class AssignmentService {
 	 * memo there served it the colours from before its own write and two of
 	 * `RampRepaint`'s assertions failed. This is narrower and safe because the
 	 * division Subcategories are structural — #40 specifies that neither they nor
-	 * their Category can be removed, and that a rename never changes a slug — but
-	 * what actually guarantees it today is that nothing in this app writes the
-	 * taxonomy outside the install-time repair.
+	 * their Category can be removed — and because a rename never changes a slug
+	 * and no route moves a Subcategory to another Category, so an id's
+	 * (Category, Subcategory) slug pair cannot change while the service lives.
+	 *
+	 * A Subcategory is a division only under «División territorial», where
+	 * ADR-0010 files them and where the browser's `isDivision()` looks. One with
+	 * the same slug under any other Category is ordinary (#205).
 	 *
 	 * @return array<int, string> subcategory id => division slug
 	 */
@@ -234,7 +239,8 @@ class AssignmentService {
 		// The shared flat index (L1-20) — one taxonomy derivation, not a third
 		// walk of the tree. Same answer, same memo, cheaper by one tree build.
 		foreach ($this->taxonomy->subcategoryIndex() as $id => $subcategory) {
-			if (isset(self::DIVISIONS[$subcategory['subcategory']])) {
+			if ($subcategory['category'] === EnsureSeedData::DIVISIONS_SLUG
+				&& isset(self::DIVISIONS[$subcategory['subcategory']])) {
 				$divisions[$id] = $subcategory['subcategory'];
 			}
 		}

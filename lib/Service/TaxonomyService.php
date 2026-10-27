@@ -582,11 +582,9 @@ class TaxonomyService {
 	 * it — each re-paying the two-table read per call. Keyed by Subcategory id
 	 * because that is what a Feature carries; each entry carries both slugs AND
 	 * both labels, so the flattest consumer does not come back for a label. The
-	 * memo is safe for the same reason AssignmentService's divisions memo is:
-	 * nothing writes the taxonomy in-request outside the install-time repair —
-	 * and the writes this service owns happen behind the routes that re-read the
-	 * tree through tree(), which stays unmemoised deliberately (the ramp repair's
-	 * own lesson, recorded at AssignmentService::divisions()).
+	 * memo is safe because the writes this service owns happen behind the routes
+	 * that re-read the tree through tree(), which stays unmemoised deliberately
+	 * (the ramp repair's own lesson, recorded at AssignmentService::divisions()).
 	 *
 	 * @return array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}>
 	 */

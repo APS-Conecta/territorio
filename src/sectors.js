@@ -27,8 +27,9 @@ import { safeError } from './api.js'
 const LINES = ['LineString', 'MultiLineString']
 
 /**
- * Whether the picked lines can be polygonized at all: every one of them has its
- * shape held on the draft.
+ * Whether the picked lines can be polygonized at all: every picked line has a
+ * held shape that is line work or a Point, and the pick as a whole gives at least
+ * one edge.
  *
  * A separate question from whether generating succeeds, and asked first, because
  * the two failures need different words. `draftFrom()` rebuilds `picked` from the
@@ -43,16 +44,16 @@ const LINES = ['LineString', 'MultiLineString']
  * safe to rehydrate the cache a few lines at a time as the map loads them: a
  * half-filled cache reads as not ready, never as a smaller Sector.
  *
- * Asked through `stretchesOf` rather than by testing for a value, because held and
- * usable are different questions and only the second one matters here. A Boundary
- * Dataset can hold a Point (a KML import puts one there), a null geometry, or a
- * LineString of one repeated coordinate — and every one of those is pickable, would
- * have counted as ready, and would have produced no face and the message this
- * whole guard exists to delete.
+ * A missing or null shape blocks. So does a Polygon or a shape with no type: it
+ * may have edges that `stretchesOf` cannot read. A held row that adds no edge — a
+ * Point, or line work `stretchesOf` drops entirely — does not block, because
+ * `faceAround` skips it and the face is the same. The pick as a whole must still
+ * give a stretch.
  */
 export function canPolygonize(picked, pickedGeometry) {
-	return picked.length > 0
-		&& picked.every((id) => stretchesOf(pickedGeometry?.[id]).length > 0)
+	const held = picked.map((id) => pickedGeometry?.[id])
+	return held.every((geometry) => LINES.includes(geometry?.type) || geometry?.type === 'Point')
+		&& held.some((geometry) => stretchesOf(geometry).length > 0)
 }
 
 /**

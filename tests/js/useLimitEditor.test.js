@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { removeLimitPart } from '../../src/composables/useLimitEditor.js'
+import { removeLimitPart, togglePickedGroup } from '../../src/composables/useLimitEditor.js'
+import { canPolygonize, faceAround } from '../../src/sectors.js'
 
 /**
  * The Limit editor's seam to the picker's rows (#99) — the composable's first
@@ -69,5 +70,33 @@ describe('removeLimitPart', () => {
 		expect(draft.limit).toEqual([{ uid: 'tramo-1', name: 'Canal San Carlos' }])
 		expect(draft.picked).toEqual([])
 		expect(draft.pickedGeometry).toEqual({})
+	})
+})
+
+describe('togglePickedGroup', () => {
+	/**
+	 * Picking a name picks every on-screen Boundary feature of it (#214), and
+	 * one of Norte's holds no edge. The Limit still generates, through the same
+	 * unfiltered expression seedSector hands `faceAround`.
+	 */
+	it('picks a zero-length fragment with its street and still lets the Limit generate', () => {
+		const line = (coordinates) => ({ type: 'LineString', coordinates })
+		const onScreen = [
+			{ id: 1, name: 'Sur', geometry: line([[0, 0], [4, 0]]) },
+			{ id: 2, name: 'Este', geometry: line([[4, 0], [4, 4]]) },
+			{ id: 3, name: 'Norte', geometry: line([[4, 4], [0, 4]]) },
+			{ id: 4, name: 'Oeste', geometry: line([[0, 4], [0, 0]]) },
+			{ id: 5, name: 'Norte', geometry: line([[9, 9], [9, 9]]) },
+		]
+		const draft = { picked: [], limit: [], pickedGeometry: {} }
+		const idsOf = (name) => onScreen.filter((row) => row.name === name).map((row) => row.id)
+
+		for (const name of ['Sur', 'Este', 'Norte', 'Oeste']) {
+			togglePickedGroup(draft, onScreen, idsOf(name))
+		}
+
+		expect(draft.picked).toContain(5)
+		expect(canPolygonize(draft.picked, draft.pickedGeometry)).toBe(true)
+		expect(faceAround(draft.picked.map((id) => draft.pickedGeometry[id]), [2, 2])).not.toBeNull()
 	})
 })

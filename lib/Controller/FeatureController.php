@@ -10,9 +10,7 @@ use OCA\Territorio\Service\FeatureService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
-use OCP\ILogger;
 use OCP\IRequest;
-use OCP\IUserSession;
 
 /**
  * Creating and editing Features.
@@ -31,31 +29,14 @@ class FeatureController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private FeatureService $features,
-		private ?IUserSession $userSession = null,
-		private ?ILogger $logger = null,
 	) {
 		parent::__construct(Application::APP_ID, $request);
-	}
-
-	private function logAuditEvent(string $action, ?int $featureId, ?string $name): void {
-		$actor = $this->userSession?->getUser()?->getUID() ?? 'system';
-		$ip = $this->request->getRemoteAddress() ?? '127.0.0.1';
-		$this->logger?->info(sprintf(
-			'HIPAA_AUDIT: feature_mutation action=%s actor=%s ip=%s feature_id=%s name=%s',
-			$action,
-			$actor,
-			$ip,
-			$featureId !== null ? (string)$featureId : 'unknown',
-			$name !== null ? $name : 'unknown'
-		));
 	}
 
 	#[NoAdminRequired]
 	public function create(): JSONResponse {
 		return $this->attempt(function (): array {
-			$res = $this->features->create($this->request->getParams())->toClient();
-			$this->logAuditEvent('CREATE_FEATURE', $res['id'] ?? null, $res['name'] ?? null);
-			return $res;
+			return $this->features->create($this->request->getParams())->toClient();
 		});
 	}
 
@@ -69,9 +50,7 @@ class FeatureController extends Controller {
 		}
 
 		return $this->attempt(function () use ($id): array {
-			$res = $this->features->update((int)$id, $this->request->getParams())->toClient();
-			$this->logAuditEvent('UPDATE_FEATURE', (int)$id, $res['name'] ?? null);
-			return $res;
+			return $this->features->update((int)$id, $this->request->getParams())->toClient();
 		});
 	}
 
@@ -87,9 +66,7 @@ class FeatureController extends Controller {
 		}
 
 		return $this->attempt(function () use ($id): array {
-			$res = $this->features->retire((int)$id)->toClient();
-			$this->logAuditEvent('RETIRE_FEATURE', (int)$id, $res['name'] ?? null);
-			return $res;
+			return $this->features->retire((int)$id)->toClient();
 		});
 	}
 
@@ -100,9 +77,7 @@ class FeatureController extends Controller {
 		}
 
 		return $this->attempt(function () use ($id): array {
-			$res = $this->features->restore((int)$id)->toClient();
-			$this->logAuditEvent('RESTORE_FEATURE', (int)$id, $res['name'] ?? null);
-			return $res;
+			return $this->features->restore((int)$id)->toClient();
 		});
 	}
 

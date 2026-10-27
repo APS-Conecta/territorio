@@ -23,3 +23,10 @@ a person asking who moved a boundary. There is one mechanism, not two.
 - History grows without bound; it is append-only and never edited to correct a mistake.
 - Writing still requires an authenticated Nextcloud session — "anyone" means any user of this
   instance, never anonymous.
+
+## Amendment — the revision history is the only change record (2026-10-27)
+
+The revision history is the app's record of who changed what. The app keeps no second change record
+beside it: it writes none to `nextcloud.log` and dispatches none to `admin_audit`. A second record
+would depend on instance configuration this app does not control and would drift from the history
+it repeats.

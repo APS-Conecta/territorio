@@ -100,6 +100,8 @@ NUDGE = int(RUN, 16) % 120
 # and a menu full of list items, and unscoped selectors find those first.
 ROWS = ".app-content-list .list-item"
 MARKERS = ".leaflet-marker-icon"
+# One record's own pin; MARKERS matches the cluster bubbles too.
+PIN = ".territorio-pin__dot"
 SEARCH = ".territorio-list__search input"
 # The docked panel covers the map's left 408px and the topbar its top ~110px, so
 # a click placed there lands on them. Canvas positions below start clear of both.
@@ -933,7 +935,7 @@ def save(page, failures, what):
         failures.append(f"saving {what} was refused: {refusal.first.inner_text().strip()}")
 
 
-def create_a_place(page, name, failures):
+def create_a_place(page, name, failures, lat=None, lon=None):
     """The #2 criterion nobody ever exercised: create a record end to end.
 
     The coordinate is typed, not clicked. The form offers both — "Haga clic en el
@@ -941,12 +943,14 @@ def create_a_place(page, name, failures):
     half that does not depend on what happens to be drawn under the cursor. What
     a click does is checked on its own in clicking_places_the_coordinate(), where
     it is the subject rather than a step on the way to something else.
+
+    `lat` and `lon` are typed as given; left out, they are the run's NUDGE spot.
     """
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
-    page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
-    page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
+    page.get_by_label("Latitud").fill(lat or f"-33.5{300 + NUDGE}")
+    page.get_by_label("Longitud").fill(lon or f"-70.5{300 + NUDGE}")
     save(page, failures, "the Place")
     # Dismiss the sidebar so it does not overlay the map for the next click.
     #
@@ -1391,6 +1395,8 @@ def clicking_places_the_coordinate(page, failures):
     dismiss(page)
     page.wait_for_timeout(400)
 
+    _a_pin_click_is_a_map_click_while_placing(page, failures)
+
     # And only a draft that IS waiting (#194). A saved Place has no geometry in
     # its draft either — its coordinate is in lat/lon — so with its read-only card
     # open every map click quietly rewrote that coordinate, and the next «Editar»
@@ -1661,6 +1667,159 @@ def a_cancelled_drawing_leaves_the_place_coordinate(page, failures):
         if "Cancelar Dibujo" in draw.inner_text():
             draw.click()
         show_divisions(page, hidden)
+
+
+def _click_a_pin(page, pin, what, failures):
+    """Click `pin` once it is one pin of its own where a click reaches it.
+
+    Waited for first, so a red is the answer to what a pin click does and not a pin
+    hidden in a bubble, under the docked panel or off the canvas, nor a thirty-
+    second Playwright timeout. Says why in `failures` and returns False if not.
+    Other pins in view do not matter: `pin` alone has to be unambiguous.
+    """
+    canvas = page.locator('[data-testid="map-canvas"]')
+
+    def reachable():
+        if pin.count() != 1:
+            return False
+        area, box = canvas.bounding_box(), pin.bounding_box()
+        # Clear of the docked panel and the topbar (MAP_CLEAR), and inside the canvas.
+        return box is not None and (area["x"] + MAP_CLEAR["x"] <= box["x"]
+                                    and area["y"] + MAP_CLEAR["y"] <= box["y"]
+                                    and box["x"] + box["width"] <= area["x"] + area["width"]
+                                    and box["y"] + box["height"] <= area["y"] + area["height"])
+
+    if not settles(page, reachable, timeout=6_000):
+        drawn = pin.count()
+        failures.append(
+            f"{what}: {drawn} pins match, " + (f"the one at {pin.bounding_box()} is not on the map canvas "
+                                               f"{canvas.bounding_box()} beside the panel" if drawn == 1
+                                               else "expected exactly one unclustered pin"),
+        )
+        return False
+
+    try:
+        pin.click(timeout=5_000)
+    except PlaywrightTimeout:
+        failures.append(f"{what}: the pin is on the canvas but cannot be clicked")
+        return False
+    page.wait_for_timeout(600)
+    return True
+
+
+def _a_pin_click_is_a_map_click_while_placing(page, failures):
+    """#196: while a draft waits for its coordinate, a pin is the map at that pin.
+
+    A Leaflet Marker does not bubble its click to the map, so a pin opened its own
+    record instead and the typed draft was replaced with no word said. The same pin
+    with no record open still opens it.
+    """
+    plaza, typed = f"Plaza del Navegador {RUN}", f"Prueba de clic {RUN}"
+    stored = registry_feature(page, plaza)
+    if stored is None:
+        failures.append(f"{plaza!r} is not in the Registry, so the pin click checks could not run")
+        return
+    lon0, lat0 = stored["geometry"]["coordinates"]
+    title = page.locator(".territorio-detail__place-title")
+
+    page.locator(SEARCH).fill(plaza)
+    page.wait_for_timeout(700)
+    try:
+        # Its row flies the map to it (selectAndPan), and the list's search leaves it the only pin.
+        page.locator(ROWS).first.click()
+        page.wait_for_timeout(1500)
+        dismiss(page)
+
+        page.get_by_role("button", name="Agregar", exact=True).click()
+        page.get_by_label("Nombre").fill(typed)
+        if not _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with a new record's form open", failures):
+            return
+
+        name, lat, lon = (page.get_by_label(label) for label in ("Nombre", "Latitud", "Longitud"))
+        if name.count() == 0 or name.input_value() != typed:
+            failures.append(
+                f"a click on {plaza!r}'s pin replaced the new record's form with "
+                f"{title.first.inner_text().strip() if title.count() > 0 else 'nothing'!r} (#196)",
+            )
+        else:
+            try:
+                placed = float(lat.input_value()), float(lon.input_value())
+                off = abs(placed[0] - lat0) > 1e-7 or abs(placed[1] - lon0) > 1e-7
+            except ValueError:
+                placed, off = (lat.input_value(), lon.input_value()), True
+            if off:
+                failures.append(
+                    f"a click on {plaza!r}'s pin filled «Latitud»/«Longitud» with {placed}, "
+                    f"expected its coordinate {lat0}, {lon0} (#196)",
+                )
+        if page.get_by_role("button", name="Editar", exact=True).count() > 0 \
+                or page.locator(".territorio-detail__inspection").count() > 0:
+            failures.append(f"a click on {plaza!r}'s pin with a new record's form open showed a read-only card (#196)")
+        # Cancelled, never saved: «← Volver a la lista» closes the new record's draft.
+        dismiss(page)
+
+        # With the list showing, the same pin opens its record exactly as before.
+        if _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with no record open", failures) \
+                and not settles(page, lambda: title.count() > 0 and title.first.inner_text().strip() == plaza,
+                                timeout=6_000):
+            failures.append(f"a click on {plaza!r}'s pin with no record open did not open its card")
+    finally:
+        dismiss(page)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
+
+
+def a_pin_opens_its_record_while_a_place_card_is_open(page, failures):
+    """#196 next to #194: with a saved Place's read-only card open, a pin opens its own record.
+
+    That card waits for no coordinate, so a pin click there is «open this
+    record», never a placement; were it one, every pin click made with a card
+    open would move the Place behind it.
+
+    Two Places of its own 167 m apart (past the duplicate shield's 150 m), off
+    the diagonal the run's other Places sit on: at the zoom 17 a row flies to,
+    that is two pins and never one bubble.
+    """
+    names = (f"Pin {RUN} A", f"Pin {RUN} B")
+    typed = {names[0]: ("-33.5600000", "-70.5200000"), names[1]: ("-33.5600000", "-70.5182000")}
+    for name, (lat, lon) in typed.items():
+        create_a_place(page, name, failures, lat=lat, lon=lon)
+
+    title = page.locator(".territorio-detail__place-title")
+    try:
+        page.locator(SEARCH).fill(f"Pin {RUN}")
+        page.wait_for_timeout(700)
+        row = page.locator(ROWS).filter(has=page.get_by_text(names[0], exact=True))
+        if row.count() != 1:
+            failures.append(f"{names[0]!r} is not in the list, so the read-only card pin check could not run")
+            return
+        row.click()
+        page.wait_for_timeout(1500)
+
+        selected = page.locator(f"{PIN}.territorio-pin__dot--selected")
+        if not settles(page, lambda: selected.count() == 1, timeout=6_000):
+            failures.append(f"{names[0]!r} opened from its row did not select its pin")
+            return
+        if not _click_a_pin(page, page.locator(f"{PIN}:not(.territorio-pin__dot--selected)"),
+                            f"{names[1]!r}'s pin with {names[0]!r}'s read-only card open", failures):
+            return
+
+        if not settles(page, lambda: title.count() > 0 and title.first.inner_text().strip() == names[1],
+                       timeout=6_000):
+            failures.append(
+                f"a click on {names[1]!r}'s pin with {names[0]!r}'s read-only card open did not open it: "
+                f"the panel shows {title.first.inner_text().strip() if title.count() > 0 else None!r} (#196, #194)",
+            )
+
+        lat, lon = typed[names[0]]
+        coordinates = ((registry_feature(page, names[0]) or {}).get("geometry") or {}).get("coordinates")
+        if coordinates is None or abs(coordinates[0] - float(lon)) > 1e-7 or abs(coordinates[1] - float(lat)) > 1e-7:
+            failures.append(f"{names[0]!r} is stored at {coordinates}, not where it was typed: {lon}, {lat}")
+    finally:
+        for name in names:
+            retire_the_runs_record(page, name)
+        page.locator(SEARCH).fill("")
+        page.wait_for_timeout(400)
 
 
 def the_assignment_is_shown_and_not_editable(page, failures):
@@ -2435,94 +2594,122 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
     page.wait_for_timeout(1500)
 
-    # Open the Sector this run drew earlier, which is what opens the picker.
-    if not open_the_runs_sector(page, failures):
-        return
-    go_to_the_square(page, failures)
+    # The seed is a pin click (#196): a Place inside the square, half a kilometre
+    # east of its middle so that what seeds is the pin's coordinate, and the list's
+    # search narrows the map to it alone.
+    seed = f"Semilla {RUN}"
+    create_a_place(page, seed, failures, lat="-33.5200000", lon="-70.5750000")
+    try:
+        page.locator(SEARCH).fill(seed)
+        page.wait_for_timeout(700)
 
-    picker = page.locator('[data-testid="boundary-picker"]')
-    # By label: the picker has a second field now, for the stretches of a limit
-    # that follow nothing anybody could pick (issue #15).
-    box = picker.get_by_label("Buscar una calle")
-    box.fill(name)
-    page.wait_for_timeout(800)
-    offered = picker.locator(".territorio-picker__suggestions li")
-    if offered.count() == 0:
-        skip("the imported square is not in view; polygonize unchecked")
+        # Open the Sector this run drew earlier, which is what opens the picker —
+        # from the search box, which looks past the list's search.
+        sector = f"Sector Navegador {RUN}"
+        titles, problem = _omnibox_pick(page, sector, sector)
+        if problem:
+            failures.append(f"{sector!r} could not be opened: {problem} (offered {titles})")
+            return
+        edit(page)
+        page.wait_for_timeout(1500)
+        if page.locator('[data-testid="boundary-picker"]').count() == 0:
+            failures.append("opening a Sector did not open the Limit picker")
+            return
+        go_to_the_square(page, failures)
+
+        picker = page.locator('[data-testid="boundary-picker"]')
+        # By label: the picker has a second field now, for the stretches of a limit
+        # that follow nothing anybody could pick (issue #15).
+        box = picker.get_by_label("Buscar una calle")
+        box.fill(name)
+        page.wait_for_timeout(800)
+        offered = picker.locator(".territorio-picker__suggestions li")
+        if offered.count() == 0:
+            skip("the imported square is not in view; polygonize unchecked")
+            return
+
+        # One click picks all four sides, because they share a name.
+        offered.first.locator("button").click()
+        page.wait_for_timeout(600)
+
+        # #15's first criterion, on the actual picking path: choosing a name records
+        # it as what the Sector runs along. Everything else that tests the Limit
+        # hands one to the service or types a stretch; this is the only place a real
+        # Boundary feature is picked and the result read.
+        said = picker.locator(".territorio-picker__limit")
+        if said.count() == 0 or name not in said.inner_text():
+            failures.append(
+                "picking a boundary feature did not record it as the Sector's Limit: "
+                + (said.inner_text() if said.count() > 0 else "nothing shown"),
+            )
+
+        # And it says the name ONCE, though it stands for four separate lines.
+        parts = picker.locator(".territorio-picker__parts li")
+        if parts.count() != 1:
+            failures.append(
+                f"a street picked as four lines is {parts.count()} rows in the Limit, expected 1",
+            )
+
+        generate = picker.get_by_role("button", name="Generar el polígono")
+        if generate.count() == 0:
+            failures.append("picking lines did not offer to generate the polygon")
+            return
+
+        if generate.is_disabled():
+            failures.append("Generar is greyed out on lines picked a moment ago")
+            return
+
+        generate.click()
+        page.wait_for_timeout(400)
+        if picker.get_by_text("Haga clic dentro del sector").count() == 0:
+            failures.append("pressing Generar did not ask where the sector is")
+
+        if not _click_a_pin(page, page.locator(PIN), f"{seed!r}'s pin as the seed", failures):
+            return
+        page.wait_for_timeout(600)
+        # The seed, not «open this record»: the Sector's form stays, and no read-only card opens.
+        if page.locator(".territorio-detail__inspection").count() > 0:
+            title = page.locator(".territorio-detail__place-title")
+            failures.append(
+                f"a click on {seed!r}'s pin while {sector!r} waited for its seed opened "
+                f"{title.first.inner_text().strip() if title.count() > 0 else None!r} instead (#196)",
+            )
+            return
+
+        if page.get_by_text("no cierran", exact=False).count() != 0:
+            failures.append("generating over a closed square said the lines do not close")
+
+        # Saved and read back, because the Sector this opens ALREADY had a shape —
+        # it was drawn by hand earlier in this run. "The draft now has a geometry"
+        # was true before the button was pressed, so the only honest question is
+        # whether the shape became THIS square, and the only way to ask it is to
+        # look at what was stored.
+        save(page, failures, "the generated sector")
+
+        # #49's first half, asserted while the draft is still open: `save()` rebuilds
+        # the draft from what the server returned, and the server knows the Limit's
+        # NAMES and not the shapes behind them. Carrying only the ids across left the
+        # picker unable to generate a second time, on lines picked a moment earlier.
+        # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
+        # RAISES when nothing matches, and there is no try/except around a check — so an
+        # unguarded ask aborts the run and skips the retire at the end of main(), leaving
+        # this run's four-kilometre Sector live on the map (issue #58).
+        kept = picker.get_by_role("button", name="Generar el polígono")
+        if kept.count() == 0:
+            failures.append("saving a Sector closed the Limit picker (#49)")
+        elif kept.is_disabled():
+            failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
+
+        # #50's middle case, and the only place anything generates one: this save
+        # wrote the geometry and the Limit in the same revision. Read here, with the
+        # draft still open, because the editable-polygon check below drags a vertex
+        # and saves again — which makes it the third case instead.
+        a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
+    finally:
         dismiss(page)
+        page.wait_for_timeout(600)
+        retire_the_runs_record(page, seed)
         page.locator(SEARCH).fill("")
-        return
-
-    # One click picks all four sides, because they share a name.
-    offered.first.locator("button").click()
-    page.wait_for_timeout(600)
-
-    # #15's first criterion, on the actual picking path: choosing a name records
-    # it as what the Sector runs along. Everything else that tests the Limit
-    # hands one to the service or types a stretch; this is the only place a real
-    # Boundary feature is picked and the result read.
-    said = picker.locator(".territorio-picker__limit")
-    if said.count() == 0 or name not in said.inner_text():
-        failures.append(
-            "picking a boundary feature did not record it as the Sector's Limit: "
-            + (said.inner_text() if said.count() > 0 else "nothing shown"),
-        )
-
-    # And it says the name ONCE, though it stands for four separate lines.
-    parts = picker.locator(".territorio-picker__parts li")
-    if parts.count() != 1:
-        failures.append(
-            f"a street picked as four lines is {parts.count()} rows in the Limit, expected 1",
-        )
-
-    generate = picker.get_by_role("button", name="Generar el polígono")
-    if generate.count() == 0:
-        failures.append("picking lines did not offer to generate the polygon")
-        return
-
-    if generate.is_disabled():
-        failures.append("Generar is greyed out on lines picked a moment ago")
-        return
-
-    generate.click()
-    page.wait_for_timeout(400)
-    if picker.get_by_text("Haga clic dentro del sector").count() == 0:
-        failures.append("pressing Generar did not ask where the sector is")
-
-    click_inside_the_square(page)
-
-    if page.get_by_text("no cierran", exact=False).count() != 0:
-        failures.append("generating over a closed square said the lines do not close")
-
-    # Saved and read back, because the Sector this opens ALREADY had a shape —
-    # it was drawn by hand earlier in this run. "The draft now has a geometry"
-    # was true before the button was pressed, so the only honest question is
-    # whether the shape became THIS square, and the only way to ask it is to
-    # look at what was stored.
-    save(page, failures, "the generated sector")
-
-    # #49's first half, asserted while the draft is still open: `save()` rebuilds
-    # the draft from what the server returned, and the server knows the Limit's
-    # NAMES and not the shapes behind them. Carrying only the ids across left the
-    # picker unable to generate a second time, on lines picked a moment earlier.
-    # Counted before it is questioned: `is_disabled()` waits thirty seconds and then
-    # RAISES when nothing matches, and there is no try/except around a check — so an
-    # unguarded ask aborts the run and skips the retire at the end of main(), leaving
-    # this run's four-kilometre Sector live on the map (issue #58).
-    kept = picker.get_by_role("button", name="Generar el polígono")
-    if kept.count() == 0:
-        failures.append("saving a Sector closed the Limit picker (#49)")
-    elif kept.is_disabled():
-        failures.append("saving a Sector lost the shapes of the lines just picked (#49)")
-
-    # #50's middle case, and the only place anything generates one: this save
-    # wrote the geometry and the Limit in the same revision. Read here, with the
-    # draft still open, because the editable-polygon check below drags a vertex
-    # and saves again — which makes it the third case instead.
-    a_sector_says_how_its_boundary_came_to_be(page, "together", failures, open_it=False)
-
-    dismiss(page)
-    page.wait_for_timeout(600)
 
     corners = exported_corners(page, f"Sector Navegador {RUN}", failures)
     if corners is None:
@@ -8460,6 +8647,7 @@ def main():
         # Retires its own two Sectores, so the exact counts in search_narrows_everything hold.
         run(a_click_inside_a_sector_while_drawing_is_a_vertex, page, failures)
         run(a_cancelled_drawing_leaves_the_place_coordinate, page, failures)
+        run(a_pin_opens_its_record_while_a_place_card_is_open, page, failures)
         run(the_assignment_is_shown_and_not_editable, page, failures)
         run(search_narrows_everything, page, failures)
         run(the_limit_can_be_picked, page, failures)

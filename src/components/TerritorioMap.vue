@@ -78,10 +78,13 @@ export default {
 		features: { type: Array, required: true },
 		taxonomy: { type: Array, required: true },
 		selectedId: { type: Number, default: null },
-		// The shape the open draft carries, drawn dashed and with its vertices
-		// draggable. Owned by App.vue: this component renders it and reports the
-		// user's edits back, so there is one geometry and not two.
+		// The shape the open draft carries, drawn dashed, its vertices draggable
+		// while `draftEditable` says so. Owned by App.vue: this component renders
+		// it and reports the user's edits back, so there is one geometry and not two.
 		draftGeometry: { type: Object, default: null },
+		// Whether those vertices may be dragged: the record is new, or «Editar» was
+		// pressed. Owned by App.vue, which alone knows the form's edit state (#195).
+		draftEditable: { type: Boolean, default: false },
 		draftColour: { type: String, default: null },
 		// What the drafted record is FILED as, so the draft layer draws it the way
 		// drawShapes would have. `draftFrom` copies the geometry of any opened
@@ -231,6 +234,12 @@ export default {
 			}
 			this.drawDraft()
 			this.drawShapes()
+		},
+		// Redrawn, never `pm.disable()` on the live layer: disable() fires
+		// pm:update after a drag and would report the cancelled shape onto the
+		// rebuilt draft (see drawDraft's unbind-first note).
+		draftEditable() {
+			this.drawDraft()
 		},
 		draftColour() {
 			this.draftLayer?.setStyle(shapeStyle(this.draftSlug, this.draftColour ?? UNKNOWN_COLOUR, true))
@@ -654,7 +663,8 @@ export default {
 		},
 
 		/**
-		 * Draw the open draft's shape, dashed, with its vertices draggable.
+		 * Draw the open draft's shape, dashed, its vertices draggable while the
+		 * draft is editable.
 		 *
 		 * The layer is built fresh every time rather than kept and patched, so
 		 * there is exactly one draft layer with exactly one set of handlers on it —
@@ -697,13 +707,16 @@ export default {
 				layer.bindTooltip(document.createTextNode(this.draftName), labelOptions(this.draftSlug))
 			}
 			// ponytail: geoman is enabled for whatever is on this layer, so an opened
-			// Unidad Vecinal gets draggable vertices and save() writes the result —
-			// on a record CONTEXT.md says the clinic only reads. It predates #21 (the
-			// draft has always copied any opened shape's geometry) and it is a
-			// write-permission question, not a figure-and-ground one: issue #109.
-			layer.pm.enable({ allowSelfIntersection: false })
-			// pm:edit covers a dragged vertex, pm:update the end of a move.
-			layer.on('pm:edit pm:update', () => this.report(layer))
+			// Unidad Vecinal gets draggable vertices once «Editar» is pressed, and
+			// save() writes the result — on a record CONTEXT.md says the clinic only
+			// reads. It predates #21 (the draft has always copied any opened shape's
+			// geometry) and it is a write-permission question, not a figure-and-ground
+			// one: issue #109.
+			if (this.draftEditable) {
+				layer.pm.enable({ allowSelfIntersection: false })
+				// pm:edit covers a dragged vertex, pm:update the end of a move.
+				layer.on('pm:edit pm:update', () => this.report(layer))
+			}
 			this.draftLayer = layer
 		},
 

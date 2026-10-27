@@ -53,6 +53,7 @@
 							:taxonomy="taxonomy"
 							:selected-id="selectedId"
 							:draft-geometry="draftGeometry"
+							:draft-editable="draftEditable"
 							:draft-colour="draft?.colour ?? null"
 							:draft-subcategory-id="draft?.subcategoryId ?? null"
 							:draft-name="draft?.name ?? ''"
@@ -104,8 +105,8 @@
 									</NcNoteCard>
 
 									<FeatureDetail
-										v-model:editing="editing"
 										:draft="draft"
+										:editing="editing"
 										:taxonomy="taxonomy"
 										:divisions="divisions"
 										:features="features"
@@ -114,6 +115,7 @@
 										:history="history"
 										:history-failed="historyFailed"
 										:retired="selectedIsRetired"
+										@update:editing="setEditing"
 										@save="save"
 										@retire="retire"
 										@retry="loadHistory(selectedId)"
@@ -436,8 +438,9 @@ export default {
 			history: [],
 			selectedId: null,
 			draft: null,
-			// The record form's edit mode, here because `placing` reads it (#194). A new
-			// record (id null) is editable without it; nothing to do with `editingLimit`.
+			// The record form's edit mode, here because `placing` (#194) and
+			// `draftEditable` (#195) read it. A new record (id null) is editable
+			// without it; nothing to do with `editingLimit`.
 			editing: false,
 			saving: false,
 			error: '',
@@ -620,9 +623,17 @@ export default {
 			return suggestions(this.cadastreLines, this.boundaryQuery)
 		},
 
-		/** The shape the map should draw editable — a Sector being drawn or adjusted. */
+		/** The shape the map draws as the draft — a Sector being drawn, shown or adjusted. */
 		draftGeometry() {
 			return this.draft?.geometry ?? null
+		},
+
+		/**
+		 * Whether the map lets the draft's shape be reshaped (#195). A new record
+		 * is editable without «Editar»; the map has no other way to know.
+		 */
+		draftEditable() {
+			return this.draft !== null && (this.editing || this.draft.id === null)
 		},
 
 		/**
@@ -645,7 +656,8 @@ export default {
 
 	watch: {
 		// Opening another record, creating one (null to N) or closing clears edit
-		// mode; reselecting the same record and an update save keep it.
+		// mode; an update save keeps it. Reopening the same record goes through
+		// select(), which clears it itself («Cancelar», #195).
 		'draft.id'() {
 			this.editing = false
 		},
@@ -795,6 +807,7 @@ export default {
 			this.selectedId = id
 			const feature = featureById(this.features, this.retiredFeatures, id)
 			this.draft = feature === undefined ? null : draftFrom(feature, this.taxonomy)
+			this.editing = false
 			this.error = ''
 			this.history = []
 			this.historyFailed = false
@@ -806,6 +819,21 @@ export default {
 			}
 			if (feature !== undefined) {
 				this.loadHistory(id)
+			}
+		},
+
+		/**
+		 * «Editar» and «Cancelar» on the record form (#195). False can only mean
+		 * «Cancelar», because App clears the flag on every other path, so it
+		 * reopens the stored record the way the list does: select() rebuilds the
+		 * draft from the Registry, stops seeding, clears the error and the Limit
+		 * picker's state, and reloads history.
+		 */
+		setEditing(editing) {
+			if (editing) {
+				this.editing = true
+			} else {
+				this.select(this.selectedId)
 			}
 		},
 
@@ -1422,8 +1450,8 @@ export default {
 				return
 			}
 
-			// Straight into the ordinary draft, so every vertex is draggable from
-			// this moment on and nothing downstream knows this shape was generated.
+			// Straight into the ordinary draft, so nothing downstream knows this
+			// shape was generated.
 			this.draft.geometry = face
 			this.error = ''
 		},

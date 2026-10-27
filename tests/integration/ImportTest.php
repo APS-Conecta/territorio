@@ -230,6 +230,27 @@ final class ImportTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Only the "where" counts (ADR-0022): a coordinate says where better than an
+	 * address can, so the same name there is one place, and the file's last say
+	 * on it wins.
+	 */
+	public function testTheSameNameAtTheSameCoordinateIsOnePlace(): void {
+		$json = '{"type":"FeatureCollection","features":['
+			. '{"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},'
+			. '"properties":{"name":"Balneario Municipal","address":"Calle Uno 1","phone":"961111111"}},'
+			. '{"type":"Feature","geometry":{"type":"Point","coordinates":[-70.58,-33.52]},'
+			. '"properties":{"name":"Balneario Municipal","address":"Avenida Dos 2","phone":"962222222"}}]}';
+
+		$batch = $this->import($json);
+
+		self::assertSame(1, $batch->getCreated());
+		self::assertSame(1, $batch->getDuplicates());
+		$stored = array_values($this->features->findByDataset($batch->getDatasetId()));
+		self::assertCount(1, $stored);
+		self::assertSame('962222222', $stored[0]->getPhone());
+	}
+
+	/**
 	 * A Zone imports now that one can be drawn (issue #10), and a boundary file
 	 * is Routes from end to end (issue #12) — the pipeline takes everything the
 	 * Registry can store.

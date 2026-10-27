@@ -267,6 +267,20 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **Same-named rows without a coordinate no longer collapse into one record (0.80.1, #202).** A row
+  with no id and no coordinate was identified by its name alone, so fifteen «Multicancha» rows at
+  fifteen addresses imported as one record and «14 duplicados en el archivo», on every run. Such a
+  row is now identified by its name and address, or its name and notes where it has no address
+  (ADR-0022), so a KML placemark's description tells same-named placemarks apart. The same name at
+  the same coordinate stays one place, and every coordinate-bearing id keeps its bytes.
+
+  **One-time re-key on upgrade.** A repair step moves each record already imported under the
+  collapsed id to its new one, so the next import of its file matches it and its Local override
+  stays attached. It writes no Revision; a record whose new id is already taken in its Dataset is
+  skipped and counted in the upgrade output. **A GeoJSON export made before the upgrade** carries
+  the old id of a re-keyed record, and re-importing it creates a second record: export again after
+  upgrading. The `externalId` the REST surface publishes changes once for those records.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

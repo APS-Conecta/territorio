@@ -267,6 +267,17 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
+  Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
+  only inside `FeatureDetail`, so App took every open Place for one being placed. A map click
+  silently rewrote the coordinate, the next «Editar» + «Guardar» moved the record and the
+  server re-derived its Sector and Unidad Vecinal (ADR-0008), and a click on a Sector went to
+  the map instead of opening it. App now owns the edit mode (`v-model:editing`), `placing` is
+  true only for a new Place, one after «Editar» or a pending Sector seed, and `placeDraft()`
+  writes only while `placing`. The browser gate's click-placement check now asserts that the
+  Registry keeps the coordinate and the assignment, that a Sector click opens the Sector, and
+  that a click after «Editar» still places the Place.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

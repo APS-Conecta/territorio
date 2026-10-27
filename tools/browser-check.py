@@ -1264,6 +1264,129 @@ def clicking_places_the_coordinate(page, failures):
     dismiss(page)
     page.wait_for_timeout(400)
 
+    # And only a draft that IS waiting (#194). A saved Place has no geometry in
+    # its draft either — its coordinate is in lat/lon — so with its read-only card
+    # open every map click quietly rewrote that coordinate, and the next «Editar»
+    # + «Guardar» moved the record and had its Sector and Unidad Vecinal
+    # re-derived (ADR-0008). Asserted on the Registry, which is where that lands.
+    name = f"Prueba lectura {RUN}"
+    create_a_place(page, name, failures)
+    before = registry_feature(page, name)
+    if before is None:
+        failures.append(f"{name!r} was not saved, so the read-only card click check could not run")
+        return
+
+    def read_only():
+        editar = page.get_by_role("button", name="Editar", exact=True)
+        return editar.count() > 0 and editar.first.is_visible() and page.get_by_label("Latitud").count() == 0
+
+    def coordinate():
+        return float(page.get_by_label("Latitud").input_value()), float(page.get_by_label("Longitud").input_value())
+
+    lon0, lat0 = before["geometry"]["coordinates"]
+    canvas = page.locator('[data-testid="map-canvas"]')
+    # Before any record is open: only the pins are left under the click.
+    hidden = hide_divisions(page)
+    try:
+        # From the search box, not the list: a row opens the form, and the list's
+        # own query would also take this run's Sector off the map (#19).
+        titles, problem = _omnibox_pick(page, name, name)
+        if problem:
+            failures.append(f"{name!r} could not be reopened: {problem} (offered {titles})")
+            return
+        if not read_only():
+            failures.append(f"{name!r} reopened from the search box did not show its read-only card")
+            return
+
+        canvas.click(position=MAP_CLEAR)
+        page.wait_for_timeout(400)
+        edit(page)
+        lat, lon = coordinate()
+        if abs(lat - lat0) > 1e-7 or abs(lon - lon0) > 1e-7:
+            failures.append(
+                f"a map click with {name!r}'s read-only card open moved its form from "
+                f"{lat0}, {lon0} to {lat}, {lon} (#194)",
+            )
+
+        save(page, failures, f"{name!r} with no change typed")
+        after = registry_feature(page, name) or {}
+        for what, was, now in (
+            ("coordinate", before["geometry"]["coordinates"], (after.get("geometry") or {}).get("coordinates")),
+            ("Sector", before["sectorId"], after.get("sectorId")),
+            ("Unidad Vecinal", before["unidadVecinalId"], after.get("unidadVecinalId")),
+        ):
+            if now != was:
+                failures.append(
+                    f"«Editar» + «Guardar» with no change typed moved {name!r}'s {what} "
+                    f"from {was!r} to {now!r} (#194)",
+                )
+
+        # Still editable after that save, so a click places it again, and with the
+        # divisions back on the map: no Sector or Unidad Vecinal may take the click.
+        show_divisions(page, hidden)
+        canvas.click(position={"x": MAP_CLEAR["x"] + 100, "y": 300})
+        page.wait_for_timeout(400)
+        field = page.get_by_label("Nombre")
+        if field.count() == 0 or field.input_value() != name:
+            failures.append(f"a map click after «Editar» on {name!r} did not stay with its form")
+        else:
+            lat, lon = coordinate()
+            if abs(lat - lat0) <= 1e-7 or abs(lon - lon0) <= 1e-7:
+                failures.append(f"a map click after «Editar» on {name!r} did not fill «Latitud»/«Longitud»")
+        dismiss(page)
+
+        # Closed and reopened, the card is read-only again, and a click on a Sector
+        # opens it exactly as with no record open.
+        titles, problem = _omnibox_pick(page, name, name)
+        if problem:
+            failures.append(f"{name!r} could not be reopened: {problem} (offered {titles})")
+            return
+        if not read_only():
+            failures.append(f"{name!r} reopened after an edit still showed its form")
+            return
+
+        # The search box flew to the Place at zoom 17, where this run's Sector is off
+        # screen (Leaflet leaves it an empty path), so zoom out the way a person
+        # would until all of it is on the map beside the panel.
+        shape = page.locator('.leaflet-overlay-pane path[stroke="#16a34a"]')
+
+        def on_the_map():
+            if shape.count() == 0:
+                return False
+            box, view = largest(shape).bounding_box(), page.viewport_size
+            # Clear of the panel and the topbar (MAP_CLEAR), the zoom buttons and the credit.
+            return (box["width"] >= 8 and box["x"] >= MAP_CLEAR["x"] and box["y"] >= MAP_CLEAR["y"]
+                    and box["x"] + box["width"] <= view["width"] - 60
+                    and box["y"] + box["height"] <= view["height"] - 40)
+
+        for _ in range(9):
+            if on_the_map():
+                break
+            page.locator(".leaflet-control-zoom-out").click()
+            page.wait_for_timeout(600)
+        if not on_the_map():
+            failures.append(f"Sector Navegador {RUN} is not on the map, so the Sector click check could not run")
+            page.screenshot(path=str(SHOTS / "read-only-card-sector-click.png"), full_page=False)
+            return
+        largest(shape).click(force=True)
+        title = page.locator(".territorio-detail__place-title")
+
+        def shown():
+            return title.first.inner_text().strip() if title.count() > 0 else None
+
+        if not settles(page, lambda: shown() not in (None, name), timeout=6_000):
+            failures.append(
+                f"a click inside Sector Navegador {RUN} with {name!r}'s read-only card open "
+                f"did not open it: the panel shows {shown()!r} (#194)",
+            )
+        dismiss(page)
+    finally:
+        # Once the Place is retired the typed name matches nothing, and the status
+        # line the search box then shows covers «← Volver a la lista».
+        page.locator(OMNIBOX_INPUT).fill("")
+        show_divisions(page, hidden)
+        retire_the_runs_record(page, name)
+
 
 def the_assignment_is_shown_and_not_editable(page, failures):
     """#11: Sector and Unidad Vecinal are shown, never typed (ADR-0008)."""

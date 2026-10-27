@@ -32,6 +32,17 @@ final class GeoJsonReaderTest extends TestCase {
 		return (new GeoJsonReader())->read($json, $dataset);
 	}
 
+	/** A FeatureCollection of rows with no geometry and no id, one per set of properties. */
+	private function withoutCoordinates(array ...$properties): string {
+		return json_encode([
+			'type' => 'FeatureCollection',
+			'features' => array_map(
+				static fn (array $one): array => ['type' => 'Feature', 'geometry' => null, 'properties' => $one],
+				$properties,
+			),
+		], JSON_THROW_ON_ERROR);
+	}
+
 	public function testItMapsThePriorArtsPropertyNames(): void {
 		$row = $this->read(self::JDV)[0];
 
@@ -139,6 +150,71 @@ final class GeoJsonReaderTest extends TestCase {
 		}
 
 		self::assertSame($loose, $strict);
+	}
+
+	/**
+	 * Without a coordinate the address is the "where" (ADR-0022): fifteen
+	 * «Multicancha» rows at fifteen addresses are fifteen places, not one row
+	 * and fourteen «duplicados en el archivo» (#202).
+	 */
+	public function testTheSameNameWithoutACoordinateAtAnotherAddressIsAnotherPlace(): void {
+		$rows = $this->read($this->withoutCoordinates(
+			['name' => 'Multicancha', 'address' => 'Pasaje Uno 100'],
+			['name' => 'Multicancha', 'address' => 'Pasaje Dos 200'],
+		));
+
+		self::assertNotSame($rows[0]['externalId'], $rows[1]['externalId']);
+	}
+
+	/**
+	 * Only the "where" counts: a new phone, or new notes beside an address, is
+	 * the same place updated, and its Local override stays attached (ADR-0003).
+	 */
+	public function testTheSameNameAndAddressIsOnePlaceWhateverThePhoneOrNotes(): void {
+		$rows = $this->read($this->withoutCoordinates(
+			['name' => 'Multicancha', 'address' => 'Pasaje Uno 100', 'phone' => '911111111', 'notes' => 'Abierta'],
+			['name' => 'Multicancha', 'address' => 'Pasaje Uno 100', 'phone' => '922222222'],
+			['name' => 'Multicancha', 'address' => 'Pasaje Uno 100', 'notes' => 'Cerrada'],
+		));
+
+		self::assertSame($rows[0]['externalId'], $rows[1]['externalId']);
+		self::assertSame($rows[0]['externalId'], $rows[2]['externalId']);
+	}
+
+	/** KML has no address: a placemark's description is its notes, and the only "where" left. */
+	public function testWithoutAnAddressTheNotesTellTwoPlacesApart(): void {
+		$rows = $this->read($this->withoutCoordinates(
+			['name' => 'Sede social', 'notes' => 'Villa Los Aromos'],
+			['name' => 'Sede social', 'notes' => 'Villa El Bosque'],
+		));
+
+		self::assertNotSame($rows[0]['externalId'], $rows[1]['externalId']);
+	}
+
+	public function testACoordinateLessIdIsIdenticalAcrossReads(): void {
+		$file = $this->withoutCoordinates(['name' => 'Multicancha', 'address' => 'Pasaje Uno 100']);
+
+		self::assertSame($this->read($file)[0]['externalId'], $this->read($file)[0]['externalId']);
+	}
+
+	/**
+	 * Pinned to the id main derived at c2b163e. A coordinate-bearing id that
+	 * moved would turn every re-import of the 865-feature catastro into 865 new
+	 * records (ADR-0022, decision 2).
+	 */
+	public function testACoordinateBearingIdKeepsItsBytes(): void {
+		self::assertSame('cesfam_de_prueba:25365630c19448b3', $this->read(self::JDV)[0]['externalId']);
+	}
+
+	/**
+	 * Pinned to main at c2b163e: with no address and no notes there is nothing
+	 * new to hash, so such a record is not re-keyed and old exports still match.
+	 */
+	public function testACoordinateLessIdWithNoAddressOrNotesKeepsItsBytes(): void {
+		self::assertSame(
+			'catastro:316a1b63cabc9a41',
+			$this->read($this->withoutCoordinates(['name' => 'Multicancha', 'phone' => '911111111']))[0]['externalId'],
+		);
 	}
 
 	public function testAFeatureWithNoGeometryIsKept(): void {

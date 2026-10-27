@@ -106,7 +106,7 @@
 						<span class="territorio-import__batch-what">
 							<strong>{{ batch.isRevert ? 'Deshacer' : 'Importación' }} #{{ batch.id }}</strong>
 							<span class="territorio-import__hint">
-								{{ batch.dataset }} · {{ batch.startedAt }} · {{ batch.actor || 'el sistema' }}
+								{{ batch.dataset }} · {{ when(batch.startedAt) }} · {{ batch.actor || 'el sistema' }}
 								<template v-if="!batch.isRevert">
 									· {{ batch.created }} creados, {{ batch.updated }} actualizados,
 									{{ batch.skipped }} omitidos
@@ -144,6 +144,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { messageFrom, warnError } from '../api.js'
+import { when } from '../when.js'
 
 export default {
 	name: 'ImportDialog',
@@ -228,6 +229,8 @@ export default {
 	},
 
 	methods: {
+		when,
+
 		async loadBatches() {
 			this.batchesFailed = false
 			try {

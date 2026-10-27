@@ -69,6 +69,20 @@ final class CsvImportTest extends IntegrationTestCase {
 		. "CESFAM de Prueba;Salud;CESFAM;-33,5211;-70,5991;Avenida Uno 123, local 4;"
 		. "229112233;cesfam@ejemplo.cl;Marcela Ríos;Directora;Lunes a viernes;Sin novedad;exacta\n";
 
+	/**
+	 * Fifteen «Multicancha» rows, one per address, none located: the file #202
+	 * reported, where fourteen places were never imported. Row N is at «Pasaje N».
+	 * Public so the re-key test imports the same file.
+	 */
+	public static function multicanchas(): string {
+		$csv = "Nombre,Latitud,Longitud,Dirección,Teléfono\n";
+		for ($row = 1; $row <= 15; $row++) {
+			$csv .= sprintf("Multicancha,,,Pasaje %d,2290000%02d\n", $row, $row);
+		}
+
+		return $csv;
+	}
+
 	protected function setUp(): void {
 		$this->forgetDataset(self::DATASET);
 	}
@@ -163,6 +177,44 @@ final class CsvImportTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * «Otro» names a Subcategory every Category has, so it names none of them.
+	 * The first Category by label used to keep the slug, and these rows were
+	 * filed under «Comercio y economía · Otro» (#204).
+	 */
+	public function testARowNamingOnlyOtroLandsInSinClasificar(): void {
+		$this->import("Nombre,Categoría,Subcategoría,Latitud,Longitud\n"
+			. "Fila Otros,Otros,,-33.520,-70.580\n"
+			. "Fila Otro,Otro,,-33.521,-70.581\n"
+			. "Fila Otros servicios,Otros servicios,,-33.522,-70.582\n");
+
+		$labels = [];
+		foreach ($this->stored() as $feature) {
+			$labels[$feature->getName()] = $this->labelOf($feature->getSubcategoryId());
+		}
+		ksort($labels);
+
+		self::assertSame([
+			'Fila Otro' => 'Sin clasificar · Otro',
+			'Fila Otros' => 'Sin clasificar · Otro',
+			'Fila Otros servicios' => 'Sin clasificar · Otro',
+		], $labels);
+	}
+
+	/**
+	 * The word heuristic never reaches a División territorial Subcategory, so
+	 * naming both halves is the one way a file files a Sector, as the cadastre
+	 * cutter's output does. A CSV carries a point at most, and the row needs
+	 * none: the label pair is what is under test.
+	 */
+	public function testARowNamingTheDivisionAndSectorStillFilesAsASector(): void {
+		$this->import("Nombre,Categoría,Subcategoría\nSector de Prueba,División territorial,Sector\n");
+
+		$stored = array_values($this->stored());
+		self::assertCount(1, $stored);
+		self::assertSame('División territorial · Sector', $this->labelOf($stored[0]->getSubcategoryId()));
+	}
+
+	/**
 	 * A row with no coordinates is a record, not an error — and the Registry
 	 * derives its Location quality rather than storing what the file said.
 	 */
@@ -173,6 +225,37 @@ final class CsvImportTest extends IntegrationTestCase {
 		self::assertCount(1, $stored);
 		self::assertNull($stored[0]->getGeometry());
 		self::assertSame(LocationQuality::Absent->value, $stored[0]->getLocationQuality());
+	}
+
+	/** Without a coordinate the address tells places apart (ADR-0022). */
+	public function testSameNamedRowsWithoutCoordinatesAtDifferentAddressesAreDifferentPlaces(): void {
+		$batch = $this->import(self::multicanchas());
+
+		self::assertSame(15, $batch->getCreated());
+		self::assertSame(0, $batch->getDuplicates());
+		self::assertCount(15, $this->stored());
+	}
+
+	/** The derived ids are stable, so the second run matches all fifteen (ADR-0003). */
+	public function testReimportingThemCreatesNothing(): void {
+		$this->import(self::multicanchas());
+
+		$second = $this->import(self::multicanchas());
+
+		self::assertSame(0, $second->getCreated());
+		self::assertSame(15, $second->getUnchanged());
+	}
+
+	/** Notes are not the "where" when there is an address: this is the same place said twice. */
+	public function testTheSameNameAndAddressWithDifferentNotesIsOnePlace(): void {
+		$batch = $this->import(
+			"Nombre,Latitud,Longitud,Dirección,Notas\n"
+			. "Multicancha,,,Pasaje 1,Abierta\n"
+			. "Multicancha,,,Pasaje 1,Cerrada por reparaciones\n",
+		);
+
+		self::assertSame(1, $batch->getCreated());
+		self::assertSame(1, $batch->getDuplicates());
 	}
 
 	/**

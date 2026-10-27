@@ -267,6 +267,11 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
+  Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
+  discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is
+  armed, a pin click no longer opens its record either (#197).
+
 - **A map click no longer moves a saved Place whose read-only card is open (#194).** Every
   Place's draft has no geometry (its coordinate is `lat`/`lon`), and the form's edit mode lived
   only inside `FeatureDetail`, so App took every open Place for one being placed. A map click

@@ -267,6 +267,20 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **Two concurrent merges of one pair can no longer retire both records (#208).** The refusals — a
+  resolved pair, a retired survivor or loser — were plain reads made before any lock, and the only
+  serialization point, the Revision cursor UPDATE, ran after them with nothing re-checked behind it:
+  two opposite merges of one pair both passed, and both records ended up retired into each other,
+  gone from the map, the list and the queue. The rule now lives where the locks are:
+  `FeatureMapper::verifyTransition()` re-reads the row a membership transition (retire, merge,
+  restore) was decided against with `SELECT … FOR UPDATE`, inside the write's own transaction and
+  after the cursor is taken — every writer queues there first, so these row locks are uncontended
+  and a refusal rolls the whole transaction, Revision included, back — and a merge verifies its
+  survivor too, from the `mergedInto` the entity already carries. `DuplicateMapper::resolve()`
+  records a resolution only where the stored status is still PENDING, so a pair refused under the
+  decision takes the loser's retirement back with it. The services' own checks stay, in the same
+  words, as courtesy reads that answer before a transaction is opened.
+
 - **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
   Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
   discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is

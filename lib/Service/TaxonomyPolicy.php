@@ -53,10 +53,19 @@ final class TaxonomyPolicy {
 	 * rules with no database in them are the ones with no screen to notice them
 	 * going wrong (`TaxonomyGlyphTest`).
 	 *
-	 * @throws InvalidTaxonomyException when the name is not shaped like one
+	 * #241: mixed, not string, because the caller is an open route (ADR-0005)
+	 * and the controller no longer casts. The #207 accept list first — a list
+	 * was `(string)`'d to "Array", which this shape check accepted, and a bool
+	 * to '' or "1", where '' is the CLEAR; nothing that is not text is a mark.
+	 *
+	 * @throws InvalidTaxonomyException when it is not text at all, or not shaped like one
 	 */
-	public static function glyphName(string $glyph): ?string {
-		$clean = trim($glyph);
+	public static function glyphName(mixed $glyph): ?string {
+		if ($glyph !== null && !is_string($glyph) && !is_int($glyph) && !is_float($glyph)) {
+			throw new InvalidTaxonomyException('Un campo de texto recibió algo que no es texto.');
+		}
+
+		$clean = trim((string)($glyph ?? ''));
 		if ($clean === '') {
 			return null;
 		}

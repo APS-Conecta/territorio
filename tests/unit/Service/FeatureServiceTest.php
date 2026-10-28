@@ -22,6 +22,7 @@ use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Domain\Provenance;
 use OCP\AppFramework\Db\DoesNotExistException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -264,6 +265,29 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	/**
+	 * #241: `colour: false` was `(string)`'d to '', which read as "clear it" —
+	 * so a Sector's own colour was silently wiped and the save answered 200,
+	 * the one write this field has to prevent. A bool or a list is refused
+	 * with the #207 sentence instead, and the stored colour survives.
+	 */
+	public function testABoolForTheColourIsRefusedInsteadOfClearingIt(): void {
+		$existing = new Feature();
+		$existing->setId(4);
+		$existing->setColour('#a1b2c3');
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		try {
+			$this->service->update(4, $this->valid(['colour' => false]));
+			self::fail('a bool for the colour was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame('#a1b2c3', $existing->getColour());
+	}
+
+	/**
 	 * Naming is clinic-specific and stays unconstrained (issue #10): a CESFAM may
 	 * call its sectores "3", "Rojo" or "Sector Sur", and Territorio does not know
 	 * which — so nothing here may reserve, reformat or reject any of them.
@@ -360,7 +384,7 @@ final class FeatureServiceTest extends TestCase {
 		$this->features->expects(self::never())->method('insert');
 
 		$this->expectException(InvalidFeatureException::class);
-		$this->expectExceptionMessage('Eso es una lista, no un texto.');
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
 
 		$this->service->create($this->valid(['name' => ['Plaza']]));
 	}
@@ -381,7 +405,7 @@ final class FeatureServiceTest extends TestCase {
 		$this->revisions->expects(self::never())->method(self::anything());
 
 		$this->expectException(InvalidFeatureException::class);
-		$this->expectExceptionMessage('Eso es una lista, no un texto.');
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
 
 		$this->service->update(3, $this->valid(['notes' => ['x']]));
 	}
@@ -392,6 +416,36 @@ final class FeatureServiceTest extends TestCase {
 		$name = str_repeat('á', 255);
 
 		self::assertSame($name, $this->service->create($this->valid(['name' => $name]))->getName());
+	}
+
+	/** @return array<string, array{mixed}> */
+	public static function notAnId(): array {
+		return [
+			'a list for the subcategory' => [[5]],
+			'a bool for the subcategory' => [true],
+			'a fraction for the subcategory' => [3.5],
+		];
+	}
+
+	/**
+	 * #241: `(int)` on a list is 1, on true is 1, on 3.5 is 3 — each a silent
+	 * write into a Subcategory the caller never named, on the one field that
+	 * decides where a record is filed. Refused as not a number instead, the one
+	 * isId() a Limit's parts share; nothing is inserted.
+	 */
+	#[DataProvider('notAnId')]
+	public function testSomethingThatIsNotAnIdIsRefusedInsteadOfFilingSomewhereElse(mixed $given): void {
+		// Subcategory 1 exists, as it does on any install that has ever added a
+		// Category: the cast's "1" is a place the record really could land.
+		$this->subcategoryIds[] = 1;
+		$this->features->expects(self::never())->method('insert');
+
+		try {
+			$this->service->create($this->valid(['subcategoryId' => $given]));
+			self::fail('a non-id for the subcategory was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('La subcategoría recibida no es un número.', $e->getMessage());
+		}
 	}
 
 	/** The import's pre-check (#203) hears the write door's own sentences, and
@@ -412,7 +466,7 @@ final class FeatureServiceTest extends TestCase {
 		// #207: a file row whose name arrives as a list hears the same sentence
 		// a save would, before any of its rows is written.
 		self::assertSame(
-			'Eso es una lista, no un texto.',
+			'Un campo de texto recibió algo que no es texto.',
 			$this->refusalOf(['name' => 'Sede', 'notes' => ['x']]),
 		);
 		$this->service->checkNameAndText($this->valid(['phone' => str_repeat('9', 64)]));
@@ -883,6 +937,33 @@ final class FeatureServiceTest extends TestCase {
 		$updated = $this->service->update(3, ['name' => 'Sede nueva', 'subcategoryId' => 7]);
 
 		self::assertSame(LocationQuality::Approximate->value, $updated->getLocationQuality());
+	}
+
+	/**
+	 * #241: `locationQuality: false` was `(string)`'d to '', which read as
+	 * `exacta` — the #63 silent reset this door exists to prevent, arriving by
+	 * another route. Refused with the #207 sentence instead, and the stored
+	 * judgement and the write are left as they were.
+	 */
+	public function testABoolForTheQualityIsRefusedInsteadOfResettingToExact(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Sede');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Approximate->value);
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		try {
+			$this->service->update(3, ['name' => 'Sede', 'subcategoryId' => 7, 'locationQuality' => false]);
+			self::fail('a bool for the quality was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame(LocationQuality::Approximate->value, $existing->getLocationQuality());
 	}
 
 	/**

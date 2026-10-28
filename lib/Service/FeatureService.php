@@ -587,10 +587,16 @@ class FeatureService {
 	 *  (#207), so a hand-crafted `name[]=x` request would otherwise store a
 	 *  Feature named "Array" through a 200. Refused instead, at this door,
 	 *  like every other problem a save refuses — and one sentence serves
-	 *  every field, because `notes` carries no label in OPTIONAL_TEXT. */
+	 *  every field, because `notes` carries no label in OPTIONAL_TEXT.
+	 *
+	 *  #241 widens the refusal to a bool, the accept list `limit()` and
+	 *  GeoJsonReader::text() already use: `(string)` false is '' and true is
+	 *  "1", so a bool silently CLEARED an optional field — the colour and the
+	 *  Exactitud below — and the sentence names the whole class, not only the
+	 *  list. Strings, numbers and null unchanged. */
 	private static function text(mixed $value): string {
-		if (is_array($value)) {
-			throw new InvalidFeatureException('Eso es una lista, no un texto.');
+		if ($value !== null && !is_string($value) && !is_int($value) && !is_float($value)) {
+			throw new InvalidFeatureException('Un campo de texto recibió algo que no es texto.');
 		}
 		return trim((string)$value);
 	}
@@ -605,7 +611,17 @@ class FeatureService {
 	}
 
 	private function applySubcategory(Feature $feature, array $input): void {
-		$subcategoryId = (int)($input['subcategoryId'] ?? 0);
+		// The one shape of an id (#241): `(int)` on a list is 1, on true is 1,
+		// on a fraction the floor — each a record filed under a Subcategory
+		// nobody named, and the one the client did name gone from history. An
+		// absent id still reads as 0, which `find()` refuses with the not-exists
+		// sentence it always answered.
+		$given = $input['subcategoryId'] ?? 0;
+		if (!self::isId($given)) {
+			throw new InvalidFeatureException('La subcategoría recibida no es un número.');
+		}
+
+		$subcategoryId = (int)$given;
 		try {
 			$this->subcategories->find($subcategoryId);
 		} catch (DoesNotExistException $e) {
@@ -744,10 +760,8 @@ class FeatureService {
 			// and cast them to 12, 41 and 1000 — a part silently pointing at a
 			// different Boundary feature from the one it names.
 			$featureId = $part['featureId'] ?? null;
-			$isId = is_int($featureId)
-				|| (is_string($featureId) && ctype_digit($featureId));
 
-			$parts[] = $isId
+			$parts[] = self::isId($featureId)
 				? ['featureId' => (int)$featureId, 'name' => $name]
 				: ['name' => $name];
 		}
@@ -793,7 +807,12 @@ class FeatureService {
 	 * as a change in history.
 	 */
 	private static function colour(mixed $value): ?string {
-		$colour = strtolower(trim((string)$value));
+		// text() first, not a cast (#241): `(string)` false is '', which read as
+		// "no colour of its own" and silently wiped a Sector's — the cast to
+		// check is the one every other text field already refuses through. A
+		// string of digits still reaches the hex check below, which owns the
+		// "is it a colour" half of the question.
+		$colour = strtolower(self::text($value));
 		if ($colour === '') {
 			return null;
 		}
@@ -803,6 +822,19 @@ class FeatureService {
 		}
 
 		return $colour;
+	}
+
+	/**
+	 * The one shape of an id this app accepts (#241): a whole number, typed or
+	 * sent as digits. The one statement of it, because `(int)` was cast at both
+	 * doors that read one — a Subcategory id and a Limit's part — and each cast
+	 * wrote a different wrong answer: `(int)[5]` filed a record under 1, and a
+	 * floored "5.9" pointed a part at Boundary 5. is_numeric() is not it: it
+	 * takes 12.9, " 41" and "1e3" too.
+	 */
+	private static function isId(mixed $value): bool {
+		return is_int($value)
+			|| (is_string($value) && ctype_digit($value));
 	}
 
 	/**
@@ -858,7 +890,11 @@ class FeatureService {
 
 	/** @param array<string, mixed> $input */
 	private function locationQuality(array $input): string {
-		$requested = trim((string)($input['locationQuality'] ?? ''));
+		// text(), not a cast (#241): `(string)` false is '', which read as
+		// `exacta` and silently reset a stored `aproximada` — the #63 overwrite
+		// by another door. A list or a bool is refused; '' stays the honest
+		// default, so a client that sends nothing keeps getting `exacta`.
+		$requested = self::text($input['locationQuality'] ?? '');
 		if ($requested === '') {
 			return LocationQuality::Exact->value;
 		}

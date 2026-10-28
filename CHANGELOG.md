@@ -267,6 +267,17 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **The arrow-highlighted search row is named to screen readers again (#213).** The Omnibox
+  declares itself a combobox, but its input carried no `aria-controls`, its options no id, and
+  nothing ever set `aria-activedescendant`: the arrows moved a highlight focus never follows, so
+  «pasaje» + ArrowDown was announced as silence and Enter took the map to a street the person
+  never heard. The listbox and every option are id'd again and the input's
+  `aria-activedescendant` follows the highlight. Both of the input's pointers (`aria-controls`,
+  `aria-activedescendant`) leave entirely once the list closes or nothing is highlighted — the
+  listbox is `v-if`'d away, and an id nothing owns is the same dangling pointer this was about.
+  `SearchControl`, which the Omnibox replaced, had the three; the browser gate now drives the
+  arrows and checks the pointer follows.
+
 - **Two concurrent merges of one pair can no longer retire both records (#208).** The refusals — a
   resolved pair, a retired survivor or loser — were plain reads made before any lock, and the only
   serialization point, the Revision cursor UPDATE, ran after them with nothing re-checked behind it:

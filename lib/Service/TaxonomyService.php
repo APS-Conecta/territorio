@@ -131,7 +131,7 @@ class TaxonomyService {
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the mark is not one this app will store
 	 */
-	public function setCategoryGlyph(string $slug, string $glyph): array {
+	public function setCategoryGlyph(string $slug, mixed $glyph): array {
 		$category = $this->categories->findBySlug($slug);
 		$category->setGlyph(TaxonomyPolicy::glyphName($glyph));
 		$this->categories->update($category);
@@ -202,7 +202,7 @@ class TaxonomyService {
 	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws InvalidTaxonomyException when the label or the mark is not one this app will store
 	 */
-	public function addCategory(string $label, string $glyph = ''): array {
+	public function addCategory(string $label, mixed $glyph = ''): array {
 		$clean = $this->cleanLabel($label);
 		// Before the insert, so a name this app will not store refuses the whole
 		// add rather than leaving a Category behind with no mark on it.

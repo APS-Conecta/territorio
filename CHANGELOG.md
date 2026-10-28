@@ -387,6 +387,25 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   row now needs a held line-work or Point shape, and the pick as a whole at least one edge. A
   missing shape, a Polygon or an untyped one still blocks.
 
+- **The same cast in the places #207's fix left out is refused the same way (#241).** Six
+  doors that `(string)`'d or `(int)`'d what arrived now refuse it: a Category or Subcategory
+  `label` that is not text counts as not given and gets «El nombre no puede quedar vacío.»;
+  a `glyph` (create, rename or clear) reaches `glyphName()` raw, which refuses anything
+  that is not text — `false` used to read as `''`, the CLEAR, and a list as "Array", which
+  the shape check accepted; a GeoJSON `name` that is a list is refused as nameless, and a
+  `source` or classification cell that is one falls back as if absent instead of importing
+  "Array"; a `subcategoryId` that is not a whole number («La subcategoría recibida no es
+  un número.») no longer lands in Subcategory 1 or 3; a `colour: false` no longer silently
+  wipes a Sector's own colour; a `locationQuality: false` no longer silently resets a
+  stored `aproximada` to Exacta. An export `format` or `scope` that is not a string
+  counts as not given: the unknown-format refusal answers, and the export log no longer
+  records the text "Array".
+
+  The one check #207 landed for the name and the optional text fields is widened with
+  this too: a **bool** is refused like a list, with «Un campo de texto recibió algo que
+  no es texto.» (before, `true` stored "1" and `false` read as `''`). Strings, numbers
+  and empty values still save as before.
+
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from
   being blocked, so each rule it states is now either behaviour or a check:

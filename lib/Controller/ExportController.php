@@ -76,11 +76,18 @@ class ExportController extends Controller {
 		}
 
 		try {
+			// Both read is_string-first (#241, as the import's parameters
+			// already do, #207): a `format[]=x` or `scope[]=x` was `(string)`'d to
+			// the text "Array" —
+			// one shown to a person in the unknown-format refusal, the other
+			// written into the export log ADR-0006 keeps. Not given is what an
+			// absent key already reads as: '' is the format the service refuses
+			// with its own sentence, and the scope the log records as unfiltered.
 			$file = $this->exports->export(
 				$ids,
-				(string)$this->request->getParam('format'),
+				$this->stringParam('format'),
 				$contacts,
-				(string)$this->request->getParam('scope', ''),
+				$this->stringParam('scope'),
 			);
 		} catch (InvalidFeatureException $e) {
 			// Not the status mapping — that is Refuses' one home (L1-03). This
@@ -95,5 +102,14 @@ class ExportController extends Controller {
 		}
 
 		return new DataDownloadResponse($file['body'], $file['filename'], $file['mime']);
+	}
+
+	/** The not-a-text answer for one parameter: the is_string shape the
+	 *  import's parameters (#207) and this controller's labels read through,
+	 *  with the reason stated where each of them reads its own keys. */
+	private function stringParam(string $key): string {
+		$value = $this->request->getParam($key, '');
+
+		return is_string($value) ? trim($value) : '';
 	}
 }

@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # aps-common is consumed as a path repository at ../aps-common, and the
       # runner's checkout cannot place a sibling — clone it explicitly so
@@ -87,9 +87,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: aps-common sibling
         # aps-common is PRIVATE: the anonymous clone dies with 'could not read Username'.
         # A read-only deploy key on aps-common: this job runs on
@@ -140,7 +140,7 @@ jobs:
           else
             git clone --depth 1 https://github.com/APS-Conecta/aps-common.git ../aps-common
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm

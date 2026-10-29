@@ -267,6 +267,31 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
 
 ### Fixed
 
+- **The arrow-highlighted search row is named to screen readers again (#213).** The Omnibox
+  declares itself a combobox, but its input carried no `aria-controls`, its options no id, and
+  nothing ever set `aria-activedescendant`: the arrows moved a highlight focus never follows, so
+  «pasaje» + ArrowDown was announced as silence and Enter took the map to a street the person
+  never heard. The listbox and every option are id'd again and the input's
+  `aria-activedescendant` follows the highlight. Both of the input's pointers (`aria-controls`,
+  `aria-activedescendant`) leave entirely once the list closes or nothing is highlighted — the
+  listbox is `v-if`'d away, and an id nothing owns is the same dangling pointer this was about.
+  `SearchControl`, which the Omnibox replaced, had the three; the browser gate now drives the
+  arrows and checks the pointer follows.
+
+- **Two concurrent merges of one pair can no longer retire both records (#208).** The refusals — a
+  resolved pair, a retired survivor or loser — were plain reads made before any lock, and the only
+  serialization point, the Revision cursor UPDATE, ran after them with nothing re-checked behind it:
+  two opposite merges of one pair both passed, and both records ended up retired into each other,
+  gone from the map, the list and the queue. The rule now lives where the locks are:
+  `FeatureMapper::verifyTransition()` re-reads the row a membership transition (retire, merge,
+  restore) was decided against with `SELECT … FOR UPDATE`, inside the write's own transaction and
+  after the cursor is taken — every writer queues there first, so these row locks are uncontended
+  and a refusal rolls the whole transaction, Revision included, back — and a merge verifies its
+  survivor too, from the `mergedInto` the entity already carries. `DuplicateMapper::resolve()`
+  records a resolution only where the stored status is still PENDING, so a pair refused under the
+  decision takes the loser's retirement back with it. The services' own checks stay, in the same
+  words, as courtesy reads that answer before a transaction is opened.
+
 - **A pin click while placing places there (#196).** While a draft waits for its coordinate or a
   Sector for its «Generar» seed, clicking a pin now places there instead of opening that record and
   discarding the draft; pins skipped the `placing` guard the shapes have. While «Dibujar Sector» is
@@ -372,11 +397,39 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   (ADR-0008), and the change lands on the `Restored` history entry. This holds for every door:
   «Ver retirados», merge undo, and redo of an undone import.
 
-- **Two people resolving one Candidate pair at once no longer both win (#208).** Two merges
-  keeping opposite records retired both, a dismiss could overwrite a committed merge, and a
-  merge could follow a committed dismiss. The pair is now claimed with one conditional update
-  that only a still-pending row accepts, before any record is touched; the second resolution
-  is refused with «Alguien ya resolvió este par.» and writes nothing.
+- **Adding the name a renamed Category or Subcategory was created with names the row that holds
+  it (#210).** The refusal said «Ya existe … con ese nombre» although no shown row carried that
+  name. It now says, e.g., «Ese nombre está reservado por la categoría «Culto». Elija otro
+  nombre.»
+
+- A KML or KMZ whose elements carry a namespace prefix (`kml:Placemark`, `kml:Point`) imports
+  its Placemarks with their geometry instead of being refused as empty, or arriving shapeless
+  when only the geometry was prefixed (#209).
+
+- **A picked Point or zero-length street fragment no longer keeps «Generar el polígono»
+  disabled (#214).** `canPolygonize` asked every picked row for an edge, so a Boundary feature
+  that holds none, picked along with its street's name, blocked generating for good. A picked
+  row now needs a held line-work or Point shape, and the pick as a whole at least one edge. A
+  missing shape, a Polygon or an untyped one still blocks.
+
+- **The same cast in the places #207's fix left out is refused the same way (#241).** Six
+  doors that `(string)`'d or `(int)`'d what arrived now refuse it: a Category or Subcategory
+  `label` that is not text counts as not given and gets «El nombre no puede quedar vacío.»;
+  a `glyph` (create, rename or clear) reaches `glyphName()` raw, which refuses anything
+  that is not text — `false` used to read as `''`, the CLEAR, and a list as "Array", which
+  the shape check accepted; a GeoJSON `name` that is a list is refused as nameless, and a
+  `source` or classification cell that is one falls back as if absent instead of importing
+  "Array"; a `subcategoryId` that is not a whole number («La subcategoría recibida no es
+  un número.») no longer lands in Subcategory 1 or 3; a `colour: false` no longer silently
+  wipes a Sector's own colour; a `locationQuality: false` no longer silently resets a
+  stored `aproximada` to Exacta. An export `format` or `scope` that is not a string
+  counts as not given: the unknown-format refusal answers, and the export log no longer
+  records the text "Array".
+
+  The one check #207 landed for the name and the optional text fields is widened with
+  this too: a **bool** is refused like a list, with «Un campo de texto recibió algo que
+  no es texto.» (before, `true` stored "1" and `false` read as `''`). Strings, numbers
+  and empty values still save as before.
 
 - **The OpenStreetMap basemap follows the Tile Usage Policy to the letter (0.78.1).** The
   policy (https://operations.osmfoundation.org/policies/tiles/) is what keeps an instance from

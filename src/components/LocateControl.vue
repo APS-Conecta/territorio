@@ -113,6 +113,7 @@ export default {
 			}
 
 			this.locating = true
+			this.locatedOnce = false
 			this.$emit('notice', { text: '', type: 'warning' })
 			button?.setAttribute('aria-pressed', 'true')
 			this.map.locate({
@@ -120,8 +121,8 @@ export default {
 				enableHighAccuracy: true,
 				// Not `setView`: this map may be mid-draw, and Leaflet moving the
 				// view under a hand placing a vertex is the same class of problem
-				// the animated zoom caused. The first fix recentres, later ones do
-				// not — see below.
+				// the animated zoom caused. The first fix of each watch recentres,
+				// later ones do not — see onLocationFound.
 				setView: false,
 			})
 		},

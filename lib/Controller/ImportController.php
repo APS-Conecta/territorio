@@ -43,14 +43,21 @@ class ImportController extends Controller {
 	public function upload(): JSONResponse {
 		// The empty-dataset rule lives in ImportService now (L1-02): this door and
 		// `occ territorio:import` both pass through the one refusal, with the same
-		// sentence, and a third entry point inherits it for free.
-		$dataset = trim((string)$this->request->getParam('dataset', ''));
+		// sentence, and a third entry point inherits it for free. is_string, not a
+		// cast, so `dataset[]=x` counts as no dataset rather than a slug "Array"
+		// (#207) — the empty the service already refuses before any Dataset or
+		// batch exists.
+		$dataset = is_string($dataset = $this->request->getParam('dataset', ''))
+			? trim($dataset) : '';
 
 		// A path means the file is already in the caller's own Files tree (#104),
 		// so there is nothing to upload a second time. It is the ONLY difference:
 		// past this point the name picks the reader and the batch is recorded and
-		// revertible (ADR-0009) exactly as an upload's is.
-		$path = trim((string)$this->request->getParam('path', ''));
+		// revertible (ADR-0009) exactly as an upload's is. An array counts as no
+		// path (#207), exactly as an array `label` below counts as no label, so
+		// nothing is looked up in Files.
+		$path = is_string($path = $this->request->getParam('path', ''))
+			? trim($path) : '';
 
 		// A file rejected during reading wrote nothing at all. One that failed
 		// part-way through writing left a batch behind that can be reverted —

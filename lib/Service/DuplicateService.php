@@ -140,11 +140,20 @@ class DuplicateService {
 
 		$loserId = $survivorId === $ids[0] ? $ids[1] : $ids[0];
 
-		// The conditional claim decides. It runs first, so a pair someone else
-		// resolved is refused before any record is touched. If the records refuse
-		// the merge, the rollback releases the claim and the pair stays PENDING.
+		// One transaction (L1-16): the loser's retirement and the pair's
+		// resolution commit together or not at all. The failure this closes is the
+		// gap between them — a loser retired while the pair sat PENDING, invisible
+		// in outstanding() and never asked again, so the queue forgot a decision it
+		// never finished making. The reads and refusals above stay outside: they
+		// take no locks and write nothing — the writes re-verify under their own
+		// locks (#208), so a pair resolved between the read here and the write
+		// below refuses, and the rollback takes the retirement with it.
 		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
-			$this->claim($pair, Duplicate::MERGED);
+			$merged = $this->featureService->merge($loserId, $survivorId);
+
+			$pair->setStatus(Duplicate::MERGED);
+			$pair->setResolvedBy($this->actor());
+			$this->duplicates->resolve($pair);
 
 			return $this->featureService->merge($loserId, $survivorId);
 		});
@@ -182,19 +191,20 @@ class DuplicateService {
 		return $pair;
 	}
 
-	/** @throws InvalidFeatureException when another resolution of the pair committed first */
-	private function claim(Duplicate $pair, string $status): void {
-		$actor = $this->actor();
-		if (!$this->duplicates->resolve((int)$pair->getId(), $status, $actor)) {
-			throw new InvalidFeatureException(self::ALREADY_RESOLVED);
-		}
+		$this->duplicates->resolve($pair);
 
-		// Only once the row is ours: dismiss() hands this entity back to the client.
-		$pair->setStatus($status);
-		$pair->setResolvedBy($actor);
+		return $pair;
 	}
 
-	/** The early refusal comes from the read; DuplicateMapper::resolve() decides. */
+	/**
+	 * Two people opening the queue at once both see the pair; the second to act
+	 * would otherwise retire a record on the strength of a decision the first had
+	 * already made differently.
+	 *
+	 * This read is the fast answer, given before a transaction is opened — not
+	 * the rule. The rule is in resolve(), which refuses a pair that was resolved
+	 * under the decision, in these same words (#208).
+	 */
 	private function refuseResolved(Duplicate $pair): void {
 		if ($pair->getStatus() !== Duplicate::PENDING) {
 			throw new InvalidFeatureException(self::ALREADY_RESOLVED);

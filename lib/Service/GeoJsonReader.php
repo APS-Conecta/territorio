@@ -114,7 +114,7 @@ class GeoJsonReader {
 		}
 
 		$properties = is_array($feature['properties'] ?? null) ? $feature['properties'] : [];
-		$name = trim((string)($properties['name'] ?? ''));
+		$name = $this->text($properties['name'] ?? null) ?? '';
 		if ($name === '') {
 			// Refused rather than imported blank: a nameless row is unfindable in
 			// the list and unidentifiable in the duplicate queue, and importing
@@ -123,7 +123,14 @@ class GeoJsonReader {
 		}
 
 		$geometry = is_array($feature['geometry'] ?? null) ? $feature['geometry'] : null;
-		$source = trim((string)($properties['source'] ?? '')) ?: $datasetSlug;
+		// name, source and the classification cells read through the same text()
+		// as every other property (#241): a list or an object there was `(string)`'d
+		// to the text "Array" — a row named, sourced or classified "Array" that
+		// nobody wrote. A garbage name is no name (the refusal above), a garbage
+		// source falls back to the Dataset, a garbage cell classifies on nothing.
+		$source = $this->text($properties['source'] ?? null) ?? $datasetSlug;
+		$category = $this->text($properties['category'] ?? null);
+		$subcategory = $this->text($properties['subcategory'] ?? null);
 		$address = $this->text($properties['address'] ?? null);
 		$notes = $this->text($properties['notes'] ?? null);
 
@@ -133,8 +140,8 @@ class GeoJsonReader {
 			// Raw label or slug, as the file carries it — classify() owns the
 			// matching vocabularies (L1-06). Our own export writes slugs here
 			// and still round-trips through the slug path.
-			'category' => trim((string)($properties['category'] ?? '')) ?: null,
-			'subcategory' => trim((string)($properties['subcategory'] ?? '')) ?: null,
+			'category' => $category,
+			'subcategory' => $subcategory,
 			'geometry' => $geometry,
 			// The raw «ubicación» cell, judged in one place — ImportService::
 			// prepare() (L1-15) — with the same raw-label doctrine the

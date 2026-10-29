@@ -131,7 +131,7 @@ class TaxonomyService {
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the mark is not one this app will store
 	 */
-	public function setCategoryGlyph(string $slug, string $glyph): array {
+	public function setCategoryGlyph(string $slug, mixed $glyph): array {
 		$category = $this->categories->findBySlug($slug);
 		$category->setGlyph(TaxonomyPolicy::glyphName($glyph));
 		$this->categories->update($category);
@@ -190,7 +190,8 @@ class TaxonomyService {
 	 * Uniqueness is `terr_cat_slug_idx`'s, not this method's, for the reason
 	 * `addSubcategory()` gives: a check-then-insert here would be a second
 	 * statement of the same rule that two people adding «Comité de vivienda» at
-	 * once would both pass.
+	 * once would both pass. When the row holding the slug shows another name, the
+	 * refusal names it (`nameTaken()`, #210).
 	 *
 	 * Answers with the whole served tree, like every other write here, because it
 	 * is the one property the Capas panel, the Subcategoría picker, Análisis and
@@ -201,7 +202,7 @@ class TaxonomyService {
 	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws InvalidTaxonomyException when the label or the mark is not one this app will store
 	 */
-	public function addCategory(string $label, string $glyph = ''): array {
+	public function addCategory(string $label, mixed $glyph = ''): array {
 		$clean = $this->cleanLabel($label);
 		// Before the insert, so a name this app will not store refuses the whole
 		// add rather than leaving a Category behind with no mark on it.
@@ -240,10 +241,12 @@ class TaxonomyService {
 			if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
 				throw $e;
 			}
-			// Of the name, not of the slug: the slug is derived, so «Comité de
-			// Vivienda» collides with «comité de vivienda» and naming the slug
-			// would describe something the person never typed.
-			throw new InvalidTaxonomyException('Ya existe una categoría con ese nombre.');
+			throw $this->nameTaken(
+				$clean,
+				fn (): Category => $this->categories->findBySlug($slug),
+				'Ya existe una categoría con ese nombre.',
+				'Ese nombre está reservado por la categoría «%s». Elija otro nombre.',
+			);
 		}
 	}
 
@@ -261,7 +264,9 @@ class TaxonomyService {
 	 * Uniqueness is the index's, not this method's. A check-then-insert here
 	 * would be a second statement of the same rule, one that two people adding
 	 * «Taller» at once would both pass; `terr_subcat_slug_idx` is the rule, and
-	 * what is caught here is its violation, turned into a sentence.
+	 * what is caught here is its violation, turned into a sentence. When the row
+	 * holding the slug shows another name, the refusal names it (`nameTaken()`,
+	 * #210).
 	 *
 	 * Answers with the whole served tree, like the renames, because that is the
 	 * one property the Capas panel, the Subcategoría picker, Análisis and the
@@ -296,15 +301,36 @@ class TaxonomyService {
 			if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
 				throw $e;
 			}
-			// Said of the name and not of the slug: the slug is derived, so
-			// «Punto Limpio» collides with «punto limpio» and naming the slug
-			// would describe a thing the person never typed.
-			throw new InvalidTaxonomyException(
+			throw $this->nameTaken(
+				$clean,
+				fn (): Subcategory => $this->subcategories->findBySlug((int)$category->getId(), $slug),
 				'Ya existe una subcategoría con ese nombre en esta categoría.',
+				'Ese nombre está reservado por la subcategoría «%s» de esta categoría. Elija otro nombre.',
 			);
 		}
 
 		return $this->tree();
+	}
+
+	/**
+	 * The refusal for a label whose derived slug is taken (#210). A rename keeps the
+	 * slug (#40), and slugFor() also drops punctuation and cuts at Text::SLUG_LENGTH,
+	 * so the row holding it may show another name: «Ya existe» only when that shown
+	 * name folds to what was typed, otherwise the sentence names the row. Runs after
+	 * the failed insert, outside any transaction; uniqueness stays the index's.
+	 *
+	 * @param callable(): (Category|Subcategory) $holder
+	 */
+	private function nameTaken(string $typed, callable $holder, string $sameName, string $heldBy): InvalidTaxonomyException {
+		try {
+			$label = $holder()->getLabel();
+		} catch (DoesNotExistException) { // holder removed since the insert failed
+			return new InvalidTaxonomyException($sameName);
+		}
+
+		return new InvalidTaxonomyException(
+			Text::fold($label) === Text::fold($typed) ? $sameName : sprintf($heldBy, $label),
+		);
 	}
 
 	/**
@@ -556,11 +582,9 @@ class TaxonomyService {
 	 * it — each re-paying the two-table read per call. Keyed by Subcategory id
 	 * because that is what a Feature carries; each entry carries both slugs AND
 	 * both labels, so the flattest consumer does not come back for a label. The
-	 * memo is safe for the same reason AssignmentService's divisions memo is:
-	 * nothing writes the taxonomy in-request outside the install-time repair —
-	 * and the writes this service owns happen behind the routes that re-read the
-	 * tree through tree(), which stays unmemoised deliberately (the ramp repair's
-	 * own lesson, recorded at AssignmentService::divisions()).
+	 * memo is safe because the writes this service owns happen behind the routes
+	 * that re-read the tree through tree(), which stays unmemoised deliberately
+	 * (the ramp repair's own lesson, recorded at AssignmentService::divisions()).
 	 *
 	 * @return array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}>
 	 */

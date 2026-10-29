@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Territorio\Db;
 
+use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\Exception;
@@ -125,24 +126,32 @@ class DuplicateMapper extends QBMapper {
 	}
 
 	/**
-	 * Resolve a pair that is still pending.
+	 * Resolve a pair that is still PENDING, or refuse (#208).
 	 *
-	 * The stored row decides, as in record(): of two resolutions that both read
-	 * PENDING, the second changes no row. The status always changes away from
-	 * PENDING, so the affected-row count is 1 exactly when this call won, on
-	 * MySQL/MariaDB, PostgreSQL and SQLite.
+	 * A pair is resolved twice only when two people answer the same question at
+	 * the same moment — and both read it PENDING before either committed, so no
+	 * read can tell them apart. The UPDATE itself decides: it fires only where
+	 * the stored status is still 'pending', and an UPDATE reads the committed row
+	 * under its lock, so a resolution that landed between the decision and this
+	 * write leaves the statement matching nothing. The store decides, not a
+	 * read — the same posture as {@see record()}, where the unique index decides.
 	 *
-	 * @param Duplicate::MERGED|Duplicate::DISMISSED $status
-	 * @return bool whether this call resolved the pair
+	 * The status and resolver are taken from the entity the caller decided on;
+	 * only the refusal is this method's own, and it is refuseResolved()'s message:
+	 * one refusal, the same words whichever door it comes from.
 	 */
-	public function resolve(int $id, string $status, ?string $resolvedBy): bool {
+	public function resolve(Duplicate $pair): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->update($this->getTableName())
-			->set('status', $qb->createNamedParameter($status))
-			->set('resolved_by', $qb->createNamedParameter($resolvedBy))
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+			->set('status', $qb->createNamedParameter($pair->getStatus()))
+			->set('resolved_by', $qb->createNamedParameter($pair->getResolvedBy()))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter(
+				(int)$pair->getId(), IQueryBuilder::PARAM_INT,
+			)))
 			->andWhere($qb->expr()->eq('status', $qb->createNamedParameter(Duplicate::PENDING)));
 
-		return $qb->executeStatement() === 1;
+		if ($qb->executeStatement() === 0) {
+			throw new InvalidFeatureException('Alguien ya resolvió este par.');
+		}
 	}
 }

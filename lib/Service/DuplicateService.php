@@ -143,13 +143,15 @@ class DuplicateService {
 		// gap between them — a loser retired while the pair sat PENDING, invisible
 		// in outstanding() and never asked again, so the queue forgot a decision it
 		// never finished making. The reads and refusals above stay outside: they
-		// take no locks and write nothing.
+		// take no locks and write nothing — the writes re-verify under their own
+		// locks (#208), so a pair resolved between the read here and the write
+		// below refuses, and the rollback takes the retirement with it.
 		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
 			$merged = $this->featureService->merge($loserId, $survivorId);
 
 			$pair->setStatus(Duplicate::MERGED);
 			$pair->setResolvedBy($this->actor());
-			$this->duplicates->update($pair);
+			$this->duplicates->resolve($pair);
 
 			return $merged;
 		});
@@ -185,13 +187,19 @@ class DuplicateService {
 		$pair->setStatus(Duplicate::DISMISSED);
 		$pair->setResolvedBy($this->actor());
 
-		return $this->duplicates->update($pair);
+		$this->duplicates->resolve($pair);
+
+		return $pair;
 	}
 
 	/**
 	 * Two people opening the queue at once both see the pair; the second to act
 	 * would otherwise retire a record on the strength of a decision the first had
 	 * already made differently.
+	 *
+	 * This read is the fast answer, given before a transaction is opened — not
+	 * the rule. The rule is in resolve(), which refuses a pair that was resolved
+	 * under the decision, in these same words (#208).
 	 */
 	private function refuseResolved(Duplicate $pair): void {
 		if ($pair->getStatus() !== Duplicate::PENDING) {

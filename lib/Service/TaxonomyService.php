@@ -131,7 +131,7 @@ class TaxonomyService {
 	 * @throws DoesNotExistException when no Category carries that slug
 	 * @throws InvalidTaxonomyException when the mark is not one this app will store
 	 */
-	public function setCategoryGlyph(string $slug, string $glyph): array {
+	public function setCategoryGlyph(string $slug, mixed $glyph): array {
 		$category = $this->categories->findBySlug($slug);
 		$category->setGlyph(TaxonomyPolicy::glyphName($glyph));
 		$this->categories->update($category);
@@ -202,7 +202,7 @@ class TaxonomyService {
 	 * @return list<array{id: int, slug: string, label: string, color: string, glyph: ?string, subcategories: list<array{id: int, slug: string, label: string}>}>
 	 * @throws InvalidTaxonomyException when the label or the mark is not one this app will store
 	 */
-	public function addCategory(string $label, string $glyph = ''): array {
+	public function addCategory(string $label, mixed $glyph = ''): array {
 		$clean = $this->cleanLabel($label);
 		// Before the insert, so a name this app will not store refuses the whole
 		// add rather than leaving a Category behind with no mark on it.
@@ -582,11 +582,9 @@ class TaxonomyService {
 	 * it — each re-paying the two-table read per call. Keyed by Subcategory id
 	 * because that is what a Feature carries; each entry carries both slugs AND
 	 * both labels, so the flattest consumer does not come back for a label. The
-	 * memo is safe for the same reason AssignmentService's divisions memo is:
-	 * nothing writes the taxonomy in-request outside the install-time repair —
-	 * and the writes this service owns happen behind the routes that re-read the
-	 * tree through tree(), which stays unmemoised deliberately (the ramp repair's
-	 * own lesson, recorded at AssignmentService::divisions()).
+	 * memo is safe because the writes this service owns happen behind the routes
+	 * that re-read the tree through tree(), which stays unmemoised deliberately
+	 * (the ramp repair's own lesson, recorded at AssignmentService::divisions()).
 	 *
 	 * @return array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}>
 	 */

@@ -60,14 +60,15 @@ describe('onLocationError', () => {
 	})
 })
 
-// #212: pins only where the reset sits; the browser gate's second position proves the behaviour.
+// #212: each watch recentres on its own first fix, not only the page's first.
+// Source text, like the rest of this file, because CI never runs the browser gate.
 describe('toggleLocate', () => {
-	it('re-arms the first-fix recentre in the start branch, so every watch centres on its own first fix', () => {
-		const handler = member('toggleLocate(button) {')
+	it('lets every watch it starts recentre once, and no fix after that one', () => {
+		const toggle = member('toggleLocate(button) {')
+		const start = toggle.slice(toggle.indexOf('return'))
 
-		// Present first: indexOf -1 would slice one character and blame the wrong line.
-		expect(handler).toContain('this.locating = true')
-		expect(handler.slice(handler.indexOf('this.locating = true'))).toContain('this.locatedOnce = false')
+		expect(start).toContain('this.locatedOnce = false')
+		expect(member('onLocationFound(event) {')).toContain('if (!this.locatedOnce)')
 	})
 })
 

@@ -63,6 +63,36 @@ describe('what the keyboard can pick', () => {
 	})
 })
 
+describe('what the arrows announce to a screen reader', () => {
+	/**
+	 * #213: the arrows move a highlight that focus never follows — it stays in
+	 * the input — so aria-activedescendant is the only thing that tells a screen
+	 * reader which row Enter will take. SearchControl set it, the input's
+	 * aria-controls and every option's id; the Omnibox had kept none of the
+	 * three, so «pasaje» + ArrowDown was announced as silence. That the three
+	 * attributes are READ at runtime, not only present, is the browser gate's.
+	 */
+	it('names the list on the input, and every option in it by id', () => {
+		// Gated like aria-activedescendant: the listbox is v-if'd away when the box
+		// closes, and an aria-controls that names an id nothing owns is the same
+		// dangling pointer #213 is about.
+		expect(omnibox).toContain(':aria-controls="showDropdown ? listId : null"')
+		expect(omnibox).toContain(':id="listId"')
+		expect(omnibox).toMatch(/:id="`\$\{listId\}-option-\$\{index\}`"/)
+	})
+
+	it('points aria-activedescendant at the highlighted option, and nowhere once none is', () => {
+		expect(omnibox).toContain(':aria-activedescendant="activeOptionId"')
+		const active = methodOf(omnibox, 'activeOptionId')
+		// Blur hides the list but keeps activeIndex, so a pointer into a list that
+		// is no longer there must not survive: the attribute leaves, not dangles.
+		expect(active).toContain('this.showDropdown')
+		expect(active).toContain('this.activeIndex < 0')
+		expect(active).toContain('return null')
+		expect(active).toContain('return `${this.listId}-option-${this.activeIndex}`')
+	})
+})
+
 describe('what the search says and asks', () => {
 	/** #62: these names come out of an imported cadastre, not from anyone here. */
 	it('writes every name as text, never as markup', () => {

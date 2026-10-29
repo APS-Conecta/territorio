@@ -48,7 +48,7 @@ final class CategoryControllerTest extends TestCase {
 	 * no business reading comes back null, which is how a body key renamed away
 	 * from `label` or `glyph` is caught here rather than in the browser.
 	 *
-	 * @param array<string, string> $params
+	 * @param array<string, mixed> $params
 	 */
 	private function body(array $params = ['label' => 'Salud comunitaria']): void {
 		$request = $this->createStub(IRequest::class);
@@ -122,8 +122,9 @@ final class CategoryControllerTest extends TestCase {
 	 *
 	 * No slug and no colour go up: the app derives the one and assigns the other
 	 * (ADR-0017), so a body key for either is a path by which a person could
-	 * choose a colour no gate ever measured. The `->with()` below is what says
-	 * that only `label` is read.
+	 * choose a colour no gate ever measured. The `->with()` below pins that no
+	 * slug or colour key is read; the mark beside it is pinned in
+	 * `testAnAddedCategoryCarriesTheMarkPickedWithIt()`.
 	 *
 	 * 200 and the whole served tree, like every other write on this controller —
 	 * it is what the browser swaps in.
@@ -155,6 +156,62 @@ final class CategoryControllerTest extends TestCase {
 
 		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 		self::assertStringContainsString('Ya existe', $response->getData()['message']);
+	}
+
+	/**
+	 * #241: `label[]=x` was `(string)`'d to "Array", so an open route could name
+	 * a Category "Array". A label that is not text now counts as not given —
+	 * the is_string move the import's own parameters made (#207) — so the
+	 * service hears '' and answers with its own empty-name sentence as a 422,
+	 * before any write.
+	 */
+	public function testAListForALabelIsReadAsNotGivenAndRefusedByTheService(): void {
+		$this->body(['label' => ['x']]);
+		$this->taxonomy->expects(self::once())
+			->method('addCategory')
+			->with('', '')
+			->willThrowException(new InvalidTaxonomyException('El nombre no puede quedar vacío.'));
+
+		$response = $this->controller->create();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('El nombre no puede quedar vacío.', $response->getData()['message']);
+	}
+
+	/**
+	 * #241: the mark goes to the service RAW — `(string)` here turned `false`
+	 * into '' (which the service reads as "clear the choice") and a list into
+	 * "Array" (which its shape check then accepted). glyphName() refuses what
+	 * is not text, pinned in TaxonomyGlyphTest; this pins the passing and the
+	 * 422, and that a garbage mark is not misread as no mark and answered with
+	 * a refusal about a name nobody was typing.
+	 */
+	public function testABoolForTheGlyphReachesTheServiceRawAndItsRefusalIsA422(): void {
+		$this->body(['glyph' => false]);
+		$this->taxonomy->expects(self::once())
+			->method('setCategoryGlyph')
+			->with('salud', false)
+			->willThrowException(new InvalidTaxonomyException('Un campo de texto recibió algo que no es texto.'));
+		$this->taxonomy->expects(self::never())->method('renameCategory');
+
+		$response = $this->controller->update('salud');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('Un campo de texto recibió algo que no es texto.', $response->getData()['message']);
+	}
+
+	/** #241: the Subcategory labels read through the same door as the
+	 *  Category's own. */
+	public function testAListForASubcategoryLabelIsReadAsNotGiven(): void {
+		$this->body(['label' => ['x']]);
+		$this->taxonomy->expects(self::once())
+			->method('addSubcategory')
+			->with('salud', '')
+			->willThrowException(new InvalidTaxonomyException('El nombre no puede quedar vacío.'));
+
+		$response = $this->controller->addSubcategory('salud');
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 	}
 
 	/**

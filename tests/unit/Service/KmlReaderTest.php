@@ -74,21 +74,7 @@ final class KmlReaderTest extends TestCase {
 	 * because the shape still draws and still assigns, just wrongly.
 	 */
 	public function testAPolygonKeepsItsHoles(): void {
-		$kml = <<<'XML'
-		<?xml version="1.0" encoding="UTF-8"?>
-		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-		  <Placemark><name>Parque con laguna</name><Polygon>
-		    <outerBoundaryIs><LinearRing><coordinates>
-		      -70.62,-33.55 -70.60,-33.55 -70.60,-33.54 -70.62,-33.54 -70.62,-33.55
-		    </coordinates></LinearRing></outerBoundaryIs>
-		    <innerBoundaryIs><LinearRing><coordinates>
-		      -70.615,-33.548 -70.605,-33.548 -70.605,-33.543 -70.615,-33.548
-		    </coordinates></LinearRing></innerBoundaryIs>
-		  </Polygon></Placemark>
-		</Document></kml>
-		XML;
-
-		$rings = $this->reader->read($kml, 'prueba')[0]['geometry']['coordinates'];
+		$rings = $this->reader->read(self::HOLED, 'prueba')[0]['geometry']['coordinates'];
 
 		self::assertCount(2, $rings, 'the hole was dropped, so the area claims what is inside it');
 		self::assertSame([-70.615, -33.548], $rings[1][0]);
@@ -99,16 +85,7 @@ final class KmlReaderTest extends TestCase {
 	 * that as unreadable would throw away ordinary records.
 	 */
 	public function testAMultiGeometryAroundOneShapeIsUnwrapped(): void {
-		$kml = <<<'XML'
-		<?xml version="1.0" encoding="UTF-8"?>
-		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-		  <Placemark><name>Plaza envuelta</name><MultiGeometry>
-		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
-		  </MultiGeometry></Placemark>
-		</Document></kml>
-		XML;
-
-		$geometry = $this->reader->read($kml, 'prueba')[0]['geometry'];
+		$geometry = $this->reader->read(self::MULTI_ONE, 'prueba')[0]['geometry'];
 
 		self::assertSame('Point', $geometry['type'] ?? null);
 		self::assertSame([-70.58, -33.52], $geometry['coordinates']);
@@ -122,17 +99,7 @@ final class KmlReaderTest extends TestCase {
 	 * it shapeless instead, which looks like a record somebody never located.
 	 */
 	public function testAMultiGeometryAroundSeveralShapesArrivesUnsupportedRatherThanShapeless(): void {
-		$kml = <<<'XML'
-		<?xml version="1.0" encoding="UTF-8"?>
-		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-		  <Placemark><name>Dos plazas</name><MultiGeometry>
-		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
-		    <Point><coordinates>-70.57,-33.51</coordinates></Point>
-		  </MultiGeometry></Placemark>
-		</Document></kml>
-		XML;
-
-		$geometry = $this->reader->read($kml, 'prueba')[0]['geometry'];
+		$geometry = $this->reader->read(self::MULTI_SEVERAL, 'prueba')[0]['geometry'];
 
 		self::assertNotNull($geometry, 'it arrived shapeless, so the import will not count it');
 		self::assertFalse(
@@ -199,27 +166,58 @@ final class KmlReaderTest extends TestCase {
 	 *
 	 * @dataProvider namespaces
 	 */
-	public function testItReadsWhicheverNamespaceWroteTheFile(string $xmlns): void {
+	public function testItReadsWhicheverNamespaceWroteTheFile(string $xmlns, string $prefix = ''): void {
 		$xml = sprintf(
-			'<kml%s><Document><Folder><name>Salud</name><Placemark><name>CESFAM de Prueba</name>'
-			. '<Point><coordinates>-70.58,-33.52</coordinates></Point>'
-			. '</Placemark></Folder></Document></kml>',
+			'<%2$skml%1$s><%2$sDocument><%2$sFolder><%2$sname>Salud</%2$sname>'
+			. '<%2$sPlacemark><%2$sname>CESFAM de Prueba</%2$sname>'
+			. '<%2$sPoint><%2$scoordinates>-70.58,-33.52</%2$scoordinates></%2$sPoint>'
+			. '</%2$sPlacemark></%2$sFolder></%2$sDocument></%2$skml>',
 			$xmlns,
+			$prefix,
 		);
 
 		$rows = $this->reader->read($xml, 'prueba');
 
 		self::assertCount(1, $rows, 'no Placemark found for ' . ($xmlns ?: 'no namespace'));
 		self::assertSame('Salud', $rows[0]['category']);
+		self::assertSame('CESFAM de Prueba', $rows[0]['name']);
+		self::assertSame(['type' => 'Point', 'coordinates' => [-70.58, -33.52]], $rows[0]['geometry']);
 	}
 
-	/** @return array<string, array{string}> */
+	/** @return array<string, array{0: string, 1?: string}> */
 	public static function namespaces(): array {
 		return [
 			'OGC 2.2' => [' xmlns="http://www.opengis.net/kml/2.2"'],
 			'Google Earth 2.2' => [' xmlns="http://earth.google.com/kml/2.2"'],
 			'Google Earth 2.1' => [' xmlns="http://earth.google.com/kml/2.1"'],
 			'none at all' => [''],
+			'OGC 2.2 with a kml: prefix' => [' xmlns:kml="http://www.opengis.net/kml/2.2"', 'kml:'],
+		];
+	}
+
+	/**
+	 * KML 2.2 allows its elements to carry a prefix bound to the namespace
+	 * (`kml:Placemark`), and some tools write that form. The rows must not
+	 * depend on which form wrote the file (#209).
+	 *
+	 * @dataProvider unprefixedFiles
+	 */
+	public function testAPrefixedFileReadsExactlyLikeItsUnprefixedForm(string $kml): void {
+		self::assertStringContainsString('<kml:Placemark>', self::prefixed($kml));
+		self::assertSame(
+			$this->reader->read($kml, 'prueba'),
+			$this->reader->read(self::prefixed($kml), 'prueba'),
+		);
+	}
+
+	/** @return array<string, array{string}> */
+	public static function unprefixedFiles(): array {
+		return [
+			'points, lines and areas in Folders' => [self::KML],
+			'a description and no Folder' => [self::LOOSE],
+			'a Polygon with a hole' => [self::HOLED],
+			'a MultiGeometry around one shape' => [self::MULTI_ONE],
+			'a MultiGeometry around several shapes' => [self::MULTI_SEVERAL],
 		];
 	}
 
@@ -318,6 +316,14 @@ final class KmlReaderTest extends TestCase {
 		self::assertSame(
 			$this->reader->read(self::KML, 'prueba'),
 			$this->reader->readArchive(self::kmz(['doc.kml' => self::KML]), 'prueba'),
+		);
+	}
+
+	/** A KMZ holds whichever KML form its writer chose, prefixed included (#209). */
+	public function testAPrefixedKmlInsideAKmzImportsTheSameRows(): void {
+		self::assertSame(
+			$this->reader->read(self::KML, 'prueba'),
+			$this->reader->readArchive(self::kmz(['doc.kml' => self::prefixed(self::KML)]), 'prueba'),
 		);
 	}
 
@@ -433,6 +439,11 @@ final class KmlReaderTest extends TestCase {
 		return $found;
 	}
 
+	/** The same document with every element under a `kml:` prefix; the input declares a default `xmlns` and has no markup inside text or CDATA. */
+	private static function prefixed(string $kml): string {
+		return preg_replace('/<(\/?)(?=[A-Za-z])/', '<$1kml:', str_replace(' xmlns="', ' xmlns:kml="', $kml));
+	}
+
 	/**
 	 * An archive holding exactly these entries, built the only way `ZipArchive`
 	 * can build one — through a path, because `close()` is what writes an archive
@@ -502,5 +513,38 @@ final class KmlReaderTest extends TestCase {
 		    </Placemark>
 		  </Document>
 		</kml>
+		XML;
+
+	private const HOLED = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Parque con laguna</name><Polygon>
+		    <outerBoundaryIs><LinearRing><coordinates>
+		      -70.62,-33.55 -70.60,-33.55 -70.60,-33.54 -70.62,-33.54 -70.62,-33.55
+		    </coordinates></LinearRing></outerBoundaryIs>
+		    <innerBoundaryIs><LinearRing><coordinates>
+		      -70.615,-33.548 -70.605,-33.548 -70.605,-33.543 -70.615,-33.548
+		    </coordinates></LinearRing></innerBoundaryIs>
+		  </Polygon></Placemark>
+		</Document></kml>
+		XML;
+
+	private const MULTI_ONE = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Plaza envuelta</name><MultiGeometry>
+		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
+		  </MultiGeometry></Placemark>
+		</Document></kml>
+		XML;
+
+	private const MULTI_SEVERAL = <<<'XML'
+		<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+		  <Placemark><name>Dos plazas</name><MultiGeometry>
+		    <Point><coordinates>-70.58,-33.52</coordinates></Point>
+		    <Point><coordinates>-70.57,-33.51</coordinates></Point>
+		  </MultiGeometry></Placemark>
+		</Document></kml>
 		XML;
 }

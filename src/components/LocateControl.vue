@@ -122,7 +122,7 @@ export default {
 				// Not `setView`: this map may be mid-draw, and Leaflet moving the
 				// view under a hand placing a vertex is the same class of problem
 				// the animated zoom caused. The first fix of each watch recentres,
-				// later ones do not — see below.
+				// later ones do not — see onLocationFound.
 				setView: false,
 			})
 		},

@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Unit\Service;
 
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Migration\EnsureSeedData;
 use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Domain\BoundingBox;
 use OCA\Territorio\Domain\Kind;
@@ -45,12 +46,16 @@ final class AssignmentBoundaryTest extends TestCase {
 		],
 	]];
 
-	/** The same tree as TaxonomyService::subcategoryIndex() flattens it (L1-20:
-	 *  Assignment reads the flat index now, not the tree). */
+	/** A taxonomy as TaxonomyService::subcategoryIndex() flattens it (L1-20:
+	 *  Assignment reads the flat index now, not the tree). 11 and 12 are the
+	 *  divisions as the seed files them; 14 and 15 reuse their slugs under a
+	 *  Category a clinic added, which the open taxonomy allows (#205). */
 	private const FLAT_INDEX = [
-		11 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'sector', 'subcategoryLabel' => 'Sector'],
-		12 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad Vecinal'],
+		11 => ['category' => EnsureSeedData::DIVISIONS_SLUG, 'categoryLabel' => 'División territorial', 'subcategory' => 'sector', 'subcategoryLabel' => 'Sector'],
+		12 => ['category' => EnsureSeedData::DIVISIONS_SLUG, 'categoryLabel' => 'División territorial', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad Vecinal'],
 		13 => ['category' => 'territorio', 'categoryLabel' => 'Territorio', 'subcategory' => 'otro', 'subcategoryLabel' => 'Otro'],
+		14 => ['category' => 'organizacion_social', 'categoryLabel' => 'Organización social', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad vecinal'],
+		15 => ['category' => 'organizacion_social', 'categoryLabel' => 'Organización social', 'subcategory' => 'sector', 'subcategoryLabel' => 'Sector'],
 	];
 
 	private function feature(int $subcategoryId): Feature {
@@ -232,5 +237,44 @@ final class AssignmentBoundaryTest extends TestCase {
 		self::assertNull($assignment->divisionOf($this->feature(13)), 'anything else is not');
 		self::assertSame('unidad_vecinal', $assignment->divisionOf($this->feature(12)), 'a Unidad Vecinal is a division boundary');
 		self::assertNull($assignment->divisionOf($this->feature(13)));
+	}
+
+	/**
+	 * #205: a division is the Subcategory under «División territorial», not any
+	 * Subcategory that happens to share its slug. The browser's isDivision() and
+	 * ADR-0010 already decide by the Category.
+	 */
+	public function testASameNamedSubcategoryOutsideTheDivisionCategoryIsNoBoundary(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
+
+		$assignment = new AssignmentService($this->createMock(FeatureMapper::class), $taxonomy);
+
+		self::assertNull($assignment->divisionOf($this->feature(14)), '«Unidad vecinal» under «Organización social»');
+		self::assertNull($assignment->divisionOf($this->feature(15)), '«Sector» under «Organización social»');
+	}
+
+	/**
+	 * #205, the assignment half: a Zone filed there claims no Place — alone, and
+	 * beside the cadastre Unidad Vecinal it used to outrank by being the newer row
+	 * (findAll() is newest first).
+	 */
+	public function testAZoneFiledUnderASameNamedSubcategoryClaimsNoPlace(): void {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('subcategoryIndex')->willReturn(self::FLAT_INDEX);
+		$impostor = $this->boundaryAround(-33.5, -70.6, 14, 2);
+
+		$features = $this->createMock(FeatureMapper::class);
+		$features->method('findAll')->willReturn([$impostor]);
+		$alone = $this->placeAt(-33.5, -70.6);
+		(new AssignmentService($features, $taxonomy))->assign($alone);
+		self::assertNull($alone->getUnidadVecinalId(), 'no Unidad Vecinal covers it');
+
+		// A fresh service, because the Registry is read once per service.
+		$features = $this->createMock(FeatureMapper::class);
+		$features->method('findAll')->willReturn([$impostor, $this->boundaryAround(-33.5, -70.6, 12, 1)]);
+		$beside = $this->placeAt(-33.5, -70.6);
+		(new AssignmentService($features, $taxonomy))->assign($beside);
+		self::assertSame(1, $beside->getUnidadVecinalId(), 'the cadastre Unidad Vecinal claims it');
 	}
 }

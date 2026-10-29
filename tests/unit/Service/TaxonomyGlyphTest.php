@@ -82,4 +82,30 @@ final class TaxonomyGlyphTest extends TestCase {
 			self::assertStringContainsString('pictograma', $e->getMessage());
 		}
 	}
+
+	/** @return array<string, array{0: mixed}> */
+	public static function notText(): array {
+		return [
+			'a list' => [['x']],
+			// `(string)` false is '' — and '' here reads as "clear the choice", so
+			// garbage on this route used to wipe a picked mark, not just miss.
+			'a bool, which read as the empty string and cleared the mark' => [false],
+			'true, which read as "1"' => [true],
+		];
+	}
+
+	/**
+	 * #241: a glyph is picked, never typed — a list or a bool on this open
+	 * route is no hand on the grid. Refused at the type with the #207 accept
+	 * list, BEFORE the shape check above it: the text "Array" passed that
+	 * check, and the empty bool was the CLEAR.
+	 *
+	 * @dataProvider notText
+	 */
+	public function testAMarkThatIsNotTextIsRefused(mixed $picked): void {
+		$this->expectException(InvalidTaxonomyException::class);
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
+
+		TaxonomyPolicy::glyphName($picked);
+	}
 }

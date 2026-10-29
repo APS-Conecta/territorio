@@ -149,11 +149,7 @@ class DuplicateService {
 		// locks (#208), so a pair resolved between the read here and the write
 		// below refuses, and the rollback takes the retirement with it.
 		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
-			$merged = $this->featureService->merge($loserId, $survivorId);
-
-			$pair->setStatus(Duplicate::MERGED);
-			$pair->setResolvedBy($this->actor());
-			$this->duplicates->resolve($pair);
+			$this->claim($pair, Duplicate::MERGED);
 
 			return $this->featureService->merge($loserId, $survivorId);
 		});
@@ -191,9 +187,11 @@ class DuplicateService {
 		return $pair;
 	}
 
+	/** @throws InvalidFeatureException when another resolution of the pair committed first */
+	private function claim(Duplicate $pair, string $status): void {
+		$pair->setStatus($status);
+		$pair->setResolvedBy($this->actor());
 		$this->duplicates->resolve($pair);
-
-		return $pair;
 	}
 
 	/**

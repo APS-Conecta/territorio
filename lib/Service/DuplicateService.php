@@ -31,6 +31,8 @@ use Throwable;
  * This knows about the database and nothing about the rule.
  */
 class DuplicateService {
+	private const ALREADY_RESOLVED = 'Alguien ya resolvió este par.';
+
 	public function __construct(
 		private DuplicateMapper $duplicates,
 		private FeatureMapper $features,
@@ -123,7 +125,7 @@ class DuplicateService {
 	 * Decide that these two are one place, and which one survives.
 	 *
 	 * @throws DoesNotExistException when the pair or either record is gone
-	 * @throws InvalidFeatureException when the survivor is not one of the two
+	 * @throws InvalidFeatureException when the pair is already resolved or the survivor is not one of the two
 	 */
 	public function merge(int $pairId, int $survivorId): Feature {
 		$pair = $this->duplicates->find($pairId);
@@ -147,13 +149,9 @@ class DuplicateService {
 		// locks (#208), so a pair resolved between the read here and the write
 		// below refuses, and the rollback takes the retirement with it.
 		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
-			$merged = $this->featureService->merge($loserId, $survivorId);
+			$this->claim($pair, Duplicate::MERGED);
 
-			$pair->setStatus(Duplicate::MERGED);
-			$pair->setResolvedBy($this->actor());
-			$this->duplicates->resolve($pair);
-
-			return $merged;
+			return $this->featureService->merge($loserId, $survivorId);
 		});
 	}
 
@@ -179,17 +177,21 @@ class DuplicateService {
 	 * a queue that asks the same question every week is a queue nobody opens.
 	 *
 	 * @throws DoesNotExistException
+	 * @throws InvalidFeatureException when the pair is already resolved
 	 */
 	public function dismiss(int $pairId): Duplicate {
 		$pair = $this->duplicates->find($pairId);
 		$this->refuseResolved($pair);
-
-		$pair->setStatus(Duplicate::DISMISSED);
-		$pair->setResolvedBy($this->actor());
-
-		$this->duplicates->resolve($pair);
+		$this->claim($pair, Duplicate::DISMISSED);
 
 		return $pair;
+	}
+
+	/** @throws InvalidFeatureException when another resolution of the pair committed first */
+	private function claim(Duplicate $pair, string $status): void {
+		$pair->setStatus($status);
+		$pair->setResolvedBy($this->actor());
+		$this->duplicates->resolve($pair);
 	}
 
 	/**
@@ -203,7 +205,7 @@ class DuplicateService {
 	 */
 	private function refuseResolved(Duplicate $pair): void {
 		if ($pair->getStatus() !== Duplicate::PENDING) {
-			throw new InvalidFeatureException('Alguien ya resolvió este par.');
+			throw new InvalidFeatureException(self::ALREADY_RESOLVED);
 		}
 	}
 

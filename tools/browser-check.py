@@ -736,6 +736,8 @@ GEOLOCATION_COUNTER = """
 # La Florida, inside the comuna the install serves, 30 m: a fix the accuracy
 # gate trusts (src/locate.js ACCURACY_LIMIT_M), so a notice after it is a fault.
 LOCATION_FIX = {"latitude": -33.5226, "longitude": -70.5985, "accuracy": 30}
+# About 4 km south-east: off-screen at zoom 16, with the same trusted 30 m accuracy.
+LOCATION_FIX_ELSEWHERE = {**LOCATION_FIX, "latitude": -33.5500, "longitude": -70.5700}
 LOCATE_BUTTON = ".territorio-locate a"
 LOCATE_NOTICE = '[data-testid="locate-notice"]'
 OVERLAY_PATHS = ".leaflet-overlay-pane path"
@@ -796,13 +798,14 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
     `watchPosition` ×2 and `clearWatch` ×0, one live GPS subscription per retry.
     Granted, with a 30 m fix emulated: the button is pressed, the circle and the
     dot are painted (paint, not the button: c8837c7), no notice; and a second
-    click stops it cleanly. Console errors are read around the clicks, so a
-    permissions-policy violation is attributed to this check and not only to
-    the blanket line at the end of the run.
+    click stops it cleanly. A second press from kilometres away recentres on
+    that watch's first fix (#212). Console errors are read around the clicks,
+    so a permissions-policy violation is attributed to this check and not only
+    to the blanket line at the end of the run.
 
     Failed, not skipped, whatever is missing (#141): a `'none'` header, no
     control, no notice — each one is the finding. Runs first, before anything
-    pans or draws: the first fix recentres to zoom 16, and this ends on a
+    pans or draws: each press recentres to zoom 16, and this ends on a
     reload that puts the view back on the comuna, the way main() does before
     the cluster checks.
     """
@@ -891,6 +894,34 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
             f"{stopped['clear']}, not 2 / 2 — a watch survived the stop",
         )
 
+    # Pressed again from kilometres away: the new watch recentres on its own
+    # first fix, read off Leaflet's moveend (#212). No `return` on a missing
+    # recorder — the reload below must still put the view back.
+    if not page.evaluate(VIEW_RECORDER):
+        failures.append(
+            "the page has no window.L, so nothing could read where a second «¿Dónde estoy?» took the map",
+        )
+    else:
+        page.context.set_geolocation(LOCATION_FIX_ELSEWHERE)
+        button.click()
+
+        def recentred():
+            view = _last_view(page)
+            if view is None:
+                return False
+            lat, lon = _centre(view)
+            return (abs(lat - LOCATION_FIX_ELSEWHERE["latitude"]) <= 0.0001
+                    and abs(lon - LOCATION_FIX_ELSEWHERE["longitude"]) <= 0.0001)
+
+        if not settles(page, recentred, timeout=6_000):
+            failures.append(
+                f"a second «¿Dónde estoy?» from kilometres away left the map on {_last_view(page)}, "
+                f"not on {LOCATION_FIX_ELSEWHERE} — only the page's first watch recentres (#212)",
+            )
+        button.click()
+        if not settles(page, lambda: button.get_attribute("aria-pressed") == "false", timeout=6_000):
+            failures.append("the button stays pressed after stopping the second watch")
+
     violations = [line for line in errors[logged_before:] if "ermissions policy" in line]
     if violations:
         failures.append(
@@ -898,7 +929,7 @@ def the_locate_control_can_ask_where_the_person_is(page, errors, failures):
             f"{violations[:1]} — the policy value reads correct and blocks (78a94e3)",
         )
 
-    # Back to the neutral context and the comuna view: the first fix recentred
+    # Back to the neutral context and the comuna view: each press recentred
     # the map to zoom 16, and every check below clicks canvas pixels where the
     # install's own view puts things.
     page.context.clear_permissions()
@@ -913,6 +944,15 @@ def _holds(view, line):
     latitude, west, east = line
     return (view["south"] <= latitude <= view["north"]
             and view["west"] <= west and east <= view["east"])
+
+
+def _last_view(page):
+    views = page.evaluate("() => window.__territorioViews")
+    return views[-1] if views else None
+
+
+def _centre(view):
+    return (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
 
 
 def save(page, failures, what):
@@ -2569,6 +2609,8 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
     happens to be fitted to. Its four sides share one name, so picking the name
     picks all four — which is also the "duplicate names need no intervention"
     half of the criterion.
+
+    A Point of that name on a corner, as a KML import leaves one, must not block «Generar» (#214).
     """
     name = f"Cuadro {RUN}"
     south, west, north, east = -33.54, -70.60, -33.50, -70.56
@@ -2584,7 +2626,12 @@ def a_sector_can_be_built_from_picked_lines(page, failures):
         }
         for index in range(4)
     ]
-    geojson = json.dumps({"type": "FeatureCollection", "features": sides})
+    corner = {
+        "type": "Feature",
+        "properties": {"id": f"cuadro-{RUN}-point", "name": name},
+        "geometry": {"type": "Point", "coordinates": list(corners[0])},
+    }
+    geojson = json.dumps({"type": "FeatureCollection", "features": [*sides, corner]})
 
     if not import_dataset(geojson, f"cuadro-{RUN}", boundary=True):
         skip("could not import boundary lines through occ; polygonize unchecked")
@@ -8412,26 +8459,52 @@ def the_redesigned_controls_work(page, errors, failures):
         failures.append("the page has no window.L, so nothing could read where the search took the map")
         return
 
-    def last_view():
-        views = page.evaluate("() => window.__territorioViews")
-        return views[-1] if views else None
-
-    def centre(view):
-        return (view["south"] + view["north"]) / 2, (view["west"] + view["east"]) / 2
-
     # A taxonomy drawer that is "closed" but mounted covers the whole screen.
     if page.locator(".territorio-taxonomy-drawer").count() != 0:
         failures.append("the taxonomy drawer is on the page before anyone opened it")
 
     # --- the search box: an asset, a polygon and a street ---
+    # First by the keyboard, because that is where #213 bit: the arrows move a
+    # highlight that focus never follows — it stays in the input — so what a
+    # screen reader hears about the rows is aria-activedescendant, and Enter was
+    # taking a street the person never heard named. Three arrows land on the
+    # second row, one comes back, and the pointer must follow and be named well.
+    box = page.locator(OMNIBOX_INPUT)
+    box.click()
+    box.press_sequentially(f"Rediseño {REDESIGN}", delay=40)
+    page.wait_for_timeout(400)
+    named = box.get_attribute("aria-activedescendant")
+    if named is not None:
+        failures.append(f"before any arrow, aria-activedescendant already names {named!r}")
+    box.press("ArrowDown")
+    box.press("ArrowDown")
+    named = box.get_attribute("aria-activedescendant")
+    list_id = page.locator(".territorio-omnibox__dropdown").get_attribute("id")
+    if box.get_attribute("aria-controls") != list_id:
+        failures.append(
+            f"the input's aria-controls is {box.get_attribute('aria-controls')!r}, "
+            f"not the list's id {list_id!r}")
+    highlighted = page.locator(".territorio-omnibox__item--highlighted")
+    if named is None:
+        failures.append("ArrowDown highlighted a row a screen reader is never told about")
+    elif highlighted.count() != 1:
+        failures.append(f"{highlighted.count()} rows are highlighted, not one")
+    elif highlighted.first.get_attribute("id") != named:
+        failures.append(f"aria-activedescendant names {named!r}, not the highlighted row")
+    box.press("ArrowUp")
+    up = box.get_attribute("aria-activedescendant")
+    if named is not None and up == named:
+        failures.append(f"ArrowUp did not move aria-activedescendant, still {up!r}")
+    box.press("Escape")
+
     titles, problem = _omnibox_pick(page, f"Rediseño {REDESIGN}", place)
     if problem:
         failures.append(f"Omnibox, picking the Place: {problem} (rows: {titles})")
     elif not {place, polygon, street} <= set(titles):
         failures.append(f"Omnibox offered {titles}, which lacks one of the Place, Polygon or street")
     else:
-        view = last_view()
-        lat, lon = centre(view) if view else (None, None)
+        view = _last_view(page)
+        lat, lon = _centre(view) if view else (None, None)
         if view is None or abs(lat - point[0]) > 0.005 or abs(lon - point[1]) > 0.005:
             failures.append(f"picking the Place left the map on {view}, not on {point}")
         if not page.locator(".territorio-docked-panel__sheet").get_by_text(place).first.is_visible():
@@ -8447,7 +8520,7 @@ def the_redesigned_controls_work(page, errors, failures):
             failures.append("«Volver a la lista» did not bring the list back")
 
     _, problem = _omnibox_pick(page, f"Colegio Rediseño {REDESIGN}", polygon)
-    view = last_view()
+    view = _last_view(page)
     if problem:
         failures.append(f"Omnibox, picking the Polygon: {problem}")
     elif view is None or not (view["south"] <= -33.80 and view["north"] >= -33.79
@@ -8458,7 +8531,7 @@ def the_redesigned_controls_work(page, errors, failures):
     # the second one and not the first.
     for index, line in enumerate(lines):
         titles, problem = _omnibox_pick(page, f"Calle Rediseño {REDESIGN}", street, nth=index)
-        view = last_view()
+        view = _last_view(page)
         if problem:
             failures.append(f"Omnibox, picking street row {index + 1}: {problem}")
         elif titles.count(street) != 2:

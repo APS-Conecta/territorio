@@ -228,6 +228,21 @@ final class ImportControllerTest extends TestCase {
 		);
 	}
 
+	/** #207: an array `path` counts as no path — the same rule `label`
+	 *  already has — so nothing is looked up in Files and the uploaded-file
+	 *  door answers instead. A cast would have looked up a file literally
+	 *  named "Array" in the caller's tree. */
+	public function testAPathThatArrivesAsAListIsLookedUpNowhere(): void {
+		$this->params = ['dataset' => 'catastro', 'path' => ['x']];
+		$this->root->expects(self::never())->method('getUserFolder');
+		$this->import->expects(self::never())->method('importFile');
+
+		$response = $this->controller->upload();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('No llegó ningún archivo.', $response->getData()['message']);
+	}
+
 	/**
 	 * And the upload it shares its body with still imports — the branch is a
 	 * second source for the same call, not a second import path.
@@ -255,6 +270,46 @@ final class ImportControllerTest extends TestCase {
 			->willReturn(new ImportBatch());
 
 		self::assertSame(Http::STATUS_OK, $this->controller->upload()->getStatus());
+		unlink($tmp);
+	}
+
+	/**
+	 * #207: `dataset[]=x` used to cast to the slug "Array" and import the
+	 * rows into a Dataset so labelled, through a 200. An array counts as no
+	 * dataset now — is_string, the rule `label` already has — so ImportService
+	 * receives the empty slug and refuses with its own sentence, before any
+	 * Dataset or batch exists. The file is read first, exactly as a path
+	 * without a dataset is: the refusal is the service's, not the door's.
+	 */
+	public function testADatasetThatArrivesAsAListCountsAsNoDataset(): void {
+		$tmp = tempnam(sys_get_temp_dir(), 'territorio');
+		file_put_contents($tmp, '{"type":"FeatureCollection","features":[]}');
+		$this->params = ['dataset' => ['x']];
+		$this->request->method('getUploadedFile')->willReturn([
+			'name' => 'catastro.geojson',
+			'error' => UPLOAD_ERR_OK,
+			'size' => filesize($tmp),
+			'tmp_name' => $tmp,
+		]);
+
+		$this->import->expects(self::once())
+			->method('importFile')
+			->with(
+				'{"type":"FeatureCollection","features":[]}',
+				'catastro.geojson',
+				'',
+				'',
+				self::UID,
+			)
+			->willThrowException(new InvalidImportException('Indique a qué conjunto de datos importar.'));
+
+		$response = $this->controller->upload();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame(
+			'Indique a qué conjunto de datos importar.',
+			$response->getData()['message'],
+		);
 		unlink($tmp);
 	}
 

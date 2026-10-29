@@ -17,7 +17,7 @@
 				role="combobox"
 				:aria-expanded="showDropdown ? 'true' : 'false'"
 				aria-autocomplete="list"
-				:aria-controls="LIST_ID"
+				:aria-controls="showDropdown ? listId : null"
 				:aria-activedescendant="activeOptionId"
 				@focus="onFocus"
 				@blur="onBlur"
@@ -76,14 +76,11 @@
 		<p class="territorio-omnibox__status" role="status">{{ status }}</p>
 
 		<!-- Unified Autocomplete Results Dropdown -->
-		<div v-if="showDropdown"
-			:id="LIST_ID"
-			class="territorio-omnibox__dropdown"
-			role="listbox"
-			aria-label="Resultados de búsqueda">
+		<div v-if="showDropdown" :id="listId" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
 				:id="`${LIST_ID}-${index}`"
 				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
+				:id="`${listId}-option-${index}`"
 				role="option"
 				class="territorio-omnibox__item"
 				:class="{ 'territorio-omnibox__item--highlighted': activeIndex === index }"
@@ -165,6 +162,8 @@ export default {
 			LIST_ID,
 			isFocused: false,
 			activeIndex: -1,
+			/** The id of the listbox this combobox owns: what aria-controls names, and every option's id builds on. */
+			listId: 'territorio-omnibox-list',
 		}
 	},
 
@@ -215,15 +214,16 @@ export default {
 		},
 
 		/**
-		 * The highlighted row, for aria-activedescendant: focus stays in the input, so this
-		 * is all a screen reader hears of the arrows. Null removes the attribute; the bounds
-		 * check is selectActiveResult's, so a props change never leaves it naming a gone row.
+		 * The option the arrows have highlighted, for a screen reader to announce
+		 * (#213): focus stays in the input, so aria-activedescendant is the only
+		 * pointer to the row Enter would take. Nothing highlighted, or the list
+		 * closed (blur keeps activeIndex) — no attribute at all, never a dangling id.
 		 */
 		activeOptionId() {
-			if (this.showDropdown && this.activeIndex >= 0 && this.activeIndex < this.results.length) {
-				return `${LIST_ID}-${this.activeIndex}`
+			if (!this.showDropdown || this.activeIndex < 0) {
+				return null
 			}
-			return null
+			return `${this.listId}-option-${this.activeIndex}`
 		},
 	},
 

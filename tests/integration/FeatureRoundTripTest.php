@@ -158,4 +158,29 @@ final class FeatureRoundTripTest extends IntegrationTestCase {
 
 		self::assertContains('Plaza de prueba', $names);
 	}
+
+	/**
+	 * #241: `colour: false` was `(string)`'d to '' — which reads as "no colour
+	 * of its own" — so a Sector's own colour was wiped by a save that answered
+	 * 200. Refused like every other field that is not text (#207), so the stored
+	 * colour and the history stay as they were.
+	 */
+	public function testABoolForTheColourIsRefusedAndTheStoredColourAndHistoryAreUntouched(): void {
+		$id = $this->sector('Sector con color propio');
+		$entries = count($this->service->history($id));
+
+		try {
+			$this->service->update($id, [
+				'name' => 'Sector con color propio',
+				'subcategoryId' => $this->subcategoryIdBySlug('sector'),
+				'colour' => false,
+			]);
+			self::fail('a bool for the colour was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame('#16a34a', $this->features->find($id)->getColour());
+		self::assertCount($entries, $this->service->history($id), 'the refused update added a history entry');
+	}
 }

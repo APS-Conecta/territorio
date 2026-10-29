@@ -16,11 +16,13 @@ use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\AssignmentService;
 use OCA\Territorio\Service\FeatureService;
+use OCA\Territorio\Service\TaxonomyService;
 use OCA\Territorio\Domain\Geometry;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;
 use OCA\Territorio\Domain\Provenance;
 use OCP\AppFramework\Db\DoesNotExistException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -36,6 +38,7 @@ final class FeatureServiceTest extends TestCase {
 	private SubcategoryMapper&MockObject $subcategories;
 	private RevisionLog&MockObject $revisions;
 	private AssignmentService&MockObject $assignments;
+	private ImportBatchMapper&MockObject $batches;
 	private FeatureService $service;
 
 	/** The Subcategory ids the mapper stub resolves — every test uses 7, and
@@ -66,15 +69,21 @@ final class FeatureServiceTest extends TestCase {
 		$this->features->method('insert')->willReturnArgument(0);
 		$this->features->method('update')->willReturnArgument(0);
 
+		$this->batches = $this->createMock(ImportBatchMapper::class);
+
 		// A real one would need the whole Registry to resolve against; what this
 		// suite is about is what the service builds from what a person typed.
-		$this->service = new FeatureService(
+		$this->service = $this->serviceWith($this->assignments);
+	}
+
+	private function serviceWith(AssignmentService $assignments): FeatureService {
+		return new FeatureService(
 			$this->features,
 			$this->subcategories,
 			$this->revisions,
-			$this->assignments,
+			$assignments,
 			$this->createMock(DuplicateMapper::class),
-			$this->createMock(ImportBatchMapper::class),
+			$this->batches,
 			$this->createStub(IUserSession::class),
 		);
 	}
@@ -176,6 +185,18 @@ final class FeatureServiceTest extends TestCase {
 		return $existing;
 	}
 
+	/** A real AssignmentService, where Subcategory 7 is «Unidad vecinal» under
+	 *  «Organización social», a Category a clinic added (#205). The stub above
+	 *  answers divisionOf() by fiat, and that answer is what #205 is about. */
+	private function assignmentsOverASameNamedSubcategory(): AssignmentService {
+		$taxonomy = $this->createMock(TaxonomyService::class);
+		$taxonomy->method('subcategoryIndex')->willReturn([
+			7 => ['category' => 'organizacion_social', 'categoryLabel' => 'Organización social', 'subcategory' => 'unidad_vecinal', 'subcategoryLabel' => 'Unidad vecinal'],
+		]);
+
+		return new AssignmentService($this->features, $taxonomy);
+	}
+
 	public function testItCreatesAPlaceFromAPoint(): void {
 		$feature = $this->service->create($this->valid());
 
@@ -241,6 +262,29 @@ final class FeatureServiceTest extends TestCase {
 	public function testAColourThatIsNotAHexColourIsRefused(): void {
 		$this->expectException(InvalidFeatureException::class);
 		$this->service->create($this->valid(['colour' => 'red; background: url(x)']));
+	}
+
+	/**
+	 * #241: `colour: false` was `(string)`'d to '', which read as "clear it" —
+	 * so a Sector's own colour was silently wiped and the save answered 200,
+	 * the one write this field has to prevent. A bool or a list is refused
+	 * with the #207 sentence instead, and the stored colour survives.
+	 */
+	public function testABoolForTheColourIsRefusedInsteadOfClearingIt(): void {
+		$existing = new Feature();
+		$existing->setId(4);
+		$existing->setColour('#a1b2c3');
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		try {
+			$this->service->update(4, $this->valid(['colour' => false]));
+			self::fail('a bool for the colour was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame('#a1b2c3', $existing->getColour());
 	}
 
 	/**
@@ -331,12 +375,77 @@ final class FeatureServiceTest extends TestCase {
 		$this->service->update(3, $this->valid(['name' => str_repeat('a', 300)]));
 	}
 
+	/** #207: `(string)` on an array gives the literal "Array" plus an
+	 *  E_WARNING Nextcloud logs and then continues past, so a hand-crafted
+	 *  `name[]=x` request used to store a Feature named "Array" through a
+	 *  200. Refused here, at the same door as every other name problem,
+	 *  before any write. */
+	public function testANameThatArrivesAsAListIsRefused(): void {
+		$this->features->expects(self::never())->method('insert');
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
+
+		$this->service->create($this->valid(['name' => ['Plaza']]));
+	}
+
+	/** #207, the optional fields: an array `notes` used to be stored as the
+	 *  text "Array" through an ordinary 200 edit, with a history entry
+	 *  recording it as one. The name here is valid, so this is the text
+	 *  policy refusing on its own — nothing is written, nothing logged, the
+	 *  stored notes are left exactly as they were. */
+	public function testAnOptionalFieldThatArrivesAsAListIsRefusedAndWritesNothing(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Antiguo');
+		$existing->setSubcategoryId(7);
+		$existing->setNotes('Nota guardada');
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+		$this->revisions->expects(self::never())->method(self::anything());
+
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Un campo de texto recibió algo que no es texto.');
+
+		$this->service->update(3, $this->valid(['notes' => ['x']]));
+	}
+
 	/** Characters, not bytes, and the cap itself is allowed: 255 two-byte
 	 *  letters fill the column exactly. */
 	public function testANameAtItsCapIsKept(): void {
 		$name = str_repeat('á', 255);
 
 		self::assertSame($name, $this->service->create($this->valid(['name' => $name]))->getName());
+	}
+
+	/** @return array<string, array{mixed}> */
+	public static function notAnId(): array {
+		return [
+			'a list for the subcategory' => [[5]],
+			'a bool for the subcategory' => [true],
+			'a fraction for the subcategory' => [3.5],
+		];
+	}
+
+	/**
+	 * #241: `(int)` on a list is 1, on true is 1, on 3.5 is 3 — each a silent
+	 * write into a Subcategory the caller never named, on the one field that
+	 * decides where a record is filed. Refused as not a number instead, the one
+	 * isId() a Limit's parts share; nothing is inserted.
+	 */
+	#[DataProvider('notAnId')]
+	public function testSomethingThatIsNotAnIdIsRefusedInsteadOfFilingSomewhereElse(mixed $given): void {
+		// Subcategory 1 exists, as it does on any install that has ever added a
+		// Category: the cast's "1" is a place the record really could land.
+		$this->subcategoryIds[] = 1;
+		$this->features->expects(self::never())->method('insert');
+
+		try {
+			$this->service->create($this->valid(['subcategoryId' => $given]));
+			self::fail('a non-id for the subcategory was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('La subcategoría recibida no es un número.', $e->getMessage());
+		}
 	}
 
 	/** The import's pre-check (#203) hears the write door's own sentences, and
@@ -353,6 +462,12 @@ final class FeatureServiceTest extends TestCase {
 		self::assertSame(
 			'El registro necesita un nombre.',
 			$this->refusalOf(['name' => '  ', 'phone' => '961111111']),
+		);
+		// #207: a file row whose name arrives as a list hears the same sentence
+		// a save would, before any of its rows is written.
+		self::assertSame(
+			'Un campo de texto recibió algo que no es texto.',
+			$this->refusalOf(['name' => 'Sede', 'notes' => ['x']]),
 		);
 		$this->service->checkNameAndText($this->valid(['phone' => str_repeat('9', 64)]));
 	}
@@ -633,6 +748,58 @@ final class FeatureServiceTest extends TestCase {
 	}
 
 	/**
+	 * #205: the #109 refusal is for the cadastre's Unidades Vecinales. A pin
+	 * filed under a same-named Subcategory elsewhere moves like any other.
+	 */
+	public function testAPointUnderASameNamedSubcategoryCanBeMoved(): void {
+		$service = $this->serviceWith($this->assignmentsOverASameNamedSubcategory());
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Junta de Vecinos de Prueba');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setBoundingBox(Geometry::fromJson(self::PLAZA)->boundingBox());
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Exact->value);
+		$this->features->method('find')->willReturn($existing);
+
+		$moved = $service->update(3, $this->valid([
+			'geometry' => ['type' => 'Point', 'coordinates' => [-70.52, -33.48]],
+		]));
+
+		self::assertEqualsWithDelta(-70.52, $moved->getMinLon(), 1e-9);
+		self::assertEqualsWithDelta(-33.48, $moved->getMinLat(), 1e-9);
+	}
+
+	/**
+	 * #205, the batch half: a polygon filed there is no boundary, so saving it
+	 * reassigns no Place and records no reassignment batch. Through create(),
+	 * which sweeps on every new boundary; findAll() is the Registry right after
+	 * the insert — the new Zone and a Place inside its ring.
+	 */
+	public function testAPolygonUnderASameNamedSubcategorySweepsNothing(): void {
+		$service = $this->serviceWith($this->assignmentsOverASameNamedSubcategory());
+		$zone = new Feature();
+		$zone->setId(3);
+		$zone->setSubcategoryId(7);
+		$zone->setGeometry(self::storedPolygon());
+		$zone->setBoundingBox(Geometry::fromJson(self::storedPolygon())->boundingBox());
+		$zone->setKind(Kind::Zone->value);
+		$place = new Feature();
+		$place->setId(2);
+		$place->setSubcategoryId(7);
+		$place->setGeometry('{"type":"Point","coordinates":[-70.52,-33.48]}');
+		$place->setBoundingBox(Geometry::fromJson($place->getGeometry())->boundingBox());
+		$place->setKind(Kind::Place->value);
+		$this->features->method('findAll')->willReturn([$zone, $place]);
+		$this->batches->expects(self::never())->method('insert');
+
+		$service->create($this->valid(['geometry' => self::polygon()]));
+
+		self::assertNull($place->getUnidadVecinalId());
+	}
+
+	/**
 	 * The other half of the same rule, and the branch that has no caller to
 	 * remind it. A create states the WHOLE record, so an omitted geometry means
 	 * the record has none — and a new Feature carries `kind = ''`, which is not a
@@ -770,6 +937,33 @@ final class FeatureServiceTest extends TestCase {
 		$updated = $this->service->update(3, ['name' => 'Sede nueva', 'subcategoryId' => 7]);
 
 		self::assertSame(LocationQuality::Approximate->value, $updated->getLocationQuality());
+	}
+
+	/**
+	 * #241: `locationQuality: false` was `(string)`'d to '', which read as
+	 * `exacta` — the #63 silent reset this door exists to prevent, arriving by
+	 * another route. Refused with the #207 sentence instead, and the stored
+	 * judgement and the write are left as they were.
+	 */
+	public function testABoolForTheQualityIsRefusedInsteadOfResettingToExact(): void {
+		$existing = new Feature();
+		$existing->setId(3);
+		$existing->setName('Sede');
+		$existing->setSubcategoryId(7);
+		$existing->setGeometry(self::PLAZA);
+		$existing->setKind(Kind::Place->value);
+		$existing->setLocationQuality(LocationQuality::Approximate->value);
+		$this->features->method('find')->willReturn($existing);
+		$this->features->expects(self::never())->method('update');
+
+		try {
+			$this->service->update(3, ['name' => 'Sede', 'subcategoryId' => 7, 'locationQuality' => false]);
+			self::fail('a bool for the quality was accepted');
+		} catch (InvalidFeatureException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame(LocationQuality::Approximate->value, $existing->getLocationQuality());
 	}
 
 	/**

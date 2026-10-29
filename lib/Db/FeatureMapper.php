@@ -7,6 +7,7 @@ namespace OCA\Territorio\Db;
 use BadFunctionCallException;
 use OCA\Territorio\Domain\Action;
 use OCA\Territorio\Domain\BoundingBox;
+use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
@@ -549,6 +550,11 @@ class FeatureMapper extends QBMapper {
 	/**
 	 * One write, one Revision, one history entry, all inside one transaction.
 	 *
+	 * A transition re-verifies the row it was decided against after the
+	 * Revision is taken (see {@see verifyTransition()}), which is what makes the
+	 * refusal in the service a courtesy read rather than the rule: the rule has
+	 * to hold inside the write, where the locks are.
+	 *
 	 * The stored row is re-read here rather than trusted from the caller: the
 	 * entity handed in has already been mutated, so its original values are gone,
 	 * and history's whole job is to say what they were.
@@ -566,8 +572,90 @@ class FeatureMapper extends QBMapper {
 				fn (): array => $this->diff($this->find((int)$entity->getId()), $entity),
 			));
 
+			$this->verifyTransition($entity, $action);
+
 			return parent::update($entity);
 		});
+	}
+
+	/**
+	 * A write that changes map membership re-verifies the row the decision was
+	 * made against, under a lock, inside the write's own transaction (#208).
+	 *
+	 * The services refuse first, in these same words, before opening any
+	 * transaction — but every such read precedes the locks: two people retiring
+	 * the same record at the same moment both see it live, and the second write
+	 * then lands over the first (for a merge of one pair in opposite directions,
+	 * both records end up retired into each other, and the pair says one thing
+	 * about a decision that was made twice). A rule that lives in the service is
+	 * a rule the next caller walks around, so the re-read lives here, where the
+	 * write is actually about to happen and the row lock holds until commit.
+	 *
+	 * It runs after the Revision is taken, not before, and the order is the
+	 * correctness: every writer in the app queues at the cursor first, so by the
+	 * time this runs there is no other writer mid-flight and these row locks are
+	 * uncontended. Locking a row before the cursor would invert against every
+	 * ordinary edit — cursor then row — and a merge racing a plain save of the
+	 * same record would deadlock, the database killing one of them with a driver
+	 * error instead of a refusal. A refusal here still burns nothing: the whole
+	 * transaction, Revision included, rolls back.
+	 */
+	private function verifyTransition(Feature $entity, Action $action): void {
+		// Retire and merge leave the map, restore rejoins it; only a membership
+		// transition carries a decision that a colleague's write can invalidate.
+		// An edit or a creation decides nothing of the kind — last writer wins
+		// there, as it always has.
+		$rejoining = match ($action) {
+			Action::Retired, Action::Merged => false,
+			Action::Restored => true,
+			Action::Created, Action::Updated => null,
+		};
+		if ($rejoining === null) {
+			return;
+		}
+
+		if ($this->lockedRow((int)$entity->getId())->getRetired() !== $rejoining) {
+			throw new InvalidFeatureException($rejoining
+				? 'El registro no está retirado.'
+				: 'El registro ya estaba retirado.');
+		}
+
+		// Only a merge has someone to point at, and the pointer is already on the
+		// entity: merge() sets mergedInto before writing, so the write can verify
+		// its own decision input. A survivor retired under the decision is the
+		// interleaving of two opposite merges of one pair, where each request's
+		// survivor is the other's loser — and without this look, both records end
+		// up retired into each other and both vanish from every read (#208).
+		if ($action === Action::Merged) {
+			$survivorId = $entity->getMergedInto();
+			if ($this->lockedRow((int)$survivorId)->getRetired()) {
+				throw new InvalidFeatureException(
+					'El registro que se conserva está retirado; restáurelo antes de fusionar.',
+				);
+			}
+		}
+	}
+
+	/**
+	 * The stored row, locked for the rest of this transaction.
+	 *
+	 * FOR UPDATE rather than a plain read: under REPEATABLE READ a plain re-read
+	 * returns the transaction's own snapshot — the row the decision was made
+	 * against, stale by construction — so the guard would guard nothing. A
+	 * locking read waits for any in-flight writer and sees what that writer
+	 * committed. On SQLite the platform strips the clause, which is sound there
+	 * because SQLite admits one writer at a time.
+	 *
+	 * @throws DoesNotExistException when the row is gone, as `find()` would
+	 */
+	private function lockedRow(int $id): Feature {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+			->forUpdate();
+
+		return $this->findEntity($qb);
 	}
 
 	/**

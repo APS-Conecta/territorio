@@ -256,6 +256,45 @@ final class GeoJsonReaderTest extends TestCase {
 		$this->read($json);
 	}
 
+	/**
+	 * #241: a `name` that is a list or an object was `(string)`'d to the text
+	 * "Array" — a row imported under a name nobody typed. Read through the
+	 * same text() as every other property, a list is no name at all, so the
+	 * file is refused by the nameless-row sentence below it.
+	 */
+	public function testANameThatIsAListIsRefusedRatherThanImportedAsArray(): void {
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('El feature 1 no tiene nombre.');
+
+		$this->read($this->withoutCoordinates(['name' => ['x']]));
+	}
+
+	/**
+	 * #241: a `source` that is a list derived ids from the text "Array".
+	 * Through text() it is simply not given, so the Dataset's own name says
+	 * where the rows came from — the same fallback an absent source gets.
+	 */
+	public function testASourceThatIsAListFallsBackToTheDatasetNotArray(): void {
+		$rows = $this->read($this->withoutCoordinates(['name' => 'Sede', 'source' => ['x']]));
+
+		self::assertStringStartsWith('catastro:', $rows[0]['externalId']);
+	}
+
+	/**
+	 * #241: a classification cell that is a list imported as the label "Array"
+	 * for classify() to fail on. Through text() it is absent, which is what a
+	 * row without that cell already means: nothing to classify on, and no
+	 * Category named "Array" invented by the reader.
+	 */
+	public function testAClassificationCellThatIsAListIsAbsentNotArray(): void {
+		$rows = $this->read($this->withoutCoordinates(
+			['name' => 'Sede', 'category' => ['x'], 'subcategory' => ['y']],
+		));
+
+		self::assertNull($rows[0]['category']);
+		self::assertNull($rows[0]['subcategory']);
+	}
+
 	public function testAnEmptyCollectionIsValidAndImportsNothing(): void {
 		self::assertSame([], $this->read('{"type":"FeatureCollection","features":[]}'));
 	}

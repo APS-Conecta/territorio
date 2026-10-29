@@ -1278,4 +1278,25 @@ final class CategoryCrudTest extends IntegrationTestCase {
 
 		self::assertSame($this->taxonomy()->tree(), $tree);
 	}
+
+	/**
+	 * #241: a mark that is not text used to be `(string)`'d on its way in —
+	 * `false` to '' (which this door reads as the CLEAR), a list to "Array"
+	 * (which the shape check accepted). Refused at the type (#207's accept
+	 * list) on the write path the whole panel shares, and the picked mark
+	 * survives. The controller that no longer casts is pinned in
+	 * CategoryControllerTest; this is the door itself, on the real table.
+	 */
+	public function testAMarkThatIsNotTextIsRefusedAndThePickedMarkSurvives(): void {
+		[, $category] = $this->addCategory('Comité de prueba de pictograma', 'bakery');
+
+		try {
+			$this->taxonomy()->setCategoryGlyph($category['slug'], false);
+			self::fail('a bool for the mark was accepted');
+		} catch (InvalidTaxonomyException $e) {
+			self::assertSame('Un campo de texto recibió algo que no es texto.', $e->getMessage());
+		}
+
+		self::assertSame('bakery', $this->served($category['slug'])['glyph']);
+	}
 }

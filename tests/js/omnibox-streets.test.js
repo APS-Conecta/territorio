@@ -63,26 +63,33 @@ describe('what the keyboard can pick', () => {
 	})
 })
 
-/**
- * #213: focus stays in the input, so the highlighted row reaches a screen reader only
- * through aria-activedescendant. That a press really moves it is --only redesign's.
- */
-describe('what a screen reader is told', () => {
-	const tag = (role) => omnibox.match(new RegExp(`<div[^>]*role="${role}"[^>]*>`))?.[0] ?? ''
-
-	it('points the input at the listbox and the highlighted row', () => {
-		expect(omnibox).toContain(':aria-controls="LIST_ID"')
-		expect(omnibox).toContain(':aria-activedescendant="activeOptionId"')
-		expect(tag('listbox')).toContain(':id="LIST_ID"')
-		expect(tag('listbox')).toMatch(/aria-label="[^"]+"/)
-		expect(tag('option')).toContain(':id="`${LIST_ID}-${index}`"')
+describe('what the arrows announce to a screen reader', () => {
+	/**
+	 * #213: the arrows move a highlight that focus never follows — it stays in
+	 * the input — so aria-activedescendant is the only thing that tells a screen
+	 * reader which row Enter will take. SearchControl set it, the input's
+	 * aria-controls and every option's id; the Omnibox had kept none of the
+	 * three, so «pasaje» + ArrowDown was announced as silence. That the three
+	 * attributes are READ at runtime, not only present, is the browser gate's.
+	 */
+	it('names the list on the input, and every option in it by id', () => {
+		// Gated like aria-activedescendant: the listbox is v-if'd away when the box
+		// closes, and an aria-controls that names an id nothing owns is the same
+		// dangling pointer #213 is about.
+		expect(omnibox).toContain(':aria-controls="showDropdown ? listId : null"')
+		expect(omnibox).toContain(':id="listId"')
+		expect(omnibox).toMatch(/:id="`\$\{listId\}-option-\$\{index\}`"/)
 	})
 
-	/** Only null removes the attribute; the bounds clause keeps it off a row a props change unrendered. */
-	it('names no row while the list is closed or the index is past it', () => {
+	it('points aria-activedescendant at the highlighted option, and nowhere once none is', () => {
+		expect(omnibox).toContain(':aria-activedescendant="activeOptionId"')
 		const active = methodOf(omnibox, 'activeOptionId')
+		// Blur hides the list but keeps activeIndex, so a pointer into a list that
+		// is no longer there must not survive: the attribute leaves, not dangles.
 		expect(active).toContain('this.showDropdown')
-		expect(active).toContain('this.activeIndex < this.results.length')
+		expect(active).toContain('this.activeIndex < 0')
+		expect(active).toContain('return null')
+		expect(active).toContain('return `${this.listId}-option-${this.activeIndex}`')
 	})
 })
 

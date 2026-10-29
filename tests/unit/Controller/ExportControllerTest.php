@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace OCA\Territorio\Tests\Unit\Controller;
 
 use OCA\Territorio\Controller\ExportController;
+use OCA\Territorio\Exception\InvalidFeatureException;
+use OCA\Territorio\Service\ExportService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\PasswordConfirmationRequired;
+use OCP\AppFramework\Http;
+use OCP\IRequest;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -23,9 +28,33 @@ use ReflectionMethod;
  * here is that this app still asks.
  */
 final class ExportControllerTest extends TestCase {
+	private ExportService&MockObject $exports;
+	private ExportController $controller;
+
 	private function attributes(string $method, string $attribute): array {
 		return (new ReflectionMethod(ExportController::class, $method))
 			->getAttributes($attribute);
+	}
+
+	/**
+	 * The controller over a body holding exactly these keys, with the service
+	 * mocked. What these tests are about is what the controller reads out of
+	 * the body before the service ever sees it (#241) — the `->with()` is the
+	 * pin, and the service's own sentences are pinned in ExportServiceTest.
+	 *
+	 * @param array<string, mixed> $params
+	 */
+	private function body(array $params): void {
+		$request = $this->createStub(IRequest::class);
+		$request->method('getParam')->willReturnCallback(
+			static fn (string $key, $default = null) => $params[$key] ?? $default,
+		);
+
+		$this->exports = $this->createMock(ExportService::class);
+		$this->exports->method('export')->willReturn([
+			'body' => '', 'filename' => 'territorio.csv', 'mime' => 'text/csv',
+		]);
+		$this->controller = new ExportController($request, $this->exports);
 	}
 
 	/**
@@ -65,5 +94,45 @@ final class ExportControllerTest extends TestCase {
 	public function testThePlainExportAsksForNothing(): void {
 		self::assertSame([], $this->attributes('plain', PasswordConfirmationRequired::class));
 		self::assertCount(1, $this->attributes('plain', NoAdminRequired::class));
+	}
+
+	/**
+	 * #241: `format[]=x` was `(string)`'d to the text "Array", which the
+	 * service's own unknown-format sentence then showed to a person. Not given
+	 * is what the import's dataset and path already read (#207): the service
+	 * hears '' and its existing refusal is the answer, as a 422.
+	 */
+	public function testAListForTheFormatIsReadAsNotGivenAndRefusedByTheService(): void {
+		$this->body(['ids' => [1], 'format' => ['csv']]);
+		$this->exports->expects(self::once())
+			->method('export')
+			->with([1], '', false, '')
+			->willThrowException(new InvalidFeatureException('Formato desconocido: '));
+
+		$response = $this->controller->plain();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		self::assertSame('Formato desconocido: ', $response->getData()['message']);
+	}
+
+	/**
+	 * #241: `scope` is written into the export log (ADR-0006), so `(string)` on
+	 * a list put the text "Array" into the history of who took what out of the
+	 * building. Not given reads as '', which is what the log already records
+	 * for an export nobody narrowed. The refusal at the end is only to keep
+	 * this in the bare suite — the success path builds a DataDownloadResponse,
+	 * which needs the whole server; that half is `ExportTest`'s, in the
+	 * integration suite where the server is real.
+	 */
+	public function testAListForTheScopeIsReadAsNotGiven(): void {
+		$this->body(['ids' => [1], 'format' => 'csv', 'scope' => ['x']]);
+		$this->exports->expects(self::once())
+			->method('export')
+			->with([1], 'csv', false, '')
+			->willThrowException(new InvalidFeatureException('Formato desconocido: '));
+
+		$response = $this->controller->plain();
+
+		self::assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
 	}
 }

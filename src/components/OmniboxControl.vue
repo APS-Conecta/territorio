@@ -78,7 +78,6 @@
 		<!-- Unified Autocomplete Results Dropdown -->
 		<div v-if="showDropdown" :id="listId" class="territorio-omnibox__dropdown" role="listbox">
 			<div v-for="(result, index) in results"
-				:id="`${LIST_ID}-${index}`"
 				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
 				:id="`${listId}-option-${index}`"
 				role="option"
@@ -112,9 +111,6 @@
 <script>
 import { matchOmnibox } from '../assets.js'
 import { hintFor, placeDetail, searchStatus } from '../streets.js'
-
-// Fixed, not generated: App mounts the Omnibox once, so the id is unique on the page.
-const LIST_ID = 'territorio-omnibox-list'
 
 export default {
 	name: 'OmniboxControl',
@@ -159,7 +155,6 @@ export default {
 
 	data() {
 		return {
-			LIST_ID,
 			isFocused: false,
 			activeIndex: -1,
 			/** The id of the listbox this combobox owns: what aria-controls names, and every option's id builds on. */

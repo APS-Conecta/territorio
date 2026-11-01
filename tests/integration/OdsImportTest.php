@@ -205,4 +205,40 @@ final class OdsImportTest extends IntegrationTestCase {
 		}
 	}
 
+	public function testUndoSpreadsheetCorrectionRestoresSourceStewardship(): void {
+		$slug = 'test-ods-' . bin2hex(random_bytes(4));
+		$this->datasets[] = $slug;
+		$source = ['type' => 'FeatureCollection', 'features' => [[
+			'type' => 'Feature', 'id' => 'source-ods-undo', 'geometry' => null,
+			'properties' => ['name' => 'ODS original source', 'category' => 'salud', 'subcategory' => 'otro'],
+		]]];
+		$imports = Server::get(\OCA\Territorio\Service\ImportService::class);
+		$imports->importFile(json_encode($source), 'source.geojson', $slug);
+		$dataset = Server::get(\OCA\Territorio\Db\DatasetMapper::class)->findBySlug($slug);
+		$mapper = Server::get(FeatureMapper::class);
+		$original = array_values($mapper->findByDataset((int)$dataset->getId()))[0];
+		$id = (int)$original->getId();
+		self::assertFalse($original->getOverridden());
+		$table = OdsWorkbook::read(Server::get(ExportService::class)->export([$id], 'ods', false)['body']);
+		$table[1][2] = 'ODS local correction';
+		$bytes = OdsWorkbook::write(['Activos' => $table]);
+		$service = Server::get(OdsImportService::class);
+		$preview = $service->preview($bytes, $slug);
+		$batch = $service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
+		self::assertTrue($mapper->find($id)->getOverridden());
+
+		$reverts = Server::get(RevertService::class);
+		$undo = $reverts->revert((int)$batch->getId(), 'admin');
+		self::assertSame('ODS original source', $mapper->find($id)->getName());
+		self::assertFalse($mapper->find($id)->getOverridden());
+		$redo = $reverts->revert((int)$undo->getId(), 'admin');
+		self::assertSame('ODS local correction', $mapper->find($id)->getName());
+		self::assertTrue($mapper->find($id)->getOverridden());
+		$reverts->revert((int)$redo->getId(), 'admin');
+		$source['features'][0]['properties']['name'] = 'ODS refreshed source';
+		$imports->importFile(json_encode($source), 'source.geojson', $slug);
+		self::assertSame('ODS refreshed source', $mapper->find($id)->getName());
+		self::assertFalse($mapper->find($id)->getOverridden());
+	}
+
 }

@@ -245,6 +245,9 @@ class Feature extends Entity {
 	 */
 	public function comparable(): array {
 		return [
+			// Undoing a reviewed spreadsheet correction must also restore whether
+			// later cadastral imports may refresh the record (ADR-0003/0009).
+			'overridden' => (bool)$this->getOverridden(),
 			'name' => $this->getName(),
 			'subcategoryId' => $this->getSubcategoryId(),
 			'geometry' => $this->getGeometry(),

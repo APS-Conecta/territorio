@@ -493,8 +493,14 @@ class FeatureService {
 	 * @param array<string, mixed> $input
 	 * @throws DoesNotExistException
 	 */
-	public function revertTo(int $id, array $input): Feature {
-		return $this->write($this->features->find($id), $input, null, markOverride: false);
+	public function revertTo(int $id, array $input, ?bool $overridden = null): Feature {
+		$feature = $this->features->find($id);
+		// Only the trusted revert path can restore a recorded stewardship state.
+		// Ordinary create/update payloads never accept this field.
+		if ($overridden !== null) {
+			$feature->setOverridden($overridden);
+		}
+		return $this->write($feature, $input, null, markOverride: false);
 	}
 
 	/** @param array<string, mixed> $input */

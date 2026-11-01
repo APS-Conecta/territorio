@@ -230,12 +230,52 @@ are empty.
 Refreshing them later is just re-running both commands. Ids come from OSM, so a street redrawn
 upstream updates the record it already has, and no Sector already drawn is moved.
 
+## Community asset inventory
+
+`Análisis` starts with all registered community assets for the center, including records without
+coordinates. Territorial divisions are filters, not assets counted in those totals. Search, Sector
+and Category are always available; `Más filtros` exposes Subcategory, Unidad Vecinal, custom area,
+geometry and location filters. Selected filters appear as removable chips. These choices are
+independent of the map's filters and viewport. `Ver en el mapa` explicitly transfers the selection;
+`Exportar` in Análisis exports that same selection.
+
+A custom area is a named polygon drawn from the Sector drawing menu. Areas may overlap and do not
+change clinical Sector assignments. An asset intersecting two selected areas is counted once.
+
+To locate a point asset, select its position on the map: the pin supplies its coordinates. Name and
+classification are the essential form fields. Address, contact, hours, notes and source are optional;
+no address or coordinates are looked up through an external geocoding service.
+
+`Posibles duplicados` lets staff compare records and choose complementary fields before merging.
+Similarity alone never merges records. Restoring the retired duplicate also restores the survivor's
+previous values when nobody has edited it since the merge; otherwise later edits are preserved and
+the app explains what needs manual review.
+
+## ODS spreadsheet exchange
+
+Open `Importar y deshacer` and choose `Descargar plantilla ODS`. Keep the sheet headers and use the
+included classification reference. ODS supports point assets, including records with no coordinates;
+polygons and other geometries use GeoJSON. Optional contact details, hours and notes may be supplied
+in the spreadsheet.
+
+Upload the completed file to preview additions, updates, invalid rows and possible duplicates.
+Previewing writes no assets. Correct unknown classifications in the preview, choose which rows to
+import, review duplicate warnings, and confirm. Correcting a row requires selecting that row again;
+unchanged rows keep their choices. Optional blank cells preserve existing values; use the explicit
+clearing choices to remove a value. Omitting a row never deletes an asset.
+
+For updates, export ODS first and keep its IDs and revision columns. Those identify the existing
+records and reject stale changes. An ODS export without contact details can be safely re-imported:
+blank cells preserve those details. Imports can be undone from `Importaciones recientes`; local
+corrections keep their source provenance and remain protected against automatic source refreshes.
+
 ## Exporting
 
 `Exportar`, beside the search, writes what the list is showing — layers and search applied — as
-GeoJSON, CSV or KML.
+GeoJSON, CSV, KML or ODS. ODS requires a selection containing only point assets; filter the
+selection to points or choose GeoJSON when it includes polygons.
 
-GeoJSON is the one that goes back in: it carries the external ids, so re-importing updates rather
+GeoJSON also goes back in: it carries the external ids, so re-importing updates rather
 than duplicates. One exception, and it is deliberate: a Sector's **Limit** is written to the file as
 a sentence but is not read back. Its parts name Boundary features by id, and those ids mean nothing
 in another install — reading the sentence back would replace a Limit built from a dozen picked

@@ -21,14 +21,14 @@
 				</label>
 				<label>
 					<span>Sector</span>
-					<select :value="filter.sectorId" @change="update('sectorId', $event.target.value)">
+					<select aria-label="Sector" :value="filter.sectorId" @change="update('sectorId', $event.target.value)">
 						<option value="">Todos los sectores</option>
 						<option v-for="sector in inventory.sectors" :key="sector.id" :value="sector.id">{{ sector.name }}</option>
 					</select>
 				</label>
 				<label>
 					<span>Categoría</span>
-					<select :value="filter.categoryId" @change="update('categoryId', $event.target.value)">
+					<select aria-label="Categoría" :value="filter.categoryId" @change="update('categoryId', $event.target.value)">
 						<option value="">Todas las categorías</option>
 						<option v-for="category in inventory.categories" :key="category.id" :value="category.id">{{ category.label }}</option>
 					</select>
@@ -39,7 +39,7 @@
 				<div class="territorio-analisis__filter-grid territorio-analisis__filter-grid--more">
 					<label>
 						<span>Subcategoría</span>
-						<select :value="filter.subcategoryId" @change="update('subcategoryId', $event.target.value)">
+						<select aria-label="Subcategoría" :value="filter.subcategoryId" @change="update('subcategoryId', $event.target.value)">
 							<option value="">Todas las subcategorías</option>
 							<optgroup v-for="category in subcategoryGroups" :key="category.id" :label="category.label">
 								<option v-for="subcategory in category.subcategories" :key="subcategory.id" :value="subcategory.id">{{ subcategory.label }}</option>
@@ -48,28 +48,28 @@
 					</label>
 					<label>
 						<span>Unidad Vecinal</span>
-						<select :value="filter.unidadVecinalId" @change="update('unidadVecinalId', $event.target.value)">
+						<select aria-label="Unidad Vecinal" :value="filter.unidadVecinalId" @change="update('unidadVecinalId', $event.target.value)">
 							<option value="">Todas las unidades</option>
 							<option v-for="unidad in inventory.unidades" :key="unidad.id" :value="unidad.id">{{ unidad.name }}</option>
 						</select>
 					</label>
 					<label>
 						<span>Área personalizada</span>
-						<select :value="filter.areaId" @change="update('areaId', $event.target.value)">
+						<select aria-label="Área personalizada" :value="filter.areaId" @change="update('areaId', $event.target.value)">
 							<option value="">Todas las áreas</option>
 							<option v-for="area in inventory.areas" :key="area.id" :value="area.id">{{ area.name }}</option>
 						</select>
 					</label>
 					<label>
 						<span>Tipo de activo</span>
-						<select :value="filter.kind" @change="update('kind', $event.target.value)">
+						<select aria-label="Tipo de activo" :value="filter.kind" @change="update('kind', $event.target.value)">
 							<option value="">Todos los tipos</option>
 							<option v-for="kind in kinds" :key="kind.id" :value="kind.id">{{ kind.label }}</option>
 						</select>
 					</label>
 					<label>
 						<span>Ubicación</span>
-						<select :value="filter.location" @change="update('location', $event.target.value)">
+						<select aria-label="Ubicación" :value="filter.location" @change="update('location', $event.target.value)">
 							<option value="">Todas las ubicaciones</option>
 							<option v-for="location in locations" :key="location.id" :value="location.id">{{ location.label }}</option>
 						</select>

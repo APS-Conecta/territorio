@@ -242,7 +242,7 @@
 							@back="pane = 'mapa'" />
 					</div>
 
-					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view">
+					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view territorio-fullscreen-view--analysis">
 						<AnalysisView
 							v-model:filter="analysisFilter"
 							:inventory="inventory"
@@ -1815,6 +1815,11 @@ export default {
 // Starts below the topbar, not under it: the search box and its tabs are the way
 // back from here, and a view that covered them (z-index 1100 over the topbar's
 // 1000) left nothing to click but the view's own «Volver».
+.territorio-fullscreen-view--analysis {
+	// Only the search and tabs remain visible in Analytics, including on mobile.
+	--territorio-topbar-clearance: 124px;
+}
+
 .territorio-analysis-selection {
 	display: flex;
 	align-items: center;

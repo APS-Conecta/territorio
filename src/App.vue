@@ -88,6 +88,10 @@
 
 						<div class="territorio-docked-panel__inner">
 							<div class="territorio-docked-panel__spacer" />
+							<NcNoteCard v-if="restoreNotice" type="warning">
+								{{ restoreNotice }}
+								<NcButton variant="tertiary" @click="restoreNotice = ''">Entendido</NcButton>
+							</NcNoteCard>
 
 							<!-- When a draft is open (Inspecting or Editing an Asset or Sector) -->
 							<div v-if="draft !== null" class="territorio-docked-panel__sheet">
@@ -459,6 +463,7 @@ export default {
 			editing: false,
 			saving: false,
 			error: '',
+			restoreNotice: '',
 			// Separate from `error`: that one renders in the panel's list and only
 			// while no record is open, and the Capas panel — where a rename or an
 			// add is refused — is the taxonomy drawer, open on its own terms.
@@ -1314,6 +1319,7 @@ export default {
 				)
 				this.mergeFeature(data)
 				this.closeDraft()
+				this.restoreNotice = data.restoreNotice ?? ''
 			} catch (exception) {
 				this.error = await messageFrom(exception, 'No se pudo restaurar el registro.')
 			}

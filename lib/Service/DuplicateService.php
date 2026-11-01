@@ -180,7 +180,14 @@ class DuplicateService {
 			}
 			$this->claim($pair, Duplicate::MERGED);
 			if ($input !== $records[$survivorId]->toClient()) {
-				$this->featureService->update($survivorId, $input);
+				$updated = $this->featureService->update($survivorId, $input);
+				$pair->setMergeSnapshot(json_encode([
+					'survivorId' => $survivorId,
+					'revision' => $updated->getRevision(),
+					'before' => $records[$survivorId]->toClient(),
+					'overridden' => $records[$survivorId]->getOverridden(),
+				], JSON_THROW_ON_ERROR));
+				$this->duplicates->update($pair);
 			}
 
 			return $this->featureService->merge($loserId, $survivorId);

@@ -533,6 +533,65 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		}
 	}
 
+	public function testUndoingAFieldMergeRestoresCadastralStewardship(): void {
+		$slug = 'merge-restore-' . uniqid();
+		$this->datasets[] = $slug;
+		$json = json_encode(['type' => 'FeatureCollection', 'features' => [[
+			'type' => 'Feature', 'geometry' => ['type' => 'Point', 'coordinates' => [-70.48, -33.42]],
+			'properties' => ['uid' => 'original', 'name' => 'Cadastral survivor', 'category' => 'salud', 'subcategory' => 'otro'],
+		]]]);
+		$batch = Server::get(ImportService::class)->importFile($json, 'assets.geojson', $slug);
+		$mapper = Server::get(FeatureMapper::class);
+		$first = (int)array_values($mapper->findByDataset($batch->getDatasetId()))[0]->getId();
+		$second = $this->place('Other source', [
+			'phone' => '555-123', 'geometry' => ['type' => 'Point', 'coordinates' => [-70.48, -33.42]],
+		]);
+		$this->service->scan();
+		$pair = $this->pairOf($first, $second);
+		self::assertNotNull($pair);
+		$this->pairs[] = (int)$pair->getId();
+		self::assertFalse($mapper->find($first)->getOverridden());
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertTrue($mapper->find($first)->getOverridden());
+		$this->features->restore($second);
+		self::assertFalse($mapper->find($first)->getOverridden());
+		self::assertNull($mapper->find($first)->getPhone());
+	}
+
+	public function testRestoringAReviewedMergeRestoresTheSurvivorsOriginalFields(): void {
+		[$first, $second, $pair] = $this->twinsAt('Original survivor', 'Other record', ['phone' => '555-123']);
+		$mapper = Server::get(FeatureMapper::class);
+		$before = $mapper->find($first)->toClient();
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $second, 'phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertSame('555-123', $mapper->find($first)->getPhone());
+
+		$restored = $this->features->restore($second);
+		self::assertFalse($restored->getRetired());
+		self::assertSame($before['name'], $mapper->find($first)->getName());
+		self::assertSame($before['phone'], $mapper->find($first)->getPhone());
+		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	public function testRestoringAMergePreservesLaterSurvivorEditsAndReportsIt(): void {
+		[$first, $second, $pair] = $this->twinsAt('Survivor', 'Other record', ['phone' => '555-123']);
+		$mapper = Server::get(FeatureMapper::class);
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		$this->features->update($first, [
+			'name' => 'Later correction', 'subcategoryId' => $mapper->find($first)->getSubcategoryId(), 'phone' => '555-999',
+		]);
+		$result = $this->features->restoreWithReport($second);
+		self::assertFalse($result['feature']->getRetired());
+		self::assertSame('Later correction', $mapper->find($first)->getName());
+		self::assertSame('555-999', $mapper->find($first)->getPhone());
+		self::assertNotEmpty($result['notice']);
+	}
+
 	/** The survivor has to be one of the two, or nobody compared it with anything. */
 	public function testAStrangerCannotBeTheSurvivor(): void {
 		[,, $pair] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');

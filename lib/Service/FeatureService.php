@@ -20,6 +20,8 @@ use OCA\Territorio\Domain\Provenance;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IUserSession;
+use OCP\IDBConnection;
+use Throwable;
 use DateTime;
 
 /**
@@ -84,6 +86,7 @@ class FeatureService {
 		// already the write door; the sweep is a write-door consequence.
 		private ImportBatchMapper $batches,
 		private IUserSession $session,
+		private IDBConnection $db,
 	) {
 	}
 
@@ -204,36 +207,59 @@ class FeatureService {
 
 	/** @throws DoesNotExistException */
 	public function restore(int $id): Feature {
-		$feature = $this->features->find($id);
-		if (!$feature->getRetired()) {
-			throw new InvalidFeatureException('El registro no está retirado.');
+		return $this->restoreWithReport($id)['feature'];
+	}
+
+	/** @return array{feature: Feature, notice: ?string} */
+	public function restoreWithReport(int $id): array {
+		$this->db->beginTransaction();
+		try {
+			$this->revisions->lockCurrent();
+			$feature = $this->features->find($id);
+			if (!$feature->getRetired()) {
+				throw new InvalidFeatureException('El registro no está retirado.');
+			}
+
+			$mergedInto = $feature->getMergedInto();
+			$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id, $mergedInto);
+			$notice = $merge === null ? null : $this->undoMergeSurvivor($merge, $mergedInto);
+			$this->assignments->assign($feature);
+			$restored = $this->features->restore($feature);
+			$this->reassignAround($restored, null, $this->assignments->divisionOf($restored));
+
+			// ADR-0011: undo reopens only the pair this record lost, not another pair it won.
+			if ($merge !== null) {
+				$merge->setStatus(Duplicate::PENDING);
+				$merge->setResolvedBy(null);
+				$merge->setMergeSnapshot(null);
+				$this->duplicates->update($merge);
+			}
+			$this->db->commit();
+
+			return ['feature' => $restored, 'notice' => $notice];
+		} catch (Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
+	/** Undo only the exact survivor revision this merge wrote; later fieldwork wins. */
+	private function undoMergeSurvivor(Duplicate $merge, int $survivorId): ?string {
+		if ($merge->getMergeSnapshot() === null) return null;
+		$snapshot = json_decode($merge->getMergeSnapshot(), true, 512, JSON_THROW_ON_ERROR);
+		if (($snapshot['survivorId'] ?? null) !== $survivorId || !is_array($snapshot['before'] ?? null)) {
+			throw new InvalidFeatureException('No se pudo verificar la información anterior a esta fusión.');
+		}
+		$survivor = $this->features->find($survivorId);
+		if ($survivor->getRetired() || $survivor->getRevision() !== ($snapshot['revision'] ?? null)) {
+			return 'Se restauró la ficha. La ficha conservada cambió después de la fusión; sus datos actuales se mantuvieron. Revise ambas fichas.';
 		}
 
-		$mergedInto = $feature->getMergedInto();
-		// Sweeps skip retired records, so a returning record derives its own assignment again (ADR-0008).
-		$this->assignments->assign($feature);
-		$restored = $this->features->restore($feature);
-		// And a restored one takes back what falls inside it.
-		$this->reassignAround($restored, null, $this->assignments->divisionOf($restored));
+		// Undo must restore cadastral stewardship too, rather than create a new Local override.
+		$survivor->setOverridden($snapshot['overridden']);
+		$this->write($survivor, $snapshot['before'], null, markOverride: false);
 
-		// Undoing a merge puts its pair back in the queue. Both records are on the
-		// map again and still look like one place, so the question is open again —
-		// and leaving it closed would mean the only way to reconsider a merge is to
-		// wait for an import to notice the pair a second time.
-		//
-		// Read from the record BEFORE the restore cleared it, and only for the
-		// record that lost: restoring the survivor of a merge, retired later for
-		// some unrelated reason, must not reopen a pair whose other member is
-		// still gone. The pair reopened is the one this record and its survivor
-		// form, and only while it is Merged: not a pair this record won (#206).
-		$merge = $mergedInto === null ? null : $this->duplicates->findMergeOf($id, $mergedInto);
-		if ($merge !== null) {
-			$merge->setStatus(Duplicate::PENDING);
-			$merge->setResolvedBy(null);
-			$this->duplicates->update($merge);
-		}
-
-		return $restored;
+		return null;
 	}
 
 	/**

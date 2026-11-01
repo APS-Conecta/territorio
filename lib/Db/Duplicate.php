@@ -24,6 +24,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setStatus(string $status)
  * @method \DateTime getFoundAt()
  * @method void setFoundAt(\DateTime $foundAt)
+ * @method ?string getMergeSnapshot()
+ * @method void setMergeSnapshot(?string $mergeSnapshot)
  * @method ?string getResolvedBy()
  * @method void setResolvedBy(?string $resolvedBy)
  */
@@ -43,6 +45,7 @@ class Duplicate extends Entity {
 	protected $status = self::PENDING;
 	protected $foundAt = null;
 	protected $resolvedBy = null;
+	protected $mergeSnapshot = null;
 
 	public function __construct() {
 		$this->addType('firstId', 'integer');

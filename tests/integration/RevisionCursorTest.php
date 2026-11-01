@@ -37,6 +37,23 @@ final class RevisionCursorTest extends IntegrationTestCase {
 		return array_column($answer['features'], 'name');
 	}
 
+	public function testReviewLockDoesNotAdvanceTheCursor(): void {
+		$db = Server::get(\OCP\IDBConnection::class);
+		$before = $this->revisions->current();
+		$db->beginTransaction();
+		try {
+			self::assertSame($before, $this->revisions->lockCurrent());
+			self::assertSame($before, $this->revisions->current());
+		} finally {
+			$db->rollBack();
+		}
+	}
+
+	public function testReviewLockRequiresATransaction(): void {
+		$this->expectException(\BadFunctionCallException::class);
+		$this->revisions->lockCurrent();
+	}
+
 	public function testACursorSeesEveryChangeExactlyOnce(): void {
 		$cursor = $this->revisions->current();
 

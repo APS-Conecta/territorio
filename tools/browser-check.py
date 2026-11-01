@@ -2220,7 +2220,7 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     reading why, which is the failure the rule exists to avoid.
     """
     def open_dialog():
-        page.get_by_role("button", name="Exportar", exact=True).click()
+        page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
         page.wait_for_timeout(600)
 
     # A record with a telephone number in it, because the criterion is about
@@ -2347,7 +2347,7 @@ def a_kmz_is_that_kml_in_an_archive(page, kml_bytes, failures):
     weaker thing. This is also the one criterion no PHP test can reach — the
     file has to come down the wire, through the route the dialog chose.
     """
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
     page.get_by_text("KMZ —").click()
     page.wait_for_timeout(300)
@@ -2438,7 +2438,7 @@ def an_export_of_osm_data_names_the_licence(page, failures):
 
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(800)
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     with page.expect_download(timeout=20_000) as download:
@@ -2505,7 +2505,7 @@ def the_export_offers_the_live_set_with_retirados_on(page, failures):
         page.wait_for_timeout(600)
         return
 
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     said = page.locator(".territorio-export__count").inner_text()
@@ -3131,7 +3131,7 @@ def exported_corners(page, name, failures):
     """
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(800)
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     with page.expect_download(timeout=20_000) as download:

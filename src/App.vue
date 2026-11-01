@@ -33,6 +33,7 @@
 							<DrawSectorButton
 								:is-drawing="isDrawingSector"
 								@draw-sector="toggleDrawSector"
+								@draw-area="toggleDrawCustomArea"
 								@cancel-draw="cancelDrawSector" />
 						</div>
 					</div>
@@ -64,7 +65,7 @@
 							@view-changed="onViewChanged"
 							@select="select"
 							@map-click="placeDraft"
-							@draw="startSector"
+							@draw="startBoundary"
 							@reshape="reshapeDraft"
 							@draw-mode-change="isDrawingSector = $event" />
 					</div>
@@ -344,6 +345,7 @@ import {
 	divisionsOf,
 	indexSubcategories,
 	sectorSubcategoryId,
+	customAreaSubcategoryId,
 	UNIDAD_VECINAL_SLUG,
 } from './taxonomy.js'
 
@@ -407,6 +409,7 @@ export default {
 			omniboxQuery: '',
 			showTaxonomyDrawer: false,
 			isDrawingSector: false,
+			drawingBoundary: 'sector',
 			// Read-only and about five thousand rows: markRaw'd where it is set, so
 			// Vue does not wrap every one of them in a Proxy (SearchControl, the
 			// control this replaced, kept them in non-reactive handles for the same
@@ -883,9 +886,36 @@ export default {
 		},
 
 		toggleDrawSector() {
+			this.drawingBoundary = 'sector'
 			if (this.$refs.mapComponent) {
 				this.$refs.mapComponent.toggleDrawPolygon()
 			}
+		},
+
+		toggleDrawCustomArea() {
+			this.drawingBoundary = 'custom_area'
+			this.$refs.mapComponent?.toggleDrawPolygon()
+		},
+
+		startBoundary(geometry) {
+			if (this.drawingBoundary === 'custom_area') {
+				this.startCustomArea(geometry)
+			} else {
+				this.startSector(geometry)
+			}
+		},
+
+		startCustomArea(geometry) {
+			this.stopSeeding()
+			const subcategoryId = customAreaSubcategoryId(this.taxonomy)
+			if (subcategoryId === null) {
+				this.error = 'Falta la subcategoría Área personalizada. Actualice la app e inténtelo de nuevo.'
+				return
+			}
+			this.selectedId = null
+			this.error = ''
+			this.draft = { ...blankDraft(), subcategoryId, geometry, colour: DEFAULT_SECTOR_COLOUR }
+			this.panelOpen = true
 		},
 
 		cancelDrawSector() {

@@ -33,6 +33,9 @@ export const DIVISIONS_SLUG = 'division_territorial'
 /** Sector's slug within it. Nothing else may be filed under this. */
 export const SECTOR_SLUG = 'sector'
 
+/** Clinic-defined analysis areas can overlap; they do not assign clinical teams. */
+export const CUSTOM_AREA_SLUG = 'custom_area'
+
 /**
  * The cadastre's own division — read by the clinic, never drawn by it
  * (CONTEXT.md). Named here beside Sector because the pair is what tells figure
@@ -129,6 +132,10 @@ export function sectorSubcategoryId(taxonomy) {
  * whose seed has not run, and a bare `===` between the two would then call a
  * record filed under nothing a Sector.
  */
+export function customAreaSubcategoryId(taxonomy) {
+	return divisionsOf(taxonomy).find((division) => division.slug === CUSTOM_AREA_SLUG)?.id ?? null
+}
+
 export function isSectorSubcategory(taxonomy, subcategoryId) {
 	return subcategoryId !== null && subcategoryId === sectorSubcategoryId(taxonomy)
 }

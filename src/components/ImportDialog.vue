@@ -151,6 +151,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { messageFrom, warnError } from '../api.js'
 import { when } from '../when.js'
+import { decisionsForPreview } from '../odsReview.js'
 import OdsReview from './OdsReview.vue'
 
 export default {
@@ -368,8 +369,8 @@ export default {
 		},
 
 		acceptPreview(data) {
+			this.decisions = decisionsForPreview(data, this.preview, this.decisions)
 			this.preview = data
-			this.decisions = data.rows.filter(row => row.status !== 'invalid' && !row.candidates.length).map(row => ({ row: row.row, clear: [], confirmDuplicates: false }))
 		},
 
 		async commitOds() {

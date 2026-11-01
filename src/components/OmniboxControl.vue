@@ -76,7 +76,7 @@
 		<p class="territorio-omnibox__status" role="status">{{ status }}</p>
 
 		<!-- Unified Autocomplete Results Dropdown -->
-		<div v-if="showDropdown" :id="listId" class="territorio-omnibox__dropdown" role="listbox">
+		<div v-if="showDropdown" :id="listId" class="territorio-omnibox__dropdown" role="listbox" aria-label="Resultados de búsqueda">
 			<div v-for="(result, index) in results"
 				:key="result.kind + '-' + (result.id ?? result.name) + '-' + index"
 				:id="`${listId}-option-${index}`"

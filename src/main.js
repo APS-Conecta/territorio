@@ -8,6 +8,7 @@ import { addPasswordConfirmationInterceptors } from '@nextcloud/password-confirm
 import '@nextcloud/password-confirmation/style.css'
 import { createApp } from 'vue'
 import App from './App.vue'
+import './lightTheme.css'
 
 /**
  * Installed once, on the shared axios instance, and only used by the export that

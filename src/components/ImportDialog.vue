@@ -1,5 +1,5 @@
 <template>
-	<NcDialog name="Importar y deshacer"
+	<NcDialog data-theme-light class="territorio-light-theme" name="Importar y deshacer"
 		size="large"
 		:open="true"
 		@update:open="$emit('close')">

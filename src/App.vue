@@ -1,5 +1,5 @@
 <template>
-	<NcContent app-name="territorio">
+	<NcContent app-name="territorio" data-theme-light class="territorio-light-theme">
 		<NcAppContent>
 			<ErrorBoundary>
 				<div class="territorio-app-viewport">

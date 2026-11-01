@@ -7,6 +7,8 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ### Community asset inventory (0.81.0)
 
+- Territorio and its import/export dialogs use the light theme independently of the surrounding Nextcloud appearance.
+
 - Independent Analytics filters show registered community assets rather than territorial boundaries. Explicit drilldown transfers an Analytics selection to the map; map movement and map filters never change Analytics. Missing locations remain visible in inventory totals (#250).
 - Named custom areas can overlap without replacing clinical Sector assignments. Geographic filters use intersections and overall counts remain unique (#251; ADR-0023).
 - Point asset entry prioritizes a map pin and automatic coordinate capture. Manual address, contact details, hours, notes and source remain optional, with no external geocoding (#253).

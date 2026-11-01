@@ -1,5 +1,5 @@
 <template>
-	<NcDialog name="Exportar" size="normal" :buttons="dialogButtons" out-transition @update:open="!$event && $emit('close')">
+	<NcDialog data-theme-light class="territorio-light-theme" name="Exportar" size="normal" :buttons="dialogButtons" out-transition @update:open="!$event && $emit('close')">
 		<p class="territorio-export__count">
 			Se exportarán <strong>{{ count }}</strong>
 			{{ count === 1 ? 'registro' : 'registros' }}: lo que está viendo ahora,

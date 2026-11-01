@@ -5863,8 +5863,8 @@ def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failur
                         style: style.borderTopStyle,
                         border: style.borderTopColor,
                         fill: style.backgroundColor,
-                        page: getComputedStyle(document.body)
-                            .getPropertyValue('--color-main-background').trim(),
+                        // Territorio keeps its own light palette when the host theme changes.
+                        page: style.getPropertyValue('--color-main-background').trim(),
                     }
                 }""",
             )

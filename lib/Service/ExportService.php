@@ -11,6 +11,7 @@ use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\IUserSession;
+use OCP\IConfig;
 
 /**
  * Taking the filtered set out of the app (issue #17, ADR-0006).
@@ -35,10 +36,11 @@ use OCP\IUserSession;
  */
 class ExportService {
 	/** What each format is called, what it writes, and what it is served as. */
-	private const FORMATS = ['geojson', 'csv', 'kml', 'kmz'];
+	private const FORMATS = ['geojson', 'csv', 'kml', 'kmz', 'ods'];
 
 
 	private const MIME = [
+		'ods' => OdsWorkbook::MIME,
 		'geojson' => 'application/geo+json',
 		'csv' => 'text/csv; charset=utf-8',
 		'kml' => 'application/vnd.google-earth.kml+xml',
@@ -53,6 +55,7 @@ class ExportService {
 		private CsvWriter $csv,
 		private KmlWriter $kml,
 		private IUserSession $session,
+		private IConfig $config,
 	) {
 	}
 
@@ -91,7 +94,16 @@ class ExportService {
 
 		$rows = $this->rows($ids);
 
+		if ($format === 'ods') {
+			foreach ($rows as $row) {
+				if (($row['geometry']['type'] ?? 'Point') !== 'Point' || $row['categorySlug'] === 'division_territorial') {
+					throw new InvalidFeatureException('ODS admite solo activos puntuales. Filtre por Lugares antes de exportar; use GeoJSON para áreas.');
+				}
+			}
+		}
+
 		$body = match ($format) {
+			'ods' => OdsAssets::write($rows, $this->taxonomy->subcategoryIndex(), $contacts),
 			'geojson' => $this->geoJson->write($rows, $contacts),
 			'csv' => $this->csv->write($rows, $contacts),
 			'kml' => $this->kml->write($rows),
@@ -182,6 +194,8 @@ class ExportService {
 		$classification = $labels[$feature->getSubcategoryId()] ?? null;
 
 		return [
+			'id' => $this->config->getSystemValueString('instanceid') . ':' . $feature->getId(),
+			'revision' => $feature->getRevision(),
 			'externalId' => $feature->getExternalId(),
 			'name' => $feature->getName(),
 			'categorySlug' => $classification === null ? null : explode('/', $classification['slug'])[0],

@@ -105,6 +105,68 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		return null;
 	}
 
+	public function testReviewedMergePreservesSelectedComplementaryFields(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal', [
+			'phone' => '222', 'address' => 'Los Aromos 10', 'notes' => 'Acceso universal',
+		]);
+		$this->features->update($first, array_merge(Server::get(FeatureMapper::class)->find($first)->toClient(), ['phone' => '111']));
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second, 'address' => $second, 'notes' => $second], [
+			$first => Server::get(FeatureMapper::class)->find($first)->getRevision(),
+			$second => Server::get(FeatureMapper::class)->find($second)->getRevision(),
+		]);
+		$survivor = Server::get(FeatureMapper::class)->find($first);
+		self::assertSame('222', $survivor->getPhone());
+		self::assertSame('Los Aromos 10', $survivor->getAddress());
+		self::assertSame('Acceso universal', $survivor->getNotes());
+		self::assertSame('Biblioteca', $survivor->getName());
+		$this->features->restore($second);
+		self::assertSame('222', Server::get(FeatureMapper::class)->find($second)->getPhone());
+	}
+
+	public function testAStaleFieldReviewMergesNothing(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal', ['phone' => '222']);
+		$mapper = Server::get(FeatureMapper::class);
+		$review = [$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision()];
+		$this->features->update($second, array_merge($mapper->find($second)->toClient(), ['phone' => '333']));
+		try {
+			$this->service->merge((int)$pair->getId(), $first, ['phone' => $second], $review);
+			self::fail('a stale review must be refused');
+		} catch (InvalidFeatureException $error) {
+			self::assertStringContainsString('cambiaron', $error->getMessage());
+		}
+		self::assertFalse($mapper->find($second)->getRetired());
+		self::assertNull($mapper->find($first)->getPhone());
+		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	public function testAFieldSourceOutsideThePairMergesNothing(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal');
+		try {
+			$this->service->merge((int)$pair->getId(), $first, ['phone' => 9999999]);
+			self::fail('an unrelated source must be refused');
+		} catch (InvalidFeatureException) {
+			self::assertFalse(Server::get(FeatureMapper::class)->find($second)->getRetired());
+			self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+		}
+	}
+
+	public function testChoosingUnchangedFieldsDoesNotEditTheSurvivor(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal');
+		$mapper = Server::get(FeatureMapper::class);
+		$revision = $mapper->find($first)->getRevision();
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $first], [
+			$first => $revision, $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertSame($revision, $mapper->find($first)->getRevision());
+	}
+
+	public function testFieldChoicesRequireBothReviewedRevisions(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal');
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Vuelva a revisar');
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $second]);
+	}
+
 	public function testImportFlagsAPairAndMergesNothing(): void {
 		[$first, $second] = $this->twinsAt('Balneario Municipal', 'Piscina Municipal');
 
@@ -383,6 +445,7 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 			Server::get(FeatureService::class),
 			Server::get(IUserSession::class),
 			Server::get(IDBConnection::class),
+			Server::get(\OCA\Territorio\Db\RevisionLog::class),
 		);
 	}
 
@@ -468,6 +531,65 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 		} finally {
 			self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
 		}
+	}
+
+	public function testUndoingAFieldMergeRestoresCadastralStewardship(): void {
+		$slug = 'merge-restore-' . uniqid();
+		$this->datasets[] = $slug;
+		$json = json_encode(['type' => 'FeatureCollection', 'features' => [[
+			'type' => 'Feature', 'geometry' => ['type' => 'Point', 'coordinates' => [-70.48, -33.42]],
+			'properties' => ['uid' => 'original', 'name' => 'Cadastral survivor', 'category' => 'salud', 'subcategory' => 'otro'],
+		]]]);
+		$batch = Server::get(ImportService::class)->importFile($json, 'assets.geojson', $slug);
+		$mapper = Server::get(FeatureMapper::class);
+		$first = (int)array_values($mapper->findByDataset($batch->getDatasetId()))[0]->getId();
+		$second = $this->place('Other source', [
+			'phone' => '555-123', 'geometry' => ['type' => 'Point', 'coordinates' => [-70.48, -33.42]],
+		]);
+		$this->service->scan();
+		$pair = $this->pairOf($first, $second);
+		self::assertNotNull($pair);
+		$this->pairs[] = (int)$pair->getId();
+		self::assertFalse($mapper->find($first)->getOverridden());
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertTrue($mapper->find($first)->getOverridden());
+		$this->features->restore($second);
+		self::assertFalse($mapper->find($first)->getOverridden());
+		self::assertNull($mapper->find($first)->getPhone());
+	}
+
+	public function testRestoringAReviewedMergeRestoresTheSurvivorsOriginalFields(): void {
+		[$first, $second, $pair] = $this->twinsAt('Original survivor', 'Other record', ['phone' => '555-123']);
+		$mapper = Server::get(FeatureMapper::class);
+		$before = $mapper->find($first)->toClient();
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $second, 'phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertSame('555-123', $mapper->find($first)->getPhone());
+
+		$restored = $this->features->restore($second);
+		self::assertFalse($restored->getRetired());
+		self::assertSame($before['name'], $mapper->find($first)->getName());
+		self::assertSame($before['phone'], $mapper->find($first)->getPhone());
+		self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
+	}
+
+	public function testRestoringAMergePreservesLaterSurvivorEditsAndReportsIt(): void {
+		[$first, $second, $pair] = $this->twinsAt('Survivor', 'Other record', ['phone' => '555-123']);
+		$mapper = Server::get(FeatureMapper::class);
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second], [
+			$first => $mapper->find($first)->getRevision(), $second => $mapper->find($second)->getRevision(),
+		]);
+		$this->features->update($first, [
+			'name' => 'Later correction', 'subcategoryId' => $mapper->find($first)->getSubcategoryId(), 'phone' => '555-999',
+		]);
+		$result = $this->features->restoreWithReport($second);
+		self::assertFalse($result['feature']->getRetired());
+		self::assertSame('Later correction', $mapper->find($first)->getName());
+		self::assertSame('555-999', $mapper->find($first)->getPhone());
+		self::assertNotEmpty($result['notice']);
 	}
 
 	/** The survivor has to be one of the two, or nobody compared it with anything. */

@@ -149,6 +149,8 @@ class EnsureSeedData implements IRepairStep {
 			// home here for the same reason Sector does: a Unidad Vecinal is a
 			// Feature, and a Feature carries exactly one Subcategory.
 			'unidad_vecinal' => 'Unidad Vecinal',
+			// Flexible analysis boundaries, not a clinical team assignment (ADR-0023).
+			'custom_area' => 'Área personalizada',
 		],
 	];
 

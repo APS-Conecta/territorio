@@ -949,6 +949,18 @@ export default {
 	padding: 1px 5px;
 }
 
+.leaflet-tooltip.territorio-label--custom {
+	border: 1px solid #949494;
+	border-radius: 0;
+}
+
+.leaflet-tooltip.territorio-label--custom::before {
+	content: 'Área: ';
+	position: static;
+	border: 0;
+	margin: 0;
+}
+
 /* Ground: quieter than the Sector above it, and no plate behind it — a hundred
    white boxes would be the noise the figure/ground rule is removing. */
 .leaflet-tooltip.territorio-label--ground {

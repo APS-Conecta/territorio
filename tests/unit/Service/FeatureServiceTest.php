@@ -12,6 +12,7 @@ use OCA\Territorio\Db\Subcategory;
 use OCA\Territorio\Db\SubcategoryMapper;
 use OCA\Territorio\Db\ImportBatchMapper;
 use OCP\IUserSession;
+use OCP\IDBConnection;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Exception\InvalidGeometryException;
 use OCA\Territorio\Service\AssignmentService;
@@ -85,6 +86,7 @@ final class FeatureServiceTest extends TestCase {
 			$this->createMock(DuplicateMapper::class),
 			$this->batches,
 			$this->createStub(IUserSession::class),
+			$this->createStub(IDBConnection::class),
 		);
 	}
 

@@ -43,6 +43,11 @@ named however that clinic names things — words, numbers or colours — and it 
 Unidades Vecinales: neither one nests inside the other.
 _Avoid_: zone, area, quadrant, sub-territory
 
+**Custom area**:
+A named area the center defines to examine its community assets. Custom areas may overlap one
+another and official territorial divisions; they do not assign clinical teams or replace Sectors.
+_Avoid_: Sector, Unidad Vecinal, community asset
+
 ### Shared vs personal
 
 **Registry**:

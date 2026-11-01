@@ -2,9 +2,8 @@
  * The Capas filter: which Subcategories are currently on screen.
  *
  * There is no Layer object (CONTEXT.md) — the panel a person toggles IS the
- * Category tree, and this is the state behind it. One filter feeds the map, the
- * Datos list and the Análisis counts, so the three can never disagree about
- * what is being shown.
+ * Category tree, and this is the state behind it. One filter feeds the map,
+ * Datos list and map export. Analytics owns a separate View of the Registry.
  *
  * The filter records what is HIDDEN, never what is visible. That is the whole
  * reason a Subcategory added to the taxonomy appears on its own: it is absent
@@ -56,7 +55,7 @@ export function matches(feature, query, subcategories) {
  * back as someone who unticked half the tree.
  */
 export function isFiltered(filter) {
-	return filter.hidden.size > 0 || (filter.query ?? '').trim() !== ''
+	return filter.hidden.size > 0 || (filter.query ?? '').trim() !== '' || (filter.sectorId ?? '') !== ''
 }
 
 export function isSubcategoryVisible(filter, subcategoryId) {
@@ -214,10 +213,8 @@ export function featureById(features, retiredFeatures, id) {
  * The one filtered set: what Capas leaves visible, narrowed again by what was
  * typed.
  *
- * Both narrowings are applied here, in one place, rather than search being a
- * mechanism of its own beside the toggles. That is what keeps the map, the Datos
- * list and the Análisis counts agreeing about what is on screen — they all read
- * this, and a second path is how they would drift apart.
+ * Layer, search and Sector narrowings apply here so the map, list and map export
+ * agree. Analytics starts from the Registry and owns its filters separately.
  *
  * `subcategories` is the index from `indexSubcategories()`, passed in rather than
  * imported so this module stays pure and knows nothing about the taxonomy's
@@ -227,14 +224,14 @@ export function featureById(features, retiredFeatures, id) {
  */
 export function filterFeatures(features, filter, subcategories) {
 	return features.filter((feature) => isSubcategoryVisible(filter, feature.subcategoryId)
-		&& matches(feature, filter.query, subcategories))
+		&& matches(feature, filter.query, subcategories)
+		&& (!filter.sectorId || String(feature.sectorId) === String(filter.sectorId)))
 }
 
 /**
  * Counts for Análisis, over whatever set it is handed.
  *
- * It does no filtering of its own — it is given the already-filtered features,
- * which is what stops the numbers drifting away from the list and the map.
+ * It does no filtering of its own: callers provide the selected records.
  *
  * Every Category is reported, including empty ones, so the caller can decide
  * whether to draw them — Análisis hides empty rows to keep the chart readable,

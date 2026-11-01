@@ -56,9 +56,17 @@ class DuplicateController extends Controller {
 			return $this->refuse('Indique cuál registro sobrevive.');
 		}
 
+		$fieldSources = $this->request->getParam('fieldSources', []);
+		$reviewedRevisions = $this->request->getParam('reviewedRevisions', []);
+		if (!is_array($fieldSources) || !is_array($reviewedRevisions)) {
+			return $this->refuse('Revise la selección de información antes de fusionar.');
+		}
+
 		return $this->attempt(fn (): array => $this->duplicates->merge(
 			(int)$id,
 			(int)$survivorId,
+			$fieldSources,
+			$reviewedRevisions,
 		)->toClient());
 	}
 

@@ -19,6 +19,10 @@ return [
 		// Importing is open to every user, like every other change (ADR-0005):
 		// the safety net is that a batch is recorded and revertible, not that
 		// fewer people are allowed to make one.
+		['name' => 'ods#template', 'url' => '/ods/template', 'verb' => 'GET'],
+		['name' => 'ods#preview', 'url' => '/ods/preview', 'verb' => 'POST'],
+		['name' => 'ods#revise', 'url' => '/ods/revise', 'verb' => 'POST'],
+		['name' => 'ods#commit', 'url' => '/ods/commit', 'verb' => 'POST'],
 		['name' => 'import#upload', 'url' => '/import', 'verb' => 'POST'],
 		['name' => 'import#batches', 'url' => '/import/batches', 'verb' => 'GET'],
 		// Undo one run (ADR-0009). There is no backup feature; this is it.

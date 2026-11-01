@@ -524,3 +524,17 @@ describe('the layers menu bulk actions', () => {
 		expect([...before.hidden]).toEqual([11])
 	})
 })
+
+describe('shared map Sector filter', () => {
+	it('keeps the map, list and export set equal when a Sector is selected', () => {
+		const features = [
+			{ ...FEATURES[0], sectorId: 10 },
+			{ ...FEATURES[1], sectorId: 20 },
+			{ ...FEATURES[2], sectorId: null },
+		]
+		const filter = { ...emptyFilter(), sectorId: '10' }
+		expect(filterFeatures(features, filter, SUBCATEGORIES).map(feature => feature.id)).toEqual([1])
+		expect(listFor({ features, retiredFeatures: [], showRetired: false, filter, subcategories: SUBCATEGORIES }).map(feature => feature.id)).toEqual([1])
+		expect(isFiltered(filter)).toBe(true)
+	})
+})

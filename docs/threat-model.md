@@ -46,8 +46,10 @@ A route without `#[NoAdminRequired]` is admin-only: that attribute is what opens
 
 ## Trust boundaries
 
-- **Imported files are untrusted:** KML/KMZ (zip), CSV and XML from any staff member. Parse with
-  network access off; reject entity expansion and zip bombs.
+- **Imported files are untrusted:** ODS/KML/KMZ (zip), CSV and XML from any staff member. Parse with
+  network access off; reject entity expansion and zip bombs. ODS also bounds expanded rows, cells
+  and text, rejects formulas, and validates selected changes again under the revision lock before
+  committing. Preview tokens belong to the authenticated session and expire after 30 minutes.
 - **Stored text is untrusted on output:** names and notes are shown in Leaflet popups, and Leaflet
   writes string content with `innerHTML`. Popups get a DOM text node, which cannot be parsed as
   markup (`TerritorioMap.vue`, the `bindTooltip(document.createTextNode(…))` calls, #62). The map's credit is markup the app owns, a constant in

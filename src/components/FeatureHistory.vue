@@ -90,6 +90,7 @@ const FIELDS = {
 	openingHours: 'Horario',
 	notes: 'Notas',
 	sourceRef: 'Fuente',
+	overridden: 'Corrección local',
 	colour: 'Color',
 	limit: 'Límite',
 	// Derived, and in history because ADR-0008 says a reassignment must be
@@ -152,6 +153,10 @@ export default {
 
 			if (field === 'locationQuality') {
 				return QUALITY_LABELS[value] ?? value
+			}
+
+			if (field === 'overridden') {
+				return value ? 'Sí' : 'No'
 			}
 
 			// Stored as JSON, said as a sentence. Left raw it would be the wall of

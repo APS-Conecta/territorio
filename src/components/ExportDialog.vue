@@ -1,9 +1,9 @@
 <template>
-	<NcDialog name="Exportar" size="normal" @closing="$emit('close')">
+	<NcDialog data-theme-light class="territorio-light-theme" name="Exportar" size="normal" :buttons="dialogButtons" out-transition @update:open="!$event && $emit('close')">
 		<p class="territorio-export__count">
 			Se exportarán <strong>{{ count }}</strong>
 			{{ count === 1 ? 'registro' : 'registros' }}: lo que está viendo ahora,
-			con las capas y la búsqueda aplicadas.
+			con los filtros de esta vista aplicados.
 		</p>
 
 		<fieldset class="territorio-export__formats">
@@ -32,6 +32,8 @@
 			GeoJSON.
 		</NcNoteCard>
 
+		<NcNoteCard v-if="format === 'ods'" type="info">ODS conserva los ID para actualizar activos. Solo admite lugares puntuales, incluidos los que aún no tienen ubicación. Para áreas, use GeoJSON.</NcNoteCard>
+
 		<NcCheckboxRadioSwitch v-if="!kmlFamily"
 			:model-value="contacts"
 			type="switch"
@@ -53,14 +55,6 @@
 
 		<NcNoteCard v-if="error !== ''" type="error">{{ error }}</NcNoteCard>
 
-		<template #actions>
-			<NcButton :disabled="working" @click="$emit('close')">
-				Cancelar
-			</NcButton>
-			<NcButton :disabled="working || count === 0" variant="primary" @click="send">
-				{{ working ? 'Exportando…' : 'Exportar' }}
-			</NcButton>
-		</template>
 	</NcDialog>
 </template>
 
@@ -68,13 +62,13 @@
 import axios from '@nextcloud/axios'
 import { PwdConfirmationMode } from '@nextcloud/password-confirmation'
 import { generateUrl } from '@nextcloud/router'
-import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { messageFrom } from '../api.js'
 
 const FORMATS = [
+	{ value: 'ods', label: 'ODS — planilla editable de activos puntuales, con revisión al importar' },
 	{ value: 'geojson', label: 'GeoJSON — completo, se puede volver a importar' },
 	{ value: 'csv', label: 'CSV — para planilla de cálculo' },
 	{ value: 'kml', label: 'KML — solo nombre y ubicación, para Google Earth' },
@@ -84,7 +78,7 @@ const FORMATS = [
 export default {
 	name: 'ExportDialog',
 
-	components: { NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard },
+	components: { NcCheckboxRadioSwitch, NcDialog, NcNoteCard },
 
 	props: {
 		/** The ids on screen right now. The filter is personal and lives here. */
@@ -115,6 +109,13 @@ export default {
 	},
 
 	computed: {
+		dialogButtons() {
+			return [
+				{ label: 'Cancelar', disabled: this.working },
+				{ label: this.working ? 'Exportando…' : 'Exportar', variant: 'primary', disabled: this.working || this.count === 0, callback: () => this.send() },
+			]
+		},
+
 		count() {
 			return this.ids.length
 		},
@@ -168,7 +169,7 @@ export default {
 				)
 
 				this.save(data, headers['content-disposition'])
-				this.$emit('close')
+				return true
 			} catch (exception) {
 				// Deciding not to type your password is not a failure, and saying
 				// "no se pudo exportar" to somebody who just pressed Cancelar is
@@ -179,6 +180,7 @@ export default {
 				if (exception?.message !== 'Dialog closed') {
 					this.error = await messageFrom(exception, 'No se pudo exportar. Inténtelo de nuevo.')
 				}
+				return false
 			} finally {
 				this.working = false
 			}

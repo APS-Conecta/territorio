@@ -1,5 +1,5 @@
 <template>
-	<NcContent app-name="territorio">
+	<NcContent app-name="territorio" data-theme-light class="territorio-light-theme">
 		<NcAppContent>
 			<ErrorBoundary>
 				<div class="territorio-app-viewport">
@@ -33,6 +33,7 @@
 							<DrawSectorButton
 								:is-drawing="isDrawingSector"
 								@draw-sector="toggleDrawSector"
+								@draw-area="toggleDrawCustomArea"
 								@cancel-draw="cancelDrawSector" />
 						</div>
 					</div>
@@ -64,7 +65,7 @@
 							@view-changed="onViewChanged"
 							@select="select"
 							@map-click="placeDraft"
-							@draw="startSector"
+							@draw="startBoundary"
 							@reshape="reshapeDraft"
 							@draw-mode-change="isDrawingSector = $event" />
 					</div>
@@ -87,6 +88,10 @@
 
 						<div class="territorio-docked-panel__inner">
 							<div class="territorio-docked-panel__spacer" />
+							<NcNoteCard v-if="restoreNotice" type="warning">
+								{{ restoreNotice }}
+								<NcButton variant="tertiary" @click="restoreNotice = ''">Entendido</NcButton>
+							</NcNoteCard>
 
 							<!-- When a draft is open (Inspecting or Editing an Asset or Sector) -->
 							<div v-if="draft !== null" class="territorio-docked-panel__sheet">
@@ -171,6 +176,10 @@
 									{{ error }}
 								</NcNoteCard>
 
+								<div v-if="mapAnalysisFilter" class="territorio-analysis-selection">
+									<span>Resultados de Análisis</span>
+									<NcButton variant="tertiary" @click="clearAnalysisSelection">Ver todo el mapa</NcButton>
+								</div>
 								<FeatureList
 									:features="listed"
 									:taxonomy="taxonomy"
@@ -179,13 +188,15 @@
 									:show-retired="showRetired"
 									:retired-failed="retiredFailed"
 									:query="filter.query"
+									:sector-id="filter.sectorId ?? ''"
 									@select="selectAndPan"
 									@create="startNew"
 									@import="importing = true"
 									@export="exporting = true"
 									@update:show-retired="toggleRetired"
 									@retry="loadRetired"
-									@update:query="search" />
+									@update:query="search"
+									@update:sector-id="setMapSector" />
 							</div>
 						</div>
 					</aside>
@@ -235,10 +246,13 @@
 							@back="pane = 'mapa'" />
 					</div>
 
-					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view">
+					<div v-if="pane === 'analisis'" class="territorio-fullscreen-view territorio-fullscreen-view--analysis">
 						<AnalysisView
-							:counts="counts"
-							:filtered="isFiltered(filter)"
+							v-model:filter="analysisFilter"
+							:inventory="inventory"
+							:summary="analysisCounts"
+							@show-map="showAnalysisOnMap"
+							@export="exporting = true"
 							@back="pane = 'mapa'" />
 					</div>
 
@@ -310,6 +324,7 @@ import OmniboxControl from './components/OmniboxControl.vue'
 import TaxonomyDrawer from './components/TaxonomyDrawer.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
 import { messageFrom, safeError, warnError } from './api.js'
+import { analysisChips, analysisSummary, emptyAnalysisFilter, filterInventory, inventoryFor } from './analytics.js'
 import { suggestions } from './boundaries.js'
 import { mergeInto } from './composables/useChanges.js'
 import {
@@ -326,7 +341,6 @@ import { canPolygonize, faceAround } from './sectors.js'
 import { viewTargetOf } from './assets.js'
 import { prefetchStreets } from './streets.js'
 import {
-	countsFor,
 	emptyFilter,
 	featureById,
 	filterFeatures,
@@ -340,10 +354,12 @@ import {
 } from './filters.js'
 import {
 	DEFAULT_SECTOR_COLOUR,
+	boundsOfRecords,
 	defaultSubcategoryId,
 	divisionsOf,
 	indexSubcategories,
 	sectorSubcategoryId,
+	customAreaSubcategoryId,
 	UNIDAD_VECINAL_SLUG,
 } from './taxonomy.js'
 
@@ -396,6 +412,8 @@ export default {
 			// The View is personal (CONTEXT.md): this never leaves the browser and
 			// changing it changes nothing for anyone else.
 			filter: emptyFilter(),
+			analysisFilter: emptyAnalysisFilter(),
+			mapAnalysisFilter: null,
 			// Which pane fills the main area. Named `pane`, not `view`, because
 			// View is the glossary's word for the whole personal on-screen state —
 			// of which this is one part, alongside the filter above.
@@ -407,6 +425,7 @@ export default {
 			omniboxQuery: '',
 			showTaxonomyDrawer: false,
 			isDrawingSector: false,
+			drawingBoundary: 'sector',
 			// Read-only and about five thousand rows: markRaw'd where it is set, so
 			// Vue does not wrap every one of them in a Proxy (SearchControl, the
 			// control this replaced, kept them in non-reactive handles for the same
@@ -444,6 +463,7 @@ export default {
 			editing: false,
 			saving: false,
 			error: '',
+			restoreNotice: '',
 			// Separate from `error`: that one renders in the panel's list and only
 			// while no record is open, and the Capas panel — where a rename or an
 			// add is refused — is the taxonomy drawer, open on its own terms.
@@ -479,13 +499,25 @@ export default {
 	},
 
 	computed: {
-		/**
-		 * The one filtered set. The map, the Datos list and Análisis all derive
-		 * from this rather than each filtering for themselves — three filters is
-		 * how a count ends up disagreeing with what is on screen.
-		 */
+		inventory() {
+			return inventoryFor(this.features, this.taxonomy)
+		},
+
+		analysisFiltered() {
+			return filterInventory(this.inventory, this.analysisFilter)
+		},
+
+		analysisCounts() {
+			return analysisSummary(this.inventory, this.analysisFiltered)
+		},
+
+		// An explicit transfer copies Analytics criteria; later changes in either View stay independent.
+		mapFeatures() {
+			return this.mapAnalysisFilter ? filterInventory(this.inventory, this.mapAnalysisFilter) : this.features
+		},
+
 		liveFiltered() {
-			return filterFeatures(this.features, this.filter, this.subcategories)
+			return filterFeatures(this.mapFeatures, this.filter, this.subcategories)
 		},
 
 		/**
@@ -493,7 +525,7 @@ export default {
 		 * own query does not, so a half-typed list search never hides a place from it.
 		 */
 		searchable() {
-			return filterFeatures(this.features, { ...this.filter, query: '' }, this.subcategories)
+			return filterFeatures(this.mapFeatures, { ...this.filter, query: '' }, this.subcategories)
 		},
 
 		/**
@@ -512,7 +544,7 @@ export default {
 		/** See listFor(): Capas never touches the retired list, but a search does. */
 		listed() {
 			return listFor({
-				features: this.features,
+				features: this.mapFeatures,
 				retiredFeatures: this.retiredFeatures,
 				showRetired: this.showRetired,
 				filter: this.filter,
@@ -532,7 +564,7 @@ export default {
 		 * anyway (`FeatureMapper::findByIds`, ADR-0005).
 		 */
 		exportableIds() {
-			return this.liveFiltered.map((feature) => feature.id)
+			return (this.pane === 'analisis' ? this.analysisFiltered : this.liveFiltered).map((feature) => feature.id)
 		},
 
 		/**
@@ -543,24 +575,23 @@ export default {
 		 * know what left the building, not to reconstruct a filter object.
 		 */
 		exportScope() {
-			const said = []
+			if (this.pane === 'analisis') {
+				const chips = analysisChips(this.inventory, this.analysisFilter)
+				return chips.length ? `Análisis: ${chips.map(chip => chip.label).join(', ')}` : 'Análisis: todos los activos registrados'
+			}
+			const said = this.mapAnalysisFilter ? ['selección de Análisis', ...analysisChips(this.inventory, this.mapAnalysisFilter).map(chip => chip.label)] : []
+			if (this.filter.sectorId) {
+				const sector = this.divisions.find(division => division.id === Number(this.filter.sectorId))
+				said.push(`sector: ${sector?.name ?? this.filter.sectorId}`)
+			}
 			if (this.filter.query !== '') {
 				said.push(`búsqueda: "${this.filter.query}"`)
 			}
-			if (isFiltered({ ...this.filter, query: '' })) {
+			if (this.filter.hidden.size > 0) {
 				said.push('con capas filtradas')
 			}
 
 			return said.length === 0 ? 'todo el Registro' : said.join(', ')
-		},
-
-		/**
-		 * Always the live Registry, never the retired list. ADR-0005 keeps retired
-		 * records out of every default read, and a total that silently counted
-		 * them would be wrong in a way nobody on screen could see.
-		 */
-		counts() {
-			return countsFor(this.liveFiltered, this.taxonomy)
 		},
 
 		/**
@@ -684,6 +715,27 @@ export default {
 
 		resetFilter() {
 			this.filter = emptyFilter()
+			this.mapAnalysisFilter = null
+		},
+
+		setMapSector(sectorId) {
+			this.filter = { ...this.filter, sectorId }
+		},
+
+		async showAnalysisOnMap() {
+			clearTimeout(this.searchTimer)
+			this.filter = emptyFilter()
+			this.mapAnalysisFilter = { ...this.analysisFilter }
+			this.showRetired = false
+			this.closeDraft()
+			this.panelOpen = true
+			this.pane = 'mapa'
+			await this.$nextTick()
+			this.$refs.mapComponent?.fitStreetBounds(boundsOfRecords(this.liveFiltered))
+		},
+
+		clearAnalysisSelection() {
+			this.resetFilter()
 		},
 
 		onToggleCategory(category) {
@@ -883,9 +935,36 @@ export default {
 		},
 
 		toggleDrawSector() {
+			this.drawingBoundary = 'sector'
 			if (this.$refs.mapComponent) {
 				this.$refs.mapComponent.toggleDrawPolygon()
 			}
+		},
+
+		toggleDrawCustomArea() {
+			this.drawingBoundary = 'custom_area'
+			this.$refs.mapComponent?.toggleDrawPolygon()
+		},
+
+		startBoundary(geometry) {
+			if (this.drawingBoundary === 'custom_area') {
+				this.startCustomArea(geometry)
+			} else {
+				this.startSector(geometry)
+			}
+		},
+
+		startCustomArea(geometry) {
+			this.stopSeeding()
+			const subcategoryId = customAreaSubcategoryId(this.taxonomy)
+			if (subcategoryId === null) {
+				this.error = 'Falta la subcategoría Área personalizada. Actualice la app e inténtelo de nuevo.'
+				return
+			}
+			this.selectedId = null
+			this.error = ''
+			this.draft = { ...blankDraft(), subcategoryId, geometry, colour: DEFAULT_SECTOR_COLOUR }
+			this.panelOpen = true
 		},
 
 		cancelDrawSector() {
@@ -980,8 +1059,8 @@ export default {
 		 * at that here would mean two descriptions of the same event that can
 		 * disagree.
 		 */
-		async mergePair({ pairId, survivorId }) {
-			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/merge`, { survivorId })
+		async mergePair({ pairId, survivorId, fieldSources, reviewedRevisions }) {
+			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/merge`, { survivorId, fieldSources, reviewedRevisions })
 		},
 
 		async dismissPair(pairId) {
@@ -1240,6 +1319,7 @@ export default {
 				)
 				this.mergeFeature(data)
 				this.closeDraft()
+				this.restoreNotice = data.restoreNotice ?? ''
 			} catch (exception) {
 				this.error = await messageFrom(exception, 'No se pudo restaurar el registro.')
 			}
@@ -1741,6 +1821,21 @@ export default {
 // Starts below the topbar, not under it: the search box and its tabs are the way
 // back from here, and a view that covered them (z-index 1100 over the topbar's
 // 1000) left nothing to click but the view's own «Volver».
+.territorio-fullscreen-view--analysis {
+	// Only the search and tabs remain visible in Analytics, including on mobile.
+	--territorio-topbar-clearance: 124px;
+}
+
+.territorio-analysis-selection {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--color-border);
+	font-size: 13px;
+}
+
 .territorio-fullscreen-view {
 	position: absolute;
 	top: var(--territorio-topbar-clearance);

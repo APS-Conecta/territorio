@@ -56,7 +56,7 @@
 			</label>
 			<label v-if="sectors.length > 0" class="territorio-list__sort-label">
 				<span>Sector:</span>
-				<select v-model="selectedSector" class="territorio-list__select">
+				<select :value="sectorId" @change="$emit('update:sector-id', $event.target.value)" class="territorio-list__select">
 					<option value="">Todos</option>
 					<option v-for="sec in sectors" :key="sec.id" :value="sec.id">
 						{{ sec.name }}
@@ -159,17 +159,16 @@ export default {
 		// A failed load of the retired list is not an empty one (L1-28): shown
 		// only while the retired list is the one on screen.
 		retiredFailed: { type: Boolean, default: false },
-		// Owned by App.vue and part of the one filter, so the map and Análisis
-		// narrow with the list rather than beside it.
+		// Owned by App.vue so the map, list and its export use the same selection.
 		query: { type: String, default: '' },
+		sectorId: { type: [String, Number], default: '' },
 	},
 
-	emits: ['select', 'create', 'import', 'export', 'retry', 'update:showRetired', 'update:query'],
+	emits: ['select', 'create', 'import', 'export', 'retry', 'update:showRetired', 'update:query', 'update:sector-id'],
 
 	data() {
 		return {
 			sortCriteria: 'name:asc',
-			selectedSector: '',
 		}
 	},
 
@@ -183,13 +182,8 @@ export default {
 		},
 
 		displayFeatures() {
-			let result = this.features
-			if (this.selectedSector !== '') {
-				const sId = Number(this.selectedSector)
-				result = result.filter(f => f.sectorId === sId)
-			}
 			const [sortBy, sortOrder] = this.sortCriteria.split(':')
-			return sortAssets(result, { sortBy, sortOrder })
+			return sortAssets(this.features, { sortBy, sortOrder })
 		},
 	},
 

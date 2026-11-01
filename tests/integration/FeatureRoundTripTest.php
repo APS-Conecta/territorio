@@ -6,6 +6,7 @@ namespace OCA\Territorio\Tests\Integration;
 
 use BadFunctionCallException;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Exception\InvalidFeatureException;
 use OCA\Territorio\Service\FeatureService;
 use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Domain\LocationQuality;

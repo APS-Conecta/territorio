@@ -70,8 +70,8 @@ REDESIGN = uuid.uuid4().hex[:6]
 ONLY = None
 if "--only" in sys.argv:
     ONLY = sys.argv[sys.argv.index("--only") + 1:][:1] and sys.argv[sys.argv.index("--only") + 1]
-    if ONLY not in ("redesign", "extent", "tiles"):
-        sys.exit("usage: browser-check.py [--only redesign|extent|tiles]")
+    if ONLY not in ("redesign", "extent", "tiles", "analytics"):
+        sys.exit("usage: browser-check.py [--only redesign|extent|tiles|analytics]")
 
 # What a GeoJSON written WITHOUT contact fields is marked with, so the check can
 # tell a partial export from a complete one. Kept in step with
@@ -989,6 +989,7 @@ def create_a_place(page, name, failures, lat=None, lon=None):
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(lat or f"-33.5{300 + NUDGE}")
     page.get_by_label("Longitud").fill(lon or f"-70.5{300 + NUDGE}")
     save(page, failures, "the Place")
@@ -1047,6 +1048,14 @@ def run(check, page, *args, **kwargs):
     """One check, from the list."""
     to_list(page)
     return check(page, *args, **kwargs)
+
+
+def open_optional_fields(page):
+    """Manual coordinate/contact checks explicitly expand the optional controls."""
+    for title in ("Coordenadas y exactitud", "Contacto (opcional)"):
+        section = page.locator("details.territorio-detail__section").filter(has=page.locator("summary", has_text=title))
+        if section.count() and section.first.get_attribute("open") is None:
+            section.first.locator("summary").click()
 
 
 def edit(page):
@@ -1305,6 +1314,7 @@ def a_save_that_lands_after_leaving_the_record_still_lists_it(page, failures):
     page.get_by_label("Nombre").fill(name)
     # Clear of this run's other typed records: create_a_place and the Cúmulo
     # pins sit at 300, the export pair at 600 and 700.
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{800 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{800 + NUDGE}")
 
@@ -1681,6 +1691,7 @@ def a_cancelled_drawing_leaves_the_place_coordinate(page, failures):
     try:
         page.get_by_role("button", name="Agregar", exact=True).click()
         page.get_by_label("Nombre").fill(f"Prueba de dibujo {RUN}")
+        open_optional_fields(page)
         page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
         page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
         fields = ("Nombre", "Latitud", "Longitud")
@@ -1775,6 +1786,7 @@ def _a_pin_click_is_a_map_click_while_placing(page, failures):
         if not _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with a new record's form open", failures):
             return
 
+        open_optional_fields(page)
         name, lat, lon = (page.get_by_label(label) for label in ("Nombre", "Latitud", "Longitud"))
         if name.count() == 0 or name.input_value() != typed:
             failures.append(
@@ -2177,8 +2189,9 @@ def the_duplicate_queue_works(page, failures):
 
     # Keep one. The other leaves the Registry, and the pair leaves the queue.
     card.locator(".territorio-duplicados__side").first.get_by_role(
-        "button", name="Conservar este",
+        "button", name="Revisar fusión con esta ficha",
     ).click()
+    card.get_by_role("button", name="Confirmar fusión", exact=True).click()
 
     if not settles(
         page,
@@ -2207,7 +2220,7 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     reading why, which is the failure the rule exists to avoid.
     """
     def open_dialog():
-        page.get_by_role("button", name="Exportar", exact=True).click()
+        page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
         page.wait_for_timeout(600)
 
     # A record with a telephone number in it, because the criterion is about
@@ -2217,8 +2230,10 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     contact = f"Contacto Navegador {RUN}"
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(contact)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{400 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{400 + NUDGE}")
+    open_optional_fields(page)
     page.get_by_label("Teléfono").fill("+56 9 8765 4321")
     save(page, failures, "the record with contact details")
     dismiss(page)
@@ -2332,7 +2347,7 @@ def a_kmz_is_that_kml_in_an_archive(page, kml_bytes, failures):
     weaker thing. This is also the one criterion no PHP test can reach — the
     file has to come down the wire, through the route the dialog chose.
     """
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
     page.get_by_text("KMZ —").click()
     page.wait_for_timeout(300)
@@ -2423,7 +2438,7 @@ def an_export_of_osm_data_names_the_licence(page, failures):
 
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(800)
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     with page.expect_download(timeout=20_000) as download:
@@ -2462,6 +2477,7 @@ def the_export_offers_the_live_set_with_retirados_on(page, failures):
     for name, offset in ((gone, 600), (live, 700)):
         page.get_by_role("button", name="Agregar", exact=True).click()
         page.get_by_label("Nombre").fill(name)
+        open_optional_fields(page)
         page.get_by_label("Latitud").fill(f"-33.5{offset + NUDGE}")
         page.get_by_label("Longitud").fill(f"-70.5{offset + NUDGE}")
         save(page, failures, f"the exportable record {name!r}")
@@ -2489,7 +2505,7 @@ def the_export_offers_the_live_set_with_retirados_on(page, failures):
         page.wait_for_timeout(600)
         return
 
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     said = page.locator(".territorio-export__count").inner_text()
@@ -3115,7 +3131,7 @@ def exported_corners(page, name, failures):
     """
     page.locator(SEARCH).fill(name)
     page.wait_for_timeout(800)
-    page.get_by_role("button", name="Exportar", exact=True).click()
+    page.locator(".territorio-docked-panel").get_by_role("button", name="Exportar", exact=True).click()
     page.wait_for_timeout(600)
 
     with page.expect_download(timeout=20_000) as download:
@@ -3618,7 +3634,7 @@ def the_map_survives_churn(page, errors, failures):
 
 
 def search_narrows_everything(page, failures):
-    """#19: the box narrows the Datos list, the map and the counts together.
+    """Map search narrows Datos and the map; Analytics remains center-wide (#250).
 
     Scoped to our own box: Nextcloud's header has a "Buscar contactos" field of
     its own, and `get_by_label("Buscar")` finds three things.
@@ -3629,9 +3645,9 @@ def search_narrows_everything(page, failures):
 
     def analysis_total():
         _pane(page, "Análisis")
-        text = page.locator(".territorio-analisis h2").inner_text()
+        total = int(page.locator(".territorio-analisis__result-count strong").inner_text())
         _pane(page, "Mapa")
-        return int(text.split()[0])
+        return total
 
     before_rows = rows.count()
 
@@ -3647,8 +3663,9 @@ def search_narrows_everything(page, failures):
     if markers.count() != 1:
         failures.append(f"the map shows {markers.count()} markers, expected the one Place")
     counted = analysis_total()
-    if counted != 2:
-        failures.append(f"Análisis counted {counted}, expected 2 — it is not reading the same set")
+    expected_assets = len(registered_assets(page))
+    if counted != expected_assets:
+        failures.append(f"Análisis counted {counted}, expected the complete asset inventory {expected_assets}")
 
     # Case, in the running app rather than only in the predicate's unit test.
     box.fill(f"sECTOR nAVEGADOR {RUN}")
@@ -3978,8 +3995,7 @@ def the_indice_reads_the_registry(page, failures):
     if _indice_table(page)["columns"][0] != "name":
         failures.append("ticking «Nombre» back did not bring the column back")
 
-    # Capas narrows the table, the Datos list and the Análisis counts together —
-    # the criterion, and the reason there is no per-column filter here.
+    # Capas narrows the table and Datos together. Analytics is independent (#250).
     toggle_division(page, "Sector")
     narrowed = len(_indice_table(page)["rows"])
     if narrowed >= len(names):
@@ -3993,10 +4009,11 @@ def the_indice_reads_the_registry(page, failures):
         )
 
     _pane(page, "Análisis")
-    counted = int(page.locator(".territorio-analisis h2").inner_text().split()[0])
+    counted = int(page.locator(".territorio-analisis__result-count strong").inner_text())
+    expected_assets = len(registered_assets(page))
     _pane(page, "Índice")
-    if counted != narrowed:
-        failures.append(f"Análisis counted {counted} while the Índice drew {narrowed}")
+    if counted != expected_assets:
+        failures.append(f"Análisis inherited the map filter: counted {counted}, expected {expected_assets}")
 
     toggle_division(page, "Sector")
 
@@ -4533,6 +4550,7 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{340 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{340 + NUDGE}")
 
@@ -4666,6 +4684,7 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE + offset}")
     page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE + offset}")
 
@@ -5652,7 +5671,7 @@ def a_division_renders_as_a_division(page, failures):
     _figure_is_drawn_as_figure(page, sector, neutral, failures)
     _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures)
     _ground_stays_ground_while_it_is_open(page, uv, failures)
-    _the_chart_draws_a_division_neutral(page, neutral, failures)
+    _the_chart_excludes_territorial_divisions(page, failures)
 
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -5844,8 +5863,8 @@ def _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failur
                         style: style.borderTopStyle,
                         border: style.borderTopColor,
                         fill: style.backgroundColor,
-                        page: getComputedStyle(document.body)
-                            .getPropertyValue('--color-main-background').trim(),
+                        // Territorio keeps its own light palette when the host theme changes.
+                        page: style.getPropertyValue('--color-main-background').trim(),
                     }
                 }""",
             )
@@ -5966,48 +5985,15 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
     page.wait_for_timeout(400)
 
 
-def _the_chart_draws_a_division_neutral(page, neutral, failures):
-    """Análisis: the last surface the division Category's `#334155` can reach.
-
-    Both rows of the section, not just the top one. The Category row and the
-    Subcategory rows under it are separate bindings, and the first fix moved
-    only the first — so a install with Sectores or Unidades Vecinales drew its
-    `Sector` and `Unidad Vecinal` bars in the inert seed while the section
-    header above them was correctly neutral.
-    """
+def _the_chart_excludes_territorial_divisions(page, failures):
+    """Territorial boundaries describe geography, not community asset counts."""
     _pane(page, "Análisis")
     page.wait_for_timeout(600)
-
     section = page.locator(".territorio-analisis__category").filter(
         has_text="División territorial",
-    ).first
-    if section.count() == 0:
-        skip("Análisis shows no División territorial section, so its bars are unchecked (#29)")
-        _pane(page, "Mapa")
-        page.wait_for_timeout(400)
-        return
-
-    painted = section.locator(
-        ".territorio-analisis__fill, .territorio-analisis__swatch",
-    ).evaluate_all(
-        "(nodes) => nodes.map((node) => getComputedStyle(node).backgroundColor)",
     )
-
-    if len(painted) < 2:
-        failures.append(
-            "the División territorial section drew fewer than two bars, so the Subcategory "
-            "rows — the ones that kept the seed colour — were not measured (#29)",
-        )
-
-    for colour in painted:
-        if _hex_of(colour) != neutral:
-            failures.append(
-                f"a División territorial bar is painted {colour!r}, not the neutral "
-                f"{neutral} — the seeded `#334155` measures 1.73:1 against the dark theme "
-                f"and ADR-0013 leaves nowhere legible to move it to, so it renders "
-                f"nowhere (#29)",
-            )
-
+    if section.count():
+        failures.append("Análisis counted territorial divisions as community assets")
     _pane(page, "Mapa")
     page.wait_for_timeout(400)
 
@@ -8676,6 +8662,120 @@ def the_redesigned_controls_work(page, errors, failures):
 
 
 
+def registered_assets(page):
+    """The persisted inventory, excluding retired records and geographic boundaries."""
+    division_ids = page.evaluate("""() => {
+        const categories = JSON.parse(atob(document.getElementById('initial-state-territorio-taxonomy').value))
+        return categories.filter(category => category.slug === 'division_territorial')
+            .flatMap(category => category.subcategories.map(subcategory => subcategory.id))
+    }""")
+    return [feature for feature in registry_features(page)
+            if not feature.get("retired") and feature.get("subcategoryId") not in division_ids]
+
+
+def analytics_has_its_own_filters(page, failures):
+    """#250: exercise real Registry records, independent filters and explicit transfer."""
+    token = f"Analitica-{uuid.uuid4().hex[:8]}"
+    square = {"type": "Polygon", "coordinates": [[[-70.8, -33.8], [-70.7, -33.8],
+               [-70.7, -33.7], [-70.8, -33.7], [-70.8, -33.8]]]}
+    point = {"type": "Point", "coordinates": [-70.75, -33.75]}
+    definitions = [
+        ("Farmacia", "salud", "farmacia", point),
+        ("Sin ubicación", "salud", "cesfam", None),
+        ("Zona", "educacion", "colegio", square),
+        ("Sector A", "division_territorial", "sector", square),
+        ("Sector B", "division_territorial", "sector", square),
+        ("Área", "division_territorial", "custom_area", square),
+    ]
+    seeded = import_dataset(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"id": f"{token}-{index}", "name": f"{token} {name}",
+         "category": category, "subcategory": subcategory}, "geometry": geometry}
+        for index, (name, category, subcategory, geometry) in enumerate(definitions)
+    ]}), token, boundary=False)
+    if not seeded:
+        failures.append("Analytics fixtures could not be saved to the Registry")
+        return
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    page.wait_for_timeout(500)
+    stored = [record for record in registry_features(page) if record.get("name", "").startswith(token)]
+    if len(stored) != 6:
+        failures.append(f"Analytics seeded {len(stored)} records, expected six persisted records")
+        return
+
+    def total():
+        return int(page.locator(".territorio-analisis__result-count strong").inner_text())
+
+    try:
+        page.locator(SEARCH).fill("no-map-matches-this-query")
+        page.wait_for_timeout(300)
+        _pane(page, "Análisis")
+        if total() != len(registered_assets(page)):
+            failures.append("Analytics inherited map search or counted geographic boundaries")
+        analysis = page.locator(".territorio-analisis")
+        analysis.get_by_label("Buscar activos", exact=True).fill(token)
+        if total() != 3:
+            failures.append(f"Analytics query counted {total()}, expected three assets and no boundaries")
+        sector = next(record for record in stored if record["name"] == f"{token} Sector A")
+        analysis.get_by_label("Sector", exact=True).select_option(str(sector["id"]))
+        if total() != 2:
+            failures.append("Sector filtering omitted the polygon asset or kept the location-less record")
+        analysis.get_by_role("button", name=f"Quitar Sector: {token} Sector A", exact=True).click()
+        analysis.get_by_role("button", name="Salud: 2 activos. Filtrar categoría", exact=True).click()
+        if total() != 2:
+            failures.append("clicking a category bar did not filter Analytics")
+        analysis.get_by_role("button", name="Quitar Categoría: Salud", exact=True).click()
+        analysis.get_by_role("button", name="Sin ubicación", exact=False).click()
+        if total() != 1:
+            failures.append("the missing-location action did not select the unlocated asset")
+        analysis.get_by_role("button", name="Ver en el mapa", exact=True).click()
+        page.wait_for_timeout(500)
+        if page.locator(ROWS).count() != 1 or token not in page.locator(ROWS).first.inner_text():
+            failures.append("explicit Analytics transfer did not replace the map/list selection")
+        _pane(page, "Análisis")
+        if total() != 1:
+            failures.append("Analytics lost its filter when visiting the map")
+        analysis.get_by_role("button", name="Exportar resultados", exact=True).click()
+        with page.expect_download() as download:
+            page.get_by_role("dialog").get_by_role("button", name="Exportar", exact=True).click()
+        exported = json.loads(Path(download.value.path()).read_text())
+        names = [feature["properties"]["name"] for feature in exported["features"]]
+        if names != [f"{token} Sin ubicación"]:
+            failures.append(f"Analytics exported a different selection: {names}")
+        analysis.get_by_role("button", name="Limpiar filtros", exact=True).click()
+        analysis.get_by_label("Buscar activos", exact=True).fill(token)
+        page.screenshot(path=str(SHOTS / "analytics-desktop.png"), full_page=False)
+        original_size = page.viewport_size
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(400)
+        analysis.locator(".territorio-analisis__more > summary").click()
+        if analysis.evaluate("node => node.scrollWidth > node.clientWidth + 1"):
+            failures.append("Analytics overflows horizontally on a 390px screen")
+        analysis.get_by_label("Área personalizada", exact=True).select_option(
+            str(next(record["id"] for record in stored if record["name"] == f"{token} Área")))
+        if total() != 2:
+            failures.append("the mobile custom-area filter did not include both overlapping assets")
+        page.screenshot(path=str(SHOTS / "analytics-mobile.png"), full_page=False)
+        page.set_viewport_size(original_size)
+        analysis.get_by_role("button", name="Limpiar filtros", exact=True).click()
+        _pane(page, "Mapa")
+        page.get_by_role("button", name="Ver todo el mapa", exact=True).click()
+        page.locator(SEARCH).fill("")
+    finally:
+        for record in stored:
+            status = page.evaluate("""async id => {
+                const response = await fetch(`/index.php/apps/territorio/features/${id}`, {
+                    method: 'DELETE', headers: { requesttoken: window.OC.requestToken },
+                })
+                return response.status
+            }""", record["id"])
+            if status != 200:
+                failures.append(f"Analytics fixture retirement failed: {record['id']} HTTP {status}")
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+
 def main():
     SHOTS.mkdir(exist_ok=True)
     failures = []
@@ -8698,6 +8798,11 @@ def main():
         # `--only extent` is the quick check of where the map opens on a chosen Comuna.
         if ONLY == "extent":
             run(the_map_opens_on_the_comuna_extent, page, tiles, failures)
+            browser.close()
+            return _report(errors, failures)
+
+        if ONLY == "analytics":
+            run(analytics_has_its_own_filters, page, failures)
             browser.close()
             return _report(errors, failures)
 
@@ -8827,6 +8932,7 @@ def main():
         # Sectores. Before the cluster records below, which sit eleven metres apart
         # and add nothing a table can show.
         run(the_indice_reads_the_registry, page, failures)
+        run(analytics_has_its_own_filters, page, failures)
 
         # Three records a few metres apart, made once and read by both checks
         # below: one bubble to measure the ring on, and two pins to measure the
@@ -8915,6 +9021,10 @@ def _report(errors, failures):
         print(f"FAIL  {line}")
     if failures:
         return 1
+
+    if ONLY == "analytics":
+        print("OK    independent Analytics filters, overlap, export, map transfer and mobile layout")
+        return 0
 
     if ONLY == "redesign":
         print("OK    the redesigned topbar works: search, tabs, layers menu, drawer, drawing")

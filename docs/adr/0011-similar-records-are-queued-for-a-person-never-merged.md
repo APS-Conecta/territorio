@@ -39,3 +39,12 @@ findable.
   one place, so the question is open again.
 - The survivor is always named by the person. Which of two records is the better one is a judgement
   about the place; the newer row is not the truer one.
+
+## Amendment — field choices and safe undo (2026-11-01)
+
+A reviewed merge may copy selected fields into the survivor. The pair stores its exact previous
+values and stewardship flag together with the survivor Revision written by that merge. Restoring
+the loser reverses those survivor edits and reopens the pair in one transaction. If the survivor
+has changed or been retired since the merge, restoration preserves those later changes and tells
+the user to review both records; undo must never overwrite newer fieldwork. Historical revisions
+remain append-only. Existing merges without field edits need no snapshot.

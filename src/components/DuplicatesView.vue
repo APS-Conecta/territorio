@@ -65,11 +65,27 @@
 					</NcButton>
 					<NcButton variant="primary"
 						:disabled="busy === pair.id"
-						@click="$emit('merge', { pairId: pair.id, survivorId: side.id })">
-						Conservar este
+						@click="startReview(pair, side.id)">
+						Revisar fusión con esta ficha
 					</NcButton>
 				</article>
 			</div>
+
+			<form v-if="review?.pairId === pair.id" class="territorio-duplicados__review" @submit.prevent="confirmMerge">
+				<h3>Información que se conservará</h3>
+				<p>Se proponen los datos que faltan. Revise las diferencias antes de confirmar.</p>
+				<label v-for="field in review.fields" :key="field.key" class="territorio-duplicados__choice">
+					<span>{{ field.label }}</span>
+					<select v-model="field.sourceId" :disabled="busy === pair.id">
+						<option v-for="side in review.sides" :key="side.id" :value="side.id">
+							{{ fieldValue(side, field.key) }} — {{ side.name }}
+						</option>
+					</select>
+				</label>
+				<p>La otra ficha se retira y conserva su historial. Puede restaurarla desde los registros retirados.</p>
+				<NcButton type="submit" variant="primary" :disabled="busy === pair.id">Confirmar fusión</NcButton>
+				<NcButton type="button" :disabled="busy === pair.id" @click="review = null">Cancelar</NcButton>
+			</form>
 
 			<NcButton variant="tertiary"
 				:disabled="busy === pair.id"
@@ -84,6 +100,7 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { indexSubcategories } from '../taxonomy.js'
+import { mergeReview } from '../mergeReview.js'
 
 /** Why a pair is here, said as the question the reviewer is answering. */
 const WHY = {
@@ -111,7 +128,7 @@ export default {
 	emits: ['merge', 'dismiss', 'retry', 'show', 'back'],
 
 	data() {
-		return { WHY }
+		return { WHY, review: null }
 	},
 
 	computed: {
@@ -126,6 +143,32 @@ export default {
 	},
 
 	methods: {
+		startReview(pair, survivorId) {
+			const sides = this.sidesOf(pair)
+			if (sides.length !== 2) return
+			const survivor = sides.find((side) => side.id === survivorId)
+			const other = sides.find((side) => side.id !== survivorId)
+			this.review = {
+				pairId: pair.id, survivorId, sides,
+				fields: mergeReview(survivor, other),
+				reviewedRevisions: Object.fromEntries(sides.map((side) => [side.id, side.revision])),
+			}
+		},
+
+		fieldValue(side, key) {
+			if (key === 'subcategoryId') return this.labelFor(side)
+			if (key === 'geometry') return side.geometry ? JSON.stringify(side.geometry.coordinates) : 'Sin ubicación'
+			return side[key] || 'Sin información'
+		},
+
+		confirmMerge() {
+			const { pairId, survivorId, reviewedRevisions, fields } = this.review
+			this.$emit('merge', {
+				pairId, survivorId, reviewedRevisions,
+				fieldSources: Object.fromEntries(fields.map((field) => [field.key, field.sourceId])),
+			})
+		},
+
 		/**
 		 * The two records, or fewer if one has just been resolved away.
 		 *
@@ -151,7 +194,7 @@ export default {
 	padding: 16px 24px 32px;
 	overflow-y: auto;
 	height: 100%;
-	background: #ffffff;
+	background: var(--color-main-background);
 }
 
 .territorio-duplicados__head {
@@ -213,4 +256,8 @@ export default {
 	font-size: 0.9em;
 	margin: 0 0 4px;
 }
+.territorio-duplicados__review { padding: 12px; background: var(--color-background-hover); border-radius: var(--border-radius-large); margin-block: 12px; }
+.territorio-duplicados__choice { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 12px; align-items: center; margin-block: 8px; }
+.territorio-duplicados__choice select { width: 100%; min-height: 44px; color: var(--color-main-text); background: var(--color-main-background); }
+@media (max-width: 600px) { .territorio-duplicados__choice { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 </style>

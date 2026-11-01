@@ -72,7 +72,10 @@ class FeatureController extends Controller {
 			return $this->missing();
 		}
 
-		return $this->attempt(fn (): array => $this->features->restore((int)$id)->toClient());
+		return $this->attempt(function () use ($id): array {
+			$result = $this->features->restoreWithReport((int)$id);
+			return [...$result['feature']->toClient(), 'restoreNotice' => $result['notice']];
+		});
 	}
 
 	#[NoAdminRequired]

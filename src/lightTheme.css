@@ -1,0 +1,5 @@
+/* Scope Nextcloud's native light palette to the app and its teleported dialogs. */
+.territorio-light-theme {
+	color-scheme: light;
+	color: var(--color-main-text);
+}

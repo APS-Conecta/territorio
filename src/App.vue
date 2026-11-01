@@ -980,8 +980,8 @@ export default {
 		 * at that here would mean two descriptions of the same event that can
 		 * disagree.
 		 */
-		async mergePair({ pairId, survivorId }) {
-			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/merge`, { survivorId })
+		async mergePair({ pairId, survivorId, fieldSources, reviewedRevisions }) {
+			await this.resolve(pairId, `/apps/territorio/duplicates/${pairId}/merge`, { survivorId, fieldSources, reviewedRevisions })
 		},
 
 		async dismissPair(pairId) {

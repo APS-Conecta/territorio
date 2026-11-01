@@ -989,6 +989,7 @@ def create_a_place(page, name, failures, lat=None, lon=None):
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(lat or f"-33.5{300 + NUDGE}")
     page.get_by_label("Longitud").fill(lon or f"-70.5{300 + NUDGE}")
     save(page, failures, "the Place")
@@ -1047,6 +1048,14 @@ def run(check, page, *args, **kwargs):
     """One check, from the list."""
     to_list(page)
     return check(page, *args, **kwargs)
+
+
+def open_optional_fields(page):
+    """Manual coordinate/contact checks explicitly expand the optional controls."""
+    for title in ("Coordenadas y exactitud", "Contacto (opcional)"):
+        section = page.locator("details.territorio-detail__section").filter(has=page.locator("summary", has_text=title))
+        if section.count() and section.first.get_attribute("open") is None:
+            section.first.locator("summary").click()
 
 
 def edit(page):
@@ -1305,6 +1314,7 @@ def a_save_that_lands_after_leaving_the_record_still_lists_it(page, failures):
     page.get_by_label("Nombre").fill(name)
     # Clear of this run's other typed records: create_a_place and the Cúmulo
     # pins sit at 300, the export pair at 600 and 700.
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{800 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{800 + NUDGE}")
 
@@ -1681,6 +1691,7 @@ def a_cancelled_drawing_leaves_the_place_coordinate(page, failures):
     try:
         page.get_by_role("button", name="Agregar", exact=True).click()
         page.get_by_label("Nombre").fill(f"Prueba de dibujo {RUN}")
+        open_optional_fields(page)
         page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE}")
         page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE}")
         fields = ("Nombre", "Latitud", "Longitud")
@@ -1775,6 +1786,7 @@ def _a_pin_click_is_a_map_click_while_placing(page, failures):
         if not _click_a_pin(page, page.locator(PIN), f"{plaza!r}'s pin with a new record's form open", failures):
             return
 
+        open_optional_fields(page)
         name, lat, lon = (page.get_by_label(label) for label in ("Nombre", "Latitud", "Longitud"))
         if name.count() == 0 or name.input_value() != typed:
             failures.append(
@@ -2177,8 +2189,9 @@ def the_duplicate_queue_works(page, failures):
 
     # Keep one. The other leaves the Registry, and the pair leaves the queue.
     card.locator(".territorio-duplicados__side").first.get_by_role(
-        "button", name="Conservar este",
+        "button", name="Revisar fusión con esta ficha",
     ).click()
+    card.get_by_role("button", name="Confirmar fusión", exact=True).click()
 
     if not settles(
         page,
@@ -2217,8 +2230,10 @@ def exports_ask_for_a_password_only_when_earned(page, failures):
     contact = f"Contacto Navegador {RUN}"
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(contact)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{400 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{400 + NUDGE}")
+    open_optional_fields(page)
     page.get_by_label("Teléfono").fill("+56 9 8765 4321")
     save(page, failures, "the record with contact details")
     dismiss(page)
@@ -2462,6 +2477,7 @@ def the_export_offers_the_live_set_with_retirados_on(page, failures):
     for name, offset in ((gone, 600), (live, 700)):
         page.get_by_role("button", name="Agregar", exact=True).click()
         page.get_by_label("Nombre").fill(name)
+        open_optional_fields(page)
         page.get_by_label("Latitud").fill(f"-33.5{offset + NUDGE}")
         page.get_by_label("Longitud").fill(f"-70.5{offset + NUDGE}")
         save(page, failures, f"the exportable record {name!r}")
@@ -4533,6 +4549,7 @@ def a_pin_says_what_kind_of_place_it_is(page, failures):
 
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{340 + NUDGE}")
     page.get_by_label("Longitud").fill(f"-70.5{340 + NUDGE}")
 
@@ -4666,6 +4683,7 @@ def _a_clustered_place(page, name, subcategory, offset, failures, quality=None):
     to_list(page)
     page.get_by_role("button", name="Agregar", exact=True).click()
     page.get_by_label("Nombre").fill(name)
+    open_optional_fields(page)
     page.get_by_label("Latitud").fill(f"-33.5{300 + NUDGE + offset}")
     page.get_by_label("Longitud").fill(f"-70.5{300 + NUDGE + offset}")
 

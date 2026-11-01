@@ -9,6 +9,7 @@ use OCA\Territorio\Db\Duplicate;
 use OCA\Territorio\Db\DuplicateMapper;
 use OCA\Territorio\Db\Feature;
 use OCA\Territorio\Db\FeatureMapper;
+use OCA\Territorio\Db\RevisionLog;
 use OCA\Territorio\Domain\DuplicateFinder;
 use OCA\Territorio\Exception\InvalidFeatureException;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -39,6 +40,7 @@ class DuplicateService {
 		private FeatureService $featureService,
 		private IUserSession $session,
 		private IDBConnection $db,
+		private RevisionLog $revisions,
 	) {
 	}
 
@@ -127,7 +129,7 @@ class DuplicateService {
 	 * @throws DoesNotExistException when the pair or either record is gone
 	 * @throws InvalidFeatureException when the pair is already resolved or the survivor is not one of the two
 	 */
-	public function merge(int $pairId, int $survivorId): Feature {
+	public function merge(int $pairId, int $survivorId, array $fieldSources = [], array $reviewedRevisions = []): Feature {
 		$pair = $this->duplicates->find($pairId);
 		$this->refuseResolved($pair);
 
@@ -148,8 +150,35 @@ class DuplicateService {
 		// take no locks and write nothing — the writes re-verify under their own
 		// locks (#208), so a pair resolved between the read here and the write
 		// below refuses, and the rollback takes the retirement with it.
-		return $this->transactionally(function () use ($pair, $loserId, $survivorId): Feature {
+		return $this->transactionally(function () use ($pair, $loserId, $survivorId, $fieldSources, $reviewedRevisions): Feature {
+			$this->revisions->lockCurrent();
+			$records = [
+				$survivorId => $this->features->find($survivorId),
+				$loserId => $this->features->find($loserId),
+			];
+			if ($reviewedRevisions !== []) {
+				foreach ($records as $id => $record) {
+					if (($reviewedRevisions[$id] ?? null) !== $record->getRevision()) {
+						throw new InvalidFeatureException('Las fichas cambiaron. Vuelva a revisar el par antes de fusionar.');
+					}
+				}
+			}
+			$allowed = ['name', 'subcategoryId', 'geometry', 'address', 'phone', 'email', 'contactPerson', 'contactRole', 'openingHours', 'notes', 'sourceRef'];
+			$input = $records[$survivorId]->toClient();
+			foreach ($fieldSources as $field => $sourceId) {
+				if (!in_array($field, $allowed, true) || !is_int($sourceId) || !isset($records[$sourceId])) {
+					throw new InvalidFeatureException('La selección de información no corresponde a este par.');
+				}
+				$source = $records[$sourceId]->toClient();
+				$input[$field] = $source[$field];
+				if ($field === 'geometry') {
+					$input['locationQuality'] = $source['locationQuality'];
+				}
+			}
 			$this->claim($pair, Duplicate::MERGED);
+			if ($fieldSources !== []) {
+				$this->featureService->update($survivorId, $input);
+			}
 
 			return $this->featureService->merge($loserId, $survivorId);
 		});

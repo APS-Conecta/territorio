@@ -178,9 +178,12 @@
 		<fieldset v-if="!hasShape" class="territorio-detail__field territorio-detail__coords">
 			<legend>Ubicación</legend>
 			<p class="territorio-detail__hint">
-				Haga clic en el mapa para situar el registro, o escriba las coordenadas.
+				Haga clic en el mapa para colocar el pin. Las coordenadas se guardan automáticamente.
 				Un registro sin coordenadas es válido: aparece en la lista y no en el mapa.
 			</p>
+			<p class="territorio-detail__hint" role="status">{{ hasCoordinates ? 'Pin colocado en el mapa.' : 'Sin ubicación: puede agregarla más adelante.' }}</p>
+			<details class="territorio-detail__section">
+				<summary>Coordenadas y exactitud (opcional)</summary>
 			<div class="territorio-detail__coords-row">
 				<NcTextField v-model="draft.lat" label="Latitud" inputmode="decimal" />
 				<NcTextField v-model="draft.lon" label="Longitud" inputmode="decimal" />
@@ -198,6 +201,7 @@
 				:options="qualityOptions"
 				:clearable="false"
 				label="label" />
+			</details>
 		</fieldset>
 
 		<!--
@@ -213,16 +217,10 @@
 			</span>
 		</p>
 
-		<NcTextField v-model="draft.address" class="territorio-detail__field" label="Dirección" />
+		<NcTextField v-model="draft.address" class="territorio-detail__field" label="Dirección (opcional)" />
 
-		<!--
-			Native <details>, for the same reason CapasPanel collapses with one: no
-			state to hold, no aria-expanded to keep in sync, keyboard-reachable for
-			nothing. «Contacto» is open — a clinic answers the phone on a normal
-			day; «Más información» is not — hours, source and notes are reference.
-		-->
-		<details class="territorio-detail__section" open>
-			<summary>Contacto</summary>
+		<details class="territorio-detail__section">
+			<summary>Contacto (opcional)</summary>
 			<NcTextField v-model="draft.phone" class="territorio-detail__field" label="Teléfono" />
 			<NcTextField v-model="draft.email" class="territorio-detail__field" label="Correo" />
 			<NcTextField v-model="draft.contactPerson" class="territorio-detail__field" label="Persona de contacto" />
@@ -230,7 +228,7 @@
 		</details>
 
 		<details class="territorio-detail__section">
-			<summary>Más información</summary>
+			<summary>Más información (opcional)</summary>
 			<NcTextField v-model="draft.openingHours" class="territorio-detail__field" label="Horario" />
 			<NcTextField v-model="draft.sourceRef" class="territorio-detail__field" label="Fuente" />
 			<NcTextArea v-model="draft.notes" class="territorio-detail__field" label="Notas" />

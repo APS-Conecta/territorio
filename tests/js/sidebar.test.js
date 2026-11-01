@@ -93,9 +93,9 @@ describe('the action group (#35)', () => {
 
 describe('the form sections its stacked fields', () => {
 	it('groups contact and reference fields behind summaries', () => {
-		expect(detail).toContain('<details class="territorio-detail__section" open>')
-		expect(detail).toContain('<summary>Contacto</summary>')
-		expect(detail).toContain('<summary>Más información</summary>')
+		expect(detail).not.toContain('<details class="territorio-detail__section" open>')
+		expect(detail).toContain('<summary>Contacto (opcional)</summary>')
+		expect(detail).toContain('<summary>Más información (opcional)</summary>')
 		// Sectioning moves markup; it drops nothing. Every field stays bound.
 		for (const label of ['Teléfono', 'Correo', 'Persona de contacto', 'Cargo',
 			'Horario', 'Fuente', 'Notas']) {

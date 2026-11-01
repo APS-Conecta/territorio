@@ -110,7 +110,10 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 			'phone' => '222', 'address' => 'Los Aromos 10', 'notes' => 'Acceso universal',
 		]);
 		$this->features->update($first, array_merge(Server::get(FeatureMapper::class)->find($first)->toClient(), ['phone' => '111']));
-		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second, 'address' => $second, 'notes' => $second]);
+		$this->service->merge((int)$pair->getId(), $first, ['phone' => $second, 'address' => $second, 'notes' => $second], [
+			$first => Server::get(FeatureMapper::class)->find($first)->getRevision(),
+			$second => Server::get(FeatureMapper::class)->find($second)->getRevision(),
+		]);
 		$survivor = Server::get(FeatureMapper::class)->find($first);
 		self::assertSame('222', $survivor->getPhone());
 		self::assertSame('Los Aromos 10', $survivor->getAddress());
@@ -145,6 +148,23 @@ final class DuplicateQueueTest extends IntegrationTestCase {
 			self::assertFalse(Server::get(FeatureMapper::class)->find($second)->getRetired());
 			self::assertSame(Duplicate::PENDING, $this->duplicates->find((int)$pair->getId())->getStatus());
 		}
+	}
+
+	public function testChoosingUnchangedFieldsDoesNotEditTheSurvivor(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal');
+		$mapper = Server::get(FeatureMapper::class);
+		$revision = $mapper->find($first)->getRevision();
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $first], [
+			$first => $revision, $second => $mapper->find($second)->getRevision(),
+		]);
+		self::assertSame($revision, $mapper->find($first)->getRevision());
+	}
+
+	public function testFieldChoicesRequireBothReviewedRevisions(): void {
+		[$first, $second, $pair] = $this->twinsAt('Biblioteca', 'Biblioteca vecinal');
+		$this->expectException(InvalidFeatureException::class);
+		$this->expectExceptionMessage('Vuelva a revisar');
+		$this->service->merge((int)$pair->getId(), $first, ['name' => $second]);
 	}
 
 	public function testImportFlagsAPairAndMergesNothing(): void {

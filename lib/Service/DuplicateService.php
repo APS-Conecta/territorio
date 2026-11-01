@@ -156,6 +156,9 @@ class DuplicateService {
 				$survivorId => $this->features->find($survivorId),
 				$loserId => $this->features->find($loserId),
 			];
+			if ($fieldSources !== [] && $reviewedRevisions === []) {
+				throw new InvalidFeatureException('Vuelva a revisar ambas fichas antes de fusionar.');
+			}
 			if ($reviewedRevisions !== []) {
 				foreach ($records as $id => $record) {
 					if (($reviewedRevisions[$id] ?? null) !== $record->getRevision()) {
@@ -176,7 +179,7 @@ class DuplicateService {
 				}
 			}
 			$this->claim($pair, Duplicate::MERGED);
-			if ($fieldSources !== []) {
+			if ($input !== $records[$survivorId]->toClient()) {
 				$this->featureService->update($survivorId, $input);
 			}
 

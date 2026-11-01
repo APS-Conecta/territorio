@@ -1,6 +1,6 @@
 <template>
 	<NcDialog name="Importar y deshacer"
-		size="normal"
+		size="large"
 		:open="true"
 		@update:open="$emit('close')">
 		<div class="territorio-import">
@@ -13,8 +13,8 @@
 			</NcNoteCard>
 
 			<p v-else class="territorio-import__hint">
-				GeoJSON (un FeatureCollection), KML, KMZ o CSV. Se revisa entero antes de
-				escribir nada: si una fila es inválida, no se importa ninguna.
+				ODS permite revisar y elegir filas antes de guardar. También puede importar
+				GeoJSON, KML, KMZ o CSV; en esos formatos una fila inválida impide importar el archivo.
 			</p>
 
 			<!--
@@ -47,8 +47,11 @@
 				Notas, Fuente y Ubicación; las demás se ignoran.
 				<strong>El CSV que exporta esta aplicación no vuelve a entrar</strong>: es
 				para leer, ordenar e imprimir. Para volver a importar lo que salió de aquí,
-				exporte GeoJSON.
+				exporte ODS para activos puntuales o GeoJSON para otras geometrías.
 			</NcNoteCard>
+
+			<NcButton :disabled="working" @click="downloadTemplate">Descargar plantilla ODS</NcButton>
+			<p class="territorio-import__hint">Para completar o editar activos en una planilla, use ODS. Dirección, contacto, horario y notas son opcionales. Sin búsqueda automática de coordenadas.</p>
 
 			<NcTextField v-model="dataset"
 				class="territorio-import__field"
@@ -60,7 +63,7 @@
 				<span>Archivo</span>
 				<input ref="archivo"
 					type="file"
-					accept=".geojson,.json,.kml,.kmz,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,text/csv"
+					accept=".ods,application/vnd.oasis.opendocument.spreadsheet,.geojson,.json,.kml,.kmz,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,text/csv"
 					:disabled="working"
 					@change="pick">
 			</label>
@@ -85,6 +88,8 @@
 			<p v-else-if="file" class="territorio-import__hint">
 				{{ file.name }} · {{ Math.round(file.size / 1024) }} KB
 			</p>
+
+			<OdsReview v-if="preview" v-model="decisions" :preview="preview" :disabled="working" />
 
 			<!--
 				Undo lives beside the thing it undoes. ADR-0009 says there is no
@@ -129,8 +134,9 @@
 		</div>
 
 		<template #actions>
-			<NcButton :disabled="!canImport" variant="primary" @click="send">
-				{{ working ? 'Importando…' : 'Importar' }}
+			<NcButton v-if="preview" :disabled="working" @click="resetPreview">Volver a revisar archivo</NcButton>
+			<NcButton :disabled="preview ? !canCommit : !canImport" variant="primary" @click="preview ? commitOds() : send()">
+				{{ working ? 'Procesando…' : preview ? 'Confirmar importación' : isOds ? 'Revisar planilla' : 'Importar' }}
 			</NcButton>
 		</template>
 	</NcDialog>
@@ -145,17 +151,20 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { messageFrom, warnError } from '../api.js'
 import { when } from '../when.js'
+import OdsReview from './OdsReview.vue'
 
 export default {
 	name: 'ImportDialog',
 
-	components: { NcButton, NcDialog, NcNoteCard, NcTextField },
+	components: { NcButton, NcDialog, NcNoteCard, NcTextField, OdsReview },
 
 	emits: ['close', 'imported'],
 
 	data() {
 		return {
 			dataset: '',
+			preview: null,
+			decisions: [],
 			file: null,
 			// The path of a file already in Files, when that is where this import
 			// is coming from (#104). Exactly one of `path` and `file` is ever set.
@@ -168,11 +177,21 @@ export default {
 		}
 	},
 
+	watch: {
+		dataset() { this.resetPreview() },
+	},
+
 	mounted() {
 		this.loadBatches()
 	},
 
 	computed: {
+		isOds() { return this.chosenName.endsWith('.ods') },
+		canCommit() {
+			return !this.working && this.decisions.length > 0 && !this.preview.rows.some(row =>
+				row.candidates.length && this.decisions.some(value => value.row === row.row && !value.confirmDuplicates))
+		},
+
 		canImport() {
 			return !this.working && this.chosenName !== '' && this.dataset.trim() !== ''
 		},
@@ -222,6 +241,7 @@ export default {
 		 */
 		summary() {
 			const r = this.result
+			if (r.reviewed) return `${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos por selección. Puede deshacer el lote desde Importaciones recientes.`
 			return `${r.created} creados, ${r.updated} actualizados, ${r.unchanged} sin cambios, `
 				+ `${r.skipped} omitidos por edición local, ${r.duplicates} duplicados en el archivo, `
 				+ `${r.unsupported} con geometría no soportada.`
@@ -259,6 +279,7 @@ export default {
 		},
 
 		pick(event) {
+			this.resetPreview()
 			this.file = event.target.files?.[0] ?? null
 			this.path = ''
 			this.error = ''
@@ -289,6 +310,7 @@ export default {
 			window.OC.dialogs.filepicker(
 				'Elegir un archivo para importar',
 				(path) => {
+					this.resetPreview()
 					this.path = path
 					this.file = null
 					// The native input keeps displaying the name it was given, so
@@ -307,6 +329,47 @@ export default {
 			)
 		},
 
+		resetPreview() {
+			this.preview = null
+			this.decisions = []
+		},
+
+		async downloadTemplate() {
+			this.working = true
+			this.error = ''
+			try {
+				const { data } = await axios.get(generateUrl('/apps/territorio/ods/template'), { responseType: 'blob' })
+				const url = URL.createObjectURL(data)
+				const link = document.createElement('a')
+				link.href = url
+				link.download = 'plantilla-activos-comunitarios.ods'
+				document.body.appendChild(link)
+				link.click()
+				link.remove()
+				setTimeout(() => URL.revokeObjectURL(url), 0)
+			} catch (exception) {
+				this.error = await messageFrom(exception, 'No se pudo descargar la plantilla.')
+			} finally {
+				this.working = false
+			}
+		},
+
+		async commitOds() {
+			this.working = true
+			this.error = ''
+			try {
+				const { data } = await axios.post(generateUrl('/apps/territorio/ods/commit'), { token: this.preview.token, decisions: this.decisions })
+				this.result = { ...data, reviewed: true }
+				this.resetPreview()
+				await this.loadBatches()
+				this.$emit('imported')
+			} catch (exception) {
+				this.error = await messageFrom(exception, 'No se pudo importar la selección. Vuelva a revisar el archivo.')
+			} finally {
+				this.working = false
+			}
+		},
+
 		async send() {
 			this.working = true
 			this.error = ''
@@ -323,7 +386,12 @@ export default {
 			body.append('dataset', this.dataset.trim())
 
 			try {
-				const { data } = await axios.post(generateUrl('/apps/territorio/import'), body)
+				const { data } = await axios.post(generateUrl(this.isOds ? '/apps/territorio/ods/preview' : '/apps/territorio/import'), body)
+				if (this.isOds) {
+					this.preview = data
+					this.decisions = data.rows.filter(row => row.status !== 'invalid' && !row.candidates.length).map(row => ({ row: row.row, clear: [], confirmDuplicates: false }))
+					return
+				}
 				this.result = data
 				await this.loadBatches()
 				// The list and the map catch up through the change cursor rather

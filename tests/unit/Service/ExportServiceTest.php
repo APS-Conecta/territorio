@@ -15,6 +15,7 @@ use OCA\Territorio\Domain\Kind;
 use OCA\Territorio\Service\KmlWriter;
 use OCA\Territorio\Service\TaxonomyService;
 use OCP\IUserSession;
+use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -70,6 +71,7 @@ final class ExportServiceTest extends TestCase {
 			new CsvWriter(),
 			$kml ?? new KmlWriter(),
 			$this->createMock(IUserSession::class),
+			$this->createMock(IConfig::class),
 		);
 	}
 

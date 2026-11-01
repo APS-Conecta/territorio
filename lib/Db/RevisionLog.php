@@ -157,6 +157,20 @@ class RevisionLog {
 		return $value === false || $value === null ? 0 : (int)$value;
 	}
 
+	/** Keep a reviewed snapshot stable until its writes commit, without creating a Revision. */
+	public function lockCurrent(): int {
+		if (!$this->db->inTransaction()) {
+			throw new BadFunctionCallException('a review lock requires a transaction');
+		}
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('territorio_cursor')
+			->set('value', $qb->createFunction('value'))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter(self::CURSOR_ROW, IQueryBuilder::PARAM_INT)))
+			->executeStatement();
+
+		return $this->current();
+	}
+
 	/**
 	 * One Feature's history, newest first.
 	 *

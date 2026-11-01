@@ -5,6 +5,14 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 
 ## [Unreleased]
 
+### Community asset inventory (0.81.0)
+
+- Independent Analytics filters show registered community assets rather than territorial boundaries. Explicit drilldown transfers an Analytics selection to the map; map movement and map filters never change Analytics. Missing locations remain visible in inventory totals (#250).
+- Named custom areas can overlap without replacing clinical Sector assignments. Geographic filters use intersections and overall counts remain unique (#251; ADR-0023).
+- Point asset entry prioritizes a map pin and automatic coordinate capture. Manual address, contact details, hours, notes and source remain optional, with no external geocoding (#253).
+- Duplicate review compares field values and preserves chosen complementary information before a reversible merge. A changed record invalidates a stale review instead of overwriting a colleague's edits (#253).
+- ODS templates and selected exports carry stable identity for edited round trips. Import previews validate and flag possible duplicates before selected rows are committed; blanks preserve optional values, missing rows never delete records, and batches remain reversible (#252).
+
 The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks (ADR-0021).
 
 ### Changed

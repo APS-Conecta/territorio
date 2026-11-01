@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "territorio",
-        "version": "0.80.1",
+        "version": "0.81.0",
         "description": "Mapa territorial de un CESFAM",
         "license": {
             "name": "AGPL-3.0-or-later"
@@ -483,6 +483,10 @@
         {
             "name": "feature",
             "description": "Creating and editing Features. #[NoAdminRequired] is deliberate: every user who can open Territorio may edit the Registry (ADR-0005). The safety net is history and retirement, not permissions — and both arrive in later slices, so nothing here may hard-delete anything. Thin on purpose. All the judgement is in FeatureService, which is what makes an OCS controller later a new file rather than a rewrite."
+        },
+        {
+            "name": "ods",
+            "description": "Session-bound previews prevent committing a different file from the one reviewed."
         },
         {
             "name": "import",

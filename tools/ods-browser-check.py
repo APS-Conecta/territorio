@@ -75,6 +75,7 @@ def close_dialog(page):
 
 
 def preview(page, dataset, blob):
+    gate._pane(page, "Mapa")
     page.get_by_role("button", name="Importar / deshacer").click()
     page.get_by_label("Conjunto de datos").fill(dataset)
     page.locator('input[type="file"]').set_input_files({
@@ -116,6 +117,7 @@ def main():
         page.get_by_label("Corregir clasificación de fila 2").select_option(label="Salud · Otro")
         page.get_by_role("button", name="Aplicar clasificación", exact=True).click()
         expect(page.get_by_text("Nuevo", exact=True)).to_be_visible()
+        page.get_by_role("checkbox", name=f"Fila 2 · {name}", exact=False).check()
         assert gate.registry_feature(page, name) is None, "Classification correction wrote an asset"
         page.screenshot(path=str(gate.SHOTS / "ods-preview.png"), full_page=False)
         page.get_by_role("button", name="Confirmar importación", exact=True).click()

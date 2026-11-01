@@ -84,6 +84,11 @@ class OdsController extends Controller {
 		if (!is_array($preview) || !hash_equals($preview['token'], $this->textParam('token')) || $preview['expires'] < time()) {
 			throw new InvalidImportException('La revisión expiró o cambió. Vuelva a revisar la planilla.');
 		}
+		// Nextcloud encrypts a JSON session; raw ZIP bytes are not valid UTF-8.
+		$preview['bytes'] = base64_decode($preview['bytes'], true);
+		if ($preview['bytes'] === false) {
+			throw new InvalidImportException('Vuelva a subir la planilla para revisarla.');
+		}
 		return $preview;
 	}
 
@@ -92,6 +97,7 @@ class OdsController extends Controller {
 		$stored['revision'] = $preview['revision'];
 		$stored['taxonomySignature'] = $preview['taxonomySignature'];
 		$stored['expires'] = time() + 1800;
+		$stored['bytes'] = base64_encode($stored['bytes']);
 		$this->session->set(self::PREVIEW, $stored);
 		return $preview + ['token' => $stored['token']];
 	}

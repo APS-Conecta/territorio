@@ -1009,7 +1009,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * «División territorial» can never be removed, and neither can its two
+	 * «División territorial» can never be removed, and neither can its structural
 	 * Subcategories: a Sector and a Unidad Vecinal cannot be saved without one,
 	 * and the seed restores them on every upgrade (ADR-0016).
 	 *
@@ -1031,7 +1031,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 		}
 
 		self::assertNotNull($this->served(EnsureSeedData::DIVISIONS_SLUG));
-		self::assertCount(2, $this->served(EnsureSeedData::DIVISIONS_SLUG)['subcategories']);
+		self::assertCount(3, $this->served(EnsureSeedData::DIVISIONS_SLUG)['subcategories']);
 	}
 
 	/** @return array<string, array{0: ?string}> */
@@ -1040,6 +1040,7 @@ final class CategoryCrudTest extends IntegrationTestCase {
 			'the Category itself' => [null],
 			'Sector' => ['sector'],
 			'Unidad Vecinal' => ['unidad_vecinal'],
+			'Custom area' => ['custom_area'],
 		];
 	}
 

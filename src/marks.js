@@ -18,7 +18,7 @@
  * docs/design/map-legibility.md § 2, computed with tools/ramp-check.py's own
  * functions rather than judged by eye.
  */
-import { SECTOR_SLUG, UNIDAD_VECINAL_SLUG } from './taxonomy.js'
+import { SECTOR_SLUG, UNIDAD_VECINAL_SLUG, CUSTOM_AREA_SLUG } from './taxonomy.js'
 
 /**
  * The Unidad Vecinal hairline. NOT `DEFAULT_SECTOR_COLOUR`, though it used to
@@ -92,6 +92,10 @@ export const PIN_GLYPH_SIZE = 19
  * @return {object} options for Path.setStyle
  */
 export function shapeStyle(slug, colour, selected = false) {
+	if (slug === CUSTOM_AREA_SLUG) {
+		return { color: colour, weight: selected ? 4 : 2, opacity: 1, fill: false }
+	}
+
 	if (slug === UNIDAD_VECINAL_SLUG) {
 		return {
 			color: GROUND_OUTLINE,
@@ -131,6 +135,10 @@ export function shapeStyle(slug, colour, selected = false) {
  * @return {object} options for Layer.bindTooltip
  */
 export function labelOptions(slug) {
+	if (slug === CUSTOM_AREA_SLUG) {
+		return { permanent: true, direction: 'center', className: 'territorio-label territorio-label--custom' }
+	}
+
 	if (slug === SECTOR_SLUG) {
 		return { permanent: true, direction: 'center', className: 'territorio-label' }
 	}
@@ -171,7 +179,7 @@ export function swatchFor(slug, colour) {
 		return { mark: 'ring-dashed', background: '' }
 	}
 
-	if (slug === SECTOR_SLUG) {
+	if (slug === SECTOR_SLUG || slug === CUSTOM_AREA_SLUG) {
 		return { mark: 'ring', background: '' }
 	}
 

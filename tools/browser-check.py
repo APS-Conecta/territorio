@@ -5671,7 +5671,7 @@ def a_division_renders_as_a_division(page, failures):
     _figure_is_drawn_as_figure(page, sector, neutral, failures)
     _the_list_draws_a_ring_and_the_form_offers_a_colour(page, uv, sector, failures)
     _ground_stays_ground_while_it_is_open(page, uv, failures)
-    _the_chart_draws_a_division_neutral(page, neutral, failures)
+    _the_chart_excludes_territorial_divisions(page, failures)
 
     page.locator(SEARCH).fill("")
     page.wait_for_timeout(400)
@@ -5985,48 +5985,15 @@ def _ground_stays_ground_while_it_is_open(page, uv, failures):
     page.wait_for_timeout(400)
 
 
-def _the_chart_draws_a_division_neutral(page, neutral, failures):
-    """Análisis: the last surface the division Category's `#334155` can reach.
-
-    Both rows of the section, not just the top one. The Category row and the
-    Subcategory rows under it are separate bindings, and the first fix moved
-    only the first — so a install with Sectores or Unidades Vecinales drew its
-    `Sector` and `Unidad Vecinal` bars in the inert seed while the section
-    header above them was correctly neutral.
-    """
+def _the_chart_excludes_territorial_divisions(page, failures):
+    """Territorial boundaries describe geography, not community asset counts."""
     _pane(page, "Análisis")
     page.wait_for_timeout(600)
-
     section = page.locator(".territorio-analisis__category").filter(
         has_text="División territorial",
-    ).first
-    if section.count() == 0:
-        skip("Análisis shows no División territorial section, so its bars are unchecked (#29)")
-        _pane(page, "Mapa")
-        page.wait_for_timeout(400)
-        return
-
-    painted = section.locator(
-        ".territorio-analisis__fill, .territorio-analisis__swatch",
-    ).evaluate_all(
-        "(nodes) => nodes.map((node) => getComputedStyle(node).backgroundColor)",
     )
-
-    if len(painted) < 2:
-        failures.append(
-            "the División territorial section drew fewer than two bars, so the Subcategory "
-            "rows — the ones that kept the seed colour — were not measured (#29)",
-        )
-
-    for colour in painted:
-        if _hex_of(colour) != neutral:
-            failures.append(
-                f"a División territorial bar is painted {colour!r}, not the neutral "
-                f"{neutral} — the seeded `#334155` measures 1.73:1 against the dark theme "
-                f"and ADR-0013 leaves nowhere legible to move it to, so it renders "
-                f"nowhere (#29)",
-            )
-
+    if section.count():
+        failures.append("Análisis counted territorial divisions as community assets")
     _pane(page, "Mapa")
     page.wait_for_timeout(400)
 

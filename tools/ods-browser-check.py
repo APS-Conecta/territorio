@@ -121,7 +121,7 @@ def main():
         assert gate.registry_feature(page, name) is None, "Classification correction wrote an asset"
         page.screenshot(path=str(gate.SHOTS / "ods-preview.png"), full_page=False)
         page.get_by_role("button", name="Confirmar importación", exact=True).click()
-        expect(page.get_by_text("1 creados, 0 actualizados", exact=False)).to_be_visible()
+        expect(page.get_by_role("note").filter(has_text="1 creados, 0 actualizados")).to_be_visible()
         first = gate.registry_feature(page, name)
         assert first and first["geometry"] is None and first["phone"] == "+56911111111"
         close_dialog(page)
@@ -143,7 +143,7 @@ def main():
         preview(page, dataset, with_rows(exported, rows))
         expect(page.get_by_text("Actualización", exact=True)).to_be_visible()
         page.get_by_role("button", name="Confirmar importación", exact=True).click()
-        expect(page.get_by_text("0 creados, 1 actualizados", exact=False)).to_be_visible()
+        expect(page.get_by_role("note").filter(has_text="0 creados, 1 actualizados")).to_be_visible()
         updated = gate.registry_feature(page, updated_name)
         assert updated and updated["id"] == first["id"], "Edited ODS created a second asset"
         assert updated["phone"] == "+56911111111" and updated["notes"] == "Conservar nota", "Blank cells erased optional details"

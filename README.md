@@ -232,9 +232,6 @@ upstream updates the record it already has, and no Sector already drawn is moved
 
 ## Community asset inventory
 
-Territorio uses the light theme, including its import/export dialogs, without changing the user’s
-Nextcloud appearance preference.
-
 `Análisis` starts with all registered community assets for the center, including records without
 coordinates. Territorial divisions are filters, not assets counted in those totals. Search, Sector
 and Category are always available; `Más filtros` exposes Subcategory, Unidad Vecinal, custom area,

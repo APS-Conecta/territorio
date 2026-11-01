@@ -21,6 +21,7 @@ return [
 		// fewer people are allowed to make one.
 		['name' => 'ods#template', 'url' => '/ods/template', 'verb' => 'GET'],
 		['name' => 'ods#preview', 'url' => '/ods/preview', 'verb' => 'POST'],
+		['name' => 'ods#revise', 'url' => '/ods/revise', 'verb' => 'POST'],
 		['name' => 'ods#commit', 'url' => '/ods/commit', 'verb' => 'POST'],
 		['name' => 'import#upload', 'url' => '/import', 'verb' => 'POST'],
 		['name' => 'import#batches', 'url' => '/import/batches', 'verb' => 'GET'],

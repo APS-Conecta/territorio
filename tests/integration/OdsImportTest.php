@@ -25,7 +25,7 @@ final class OdsImportTest extends IntegrationTestCase {
 		$preview = $service->preview($bytes, $slug);
 		self::assertSame($before, Server::get(FeatureService::class)->currentRevision());
 		self::assertSame('new', $preview['rows'][0]['status']);
-		$batch = $service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'clear' => [], 'confirmDuplicates' => true]], 'admin');
+		$batch = $service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'clear' => [], 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
 		self::assertSame(1, $batch->getCreated());
 		$revert = Server::get(RevertService::class)->revert((int)$batch->getId(), 'admin');
 		self::assertSame(1, $revert->getUpdated());
@@ -44,7 +44,7 @@ final class OdsImportTest extends IntegrationTestCase {
 		$service = Server::get(OdsImportService::class);
 		$preview = $service->preview($edited, $slug);
 		self::assertSame('update', $preview['rows'][0]['status']);
-		$batch = $service->commit($edited, $slug, $preview['revision'], [['row' => 2, 'clear' => [], 'confirmDuplicates' => true]], 'admin');
+		$batch = $service->commit($edited, $slug, $preview['revision'], [['row' => 2, 'clear' => [], 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
 		self::assertSame(0, $batch->getCreated());
 		self::assertSame(1, $batch->getUpdated());
 		$feature = Server::get(FeatureMapper::class)->find($id);
@@ -60,7 +60,7 @@ final class OdsImportTest extends IntegrationTestCase {
 		$preview = $service->preview($bytes, 'test-ods-stale');
 		$this->place('Concurrent new record');
 		$this->expectException(InvalidImportException::class);
-		$service->commit($bytes, 'test-ods-stale', $preview['revision'], [['row' => 2, 'clear' => []]], 'admin');
+		$service->commit($bytes, 'test-ods-stale', $preview['revision'], [['row' => 2, 'clear' => []]], 'admin', $preview['taxonomySignature']);
 	}
 	public function testInvalidRowsAndUnreviewedCandidatesCannotWrite(): void {
 		$this->place('ODS duplicate without coordinates', ['geometry' => null, 'address' => 'Calle Uno 123']);
@@ -73,7 +73,7 @@ final class OdsImportTest extends IntegrationTestCase {
 		self::assertSame('invalid', $preview['rows'][1]['status']);
 		$before = Server::get(FeatureService::class)->currentRevision();
 		try {
-			$service->commit($bytes, 'test-ods-invalid', $preview['revision'], [['row' => 2, 'clear' => []]], 'admin');
+			$service->commit($bytes, 'test-ods-invalid', $preview['revision'], [['row' => 2, 'clear' => []]], 'admin', $preview['taxonomySignature']);
 			self::fail('An unreviewed possible duplicate must not be imported');
 		} catch (InvalidImportException $e) {
 			self::assertStringContainsString('duplicados', $e->getMessage());
@@ -103,7 +103,7 @@ final class OdsImportTest extends IntegrationTestCase {
 		$this->datasets[] = $slug;
 		$service = Server::get(OdsImportService::class);
 		$preview = $service->preview($bytes, $slug);
-		$batch = $service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'clear' => ['phone'], 'confirmDuplicates' => true]], 'admin');
+		$batch = $service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'clear' => ['phone'], 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
 		$feature = Server::get(FeatureMapper::class)->find($id);
 		self::assertNull($feature->getPhone());
 		self::assertSame('Keep this note', $feature->getNotes());
@@ -125,6 +125,84 @@ final class OdsImportTest extends IntegrationTestCase {
 		$preview = $service->preview(OdsWorkbook::write(['Activos' => $table]), 'test-ods-foreign');
 		self::assertSame('invalid', $preview['rows'][0]['status']);
 		self::assertStringContainsString('instalación', $preview['rows'][0]['errors'][0]);
+	}
+
+	public function testAddressOnlyDuplicateMatchesLocatedAssetAndTheReverse(): void {
+		$this->place('ODS located duplicate', ['address' => 'Calle Tres 123']);
+		$this->place('ODS unlocated duplicate', ['geometry' => null, 'address' => 'Calle Cuatro 123']);
+		$bytes = OdsWorkbook::write(['Activos' => [array_values(OdsAssets::COLUMNS),
+			['', '', 'ODS located duplicate', 'salud', 'otro', '', '', 'Calle Tres 123'],
+			['', '', 'ODS unlocated duplicate', 'salud', 'otro', '-33.7', '-70.7', 'Calle Cuatro 123']]]);
+		$preview = Server::get(OdsImportService::class)->preview($bytes, 'test-ods-address-candidates');
+		self::assertNotEmpty($preview['rows'][0]['candidates']);
+		self::assertNotEmpty($preview['rows'][1]['candidates']);
+	}
+
+	public function testClassificationCanBeCorrectedWithoutWritingTheRegistry(): void {
+		$bytes = OdsWorkbook::write(['Activos' => [array_values(OdsAssets::COLUMNS),
+			['', '', 'ODS classification correction', 'not a category', 'not a subcategory']]]);
+		$service = Server::get(OdsImportService::class);
+		$preview = $service->preview($bytes, 'test-ods-correction');
+		self::assertSame('invalid', $preview['rows'][0]['status']);
+		$choice = $preview['classifications'][0];
+		$corrected = $service->preview($bytes, 'test-ods-correction', [2 => $choice['id']]);
+		self::assertSame('new', $corrected['rows'][0]['status']);
+		self::assertSame($choice['id'], $corrected['rows'][0]['input']['subcategoryId']);
+		self::assertSame($preview['revision'], Server::get(FeatureService::class)->currentRevision());
+		$this->expectException(InvalidImportException::class);
+		$service->preview($bytes, 'test-ods-correction', [2 => PHP_INT_MAX]);
+	}
+
+	public function testSpreadsheetEditsKeepSourceProvenanceAndSurviveSourceReimport(): void {
+		$slug = 'test-ods-' . bin2hex(random_bytes(4));
+		$this->datasets[] = $slug;
+		$source = json_encode(['type' => 'FeatureCollection', 'features' => [[
+			'type' => 'Feature', 'id' => 'source-ods-local', 'geometry' => null,
+			'properties' => ['name' => 'ODS original source', 'category' => 'salud', 'subcategory' => 'otro'],
+		]]]);
+		$imports = Server::get(\OCA\Territorio\Service\ImportService::class);
+		$imports->importFile($source, 'source.geojson', $slug);
+		$dataset = Server::get(\OCA\Territorio\Db\DatasetMapper::class)->findBySlug($slug);
+		$original = array_values(Server::get(FeatureMapper::class)->findByDataset((int)$dataset->getId()))[0];
+		$id = (int)$original->getId();
+		$official = $original->getOfficial();
+		$service = Server::get(OdsImportService::class);
+		foreach (['ODS local correction', 'ODS second local correction'] as $name) {
+			$table = OdsWorkbook::read(Server::get(ExportService::class)->export([$id], 'ods', false)['body']);
+			$table[1][2] = $name;
+			$bytes = OdsWorkbook::write(['Activos' => $table]);
+			$preview = $service->preview($bytes, $slug);
+			self::assertSame('update', $preview['rows'][0]['status']);
+			$service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
+			$current = Server::get(FeatureMapper::class)->find($id);
+			self::assertTrue($current->getOverridden());
+			self::assertSame($official, $current->getOfficial());
+			$imports->importFile($source, 'source.geojson', $slug);
+			self::assertSame($name, Server::get(FeatureMapper::class)->find($id)->getName());
+		}
+	}
+
+	public function testTaxonomyChangeInvalidatesPreviewWithoutARegistryRevision(): void {
+		$slug = 'test-ods-' . bin2hex(random_bytes(4));
+		$this->datasets[] = $slug;
+		$bytes = OdsWorkbook::write(['Activos' => [array_values(OdsAssets::COLUMNS),
+			['', '', 'ODS taxonomy stale', 'salud', 'otro']]]);
+		$service = Server::get(OdsImportService::class);
+		$taxonomy = Server::get(\OCA\Territorio\Service\TaxonomyService::class);
+		$category = array_values(array_filter($taxonomy->tree(), static fn ($c) => $c['slug'] === 'salud'))[0];
+		$preview = $service->preview($bytes, $slug);
+		try {
+			$taxonomy->renameCategory('salud', 'Salud ODS temporal');
+			self::assertSame($preview['revision'], Server::get(FeatureService::class)->currentRevision());
+			try {
+				$service->commit($bytes, $slug, $preview['revision'], [['row' => 2, 'confirmDuplicates' => true]], 'admin', $preview['taxonomySignature']);
+				self::fail('A changed taxonomy must invalidate the reviewed classification');
+			} catch (InvalidImportException $e) {
+				self::assertStringContainsString('clasificación cambió', $e->getMessage());
+			}
+		} finally {
+			$taxonomy->renameCategory('salud', $category['label']);
+		}
 	}
 
 }

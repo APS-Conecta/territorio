@@ -588,8 +588,9 @@ class TaxonomyService {
 	 *
 	 * @return array<int, array{category: string, categoryLabel: string, subcategory: string, subcategoryLabel: string}>
 	 */
-	public function subcategoryIndex(): array {
-		if ($this->subcategoryIndex !== null) {
+	// Reviewed ODS imports request a fresh snapshot to bind classification decisions across requests.
+	public function subcategoryIndex(bool $refresh = false): array {
+		if (!$refresh && $this->subcategoryIndex !== null) {
 			return $this->subcategoryIndex;
 		}
 

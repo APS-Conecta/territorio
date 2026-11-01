@@ -20,11 +20,14 @@ clearing. No address lookup occurs.
 
 Uploading produces a session-bound preview with no Registry writes. Staff select rows,
 review proposed changes and acknowledge possible duplicates; similarity never merges
-records (ADR-0011). Repeated IDs are errors, not last-row-wins. Retired records and local
-overrides remain protected (ADR-0003).
+records (ADR-0011). Repeated IDs are errors, not last-row-wins. Retired and stale records remain protected. Updates are deliberate local edits: they
+preserve the source snapshot and set a local override, so later cadastral imports cannot
+erase staff corrections (ADR-0003). A fresh, explicitly reviewed ODS export may update
+an existing local override. Classification errors can be corrected in preview without
+changing the taxonomy or writing any Registry records.
 
 Confirmation revalidates the file under the existing Registry cursor lock and refuses
-if the Registry changed since preview. The selected rows form one transaction and one
+if the Registry or taxonomy changed since preview. The selected rows form one transaction and one
 reversible import batch (ADR-0009); absent spreadsheet rows never delete records.
 Contact-bearing ODS exports use the existing password-confirmed, logged route (ADR-0006).
 

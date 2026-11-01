@@ -18,6 +18,14 @@
 					<span>{{ statusLabel(row.status) }}</span>
 				</label>
 				<p v-for="error in row.errors" :key="error" class="territorio-ods-review__error">{{ error }}</p>
+				<div v-if="row.status === 'invalid'" class="territorio-ods-review__classification">
+					<label :for="`ods-classification-${row.row}`">Corregir clasificación de fila {{ row.row }}</label>
+					<select :id="`ods-classification-${row.row}`" v-model="corrections[row.row]" :disabled="disabled">
+						<option value="">Elegir categoría y subcategoría</option>
+						<option v-for="choice in preview.classifications" :key="choice.id" :value="choice.id">{{ choice.label }}</option>
+					</select>
+					<button type="button" :disabled="disabled || !corrections[row.row]" @click="$emit('correct-classification', { row: row.row, subcategoryId: Number(corrections[row.row]) })">Aplicar clasificación</button>
+				</div>
 				<div v-if="row.candidates.length" class="territorio-ods-review__warning">
 					<strong>Posibles duplicados — compruebe antes de importar</strong>
 					<ul><li v-for="candidate in row.candidates" :key="candidate">{{ candidate }}</li></ul>
@@ -59,7 +67,8 @@ export default {
 		modelValue: { type: Array, required: true },
 		disabled: { type: Boolean, default: false },
 	},
-	emits: ['update:modelValue'],
+	emits: ['update:modelValue', 'correct-classification'],
+	data() { return { corrections: {} } },
 	computed: {
 		totals() {
 			return this.preview.rows.reduce((counts, row) => {
@@ -107,6 +116,8 @@ export default {
 
 <style scoped>
 .territorio-ods-review { margin-top: 20px; }
+.territorio-ods-review__classification { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.territorio-ods-review__classification select { max-width: 100%; }
 .territorio-ods-review__summary, .territorio-ods-review__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .territorio-ods-review__summary span { padding: 4px 10px; border-radius: 16px; background: var(--color-background-dark); }
 .territorio-ods-review__rows { max-height: 45vh; overflow-y: auto; }

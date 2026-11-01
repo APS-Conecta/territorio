@@ -86,6 +86,7 @@ final class RoutesTest extends TestCase {
 			'feature#history',
 			'ods#template',
 			'ods#preview',
+			'ods#revise',
 			'ods#commit',
 			'import#upload',
 			'import#batches',

@@ -89,7 +89,7 @@
 				{{ file.name }} · {{ Math.round(file.size / 1024) }} KB
 			</p>
 
-			<OdsReview v-if="preview" v-model="decisions" :preview="preview" :disabled="working" />
+			<OdsReview v-if="preview" v-model="decisions" :preview="preview" :disabled="working" @correct-classification="correctClassification" />
 
 			<!--
 				Undo lives beside the thing it undoes. ADR-0009 says there is no
@@ -354,6 +354,24 @@ export default {
 			}
 		},
 
+		async correctClassification(correction) {
+			this.working = true
+			this.error = ''
+			try {
+				const { data } = await axios.post(generateUrl('/apps/territorio/ods/revise'), { token: this.preview.token, ...correction })
+				this.acceptPreview(data)
+			} catch (exception) {
+				this.error = await messageFrom(exception, 'No se pudo corregir la clasificación.')
+			} finally {
+				this.working = false
+			}
+		},
+
+		acceptPreview(data) {
+			this.preview = data
+			this.decisions = data.rows.filter(row => row.status !== 'invalid' && !row.candidates.length).map(row => ({ row: row.row, clear: [], confirmDuplicates: false }))
+		},
+
 		async commitOds() {
 			this.working = true
 			this.error = ''
@@ -388,8 +406,7 @@ export default {
 			try {
 				const { data } = await axios.post(generateUrl(this.isOds ? '/apps/territorio/ods/preview' : '/apps/territorio/import'), body)
 				if (this.isOds) {
-					this.preview = data
-					this.decisions = data.rows.filter(row => row.status !== 'invalid' && !row.candidates.length).map(row => ({ row: row.row, clear: [], confirmDuplicates: false }))
+					this.acceptPreview(data)
 					return
 				}
 				this.result = data

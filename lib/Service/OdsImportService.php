@@ -43,7 +43,7 @@ class OdsImportService {
 	}
 
 	/** Reads and validates; no Dataset, batch or candidate pair is written here. */
-	public function preview(string $bytes, string $dataset): array {
+	public function preview(string $bytes, string $dataset, array $corrections = []): array {
 		if (trim($dataset) === '' || mb_strlen($dataset) > 64) {
 			throw new InvalidImportException('Indique un conjunto de datos de hasta 64 caracteres.');
 		}
@@ -57,11 +57,25 @@ class OdsImportService {
 		$revision = $this->revisions->current();
 		$rows = [];
 		$ids = [];
-		foreach (OdsAssets::read($bytes) as $row) {
+		$source = OdsAssets::read($bytes);
+		$taxonomy = $this->taxonomy->subcategoryIndex(refresh: true);
+		$present = array_column($source, null, 'row');
+		foreach ($corrections as $number => $id) {
+			if (!is_int($number) || !isset($present[$number]) || !is_int($id) || !isset($taxonomy[$id])
+				|| $taxonomy[$id]['category'] === 'division_territorial') {
+				throw new InvalidImportException('La corrección de clasificación no es válida. Elija una opción de la lista.');
+			}
+		}
+		foreach ($source as $row) {
+			if (isset($corrections[$row['row']])) {
+				$pair = $taxonomy[$corrections[$row['row']]];
+				$row['values']['category'] = $pair['category'];
+				$row['values']['subcategory'] = $pair['subcategory'];
+			}
 			$entry = ['row' => $row['row'], 'name' => $row['values']['name'] ?? '',
 				'status' => 'invalid', 'errors' => [], 'candidates' => [], 'changes' => []];
 			try {
-				[$id, $input, $current] = $this->prepare($row['values']);
+				[$id, $input, $current] = $this->prepare($row['values'], $taxonomy);
 				$entry += ['id' => $id, 'input' => $input];
 				$entry['status'] = $id === null ? 'new' : 'update';
 				if ($id !== null) {
@@ -71,7 +85,7 @@ class OdsImportService {
 					$old = $current?->toClient()[$field] ?? null;
 					if ($value !== $old) {
 						if ($field === 'subcategoryId') {
-						$index = $this->taxonomy->subcategoryIndex();
+						$index = $taxonomy;
 						$old = isset($index[$old]) ? $index[$old]['categoryLabel'] . ' · ' . $index[$old]['subcategoryLabel'] : null;
 						$value = $index[$value]['categoryLabel'] . ' · ' . $index[$value]['subcategoryLabel'];
 					}
@@ -92,17 +106,27 @@ class OdsImportService {
 			}
 		}
 		$this->suggest($rows);
-		return ['revision' => $revision, 'rows' => $rows, 'clearable' => OdsAssets::OPTIONAL];
+		$classifications = [];
+		foreach ($taxonomy as $id => $pair) {
+			if ($pair['category'] !== 'division_territorial') {
+				$classifications[] = ['id' => $id, 'label' => $pair['categoryLabel'] . ' · ' . $pair['subcategoryLabel']];
+			}
+		}
+		return ['revision' => $revision, 'rows' => $rows, 'clearable' => OdsAssets::OPTIONAL, 'classifications' => $classifications,
+			'taxonomySignature' => hash('sha256', json_encode($taxonomy, JSON_THROW_ON_ERROR))];
 	}
 
 	/** The whole selected batch commits atomically, or changes nothing. */
-	public function commit(string $bytes, string $dataset, int $revision, array $decisions, ?string $actor): ImportBatch {
+	public function commit(string $bytes, string $dataset, int $revision, array $decisions, ?string $actor, string $taxonomySignature, array $corrections = []): ImportBatch {
 		$this->db->beginTransaction();
 		try {
 			if ($this->revisions->lockCurrent() !== $revision) {
 				throw new InvalidImportException('El inventario cambió. Vuelva a revisar la planilla antes de importar.');
 			}
-			$preview = $this->preview($bytes, $dataset);
+			$preview = $this->preview($bytes, $dataset, $corrections);
+			if (!hash_equals($preview['taxonomySignature'], $taxonomySignature)) {
+				throw new InvalidImportException('La clasificación cambió. Vuelva a revisar la planilla antes de importar.');
+			}
 			$byRow = array_column($preview['rows'], null, 'row');
 			$selected = [];
 			foreach ($decisions as $decision) {
@@ -147,12 +171,8 @@ class OdsImportService {
 							'ods:' . bin2hex(random_bytes(16)), $row['input']));
 						$batch->setCreated($batch->getCreated() + 1);
 					} else {
-						$current = $this->features->find($row['id']);
-						$input = $row['input'];
-						$official = json_decode($current->getOfficial() ?? '{}', true);
-						$provenance = $current->getDatasetId() === null ? null : new Provenance(
-							$current->getDatasetId(), $current->getExternalId(), array_replace($official ?? [], $input));
-						$this->writes->update($row['id'], $input, $provenance);
+						// A reviewed spreadsheet edit is a person's correction, not a new cadastre (ADR-0003).
+						$this->writes->update($row['id'], $row['input']);
 						$batch->setUpdated($batch->getUpdated() + 1);
 					}
 				}
@@ -170,7 +190,7 @@ class OdsImportService {
 	}
 
 	/** @return array{?int, array<string,mixed>, ?Feature} */
-	private function prepare(array $values): array {
+	private function prepare(array $values, array $taxonomy): array {
 		$id = null;
 		$current = null;
 		$givenId = $values['id'] ?? '';
@@ -186,8 +206,8 @@ class OdsImportService {
 			} catch (DoesNotExistException) {
 				throw new InvalidImportException('El ID no corresponde a un activo existente.');
 			}
-			if ($current->getRetired() || $current->getOverridden()) {
-				throw new InvalidImportException('El activo está retirado o tiene una edición local protegida. Revíselo en el mapa.');
+			if ($current->getRetired()) {
+				throw new InvalidImportException('El activo está retirado. Revíselo en el mapa antes de actualizarlo.');
 			}
 			if ($current->getKind() !== 'place') {
 				throw new InvalidImportException('ODS actualiza solo activos puntuales.');
@@ -199,7 +219,7 @@ class OdsImportService {
 			throw new InvalidImportException('Una fila nueva debe dejar ID y Revisión vacíos.');
 		}
 		$subcategoryId = null;
-		foreach ($this->taxonomy->subcategoryIndex() as $key => $pair) {
+		foreach ($taxonomy as $key => $pair) {
 			if ($pair['category'] === 'division_territorial') {
 				continue;
 			}
@@ -287,11 +307,13 @@ class OdsImportService {
 		}
 		$byAddress = [];
 		foreach ($records as $record) {
-			if ($record['lat'] === null && trim($record['name']) !== '') {
+			if (trim($record['name']) !== '' && ($record['lat'] === null || $record['address'] !== '')) {
 				$key = Text::fold($record['name'] . '|' . $record['address']);
 				foreach ($byAddress[$key] ?? [] as $other) {
-					$add($record['id'], $other);
-					$add($other, $record['id']);
+					if ($record['lat'] === null || $named[$other]['lat'] === null) {
+						$add($record['id'], $other);
+						$add($other, $record['id']);
+					}
 				}
 				if (count($byAddress[$key] ?? []) < 5) {
 					$byAddress[$key][] = $record['id'];

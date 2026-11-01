@@ -45,29 +45,55 @@ class OdsController extends Controller {
 			$path = $this->textParam('path');
 			[$bytes] = $path === '' ? $this->files->uploadedFile() : $this->files->fileInNextcloud($path);
 			$preview = $this->ods->preview($bytes, $dataset);
-			$token = bin2hex(random_bytes(24));
-			$this->session->set(self::PREVIEW, ['token' => $token, 'bytes' => $bytes, 'dataset' => $dataset,
-				'revision' => $preview['revision'], 'expires' => time() + 1800]);
-			return $preview + ['token' => $token];
+			return $this->savePreview(['bytes' => $bytes, 'dataset' => $dataset, 'corrections' => []], $preview);
+		});
+	}
+
+	#[NoAdminRequired]
+	public function revise(): JSONResponse {
+		return $this->attempt(function (): array {
+			$stored = $this->storedPreview();
+			$row = $this->request->getParam('row');
+			$subcategory = $this->request->getParam('subcategoryId');
+			if (!is_int($row) || !is_int($subcategory)) {
+				throw new InvalidImportException('Elija una clasificación para la fila indicada.');
+			}
+			$stored['corrections'][$row] = $subcategory;
+			$preview = $this->ods->preview($stored['bytes'], $stored['dataset'], $stored['corrections']);
+			return $this->savePreview($stored, $preview);
 		});
 	}
 
 	#[NoAdminRequired]
 	public function commit(): JSONResponse {
 		return $this->attempt(function (): array {
-			$preview = $this->session->get(self::PREVIEW);
-			if (!is_array($preview) || !hash_equals($preview['token'], $this->textParam('token')) || $preview['expires'] < time()) {
-				throw new InvalidImportException('La revisión expiró o cambió. Vuelva a revisar la planilla.');
-			}
+			$preview = $this->storedPreview();
 			$decisions = $this->request->getParam('decisions');
 			if (!is_array($decisions)) {
 				throw new InvalidImportException('Falta la selección de filas a importar.');
 			}
 			$result = $this->ods->commit($preview['bytes'], $preview['dataset'], $preview['revision'], $decisions,
-				$this->user->getUser()?->getUID());
+				$this->user->getUser()?->getUID(), $preview['taxonomySignature'], $preview['corrections']);
 			$this->session->remove(self::PREVIEW);
 			return $result->toClient();
 		});
+	}
+
+	private function storedPreview(): array {
+		$preview = $this->session->get(self::PREVIEW);
+		if (!is_array($preview) || !hash_equals($preview['token'], $this->textParam('token')) || $preview['expires'] < time()) {
+			throw new InvalidImportException('La revisión expiró o cambió. Vuelva a revisar la planilla.');
+		}
+		return $preview;
+	}
+
+	private function savePreview(array $stored, array $preview): array {
+		$stored['token'] = bin2hex(random_bytes(24));
+		$stored['revision'] = $preview['revision'];
+		$stored['taxonomySignature'] = $preview['taxonomySignature'];
+		$stored['expires'] = time() + 1800;
+		$this->session->set(self::PREVIEW, $stored);
+		return $preview + ['token' => $stored['token']];
 	}
 
 	private function textParam(string $key): string {

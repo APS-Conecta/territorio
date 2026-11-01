@@ -137,12 +137,18 @@ final class OdsWorkbook {
 		}
 		$rows = [];
 		$blankRows = 0;
+		$expandedBytes = 0;
+		$decodedBytes = 0;
 		foreach ($xpath->query('.//table:table-row', $tables->item(0)) as $element) {
-			$row = self::cells($element);
+			$row = self::cells($element, $expandedBytes, self::MAX_BYTES - $decodedBytes);
 			$repeat = max(1, (int)$element->getAttributeNS(self::TABLE, 'number-rows-repeated'));
 			if ($row === []) {
 				$blankRows += $repeat;
 				continue;
+			}
+			$decodedBytes += array_sum(array_map('strlen', $row)) * $repeat;
+			if ($decodedBytes > self::MAX_BYTES) {
+				throw new InvalidImportException('Los valores de la planilla superan los 8 MB al expandirse.');
 			}
 			if ($repeat + count($rows) + $blankRows > self::MAX_ROWS) {
 				throw new InvalidImportException('Importe hasta 5000 activos por planilla.');
@@ -159,9 +165,10 @@ final class OdsWorkbook {
 	}
 
 	/** @return list<string> */
-	private static function cells(DOMElement $row): array {
+	private static function cells(DOMElement $row, int &$expandedBytes, int $remainingBytes): array {
 		$cells = [];
 		$blanks = 0;
+		$cellBytes = 0;
 		foreach ($row->childNodes as $cell) {
 			if (!$cell instanceof DOMElement || $cell->namespaceURI !== self::TABLE) {
 				continue;
@@ -174,6 +181,10 @@ final class OdsWorkbook {
 				foreach (iterator_to_array($cell->getElementsByTagNameNS(self::TEXT, $tag)) as $space) {
 					$count = $tag === 's' ? max(1, (int)$space->getAttributeNS(self::TEXT, 'c')) : 1;
 					$expanded += $count;
+					$expandedBytes += $count;
+					if ($expandedBytes > self::MAX_BYTES) {
+						throw new InvalidImportException('El texto expandido de la planilla supera los 8 MB.');
+					}
 					if ($expanded > 100000) {
 						throw new InvalidImportException('Una celda ODS contiene demasiado espacio repetido.');
 					}
@@ -195,6 +206,10 @@ final class OdsWorkbook {
 			}
 			if ($repeat + count($cells) + $blanks > 32 || strlen($value) > 100000) {
 				throw new InvalidImportException('La hoja Activos tiene demasiadas columnas o una celda demasiado larga.');
+			}
+			$cellBytes += strlen($value) * $repeat;
+			if ($cellBytes > $remainingBytes) {
+				throw new InvalidImportException('Los valores de la planilla superan los 8 MB al expandirse.');
 			}
 			$cells = array_merge($cells, array_fill(0, $blanks, ''), array_fill(0, $repeat, $value));
 			$blanks = 0;

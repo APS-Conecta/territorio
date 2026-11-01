@@ -49,4 +49,28 @@ final class OdsWorkbookTest extends TestCase {
 		$this->expectException(InvalidImportException::class);
 		OdsWorkbook::read($bytes);
 	}
+	public function testWhitespaceExpansionHasAWorkbookWideBudget(): void {
+		$cell = '<table:table-cell><text:p><text:s text:c="100000"/></text:p></table:table-cell>';
+		// Each cell is individually allowed; the collection exceeds the 8 MB budget.
+		$bytes = $this->workbookWithCell(str_repeat($cell . '</table:table-row><table:table-row>', 90));
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('texto expandido');
+		OdsWorkbook::read($bytes);
+	}
+
+	public function testRepeatedRowsCannotExpandTheDecodedTableBeyondItsBudget(): void {
+		$bytes = $this->workbookWithCell('</table:table-row><table:table-row table:number-rows-repeated="1000"><table:table-cell><text:p>' . str_repeat('x', 100000) . '</text:p></table:table-cell>');
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('valores de la planilla');
+		OdsWorkbook::read($bytes);
+	}
+
+	public function testRepeatedCellsAcrossRowsShareTheDecodedTableBudget(): void {
+		$cell = '<table:table-cell table:number-columns-repeated="32"><text:p>' . str_repeat('x', 100000) . '</text:p></table:table-cell>';
+		$bytes = $this->workbookWithCell($cell . '</table:table-row><table:table-row>' . $cell . '</table:table-row><table:table-row>' . $cell);
+		$this->expectException(InvalidImportException::class);
+		$this->expectExceptionMessage('valores de la planilla');
+		OdsWorkbook::read($bytes);
+	}
+
 }

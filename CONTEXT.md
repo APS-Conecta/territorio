@@ -86,8 +86,9 @@ The second level, and the finest thing a person can switch on or off — colegio
 taller, plaza, ciclovía.
 _Avoid_: subtype, tag, class
 
-There is no separate "layer" object: the panel a user toggles is the Category tree itself, plus
-one toggle per territorial division.
+There is no separate Layer object for Features: the panel a person toggles is the Category tree
+itself, plus one toggle per territorial division. A Layer is the exception — external, live, never
+stored — and it is toggled in its own section.
 
 ### How a boundary is expressed
 
@@ -123,6 +124,14 @@ _Avoid_: official layer, reference data, static data
 A Dataset whose records are born inside the clinic — typed in or drawn by its own staff. Nothing
 outside ever republishes them.
 _Avoid_: manual layer, custom data
+
+**Layer**:
+A remote collection displayed on the map by fetching it live from an external public API at view
+time — health establishments, ferias, police quadrants. Neither a Dataset nor a Feature, and it
+never becomes one: nothing of it enters the Registry, so there is nothing to import, override or
+retire. Read-only and session-only by construction; turned off, the map returns to exactly what
+it showed.
+_Avoid_: dataset, feed, source
 
 **Local override**:
 An edit a person makes to a record belonging to a Cadastral Dataset. It states what is true on

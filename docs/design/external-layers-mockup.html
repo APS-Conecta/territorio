@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<!--
+	Mockup for the external Layers (issue #258, parent spec #256).
+
+	A single self-contained page: no network, no backend, no external asset —
+	every marker, street and field below is fake data drawn to look like the
+	working app so the design can be signed off before integration (#259).
+
+	Not part of the build, never shipped. Reviewed by opening this file.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Territorio — boceto: capas externas</title>
+<style>
+	/*
+	 * Tokens mirror the app's runtime values (Nextcloud variables with the
+	 * fallbacks the app itself pins in App.vue / CapasPanel.vue).
+	 */
+	:root {
+		--bg: #ffffff;
+		--border: #dadce0;
+		--text: #202124;
+		--text-soft: #70757a;
+		--hover: #f8f9fa;
+		--primary: #0069c4;
+		--error-bg: #fdeded;
+		--error-text: #b3312d;
+		--salud: #99564e;
+		--educacion: #6d7db6;
+		--deporte: #549065;
+		--seguridad: #5a68a0;
+		--comercio: #8a7431;
+		--servicio-publico: #0b798a;
+		--social: #b06b62;
+		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell, sans-serif;
+	}
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body { color: var(--text); font-size: 14px; display: flex; }
+
+	/* ── Map column ────────────────────────────────────────────────────── */
+	.map-column { flex: 1; position: relative; background: #f2f0ec; min-width: 0; }
+	.map-column svg.basemap { display: block; width: 100%; height: 100%; }
+
+	.map-caption {
+		position: absolute; top: 12px; left: 12px; z-index: 5;
+		background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+		padding: 6px 12px; color: var(--text-soft); font-size: 12.5px;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+	}
+	.map-attribution {
+		position: absolute; right: 0; bottom: 0; z-index: 5;
+		background: rgba(255, 255, 255, 0.75); padding: 2px 8px;
+		font-size: 11px; color: var(--text-soft);
+	}
+	/* Leaflet-style zoom stack, visual only (a mockup affordance would lie). */
+	.zoom {
+		position: absolute; top: 64px; left: 12px; z-index: 5; width: 30px;
+		border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+		background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+		text-align: center; color: var(--text-soft); user-select: none;
+	}
+	.zoom span { display: block; padding: 5px 0; font-size: 17px; line-height: 1; }
+	.zoom span + span { border-top: 1px solid var(--border); }
+
+	/* ── Side column: the Capas panel, in the app's look ───────────────── */
+	.side-column {
+		flex: 0 0 300px; background: var(--bg); border-left: 1px solid var(--border);
+		overflow-y: auto; display: flex; flex-direction: column;
+	}
+	.side-column > h1 {
+		font-size: 15px; font-weight: bold; margin: 0; padding: 12px 12px 10px;
+		border-bottom: 1px solid var(--border);
+	}
+	.capas { border-bottom: 1px solid var(--border); }
+	.capas > summary {
+		cursor: pointer; padding: 10px 12px; font-weight: bold;
+		position: sticky; top: 0; background: var(--bg); z-index: 2;
+		list-style: none; display: flex; align-items: baseline; gap: 6px;
+	}
+	.capas > summary::-webkit-details-marker { display: none; }
+	.capas > summary::before { content: '▸'; color: var(--text-soft); font-size: 0.85em; }
+	.capas[open] > summary::before { content: '▾'; }
+	.badge { font-weight: normal; color: var(--text-soft); font-size: 0.85em; margin-inline-start: 6px; }
+	.capas__body { padding: 0 12px 12px; }
+
+	/* Local Category rows — static, so the panel reads like the working app. */
+	.categoria { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+	.categoria .punto {
+		width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto;
+	}
+
+	/* ── Capas externas ────────────────────────────────────────────────── */
+	.externas { border-top: 1px solid var(--border); margin-top: 10px; }
+	.externas > summary {
+		cursor: pointer; padding: 8px 0 4px; font-weight: bold;
+		list-style: none; display: flex; align-items: baseline; gap: 6px;
+	}
+	.externas > summary::-webkit-details-marker { display: none; }
+	.externas > summary::before { content: '▸'; color: var(--text-soft); font-size: 0.85em; }
+	.externas[open] > summary::before { content: '▾'; }
+	.externas .nota {
+		background: var(--error-bg); color: var(--error-text);
+		border-radius: 6px; padding: 8px 10px; margin: 6px 0 8px; font-size: 13px;
+	}
+	.capa {
+		display: flex; align-items: center; gap: 8px; padding: 5px 0;
+		cursor: pointer; border-radius: 4px;
+	}
+	.capa:hover { background: var(--hover); }
+	.capa input { margin: 0; accent-color: var(--primary); width: 15px; height: 15px; flex: 0 0 auto; }
+	.capa .muestra { flex: 0 0 18px; height: 18px; display: grid; place-items: center; }
+	.capa .nombre { flex: 1; min-width: 0; line-height: 1.25; }
+	.capa .fallo {
+		flex: 0 0 auto; background: var(--error-bg); color: var(--error-text);
+		border-radius: 9px; font-size: 11px; padding: 1px 7px;
+	}
+	.externas .pie { color: var(--text-soft); font-size: 12px; margin: 10px 0 0; line-height: 1.4; }
+
+	/* Mini legend swatches per geometry kind. */
+	.muestra__punto { width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2.5px solid; }
+	.muestra__linea { width: 16px; height: 0; border-top: 3px solid; }
+	.muestra__poligono { width: 13px; height: 13px; border: 1.5px solid; }
+
+	/* ── Map features ──────────────────────────────────────────────────── */
+	circle.punto-externo { fill: rgba(255, 255, 255, 0.85); stroke-width: 2.5; cursor: pointer; }
+	circle.punto-externo:hover { stroke-width: 3.5; }
+	circle.propio { stroke: #fff; stroke-width: 1.5; cursor: default; }
+	polyline.feria { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; cursor: pointer; }
+	polygon.cuadrante { cursor: pointer; }
+	cluster-bubble circle { pointer-events: none; }
+	text.cuadrante-id { pointer-events: none; }
+
+	/* ── Popup ─────────────────────────────────────────────────────────── */
+	.popup {
+		position: absolute; z-index: 10; width: 240px; background: var(--bg);
+		border: 1px solid var(--border); border-radius: 10px;
+		box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22); padding: 10px 12px; display: none;
+	}
+	.popup__cerrar {
+		position: absolute; top: 4px; right: 8px; cursor: pointer;
+		color: var(--text-soft); font-size: 15px; line-height: 1;
+	}
+	.popup h2 { font-size: 13.5px; margin: 0 18px 6px 0; font-weight: 600; }
+	.popup dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+	.popup dt { color: var(--text-soft); font-size: 12px; }
+	.popup dd { margin: 0; font-size: 12.5px; }
+	.popup .fuente {
+		margin: 8px 0 0; padding-top: 6px; border-top: 1px solid var(--border);
+		color: var(--text-soft); font-size: 11.5px; line-height: 1.35;
+	}
+</style>
+</head>
+<body>
+	<div class="map-column">
+		<svg class="basemap" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid slice"
+			aria-label="Mapa con capas externas de ejemplo">
+			<!-- Basemap stand-in: blocks and streets, drawn — never fetched. -->
+			<g id="base">
+				<rect width="1200" height="760" fill="#f2f0ec"/>
+				<g fill="#e6e4df">
+					<rect x="60" y="60" width="200" height="140" rx="3"/><rect x="300" y="40" width="150" height="110" rx="3"/>
+					<rect x="500" y="70" width="240" height="120" rx="3"/><rect x="800" y="50" width="180" height="160" rx="3"/>
+					<rect x="1030" y="90" width="110" height="120" rx="3"/><rect x="80" y="260" width="160" height="180" rx="3"/>
+					<rect x="300" y="220" width="140" height="140" rx="3"/><rect x="500" y="250" width="110" height="200" rx="3"/>
+					<rect x="680" y="280" width="220" height="150" rx="3"/><rect x="960" y="280" width="160" height="180" rx="3"/>
+					<rect x="70" y="500" width="200" height="160" rx="3"/><rect x="330" y="480" width="150" height="190" rx="3"/>
+					<rect x="550" y="520" width="180" height="130" rx="3"/><rect x="790" y="500" width="140" height="170" rx="3"/>
+					<rect x="990" y="540" width="130" height="120" rx="3"/>
+				</g>
+				<!-- A park and a plaza, so the map reads as a town. -->
+				<rect x="430" y="500" width="90" height="90" rx="6" fill="#dce8d4"/>
+				<circle cx="250" cy="215" r="16" fill="#dce8d4"/>
+				<g stroke="#d3d1cb" stroke-width="14" stroke-linecap="round">
+					<path d="M0 220 H1200"/><path d="M0 470 H1200"/><path d="M280 0 V760"/>
+					<path d="M470 0 V760"/><path d="M650 0 V760"/><path d="M940 0 V760"/>
+				</g>
+			</g>
+			<!-- Layers render into these groups; a toggle hides one group. -->
+			<g id="capa-cuadrante"></g>
+			<g id="capa-ferias"></g>
+			<g id="capas-puntos"></g>
+			<g id="registros-propios"></g>
+			<g id="clusters"></g>
+		</svg>
+
+		<div class="map-caption">Boceto · capas externas · los datos son de ejemplo</div>
+		<div class="zoom" aria-hidden="true"><span>+</span><span>−</span></div>
+		<div class="map-attribution">© Colaboradores de OpenStreetMap</div>
+
+		<div class="popup" id="popup" role="dialog" aria-label="Detalle del punto">
+			<span class="popup__cerrar" id="popup-cerrar" title="Cerrar">×</span>
+			<h2 id="popup-titulo"></h2>
+			<dl id="popup-campos"></dl>
+			<p class="fuente" id="popup-fuente"></p>
+		</div>
+	</div>
+
+	<aside class="side-column">
+		<h1>Datos</h1>
+		<details class="capas" open>
+			<summary>Capas</summary>
+			<div class="capas__body">
+				<!-- Static local rows: the panel must read like the working app. -->
+				<div class="categoria"><span class="punto" style="background: var(--salud)"></span>Salud</div>
+				<div class="categoria"><span class="punto" style="background: var(--educacion)"></span>Educación</div>
+				<div class="categoria"><span class="punto" style="background: var(--deporte)"></span>Deporte y recreación</div>
+				<div class="categoria"><span class="punto" style="background: var(--social)"></span>Organización social</div>
+
+				<details class="externas" open>
+					<summary>Capas externas <span class="badge">en vivo</span></summary>
+					<div class="nota" id="nota-fallo" hidden>
+						Albergues código azul (MDSYF) no respondió. El mapa y las demás
+						capas siguen funcionando normalmente.
+					</div>
+					<div id="capas-externas-lista"><!-- rows injected by script --></div>
+					<p class="pie">
+						Se piden a servicios públicos al verlas; nada entra en el registro
+						del CESFAM.
+					</p>
+				</details>
+			</div>
+		</details>
+	</aside>
+
+<script>
+'use strict'
+
+/*
+ * Fake data for every layer. Coordinates are SVG points in the 1200 x 760
+ * stand-in basemap; names are invented but comuna-plausible. The generator
+ * below is seeded per layer so the page looks identical on every open.
+ * UI copy is Spanish (the app's language); code identifiers are English.
+ */
+
+const HUES = {
+	salud: '#99564e', educacion: '#6d7db6', deporte: '#549065',
+	seguridad: '#5a68a0', comercio: '#8a7431', 'servicio-publico': '#0b798a',
+}
+
+const LAYERS = [
+	{
+		id: 'salud', label: 'Establecimientos de salud (Junio 2026)',
+		kind: 'point', hue: 'salud', n: 20,
+		source: 'Fuente: geoportal.cl — MINSAL · licencia desconocida',
+		names: ['CESFAM', 'SAPU', 'Posta de salud rural', 'Consultorio', 'CRS'],
+		fields: (label) => [
+			['Tipo', label], ['Comuna', 'San Ramón'], ['Dependencia', 'Servicio de Salud'],
+			['Dirección', 'Av. Ejemplo 1234'],
+		],
+	},
+	{
+		id: 'escolar', label: 'Establecimientos Educación Escolar',
+		kind: 'point', hue: 'educacion', n: 20,
+		source: 'Fuente: geoportal.cl — MINEDUC (2022) · licencia desconocida',
+		names: ['Escuela', 'Liceo', 'Colegio', 'Escuela especial'],
+		fields: (label) => [
+			['Dependencia', label === 'Colegio' ? 'Particular' : 'Municipal'],
+			['Comuna', 'San Ramón'], ['Nivel', 'Básica / Media'], ['Dirección', 'Calle Ejemplo 45'],
+		],
+	},
+	{
+		id: 'parvularia', label: 'Establecimientos Educación Parvularia',
+		kind: 'point', hue: 'educacion', n: 20,
+		source: 'Fuente: geoportal.cl — MINEDUC (2022) · licencia desconocida',
+		names: ['Jardín infantil', 'Sala cuna', 'Kínder'],
+		fields: (label) => [
+			['Nivel', label], ['Comuna', 'San Ramón'], ['Dependencia', 'Municipal'],
+			['Dirección', 'Pasaje Ejemplo 210'],
+		],
+	},
+	{
+		id: 'superior', label: 'Establecimientos de Educación Superior',
+		kind: 'point', hue: 'educacion', n: 12,
+		source: 'Fuente: geoportal.cl — MINEDUC (2022) · licencia desconocida',
+		names: ['CFT', 'Instituto profesional', 'Centro de formación técnica'],
+		fields: (label) => [
+			['Tipo', label], ['Comuna', 'San Ramón'], ['Sede', 'Casa central'],
+			['Dirección', 'Av. Ejemplo 4321'],
+		],
+	},
+	{
+		id: 'ferias', label: 'Ferias Libres',
+		kind: 'line', hue: 'comercio', n: 14,
+		source: 'Fuente: geoportal.cl — ODEPA · licencia desconocida',
+		names: ['Feria Los Acacios', 'Feria Villa El Bosque', 'Feria San Ramón', 'Feria La Paloma'],
+		fields: () => [
+			['Calle', 'Pasaje Ejemplo'], ['Entre calles', 'Los Aromos / Los Lirios'],
+			['Comuna', 'San Ramón'], ['Días', 'Mi y S'],
+		],
+	},
+	{
+		id: 'deportiva', label: 'Infraestructura Deportiva',
+		kind: 'point', hue: 'deporte', n: 20,
+		source: 'Fuente: geoportal.cl — MINDEP · licencia desconocida',
+		names: ['Multicancha', 'Cancha de fútbol', 'Gimnasio', 'Skatepark'],
+		fields: (label) => [
+			['Categoría', label], ['Comuna', 'San Ramón'], ['Instrumento', 'Sin instrumento'],
+			['Dirección', 'Calle Ejemplo 789'],
+		],
+	},
+	{
+		id: 'integra', label: 'Jardines Infantiles Fundación Integra',
+		kind: 'point', hue: 'educacion', n: 14,
+		source: 'Fuente: geoportal.cl — Integra · licencia desconocida',
+		names: ['Jardín Integra', 'Sala cuna Integra'],
+		fields: () => [
+			['Administración', 'Integra'], ['Comuna', 'San Ramón'], ['Nivel', 'Sala cuna y medio'],
+			['Dirección', 'Pasaje Ejemplo 56'],
+		],
+	},
+	{
+		id: 'junji', label: 'Jardines Infantiles JUNJI',
+		kind: 'point', hue: 'educacion', n: 14,
+		source: 'Fuente: geoportal.cl — JUNJI · licencia desconocida',
+		names: ['Jardín JUNJI', 'Sala cuna JUNJI'],
+		fields: () => [
+			['Administración', 'JUNJI'], ['Área', 'Urbana'], ['Comuna', 'San Ramón'],
+			['Dirección', 'Calle Ejemplo 890'],
+		],
+	},
+	{
+		id: 'cuadrante', label: 'Plan Cuadrante',
+		kind: 'polygon', hue: 'seguridad', n: 16,
+		source: 'Fuente: geoportal.cl — Carabineros · licencia desconocida',
+		names: [],
+		fields: (id) => [
+			['Código', id], ['Comuna', 'San Ramón'], ['Unidad', '1.ª Comisaría'],
+			['Destacamento', 'Retén Ejemplo'],
+		],
+	},
+	{
+		/* The simulated dead service: toggled on, failed, no markers. */
+		id: 'albergues', label: 'Albergues código azul (MDSYF)',
+		kind: 'point', hue: 'servicio-publico', n: 0, failed: true,
+		source: 'Fuente: services3.arcgis.com — MDSYF · licencia desconocida',
+		names: [], fields: () => [],
+	},
+]
+
+/* The clinic's own records — solid dots, so hollow vs solid is comparable. */
+const OWN_RECORDS = [
+	{ x: 585, y: 300, hue: 'salud', title: 'CESFAM San Ramón' },
+	{ x: 330, y: 350, hue: 'educacion', title: 'Escuela del sector (registro propio)' },
+	{ x: 720, y: 560, hue: 'deporte', title: 'Plaza (registro propio)' },
+	{ x: 200, y: 560, hue: 'comercio', title: 'Feria de la junta (registro propio)' },
+	{ x: 900, y: 180, hue: 'social', title: 'Club de adulto mayor (registro propio)' },
+]
+
+/* Deterministic pseudo-random per layer: identical layout every open. */
+function rng(seed) {
+	let state = seed
+	return () => {
+		state |= 0; state = (state + 0x6D2B79F5) | 0
+		let t = Math.imul(state ^ (state >>> 15), 1 | state)
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+	}
+}
+function seedFrom(text) {
+	let h = 0
+	for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) | 0
+	return h
+}
+
+const SVG = 'http://www.w3.org/2000/svg'
+
+function create(tag, attrs = {}) {
+	const el = document.createElementNS(SVG, tag)
+	for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value)
+	return el
+}
+
+/* Popup payloads for every layer and kind, keyed [layer][i]. */
+const details = {}
+
+const hueOf = (layer) => HUES[layer.hue]
+
+function drawPoints(layer) {
+	const group = create('g', { id: `grupo-${layer.id}`, 'data-capa': layer.id })
+	const hue = hueOf(layer)
+	const rand = rng(seedFrom(layer.id))
+	details[layer.id] = []
+	for (let i = 0; i < layer.n; i++) {
+		const x = 70 + rand() * 1050, y = 70 + rand() * 620
+		const name = `${layer.names[Math.floor(rand() * layer.names.length)]} ${layer.id}`
+		details[layer.id].push({ title: name, fields: layer.fields(name), source: layer.source })
+		group.appendChild(create('circle', {
+			class: 'punto-externo', cx: x, cy: y, r: 6.5, stroke: hue,
+			'data-capa': layer.id, 'data-i': i,
+		}))
+	}
+	document.getElementById('capas-puntos').appendChild(group)
+
+	/* Two cluster bubbles per busy layer: the markercluster look. The counts
+	   are decorative but derived from n, so they stay plausible. */
+	if (layer.n >= 12) {
+		const clusters = document.getElementById('clusters')
+		const positions = [[300, 300, 0.4], [820, 560, 0.3]]
+		for (const [cx, cy, share] of positions) {
+			const bubble = create('g', { class: 'cluster-bubble' })
+			bubble.appendChild(create('circle', {
+				cx, cy, r: 17, fill: hue, opacity: 0.22, stroke: hue, 'stroke-opacity': 0.55,
+			}))
+			const text = create('text', {
+				x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': 12,
+				'font-weight': 600, fill: hue,
+			})
+			text.textContent = Math.max(3, Math.round(layer.n * share))
+			bubble.appendChild(text)
+			bubble.setAttribute('data-capa', layer.id)
+			clusters.appendChild(bubble)
+		}
+	}
+}
+
+function drawLines(layer) {
+	const group = create('g', { id: `grupo-${layer.id}` })
+	const rand = rng(seedFrom(layer.id))
+	details[layer.id] = []
+	for (let i = 0; i < layer.n; i++) {
+		const x = 60 + rand() * 1020, y = 80 + rand() * 600, length = 60 + rand() * 80
+		const horizontal = rand() > 0.5
+		const points = horizontal ? `${x},${y} ${x + length},${y}` : `${x},${y} ${x},${y + length}`
+		const name = layer.names[Math.floor(rand() * layer.names.length)]
+		details[layer.id].push({ title: name, fields: layer.fields(name), source: layer.source })
+		group.appendChild(create('polyline', {
+			class: 'feria', points, stroke: hueOf(layer),
+			'data-capa': layer.id, 'data-i': i,
+		}))
+	}
+	document.getElementById('capa-ferias').appendChild(group)
+}
+
+function drawQuadrants(layer) {
+	const group = create('g', { id: `grupo-${layer.id}` })
+	const hue = hueOf(layer)
+	details[layer.id] = []
+	const cells = [
+		[60, 60, 220, 160], [300, 40, 150, 180], [500, 70, 150, 150], [680, 50, 130, 160],
+		[850, 50, 130, 160], [1020, 90, 120, 120], [60, 260, 180, 200], [300, 220, 140, 240],
+		[500, 250, 150, 200], [680, 280, 260, 150], [680, 460, 260, 220], [960, 280, 160, 400],
+		[70, 500, 200, 160], [330, 480, 150, 190], [550, 520, 180, 130], [790, 500, 140, 170],
+	]
+	cells.forEach(([x, y, w, h], i) => {
+		const id = `37${String(5700 + i * 7)}`
+		details[layer.id].push({ title: `Cuadrante ${id}`, fields: layer.fields(id), source: layer.source })
+		group.appendChild(create('polygon', {
+			class: 'cuadrante', points: `${x},${y} ${x + w},${y} ${x + w},${y + h} ${x},${y + h}`,
+			fill: hue, 'fill-opacity': 0.14, stroke: hue, 'stroke-opacity': 0.55, 'stroke-width': 1.5,
+			'data-capa': layer.id, 'data-i': i,
+		}))
+		const tag = create('text', {
+			class: 'cuadrante-id', x: x + 6, y: y + 16, 'font-size': 11,
+			fill: hue, opacity: 0.75, 'font-weight': 600,
+		})
+		tag.textContent = id
+		group.appendChild(tag)
+	})
+	document.getElementById('capa-cuadrante').appendChild(group)
+}
+
+function drawOwnRecords() {
+	const g = document.getElementById('registros-propios')
+	for (const record of OWN_RECORDS) {
+		const dot = create('circle', {
+			class: 'propio', cx: record.x, cy: record.y, r: 8, fill: HUES[record.hue],
+		})
+		const title = create('title')
+		title.textContent = record.title
+		dot.appendChild(title)
+		g.appendChild(dot)
+	}
+}
+
+/* ── Panel rows ────────────────────────────────────────────────────────── */
+
+function layerRow(layer) {
+	const row = document.createElement('label')
+	row.className = 'capa'
+	const input = document.createElement('input')
+	input.type = 'checkbox'
+	input.checked = true
+	input.addEventListener('change', () => setLayerVisible(layer.id, input.checked))
+	row.appendChild(input)
+
+	const swatch = document.createElement('span')
+	swatch.className = 'muestra'
+	const icon = document.createElement('span')
+	icon.className = `muestra__${layer.kind}`
+	icon.style.borderColor = hueOf(layer)
+	swatch.appendChild(icon)
+	row.appendChild(swatch)
+
+	const name = document.createElement('span')
+	name.className = 'nombre'
+	name.textContent = layer.label
+	row.appendChild(name)
+
+	if (layer.failed) {
+		const badge = document.createElement('span')
+		badge.className = 'fallo'
+		badge.textContent = 'sin respuesta'
+		row.appendChild(badge)
+	}
+	return row
+}
+
+function setLayerVisible(id, visible) {
+	for (const el of document.querySelectorAll(`[data-capa="${id}"]`)) {
+		el.style.display = visible ? '' : 'none'
+	}
+	closePopup()
+}
+
+/* ── Popup ─────────────────────────────────────────────────────────────── */
+
+const popup = document.getElementById('popup')
+
+function openPopup(layerId, i, event) {
+	const entry = details[layerId]?.[i]
+	if (!entry) return
+	document.getElementById('popup-titulo').textContent = entry.title
+	const dl = document.getElementById('popup-campos')
+	dl.textContent = ''
+	for (const [key, value] of entry.fields) {
+		const dt = document.createElement('dt'); dt.textContent = key
+		const dd = document.createElement('dd'); dd.textContent = value
+		dl.append(dt, dd)
+	}
+	document.getElementById('popup-fuente').textContent = entry.source
+	popup.style.display = 'block'
+	const column = document.querySelector('.map-column').getBoundingClientRect()
+	let x = event.clientX - column.left + 14, y = event.clientY - column.top + 10
+	x = Math.min(x, column.width - popup.offsetWidth - 8)
+	y = Math.min(y, column.height - popup.offsetHeight - 8)
+	popup.style.left = `${x}px`
+	popup.style.top = `${y}px`
+	event.stopPropagation()
+}
+
+function closePopup() { popup.style.display = 'none' }
+document.getElementById('popup-cerrar').addEventListener('click', closePopup)
+document.querySelector('.map-column').addEventListener('click', closePopup)
+
+/* ── Boot ──────────────────────────────────────────────────────────────── */
+
+for (const layer of LAYERS) {
+	if (layer.failed) continue // dead service: row + notice only, never drawn
+	if (layer.kind === 'point') drawPoints(layer)
+	else if (layer.kind === 'line') drawLines(layer)
+	else drawQuadrants(layer)
+}
+drawOwnRecords()
+
+const list = document.getElementById('capas-externas-lista')
+for (const layer of LAYERS) list.appendChild(layerRow(layer))
+document.getElementById('nota-fallo').hidden = false
+
+document.querySelector('.basemap').addEventListener('click', (e) => {
+	const target = e.target.closest('[data-capa]')
+	if (target && target.classList.contains('cluster-bubble')) return
+	if (target && details[target.dataset.capa]) {
+		openPopup(target.dataset.capa, Number(target.dataset.i), e)
+	}
+})
+</script>
+</body>
+</html>

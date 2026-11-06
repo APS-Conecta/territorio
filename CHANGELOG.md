@@ -16,7 +16,7 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 - ODS templates and selected exports carry stable identity for edited round trips. Import previews validate and flag possible duplicates before selected rows are committed; blanks preserve optional values, missing rows never delete records, and batches remain reversible (#252).
 
 The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks (ADR-0021).
-Layers are fetched at view time and never stored (ADR-0022).
+Layers are fetched at view time and never stored (ADR-0025).
 
 ### Changed
 

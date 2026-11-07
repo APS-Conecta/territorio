@@ -104,44 +104,6 @@
 			</div>
 
 			<!--
-				The external Layers (CONTEXT.md, ADR-0025): remote collections
-				fetched live at view time and never stored. Beside the Category
-				tree rather than in it — a Layer is not a Dataset, has no
-				Subcategory, and never becomes a Feature; its toggle changes
-				nothing in the Registry. Off by default: the map opens as it
-				always has, and a Layer is something a person asks for.
-			-->
-			<details v-if="layers.length > 0" class="territorio-capas__externas" open>
-				<summary class="territorio-capas__externas-summary">
-					Capas externas
-				</summary>
-				<div class="territorio-capas__externas-body">
-					<NcNoteCard v-if="failedLayerCount > 0" type="error">
-						{{ failedLayerNotice }}
-					</NcNoteCard>
-					<div v-for="layer in layers" :key="layer.id" class="territorio-capas__externa">
-						<NcCheckboxRadioSwitch :model-value="layer.on"
-							:aria-label="`${layer.label}, capa externa`"
-							@update:model-value="$emit('toggle-layer', layer.id)" />
-						<!-- Hollow, like the Layer's markers on the map: the swatch
-						     previews exactly what the toggle puts there. -->
-						<span class="territorio-capas__externa-swatch"
-							:style="{ borderColor: layer.colour }" />
-						<span class="territorio-capas__name">{{ layer.label }}</span>
-						<!-- A dead service is a badge ON ITS TOGGLE (the criterion): the
-						     person looking at the row sees the row's own state, and
-						     the notice above says what it means. -->
-						<span v-if="layer.failed"
-							class="territorio-capas__badge territorio-capas__badge--fallo">sin respuesta</span>
-					</div>
-					<p class="territorio-capas__externas-note">
-						Se piden a servicios públicos al verlas; nada entra en el registro
-						del CESFAM.
-					</p>
-				</div>
-			</details>
-
-			<!--
 				Generated from the taxonomy, never from a hard-coded list: adding a
 				Subcategory row is a data change and has to appear here without
 				anyone touching this file.
@@ -485,8 +447,6 @@ export default {
 		error: { type: String, default: '' },
 		/** Something worth saying about a change that WORKED — see the note card above. */
 		notice: { type: String, default: '' },
-		/** The external Layers (ADR-0025) with their toggle state, owned by App.vue. */
-		layers: { type: Array, default: () => [] },
 	},
 
 	emits: [
@@ -499,7 +459,6 @@ export default {
 		'remove',
 		'choose-glyph',
 		'clear-taxonomy-message',
-		'toggle-layer',
 	],
 
 	data() {
@@ -579,23 +538,6 @@ export default {
 	computed: {
 		anythingHidden() {
 			return isFiltered(this.filter)
-		},
-
-		/** How many external Layers did not answer, for the notice's condition. */
-		failedLayerCount() {
-			return this.layers.filter((layer) => layer.failed).length
-		},
-
-		/**
-		 * The first dead service, said once and in full (ADR-0025: a dead
-		 * service is a notice, never a broken map). One name, not a list: the
-		 * badge on its own row already says which, and the sentence only has
-		 * to say what it means for the person looking.
-		 */
-		failedLayerNotice() {
-			const first = this.layers.find((layer) => layer.failed)
-			return first === undefined ? ''
-				: `${first.label} no respondió. El mapa y las demás capas siguen funcionando.`
 		},
 
 		tree() {
@@ -1082,64 +1024,3 @@ export default {
 	margin: 4px 0 0;
 }
 </style>
-
-/* ── Capas externas (ADR-0025) ───────────────────────────────────────────── */
-
-.territorio-capas__externas-summary {
-	cursor: pointer;
-	padding: 8px 0 4px;
-	font-weight: bold;
-	display: flex;
-	align-items: baseline;
-	gap: 6px;
-	list-style: none;
-}
-
-.territorio-capas__externas-summary::-webkit-details-marker {
-	display: none;
-}
-
-.territorio-capas__externas-summary::before {
-	content: '▸';
-	color: var(--color-text-maxcontrast);
-	font-size: 0.85em;
-}
-
-.territorio-capas__externas[open] > .territorio-capas__externas-summary::before {
-	content: '▾';
-}
-
-.territorio-capas__externa {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 4px 0;
-}
-
-/* Hollow like the Layer's markers: the swatch previews what the toggle puts
-   on the map, a ring in the Category's hue — not a filled chip, which would
-   read as one of the clinic's own Categories above. */
-.territorio-capas__externa-swatch {
-	flex: 0 0 auto;
-	width: 12px;
-	height: 12px;
-	border: 2.5px solid;
-	border-radius: 50%;
-	background: var(--color-main-background, #ffffff);
-}
-
-.territorio-capas__externas-note {
-	color: var(--color-text-maxcontrast);
-	font-size: 12px;
-	line-height: 1.4;
-	margin: 10px 0 0;
-}
-
-/* A dead service is a badge on its row and a notice above, never a broken
-   map (ADR-0025) — the panel's own badge shape, tinted with the refusal the
-   note card above it already carries, so the row and the sentence point at
-   each other. */
-.territorio-capas__badge--fallo {
-	color: var(--color-text-maxcontrast);
-	background: var(--color-background-hover, #f8f9fa);
-}

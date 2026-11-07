@@ -14,10 +14,8 @@ All notable changes to Territorio are recorded here. Decisions behind them live 
 - Point asset entry prioritizes a map pin and automatic coordinate capture. Manual address, contact details, hours, notes and source remain optional, with no external geocoding (#253).
 - Duplicate review compares field values and preserves chosen complementary information before a reversible merge. A changed record invalidates a stale review instead of overwriting a colleague's edits (#253).
 - ODS templates and selected exports carry stable identity for edited round trips. Import previews validate and flag possible duplicates before selected rows are committed; blanks preserve optional values, missing rows never delete records, and batches remain reversible (#252).
-- Capas externas: the first Live Layer — national health establishments (Junio 2026) — fetched from geoportal.cl at view time, drawn as hollow rings in the Salud hue, and never stored (#259).
 
 The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks (ADR-0021).
-Layers are fetched at view time and never stored (ADR-0025).
 
 ### Changed
 

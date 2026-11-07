@@ -188,27 +188,3 @@ export function clusterIcon(members, count) {
 			+ '</span>',
 	}
 }
-
-/**
- * A Layer's pin: the same 26px footprint as a record's, hollow (ADR-0025).
- *
- * Fill is the channel that says whose point this is. A record's pin is a
- * solid dot with a glyph; a Layer's is a ring in the hue of the Category it
- * sits beside — hue groups exactly as ADR-0013 says, while «not one of
- * ours» is said by the absence of a fill, a channel no record ever uses.
- * Same size as `pinIcon` so the two imply no hierarchy, and no glyph: a
- * Layer's point is identified by its popup, not by a mark somebody here
- * chose.
- *
- * The colour is escaped for the same reason the pin's is: it comes from the
- * install's own taxonomy, which a person edits.
- *
- * @param {{colour: string}} pin
- * @return {{html: string, size: number}}
- */
-export function layerPinIcon({ colour }) {
-	return {
-		html: `<span class="territorio-layer-pin" style="--territorio-pin:${PIN_DOT_SIZE}px;border-color:${escapeHtml(colour)}"></span>`,
-		size: PIN_DOT_SIZE,
-	}
-}

@@ -61,6 +61,7 @@
 							:placing="placing"
 							:cadastre-lines="editingLimit ? cadastreLines : []"
 							:picked-ids="draft?.picked ?? []"
+						:external-layers="externalLayersForMap"
 							@pick="togglePicked"
 							@view-changed="onViewChanged"
 							@select="select"
@@ -217,7 +218,8 @@
 						@add-category="addCategory"
 						@add-subcategory="addSubcategory"
 						@remove="removeFromTaxonomy"
-						@reset="resetFilter" />
+						@reset="resetFilter"
+						@toggle-layer="onToggleLayer" />
 
 					<!-- Full-screen Views for Other Panes -->
 					<!--
@@ -323,6 +325,7 @@ import LayersDropdownButton from './components/LayersDropdownButton.vue'
 import OmniboxControl from './components/OmniboxControl.vue'
 import TaxonomyDrawer from './components/TaxonomyDrawer.vue'
 import TerritorioMap from './components/TerritorioMap.vue'
+import { createLayerSource, LAYERS as LAYER_REGISTRY } from './layers.js'
 import { messageFrom, safeError, warnError } from './api.js'
 import { analysisChips, analysisSummary, emptyAnalysisFilter, filterInventory, inventoryFor } from './analytics.js'
 import { suggestions } from './boundaries.js'
@@ -361,6 +364,7 @@ import {
 	sectorSubcategoryId,
 	customAreaSubcategoryId,
 	UNIDAD_VECINAL_SLUG,
+	UNKNOWN_COLOUR,
 } from './taxonomy.js'
 
 /**
@@ -495,6 +499,15 @@ export default {
 			view: null,
 			viewTimer: null,
 			searchTimer: null,
+			// The external Layers' state (ADR-0025). `on` is this browser's own,
+			// per session, and never persists — turned off, the map returns to
+			// exactly what it showed, so there is nothing to store. `points` holds
+			// the last good normalised set, so a dead service leaves the map
+			// showing what it had rather than nothing.
+			layerState: Object.fromEntries(
+				LAYER_REGISTRY.map((layer) => [layer.id, { on: false, failed: false, points: [] }]),
+			),
+			layerViewTimer: null,
 		}
 	},
 
@@ -518,6 +531,35 @@ export default {
 
 		liveFiltered() {
 			return filterFeatures(this.mapFeatures, this.filter, this.subcategories)
+		},
+
+		/** A Layer draws in the hue of the Category it sits beside (ADR-0013). */
+		layerColour() {
+			return (layer) => this.taxonomy.find((category) => category.slug === layer.hue)?.color
+				?? UNKNOWN_COLOUR
+		},
+
+		/** What the Capas panel's externas section draws: one row per registry entry. */
+		layersForPanel() {
+			return LAYER_REGISTRY.map((layer) => ({
+				id: layer.id,
+				label: layer.label,
+				colour: this.layerColour(layer),
+				on: this.layerState[layer.id].on,
+				failed: this.layerState[layer.id].failed,
+			}))
+		},
+
+		/** What the map draws: only the Layers switched on, with their points. */
+		externalLayersForMap() {
+			return LAYER_REGISTRY
+				.filter((layer) => this.layerState[layer.id].on)
+				.map((layer) => ({
+					id: layer.id,
+					colour: this.layerColour(layer),
+					attribution: layer.attribution,
+					points: this.layerState[layer.id].points,
+				}))
 		},
 
 		/**
@@ -699,11 +741,16 @@ export default {
 		this.startPolling()
 		this.prefetchBoundaryStreets()
 		document.addEventListener('visibilitychange', this.onVisibilityChange)
+		// The external Layers' sources are handles, not state — like the map's
+		// Leaflet objects, they hold what a fetch is for and must not be made
+		// reactive. Discarded whole when a Layer is toggled off (ADR-0025).
+		this.layerSources = {}
 	},
 
 	beforeUnmount() {
 		clearTimeout(this.viewTimer)
 		clearTimeout(this.searchTimer)
+		clearTimeout(this.layerViewTimer)
 		this.stopPolling()
 		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 	},
@@ -1416,6 +1463,18 @@ export default {
 		 */
 		onViewChanged(view) {
 			this.view = view
+
+			// The external Layers follow the same settle as the Limit's streets,
+			// on a timer of their own: one fetch per settled view, whether or not
+			// a Limit is being edited, and closing that editor cancels its fetch
+			// and not the Layers'.
+			clearTimeout(this.layerViewTimer)
+			this.layerViewTimer = setTimeout(() => {
+				for (const id of Object.keys(this.layerSources)) {
+					this.loadLayer(id)
+				}
+			}, 250)
+
 			if (!this.editingLimit) {
 				return
 			}
@@ -1426,6 +1485,60 @@ export default {
 			// itself.
 			clearTimeout(this.viewTimer)
 			this.viewTimer = setTimeout(() => this.loadBoundaries(), 250)
+		},
+
+		/**
+		 * Switch an external Layer on or off (ADR-0025). On: a fresh source —
+		 * nothing of the previous session survives — and the view already on
+		 * screen, if the map has settled, so the Layer appears where the person
+		 * is looking rather than after the first pan. Off: the source is
+		 * dropped and its points with it, which is the whole of “turned off,
+		 * the map returns to exactly what it showed”.
+		 */
+		onToggleLayer(id) {
+			const layer = LAYER_REGISTRY.find((entry) => entry.id === id)
+			if (layer === undefined) {
+				return
+			}
+
+			const state = this.layerState[id]
+			state.on = !state.on
+			if (state.on) {
+				this.layerSources[id] = createLayerSource(layer, this.fetchLayerJson)
+				this.loadLayer(id)
+			} else {
+				delete this.layerSources[id]
+				state.points = []
+				state.failed = false
+			}
+		},
+
+		/** The Layer source's injected HTTP client — the seam's only binding. */
+		fetchLayerJson(url) {
+			return axios.get(url).then((response) => response.data)
+		},
+
+		/**
+		 * Load one Layer for the settled view. The source owns what a view
+		 * already paid for (layers.js), so this is one call per Layer per
+		 * settled view, and nothing at all inside a cached box. A failure is a
+		 * typed answer, not an exception: the badge goes up and the last good
+		 * points stay on the map.
+		 */
+		async loadLayer(id) {
+			const source = this.layerSources[id]
+			if (source === undefined || this.view === null) {
+				return
+			}
+
+			const result = await source.load(this.view)
+			// Toggled off while the request was out: the state has moved on and
+			// the answer belongs to nobody.
+			if (this.layerSources[id] !== source) {
+				return
+			}
+			this.layerState[id].points = result.points
+			this.layerState[id].failed = !result.ok
 		},
 
 		/**

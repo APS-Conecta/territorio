@@ -19,9 +19,11 @@
 					:filter="filter"
 					:error="error"
 					:notice="notice"
+					:layers="layers"
 					@clear-taxonomy-message="$emit('clear-taxonomy-message')"
 					@toggle-category="$emit('toggle-category', $event)"
 					@toggle-subcategory="$emit('toggle-subcategory', $event)"
+					@toggle-layer="$emit('toggle-layer', $event)"
 					@reset="$emit('reset')"
 					@rename="$emit('rename', $event)"
 					@add-category="$emit('add-category', $event)"
@@ -46,6 +48,7 @@ export default {
 		filter: { type: Object, required: true },
 		error: { type: String, default: '' },
 		notice: { type: String, default: '' },
+		layers: { type: Array, default: () => [] },
 	},
 
 	emits: [
@@ -53,6 +56,7 @@ export default {
 		'clear-taxonomy-message',
 		'toggle-category',
 		'toggle-subcategory',
+		'toggle-layer',
 		'reset',
 		'rename',
 		'add-category',

@@ -54,7 +54,7 @@ import { addBasemap, OSM_ATTRIBUTION } from '../basemap.js'
 import { glyphFor } from '../glyphs.js'
 import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
 import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
-import { clusterIcon, isApproximate, pinIcon } from '../pins.js'
+import { clusterIcon, isApproximate, layerPinIcon, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
 import { initialView } from '../extent.js'
 import {
@@ -106,6 +106,13 @@ export default {
 		// alone (L1-33). Empty at every other moment: a comuna is around eleven
 		// thousand lines and they are not the map (issue #12).
 		cadastreLines: { type: Array, default: () => [] },
+		// The external Layers drawn as hollow rings (ADR-0025): entries carry
+		// what the map needs and nothing else — the colour from the install's
+		// own taxonomy, the attribution the popup owes, and points already
+		// normalised by layers.js. Owned by App.vue like everything the map is
+		// handed: this component draws what it is given and never asks a URL of
+		// anything.
+		externalLayers: { type: Array, default: () => [] },
 		pickedIds: { type: Array, default: () => [] },
 		// Whether the open draft is waiting for a coordinate. While it is, a click
 		// anywhere places that coordinate — including on top of a Sector or a
@@ -220,6 +227,12 @@ export default {
 			this.drawMarkers()
 			this.drawShapes()
 		},
+		// Swapped whole, like the pickable lines and unlike the diffed records:
+		// a Layer's points arrive one viewport at a time and nothing edits one
+		// in place, so there is no standing set to diff against.
+		externalLayers() {
+			this.drawExternalLayers()
+		},
 		selectedId() {
 			this.drawMarkers()
 			this.drawShapes()
@@ -332,6 +345,19 @@ export default {
 		this.map.addLayer(this.markers)
 		this.outlines = L.featureGroup()
 		this.map.addLayer(this.outlines)
+
+		// The external Layers cluster among themselves, never with the
+		// Registry's records: hollow rings beside solid pins, and the same
+		// bubble logic — the ring shows the hue, the count says how many.
+		this.externalMarkers = L.markerClusterGroup({
+			showCoverageOnHover: false,
+			animate: false,
+			// The same bubble the records' group wears: an external marker
+			// carries the same `territorio` payload, so one icon function serves
+			// both groups — the ring shows the hue, the count says how many.
+			iconCreateFunction: (cluster) => this.clusterIconFor(cluster),
+		})
+		this.map.addLayer(this.externalMarkers)
 
 		this.setUpDrawing()
 		this.drawMarkers()
@@ -814,9 +840,10 @@ export default {
 		 * string, not a DOM node.
 		 */
 		clusterIconFor(cluster) {
-			// Read straight off the marker, with no fallback: `drawMarkers` is the
-			// only thing that adds a marker to this group and it hangs `territorio`
-			// on every one, so a marker without it is a state this component owns
+			// Read straight off the marker, with no fallback: every marker
+			// reaching here — `drawMarkers` for the records' group,
+			// `drawExternalLayers` for the Layers' — hangs `territorio` on every
+			// one, so a marker without it is a state this component owns
 			// outright. A `??` here would have stood in for a bug it cannot happen
 			// without, and would have drawn a plausible bubble over it.
 			const members = cluster.getAllChildMarkers().map((marker) => marker.options.territorio)
@@ -834,6 +861,53 @@ export default {
 				iconSize: [36, 36],
 				iconAnchor: [18, 18],
 			})
+		},
+
+		/**
+		 * The external Layers' points, swapped whole (see the watcher). Their
+		 * markers carry `territorio` for the cluster bubble exactly as records'
+		 * do — which is why the records' own `clusterIconFor` serves both
+		 * groups — bind their read-only popup, and stay out of geoman's snap
+		 * list for the same reason a record's do.
+		 */
+		drawExternalLayers() {
+			if (this.externalMarkers === null) {
+				return
+			}
+			this.externalMarkers.clearLayers()
+
+			const fresh = []
+			for (const layer of this.externalLayers) {
+				for (const point of layer.points) {
+					fresh.push(L.marker(point.at, {
+						icon: layerPinIcon({ colour: layer.colour }),
+						snapIgnore: true,
+						territorio: { colour: layer.colour, approximate: false },
+					}).bindPopup(document.createTextNode(this.layerPopupText(point, layer)), {
+						className: 'territorio-layer-popup',
+						closeButton: true,
+					}))
+				}
+			}
+			if (fresh.length > 0) {
+				this.externalMarkers.addLayers(fresh)
+			}
+		},
+
+		/**
+		 * What a Layer point says when clicked, as TEXT (imports.test.js: the
+		 * map hands Leaflet a node, never a string to parse — so nothing here
+		 * is escaped, because nothing here is ever parsed). The title, one
+		 * «field: value» line per mapped field, and the attribution ADR-0025
+		 * makes mandatory. Read only — no control, no link, nothing that writes.
+		 */
+		layerPopupText(point, layer) {
+			const lines = [
+				point.title,
+				...point.fields.map(([key, value]) => `${key}: ${value}`),
+				`Fuente: ${layer.attribution}`,
+			]
+			return lines.join('\n')
 		},
 
 		/**
@@ -1126,3 +1200,31 @@ $pin-ring: 2px solid #171717;
 	font-variant-numeric: tabular-nums lining-nums;
 }
 </style>
+
+/*
+ * A Layer's ring (ADR-0025): the pin's footprint, hollow. Fill is the channel
+ * that says whose point this is, and a Layer's is not ours. Literal white at
+ * 0.85 like a pin's own 2px ring — it stands on the raster basemap beside
+ * them, not on the page (map-legibility § 2's rule for tile-side colours).
+ */
+.territorio-layer-pin {
+	display: block;
+	box-sizing: border-box;
+	/* No fallback, for the reason .territorio-pin__dot gives one: a dot that
+	   silently kept its old size hides that from the browser gate. */
+	width: var(--territorio-pin);
+	height: var(--territorio-pin);
+	border: 3px solid;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.85);
+}
+
+/* A Layer point's popup is one text node (imports.test.js guards the map
+   against strings to parse), so its lines are separated by newlines the
+   stylesheet renders — not by markup. */
+.leaflet-popup.territorio-layer-popup .leaflet-popup-content {
+	white-space: pre-line;
+	font-size: 12.5px;
+	line-height: 1.45;
+	margin: 12px 16px;
+}

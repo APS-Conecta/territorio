@@ -880,7 +880,7 @@ export default {
 			for (const layer of this.externalLayers) {
 				for (const point of layer.points) {
 					fresh.push(L.marker(point.at, {
-						icon: layerPinIcon({ colour: layer.colour }),
+						icon: this.layerIconFor(layer),
 						snapIgnore: true,
 						territorio: { colour: layer.colour, approximate: false },
 					}).bindPopup(document.createTextNode(this.layerPopupText(point, layer)), {
@@ -892,6 +892,22 @@ export default {
 			if (fresh.length > 0) {
 				this.externalMarkers.addLayers(fresh)
 			}
+		},
+
+		/**
+		 * A Layer point's marker: the hollow ring as Leaflet wants it, a
+		 * divIcon wrapping the markup pins.js returns — the same wrap
+		 * `iconFor` gives a record's pin, with the anchor centred so the ring
+		 * stands on its coordinate like every dot on this map does.
+		 */
+		layerIconFor(layer) {
+			const pin = layerPinIcon({ colour: layer.colour })
+			return L.divIcon({
+				className: 'territorio-layer-marker',
+				html: pin.html,
+				iconSize: [pin.size, pin.size],
+				iconAnchor: [pin.size / 2, pin.size / 2],
+			})
 		},
 
 		/**

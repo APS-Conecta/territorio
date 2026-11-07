@@ -219,6 +219,7 @@
 						@add-subcategory="addSubcategory"
 						@remove="removeFromTaxonomy"
 						@reset="resetFilter"
+						:layers="layersForPanel"
 						@toggle-layer="onToggleLayer" />
 
 					<!-- Full-screen Views for Other Panes -->

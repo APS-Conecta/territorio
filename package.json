@@ -11,36 +11,36 @@
         "test:watch": "vitest tests/js"
     },
     "dependencies": {
-        "@geoman-io/leaflet-geoman-free": "^2.20.4",
+        "@geoman-io/leaflet-geoman-free": "^2.20.6",
         "@mapbox/maki": "^8.2.0",
         "@nextcloud/axios": "^2.5.1",
         "@nextcloud/initial-state": "^3.0.0",
         "@nextcloud/password-confirmation": "^6.2.1",
         "@nextcloud/router": "^3.0.1",
-        "@nextcloud/vue": "^9.0.0",
+        "@nextcloud/vue": "^9.14.1",
         "@turf/boolean-point-in-polygon": "^7.4.0",
         "@turf/polygonize": "^7.4.0",
         "leaflet": "^1.9.4",
         "leaflet.markercluster": "^1.5.3",
-        "vue": "^3.5.13"
+        "vue": "^3.5.45"
     },
     "devDependencies": {
-        "@babel/core": "^8.0.9",
+        "@babel/core": "^8.1.0",
         "@nextcloud/browserslist-config": "^3.0.0",
         "@nextcloud/webpack-vue-config": "^7.1.0",
         "babel-loader": "^10.0.0",
         "css-loader": "^7.1.1",
-        "eslint": "^10.13.0",
+        "eslint": "^10.14.0",
         "eslint-plugin-vue": "^10.12.0",
-        "node-polyfill-webpack-plugin": "4.0.0",
-        "sass": "^1.106.1",
+        "node-polyfill-webpack-plugin": "4.1.0",
+        "sass": "^1.108.1",
         "sass-loader": "^17.1.0",
         "style-loader": "^4.0.0",
         "terser-webpack-plugin": "^5.3.10",
-        "vitest": "^5.0.5",
+        "vitest": "^5.1.0",
         "vue-loader": "^17.4.2",
         "webpack": "^5.112.2",
-        "webpack-cli": "^6.0.1"
+        "webpack-cli": "^7.3.1"
     },
     "browserslist": [
         "extends @nextcloud/browserslist-config"

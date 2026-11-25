@@ -142,9 +142,15 @@ clean:
 # status on every page and answers a user who never set one with a 404, which it then logs as a
 # console error; the gate counts console errors, so a fresh `admin` would fail every run on a
 # message that is Nextcloud's own and says nothing about this app.
+#
+# The first-run wizard is disabled before the restart for the APCu reason above. Disabled after
+# it, the web workers still serve its script on a fresh instance, the script calls the wizard's
+# own route, and the 404 reaches the browser gate as two console errors (measured on a fresh
+# instance, territorio#269).
 instance-up:
 	$(COMPOSE) up -d --wait
 	$(OCC) app:enable territorio
+	$(OCC) app:disable firstrunwizard
 	$(COMPOSE) restart nextcloud
 	$(COMPOSE) up -d --wait
 	$(COMPOSE) exec -T nextcloud curl -s -o /dev/null -u admin:dev -H 'OCS-APIRequest: true' \

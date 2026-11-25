@@ -14,16 +14,15 @@ issues' own `## Blocked by` and `## Decided` sections dictate. See
 
 `/review main` is the two-axis review; `/code-review` is not.
 
-Nothing in that loop blocks a merge, and no wording here should pretend otherwise:
-this is a private repo on a plan with no branch protection and one account, so the
-browser gate is a step you do not skip rather than a gate that stops you. It exists
-because `Guardar` did nothing for eight slices while every other check passed.
-`.claude/skills/slice/SKILL.md` § 7 has the landing sequence.
+The repo is public, and main gets a ruleset (APS-Conecta/.github#16) that requires a pull
+request and CI's checks, so a red or pending check refuses the merge. The browser gate is one of
+those checks. It exists because `Guardar` did nothing for eight slices while every other check
+passed. `.claude/skills/slice/SKILL.md` § 7 has the landing sequence.
 
-CI runs the PHP tests and lint, the JS lint and tests, and the release workflow builds and
-packs the bundle on every pull request (`.github/workflows/ci.yml`,
-`.github/workflows/release.yml`). The integration and browser suites stay manual, on
-purpose: they need a whole instance.
+CI runs on every pull request, with no path filter (`.github/workflows/ci.yml`): the PHP tests
+and lint, the JS lint and tests, and one instance job that brings up the throwaway instance and
+runs the OpenAPI no-drift check, the integration suite and the browser gate on it. The release
+workflow builds and packs the bundle on every pull request too (`.github/workflows/release.yml`).
 
 ## Agent skills
 

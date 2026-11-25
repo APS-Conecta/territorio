@@ -129,9 +129,10 @@ def dismiss_first_run_wizard():
     wizard rather than the app. It was only ever green on an instance somebody had
     already clicked through by hand, which is the worst shape a gate can have.
 
-    Here rather than in `make instance-up`, so the gate establishes its own
-    precondition: `make test-browser` has no prerequisite and is the one command a
-    developer runs against an instance that is already up.
+    `make instance-up` disables the app before its restart, which is what a fresh
+    instance needs: disabled here, after it, the web workers still serve the wizard's
+    script and its 404 fails the gate. This stays so the gate establishes its own
+    precondition on an instance that is already up.
 
     Disabling the app is not enough on its own — the per-user flag is what the
     modal reads — and neither call is fatal: a Nextcloud without the app, or a

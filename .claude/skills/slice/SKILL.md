@@ -96,14 +96,12 @@ last week's.
 
 ## 5. The browser gate
 
-Nothing enforces it. A private repo on this plan cannot have a protected branch or
-a ruleset, and there is one account, so no check anywhere can refuse a merge. Treat
-it as the step you do not skip, and say in the closing comment whether you ran it.
+CI runs it on every pull request, in the instance job, and main's ruleset requires
+that job. Run it here as well: the slice extends it, and a check you have not seen
+pass locally is debugged one CI run at a time.
 
 ```bash
-make build
-git add js/                             # js/ IS the deployment and IS committed;
-#                                         CI fails the PR on any drift from src/
+make build                              # js/ is build output, not committed
 # bump <version> in appinfo/info.xml
 docker compose -f compose.dev.yaml exec --user www-data nextcloud php occ upgrade
 make test-browser
@@ -148,15 +146,16 @@ git push -u origin feat/<n>-<slug>
 gh pr create                            # opens an editor pre-filled with the org PR template
 #                                         (APS-Conecta/.github); NOT --fill: that takes title and
 #                                         body from the commits and bypasses the template entirely
-gh pr checks --watch                    # php tests+lint, js lint+tests+notices, build (release.yml)
+gh pr checks --watch                    # php tests+lint, js lint+tests+notices, the instance job
+#                                         (openapi, integration, browser), build (release.yml)
 gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"
 ```
 
 Through a pull request, never `git push origin main`. The org works GitHub Flow and
 one approval is the convention — but GitHub will not let anybody approve their own
-pull request, and no ruleset can require it here, so the approval is you reading
-your own diff on the PR page before merging. It is a checkpoint, not a gate. Say so
+pull request, and main's ruleset requires green checks but no approval, so the
+approval is you reading your own diff on the PR page before merging. It is a checkpoint, not a gate. Say so
 plainly rather than describing a review that no second person performs.
 
 The closing comment separates three things, plainly:

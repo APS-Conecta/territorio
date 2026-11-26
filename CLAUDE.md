@@ -2,6 +2,14 @@
 
 Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo citations stay bare. The org-wide decisions live as ADRs in the suite repository (`APS-Conecta/instalador`, `docs/adr/`); cross-app contracts are each app's OpenAPI surface, indexed on the documentation site.
 
+## Working rules
+
+- **Standards:** the org's code rules are the docs site's [«Estándares de código»](https://aps-conecta.github.io/documentation/desarrollo/estandares-de-codigo.html) page.
+- **Seams:** server behaviour is tested in the integration suite (`tests/integration/`, `make deps` and
+  `make instance-up`, then `make test-integration`) against the throwaway instance's real PostgreSQL; UI
+  behaviour in the browser suite (`tools/browser-check.py`, `make build`, then `make test-browser`) against
+  the same instance. A PR names the seam its test lives at; a test at any other seam is a review finding.
+
 ## Building an issue
 
 `/slice <issue-number>` — the whole loop, in order: pin the ticket, `/tdd`, then

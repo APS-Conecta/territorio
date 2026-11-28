@@ -112,6 +112,31 @@ final class AppIconTest extends TestCase {
 		}
 	}
 
+	public function testEachIconIsOneMaterialDesignGlyph(): void {
+		foreach ([self::LIGHT, self::DARK] as $path) {
+			$document = new DOMDocument();
+			$document->loadXML(file_get_contents($path));
+			$svg = $document->documentElement;
+			$drawing = array_values(array_filter(
+				iterator_to_array($svg->childNodes),
+				static fn ($node) => $node->nodeType === XML_ELEMENT_NODE,
+			));
+
+			self::assertSame(
+				'0 0 24 24',
+				$svg->getAttribute('viewBox'),
+				basename($path) . " must keep Material Design Icons' 24-unit viewBox, the grid "
+				. "@nextcloud/vue's own icons are drawn on.",
+			);
+			self::assertSame(
+				['path'],
+				array_map(static fn ($node) => $node->nodeName, $drawing),
+				basename($path) . ' must be one Material Design Icons glyph: a single path, '
+				. 'which takes one colour.',
+			);
+		}
+	}
+
 	public function testTheDarkIconNamesItsInTreeCallers(): void {
 		$callers = $this->inTreeCallersOf('app-dark.svg');
 

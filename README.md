@@ -161,6 +161,10 @@ Four suites, on purpose:
   a person. It asserts on the Registry rather than the screen — a green screen over an empty table
   is the failure it is here to catch. Needs `make instance-up` and a current `make build`.
 
+CI (`.github/workflows/ci.yml`) runs the suites and linters above on every pull request, and the org's shared style
+check, its `style` job, pinned by commit SHA: a literal colour, a font size in px or a plain
+`<button>` in the app's styles and templates fails it.
+
 ### Two traps worth knowing
 
 **APCu is per-process.** The dev instance uses APCu as its local cache, so changing a setting with

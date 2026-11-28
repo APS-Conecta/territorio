@@ -28,7 +28,8 @@ those checks. It exists because `Guardar` did nothing for eight slices while eve
 passed. `.claude/skills/slice/SKILL.md` § 7 has the landing sequence.
 
 CI runs on every pull request, with no path filter (`.github/workflows/ci.yml`): the PHP tests
-and lint, the JS lint and tests, and one instance job that brings up the throwaway instance and
+and lint, the JS lint and tests, the org's shared style check (the `style` job, pinned by commit
+SHA: no literal colour, no font size in px, no plain `<button>`), and one instance job that brings up the throwaway instance and
 runs the OpenAPI no-drift check, the integration suite and the browser gate on it. The release
 workflow builds and packs the bundle on every pull request too (`.github/workflows/release.yml`).
 

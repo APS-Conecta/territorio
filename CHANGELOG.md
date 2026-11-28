@@ -27,6 +27,9 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   its history, the Datos list, the Índice, Posibles duplicados, Análisis, the ODS review and the
   taxonomy drawer with its Capas panel use `NcButton`, theme colours and relative font sizes.
   Category colours and the glyph ink on them (`TILE_INKS`) keep their own values (#266).
+- CI runs the org's shared style check over the whole app, pinned by commit SHA, so a literal
+  colour, a font size in px or a plain `<button>` fails the pull request. The app icon is the
+  Material Design Icons `map` glyph, white and black, on MDI's 24-unit grid (#267).
 - **First signed release (0.80.0).** Releases are built and signed by the org's shared
   workflow (instalador #31), called from `.github/workflows/release.yml` pinned by commit
   SHA: a pull request builds the frontend and packs the tarball; a `v*` tag — which must

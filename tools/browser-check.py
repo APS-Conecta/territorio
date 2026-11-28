@@ -42,6 +42,7 @@ import zipfile
 import zlib
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
 
@@ -1900,6 +1901,40 @@ def the_assignment_is_shown_and_not_editable(page, failures):
 # The picker's catastro lines for the view, and not /boundaries/names.
 BOUNDARIES_REQUEST = re.compile(r"/apps/territorio/boundaries\?")
 
+# The Boundary features the picker is offered: names no comuna has, so a check
+# can expect one of them.
+BOUNDARY_NAMES = ("Calle Fixture Uno", "Calle Fixture Dos", "Pasaje Fixture Tres")
+
+
+@contextmanager
+def boundary_features_in_view(page):
+    """Answer the picker's request with one Boundary feature per BOUNDARY_NAMES.
+
+    Each runs west to east across the middle of the view the request names, so
+    it is on screen wherever opening the Sector put the map. The ids are far
+    above any the instance hands out.
+    """
+    def handler(route):
+        query = parse_qs(urlparse(route.request.url).query)
+        south, west, north, east = (float(query[key][0]) for key in ("south", "west", "north", "east"))
+        features = [{
+            "id": 900_000_001 + index,
+            "name": name,
+            "geometry": {"type": "LineString", "coordinates": [
+                [west + (east - west) * 0.2, latitude], [east - (east - west) * 0.2, latitude],
+            ]},
+        } for index, (name, latitude) in enumerate(zip(BOUNDARY_NAMES, (
+            south + (north - south) * share for share in (0.35, 0.5, 0.65)
+        )))]
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"features": features, "gone": []}))
+
+    page.route(BOUNDARIES_REQUEST, handler)
+    try:
+        yield
+    finally:
+        page.unroute(BOUNDARIES_REQUEST, handler)
+
 
 def a_failed_catastro_can_be_retried(page, errors, failures):
     """#265: a catastro that fails to load offers «Reintentar», an NcButton, and it loads.
@@ -1936,9 +1971,16 @@ def a_failed_catastro_can_be_retried(page, errors, failures):
 def the_limit_can_be_picked(page, failures):
     """#13: pick the lines a Sector's Limit runs along, by name or by clicking.
 
-    Needs boundary features on the instance; skipped with a word rather than a
-    false pass when there are none.
+    The Boundary features in view are this check's own (boundary_features_in_view).
     """
+    with boundary_features_in_view(page):
+        the_limit_is_picked_by_name_and_by_click(page, failures)
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
+def the_limit_is_picked_by_name_and_by_click(page, failures):
     page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
     page.wait_for_timeout(400)
     open_first_row(page)
@@ -1952,16 +1994,12 @@ def the_limit_can_be_picked(page, failures):
     # By label: the picker has a second field now, for the stretches of a limit
     # that follow nothing anybody could pick (issue #15).
     box = picker.get_by_label("Buscar una calle")
-    # A letter, not a word: the loaded names are whatever streets this comuna
-    # actually has, and the check should not need to know them.
     box.fill("a")
     page.wait_for_timeout(600)
 
     offered = picker.locator(".territorio-picker__suggestions li")
-    if offered.count() == 0:
-        skip("no boundary features in view to pick from")
-        dismiss(page)
-        page.locator(SEARCH).fill("")
+    if not any(name in text for text in offered.all_inner_texts() for name in BOUNDARY_NAMES):
+        failures.append(f"typing 'a' offered {offered.all_inner_texts()}, none of {BOUNDARY_NAMES}")
         return
 
     # Picking by name puts it in the Limit…
@@ -1987,28 +2025,25 @@ def the_limit_can_be_picked(page, failures):
     # it — so this asserts the picks survive as much as that one arrives.
     lines = page.locator(".leaflet-pane[class*=pickable] path")
     if lines.count() == 0:
-        skip("no boundary line on screen to click")
+        failures.append("no Boundary feature in view is drawn on the map to click")
     else:
         box.fill("")
         page.wait_for_timeout(300)
-        # The same line twice, not `.first` twice: a picked line is redrawn, and
-        # the second `.first` can be another street altogether.
-        line = lines.first.element_handle()
-        line.click(force=True)
+        # The same spot twice, not the same element: a pick redraws every line
+        # (drawPickable), and the second `.first` can be another street altogether.
+        drawn = lines.first.bounding_box()
+        spot = (drawn["x"] + drawn["width"] / 2, drawn["y"] + drawn["height"] / 2)
+        page.mouse.click(*spot)
         page.wait_for_timeout(500)
 
         after = picker.locator(".territorio-picker__parts li")
         if after.count() != 1:
             failures.append(f"clicking a line picked {after.count()} things, expected 1")
 
-        line.click(force=True)
+        page.mouse.click(*spot)
         page.wait_for_timeout(500)
         if picker.locator(".territorio-picker__parts li").count() != 0:
             failures.append("clicking the same line again did not unpick it")
-
-    dismiss(page)
-    page.locator(SEARCH).fill("")
-    page.wait_for_timeout(400)
 
 
 def a_pin_opens_a_record_while_the_retired_list_is_shown(page, failures):
@@ -3192,19 +3227,24 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
     One line cannot enclose anything, so this is the failure every time rather
     than sometimes — and it is the criterion that matters most, because a real
     limit often runs along something no dataset holds and this is what happens
-    then. Silence here would leave somebody clicking the map waiting.
+    then. Silence here would leave somebody clicking the map waiting. The
+    Boundary features in view are this check's own (boundary_features_in_view).
     """
-    if not open_the_runs_sector(page, failures):
-        return
+    with boundary_features_in_view(page):
+        if open_the_runs_sector(page, failures):
+            one_picked_line_does_not_close(page, failures)
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
 
+
+def one_picked_line_does_not_close(page, failures):
     picker = page.locator('[data-testid="boundary-picker"]')
     picker.get_by_label("Buscar una calle").fill("a")
     page.wait_for_timeout(800)
     offered = picker.locator(".territorio-picker__suggestions li")
     if offered.count() == 0:
-        skip("no boundary features in view to pick from")
-        dismiss(page)
-        page.locator(SEARCH).fill("")
+        failures.append(f"typing 'a' offered none of {BOUNDARY_NAMES}")
         return
 
     offered.first.locator("button").click()
@@ -3231,10 +3271,6 @@ def the_editor_says_so_when_the_lines_do_not_close(page, failures):
     # ADR-0007: hand-drawing is available throughout, including after this.
     if page.locator(".territorio-draw-sector__button").count() == 0:
         failures.append("hand-drawing is no longer available after a failed generate")
-
-    dismiss(page)
-    page.locator(SEARCH).fill("")
-    page.wait_for_timeout(400)
 
 
 def open_the_runs_sector(page, failures):

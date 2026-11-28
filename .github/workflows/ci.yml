@@ -112,6 +112,13 @@ jobs:
       - name: Every shipped package is attributed
         run: make notices
 
+  # The org's shared style check over the whole app: no literal colour, no font size in px and no
+  # plain <button>. Pinned by commit SHA, as its header asks.
+  style:
+    uses: APS-Conecta/.github/.github/workflows/style-check.yml@5d3e0c9c180e5204c978e48b92dd3e4908955a0b # 2026-11-26
+    permissions:
+      contents: read
+
   # Its name is the status check main's ruleset requires (APS-Conecta/.github#16): a rename here
   # is a rename there.
   instance:

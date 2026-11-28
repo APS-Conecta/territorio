@@ -21,7 +21,9 @@
     above the root costs the app its favicon. And a CSS custom property cannot be
     written here with its two leading hyphens: a double hyphen inside an XML comment
     is illegal and librsvg refuses the whole file.
+
+    The glyph is Material Design Icons' map (@mdi/js 7.4.47), the icon set
+    @nextcloud/vue draws with, on its 24-unit grid.
   -->
-  <path d="M15 4.5 9 2.6 3.6 4.4a1 1 0 0 0-.6.95v14.2a.6.6 0 0 0 .8.57L9 18.4l6 1.9 5.4-1.8a1 1 0 0 0 .6-.95V3.35a.6.6 0 0 0-.8-.57L15 4.5Zm-5.4-.1 4.8 1.52v13.68L9.6 18.08V4.4Z"/>
-  <circle cx="17.6" cy="9.2" r="2.1"/>
+  <path d="M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,20.97L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"/>
 </svg>

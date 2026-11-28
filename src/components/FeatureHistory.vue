@@ -7,9 +7,9 @@
 		     failure read as the record having no past. -->
 		<p v-if="failed" class="territorio-history__empty">
 			No se pudo cargar el historial.
-			<button type="button" class="territorio-history__retry" @click="$emit('retry')">
+			<NcButton class="territorio-history__retry" variant="tertiary" @click="$emit('retry')">
 				Reintentar
-			</button>
+			</NcButton>
 		</p>
 
 		<p v-else-if="entries.length === 0" class="territorio-history__empty">
@@ -47,6 +47,7 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
 import { nameOf } from '../boundaries.js'
 import { QUALITY_LABELS } from '../indice.js'
 import { readable } from '../limit.js'
@@ -103,6 +104,7 @@ const FIELDS = {
 
 export default {
 	name: 'FeatureHistory',
+	components: { NcButton },
 
 	props: {
 		entries: { type: Array, required: true },
@@ -200,16 +202,8 @@ export default {
 	font-size: 0.9em;
 }
 
-/* A link-styled button — the empty-state pattern the basemap banner uses. */
 .territorio-history__retry {
-	background: none;
-	border: none;
-	padding: 0;
-	margin-inline-start: 6px;
-	font: inherit;
-	color: var(--color-primary-element);
-	cursor: pointer;
-	text-decoration: underline;
+	margin-top: 4px;
 }
 
 .territorio-history__list {

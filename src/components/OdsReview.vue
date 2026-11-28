@@ -7,8 +7,8 @@
 			<span>{{ totals.invalid }} con errores</span><span>{{ totals.candidates }} posibles duplicados</span>
 		</div>
 		<div class="territorio-ods-review__actions">
-			<button type="button" :disabled="disabled" @click="selectSafe">Seleccionar válidos sin posibles duplicados</button>
-			<button type="button" :disabled="disabled" @click="change([])">Omitir todos</button>
+			<NcButton :disabled="disabled" @click="selectSafe">Seleccionar válidos sin posibles duplicados</NcButton>
+			<NcButton :disabled="disabled" @click="change([])">Omitir todos</NcButton>
 		</div>
 		<div class="territorio-ods-review__rows">
 			<article v-for="row in preview.rows" :key="row.row" class="territorio-ods-review__row">
@@ -24,7 +24,7 @@
 						<option value="">Elegir categoría y subcategoría</option>
 						<option v-for="choice in preview.classifications" :key="choice.id" :value="choice.id">{{ choice.label }}</option>
 					</select>
-					<button type="button" :disabled="disabled || !corrections[row.row]" @click="$emit('correct-classification', { row: row.row, subcategoryId: Number(corrections[row.row]) })">Aplicar clasificación</button>
+					<NcButton :disabled="disabled || !corrections[row.row]" @click="$emit('correct-classification', { row: row.row, subcategoryId: Number(corrections[row.row]) })">Aplicar clasificación</NcButton>
 				</div>
 				<div v-if="row.candidates.length" class="territorio-ods-review__warning">
 					<strong>Posibles duplicados — compruebe antes de importar</strong>
@@ -58,10 +58,13 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
+
 const LABELS = { name: 'Nombre', subcategoryId: 'Clasificación', geometry: 'Coordenadas', address: 'Dirección', phone: 'Teléfono', email: 'Correo', contactPerson: 'Persona de contacto', contactRole: 'Cargo', openingHours: 'Horario', notes: 'Notas', sourceRef: 'Fuente', locationQuality: 'Ubicación' }
 
 export default {
 	name: 'OdsReview',
+	components: { NcButton },
 	props: {
 		preview: { type: Object, required: true },
 		modelValue: { type: Array, required: true },

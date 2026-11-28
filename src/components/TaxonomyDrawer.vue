@@ -6,13 +6,13 @@
 				<div class="territorio-taxonomy-drawer__title">
 					<h3>Taxonomía y Capas</h3>
 				</div>
-				<button type="button"
-					class="territorio-taxonomy-drawer__close"
+				<NcButton class="territorio-taxonomy-drawer__close"
+					variant="tertiary"
 					title="Cerrar panel de taxonomía"
 					aria-label="Cerrar"
 					@click="$emit('close')">
 					✕
-				</button>
+				</NcButton>
 			</div>
 			<div class="territorio-taxonomy-drawer__body">
 				<CapasPanel :taxonomy="taxonomy"
@@ -34,12 +34,13 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
 import CapasPanel from './CapasPanel.vue'
 
 export default {
 	name: 'TaxonomyDrawer',
 
-	components: { CapasPanel },
+	components: { CapasPanel, NcButton },
 
 	props: {
 		taxonomy: { type: Array, required: true },
@@ -70,13 +71,12 @@ export default {
 	z-index: 2000;
 	display: flex;
 	justify-content: flex-end;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 .territorio-taxonomy-drawer__overlay {
 	position: absolute;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.4);
+	background: var(--color-box-shadow);
 	animation: fadeIn 0.2s ease;
 }
 
@@ -85,8 +85,8 @@ export default {
 	width: 380px;
 	max-width: 90vw;
 	height: 100%;
-	background: #ffffff;
-	box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2);
+	background: var(--color-main-background);
+	box-shadow: -4px 0 16px var(--color-box-shadow);
 	display: flex;
 	flex-direction: column;
 	z-index: 1;
@@ -98,32 +98,14 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: 16px 20px;
-	border-bottom: 1px solid #ebebeb;
+	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-taxonomy-drawer__title h3 {
 	margin: 0;
-	font-size: 16px;
+	font-size: calc(var(--default-font-size) * 1.1);
 	font-weight: 600;
-	color: #202124;
-}
-
-.territorio-taxonomy-drawer__close {
-	background: none;
-	border: none;
-	font-size: 16px;
-	color: #5f6368;
-	cursor: pointer;
-	padding: 6px;
-	border-radius: 50%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.territorio-taxonomy-drawer__close:hover {
-	background: #f1f3f4;
-	color: #202124;
+	color: var(--color-main-text);
 }
 
 .territorio-taxonomy-drawer__body {

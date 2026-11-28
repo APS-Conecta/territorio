@@ -92,12 +92,18 @@
 			</div>
 
 			<div v-if="draft.phone || draft.email" class="territorio-detail__place-links">
-				<a v-if="draft.phone" :href="'tel:' + draft.phone" class="territorio-detail__link-btn">
+				<NcButton v-if="draft.phone"
+					class="territorio-detail__link-btn"
+					:href="'tel:' + draft.phone"
+					size="small">
 					📞 {{ draft.phone }}
-				</a>
-				<a v-if="draft.email" :href="'mailto:' + draft.email" class="territorio-detail__link-btn">
+				</NcButton>
+				<NcButton v-if="draft.email"
+					class="territorio-detail__link-btn"
+					:href="'mailto:' + draft.email"
+					size="small">
 					✉️ {{ draft.email }}
-				</a>
+				</NcButton>
 			</div>
 
 			<div class="territorio-detail__place-fields">
@@ -590,11 +596,11 @@ export default {
 
 .territorio-detail__place-badge {
 	display: inline-block;
-	background: #e8f0fe;
-	color: #1a73e8;
+	background: var(--color-primary-element-light);
+	color: var(--color-primary-element-light-text);
 	padding: 2px 8px;
-	border-radius: 4px;
-	font-size: 11px;
+	border-radius: var(--border-radius);
+	font-size: var(--font-size-small);
 	font-weight: 600;
 	margin-bottom: 6px;
 }
@@ -602,7 +608,7 @@ export default {
 .territorio-detail__place-title {
 	font-size: 1.4em;
 	font-weight: 700;
-	color: #202124;
+	color: var(--color-main-text);
 	margin: 0 0 8px;
 }
 
@@ -613,9 +619,9 @@ export default {
 }
 
 .territorio-detail__place-chip {
-	font-size: 12px;
-	background: #f1f3f4;
-	color: #5f6368;
+	font-size: var(--font-size-small);
+	background: var(--color-background-dark);
+	color: var(--color-text-maxcontrast);
 	padding: 2px 8px;
 	border-radius: 12px;
 	font-weight: 500;
@@ -627,30 +633,12 @@ export default {
 	margin-bottom: 14px;
 }
 
-.territorio-detail__link-btn {
-	display: inline-flex;
-	align-items: center;
-	background: #f8f9fa;
-	border: 1px solid #dadce0;
-	border-radius: 6px;
-	color: #1a73e8;
-	text-decoration: none;
-	font-size: 12px;
-	font-weight: 500;
-	padding: 4px 10px;
-	transition: background 0.15s;
-}
-
-.territorio-detail__link-btn:hover {
-	background: #e8eaed;
-}
-
 .territorio-detail__place-fields {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	font-size: 13px;
-	color: #3c4043;
+	font-size: var(--default-font-size);
+	color: var(--color-main-text);
 }
 
 .territorio-detail__place-row {
@@ -661,7 +649,7 @@ export default {
 
 .territorio-detail__place-label {
 	font-weight: 600;
-	color: #5f6368;
+	color: var(--color-text-maxcontrast);
 	min-width: 75px;
 }
 

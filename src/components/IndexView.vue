@@ -1,12 +1,12 @@
 <template>
 	<div class="territorio-indice" data-testid="indice">
 		<div class="territorio-indice__head">
-			<button type="button"
-				class="territorio-indice__back-btn"
+			<NcButton class="territorio-indice__back-btn"
+				variant="tertiary"
 				title="Volver al mapa"
 				@click="$emit('back')">
 				← Volver al mapa
-			</button>
+			</NcButton>
 			<h2>
 				{{ rows.length }} {{ rows.length === 1 ? 'registro' : 'registros' }}
 				<span v-if="filtered" class="territorio-indice__note">con los filtros aplicados</span>
@@ -82,10 +82,15 @@
 							this app cannot perform, and the browser gives a button its
 							focus ring, its Enter and its Space for nothing.
 						-->
-						<button type="button" class="territorio-indice__sort" @click="sortBy(column.key)">
+						<NcButton class="territorio-indice__sort"
+							variant="tertiary-no-background"
+							alignment="start"
+							size="small"
+							wide
+							@click="sortBy(column.key)">
 							{{ column.label }}
 							<span class="territorio-indice__arrow" aria-hidden="true">{{ arrow(column.key) }}</span>
-						</button>
+						</NcButton>
 					</th>
 				</tr>
 			</thead>
@@ -101,12 +106,14 @@
 						:data-key="column.key"
 						:title="row.cells[column.key] || null"
 						:class="{ 'territorio-indice__cell--first': column.key === shown[0].key }">
-						<button v-if="column.key === shown[0].key"
-							type="button"
+						<NcButton v-if="column.key === shown[0].key"
 							class="territorio-indice__open"
+							variant="tertiary-no-background"
+							alignment="start"
+							size="small"
 							:aria-label="`Abrir registro «${row.cells[column.key]}»`">
 							{{ row.cells[column.key] }}
-						</button>
+						</NcButton>
 						<template v-else>
 							{{ row.cells[column.key] }}
 						</template>
@@ -118,6 +125,7 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { COLUMNS, rowsFor, sortRows } from '../indice.js'
@@ -126,7 +134,7 @@ import { indexSubcategories } from '../taxonomy.js'
 export default {
 	name: 'IndexView',
 
-	components: { NcCheckboxRadioSwitch, NcEmptyContent },
+	components: { NcButton, NcCheckboxRadioSwitch, NcEmptyContent },
 
 	props: {
 		features: { type: Array, required: true },
@@ -205,36 +213,21 @@ export default {
 	padding: 16px 24px 32px;
 	overflow: auto;
 	height: 100%;
-	background: #ffffff;
+	background: var(--color-main-background);
 }
 
 .territorio-indice__back-btn {
-	background: #f1f3f4;
-	border: 1px solid #dadce0;
-	border-radius: 6px;
-	font-size: 13px;
-	font-weight: 500;
-	color: #1a73e8;
-	padding: 6px 12px;
-	cursor: pointer;
 	margin-bottom: 12px;
-	display: inline-flex;
-	align-items: center;
-	transition: background 0.15s;
-}
-
-.territorio-indice__back-btn:hover {
-	background: #e8eaed;
 }
 
 .territorio-indice__head h2 {
 	font-size: 1.3em;
 	margin-bottom: 12px;
-	color: #202124;
+	color: var(--color-main-text);
 }
 
 .territorio-indice__note {
-	color: #70757a;
+	color: var(--color-text-maxcontrast);
 	font-size: 0.85em;
 	font-weight: normal;
 	margin-inline-start: 6px;
@@ -243,18 +236,18 @@ export default {
 .territorio-indice__columns-details {
 	margin-bottom: 16px;
 	padding-bottom: 8px;
-	border-bottom: 1px solid #ebebeb;
+	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-indice__columns-toggle {
 	cursor: pointer;
 	font-weight: 600;
-	font-size: 13px;
-	color: #5f6368;
+	font-size: var(--font-size-small);
+	color: var(--color-text-maxcontrast);
 }
 
 .territorio-indice__columns-count {
-	color: #70757a;
+	color: var(--color-text-maxcontrast);
 	font-weight: normal;
 	font-size: 0.85em;
 	margin-inline-start: 6px;
@@ -270,34 +263,34 @@ export default {
 .territorio-indice__table {
 	border-collapse: collapse;
 	width: 100%;
-	font-size: 13px;
+	font-size: var(--default-font-size);
 }
 
 .territorio-indice__table th {
 	position: sticky;
 	top: 0;
 	z-index: 1;
-	background: #ffffff;
+	background: var(--color-main-background);
 	text-align: start;
 	white-space: nowrap;
-	border-bottom: 2px solid #dadce0;
-	color: #5f6368;
+	border-bottom: 2px solid var(--color-border-dark);
+	color: var(--color-text-maxcontrast);
 }
 
 .territorio-indice__table td {
 	padding: 8px 10px;
-	border-bottom: 1px solid #ebebeb;
+	border-bottom: 1px solid var(--color-border);
 	max-width: 22em;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: #202124;
+	color: var(--color-main-text);
 }
 
 .territorio-indice__cell--first {
 	position: sticky;
 	left: 0;
-	background: #ffffff;
+	background: var(--color-main-background);
 }
 
 .territorio-indice__table th.territorio-indice__cell--first {
@@ -305,44 +298,24 @@ export default {
 }
 
 .territorio-indice__table tbody tr:hover .territorio-indice__cell--first {
-	background: #f8f9fa;
+	background: var(--color-background-hover);
 }
 
 .territorio-indice__row--selected .territorio-indice__cell--first {
-	background: #e8f0fe;
+	background: var(--color-primary-element-light);
 }
 
 .territorio-indice__table tbody tr:hover {
-	background: #f8f9fa;
+	background: var(--color-background-hover);
 	cursor: pointer;
 }
 
 .territorio-indice__row--selected {
-	background: #e8f0fe;
+	background: var(--color-primary-element-light);
 }
 
-.territorio-indice__sort {
-	background: none;
-	border: none;
-	padding: 8px 10px;
-	font: inherit;
-	font-weight: 600;
-	color: inherit;
-	cursor: pointer;
-}
-
+/* The record's name, in the theme's primary colour: it is the way into the record. */
 .territorio-indice__open {
-	background: none;
-	border: none;
-	padding: 0;
-	font: inherit;
-	font-weight: 500;
-	color: #1a73e8;
-	cursor: pointer;
-	text-align: start;
-}
-
-.territorio-indice__open:hover {
-	text-decoration: underline;
+	color: var(--color-primary-element);
 }
 </style>

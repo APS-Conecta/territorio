@@ -29,6 +29,7 @@ its own, where it is the subject rather than a step on the way to something
 else. That took this from passing two runs in three to nine of nine.
 """
 
+import html
 import io
 import json
 import math
@@ -8743,7 +8744,14 @@ STAND_IN_THEME = {
     "--color-primary-element-light-text": "rgb(20, 70, 10)",
     "--color-error": "rgb(170, 20, 60)",
     "--default-font-size": "17px",
+    "--font-size-small": "11px",
 }
+
+
+def wear_the_stand_in_theme(page):
+    """Lay STAND_IN_THEME over the app until the next reload."""
+    rules = "; ".join(f"{name}: {value} !important" for name, value in STAND_IN_THEME.items())
+    page.add_style_tag(content=f".territorio-light-theme[data-theme-light] {{ {rules} }}")
 
 # What the stand-in theme is read through: per selector, whether the element is an
 # NcButton, the colour painted behind it (its own or the nearest ancestor's), its
@@ -8798,8 +8806,7 @@ def the_map_controls_wear_the_theme(page, failures):
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector(OMNIBOX_INPUT, timeout=30_000)
     page.wait_for_selector(f"{PIN}, .territorio-cluster__ring", timeout=15_000)
-    rules = "; ".join(f"{name}: {value} !important" for name, value in STAND_IN_THEME.items())
-    page.add_style_tag(content=f".territorio-light-theme[data-theme-light] {{ {rules} }}")
+    wear_the_stand_in_theme(page)
     theme = STAND_IN_THEME
     surface, ink = theme["--color-main-background"], theme["--color-main-text"]
     primary = (theme["--color-primary-element-light"], theme["--color-primary-element-light-text"])
@@ -8861,6 +8868,259 @@ def the_map_controls_wear_the_theme(page, failures):
     else:
         _wears(page, {".territorio-draw-sector__button": (True, theme["--color-error"], None, None)}, failures)
         draw.click()
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+
+# The live sheet of the ODS template, by its header cells (OdsAssets::COLUMNS).
+ODS_COLUMNS = ["ID (no modificar)", "Revisión (no modificar)", "Nombre", "Categoría", "Subcategoría",
+               "Latitud", "Longitud", "Dirección", "Teléfono", "Correo", "Persona de contacto",
+               "Cargo", "Horario", "Notas", "Fuente", "Ubicación"]
+
+
+def ods_workbook(rows):
+    """An .ods holding one «Activos» sheet: ODS_COLUMNS, then `rows`, every cell a string."""
+    def cell(value):
+        return f'<table:table-cell office:value-type="string"><text:p>{html.escape(value)}</text:p></table:table-cell>'
+
+    table = "".join(f"<table:table-row>{''.join(cell(value) for value in row)}</table:table-row>"
+                    for row in [ODS_COLUMNS, *rows])
+    content = ('<?xml version="1.0" encoding="UTF-8"?>'
+               '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"'
+               ' xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"'
+               ' xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3">'
+               f'<office:body><office:spreadsheet><table:table table:name="Activos">{table}'
+               '</table:table></office:spreadsheet></office:body></office:document-content>')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("mimetype"), "application/vnd.oasis.opendocument.spreadsheet")
+        archive.writestr("content.xml", content, compress_type=zipfile.ZIP_DEFLATED)
+    return buffer.getvalue()
+
+
+def the_panels_and_views_wear_the_theme(page, errors, failures):
+    """#266: the record, its history, the Índice, Posibles duplicados, Análisis and the taxonomy drawer.
+
+    Under the stand-in theme, every button they draw is an NcButton, and their
+    surfaces, text and sizes are the theme's. The Category colours keep their own:
+    they are data (ADR-0013, ADR-0017), and so is the white the glyph wears on them.
+    Each stage also drives the flow its buttons serve.
+    """
+    name = f"Junta Vecinal Tema {REDESIGN}"
+    seeded = import_dataset(json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature", "geometry": {"type": "Point", "coordinates": [-70.71, -33.71]},
+        "properties": {"id": f"tema-{REDESIGN}", "name": name, "category": "salud", "subcategory": "cesfam",
+                       "phone": "+56 2 2345 6789", "email": "junta@example.org", "address": "Pasaje Tema 12"},
+    }]}), f"tema-{REDESIGN}", boundary=False)
+    if not seeded:
+        failures.append("the panels' theme check could not import its record through occ")
+        return
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+    wear_the_stand_in_theme(page)
+    theme = STAND_IN_THEME
+    surface, ink = theme["--color-main-background"], theme["--color-main-text"]
+    primary = (theme["--color-primary-element-light"], theme["--color-primary-element-light-text"])
+    font, small = theme["--default-font-size"], theme["--font-size-small"]
+    glyph = "rgb(255, 255, 255)"
+
+    # The record and its history, whose first load fails so «Reintentar» is on screen.
+    history = re.compile(r"/apps/territorio/features/\d+/history")
+    with expected_console_errors(errors, 500):
+        page.route(history, lambda route: route.fulfill(status=500, body="{}"))
+        page.locator(SEARCH).fill(name)
+        settles(page, lambda: page.locator(ROWS).count() == 1, timeout=5_000)
+        _wears(page, {
+            ".territorio-list__sort-bar": (None, None, None, small),
+            ".territorio-list__swatch--dot": (None, None, glyph, None),
+        }, failures)
+        page.locator(ROWS).first.click()
+        retry = page.locator(".territorio-history").get_by_role("button", name="Reintentar")
+        settles(page, lambda: retry.count() > 0, timeout=5_000)
+        page.unroute(history)
+    _wears(page, {
+        ".territorio-detail__place-badge": (None, *primary, small),
+        ".territorio-detail__place-title": (None, None, ink, None),
+        ".territorio-detail__link-btn": (True, None, None, font),
+        ".territorio-detail__place-fields": (None, None, ink, font),
+        ".territorio-history__retry": (True, None, None, font),
+    }, failures)
+    links = page.locator(".territorio-detail__link-btn").evaluate_all("(links) => links.map((link) => link.href)")
+    if links != ["tel:+56 2 2345 6789", "mailto:junta@example.org"]:
+        failures.append(f"under the stand-in theme the record's contact buttons link to {links}")
+    page.screenshot(path=str(SHOTS / "panels-record.png"), full_page=False)
+    if retry.count() == 0:
+        failures.append("a history that failed to load offered no «Reintentar»")
+    else:
+        retry.click()
+        if not settles(page, lambda: page.locator(".territorio-history__entry").count() > 0, timeout=5_000):
+            failures.append("«Reintentar» did not load the record's history")
+    dismiss(page)
+
+    # The Índice: a column sorts, a row opens its record, «Volver al mapa» leaves.
+    _pane(page, "Índice")
+    page.wait_for_selector(INDICE, timeout=5_000)
+    _wears(page, {
+        ".territorio-indice": (None, surface, None, None),
+        ".territorio-indice__back-btn": (True, None, None, font),
+        ".territorio-indice__head h2": (None, None, ink, None),
+        ".territorio-indice__sort": (True, surface, None, font),
+        f"{INDICE} td:not(.territorio-indice__cell--first)": (None, surface, ink, font),
+        ".territorio-indice__open": (True, None, None, font),
+    }, failures)
+    sort = page.locator(".territorio-indice__sort").first
+    sort.click()
+    if not settles(page, lambda: page.locator(f"{INDICE} th").first.get_attribute("aria-sort") != "none",
+                   timeout=2_000):
+        failures.append("under the stand-in theme the Índice's first column did not sort")
+    page.locator(".territorio-indice__open", has_text=name).click()
+    if not settles(page, lambda: page.locator(".territorio-detail__place-title", has_text=name).count() == 1,
+                   timeout=5_000):
+        failures.append("under the stand-in theme the Índice's row did not open its record")
+    # Back in the Índice, the open record's row is the theme's selection.
+    _pane(page, "Índice")
+    page.wait_for_selector(INDICE, timeout=5_000)
+    page.locator(".territorio-indice__head h2").hover()
+    _wears(page, {".territorio-indice__row--selected td:not(.territorio-indice__cell--first)":
+                  (None, primary[0], None, None)}, failures)
+    page.screenshot(path=str(SHOTS / "panels-indice.png"), full_page=False)
+    page.locator(".territorio-indice__back-btn").click()
+    if not settles(page, lambda: page.locator(".territorio-indice").count() == 0, timeout=5_000):
+        failures.append("«Volver al mapa» did not leave the Índice")
+    dismiss(page)
+
+    # Posibles duplicados: «Volver al mapa» leaves.
+    _pane(page, "Posibles duplicados")
+    page.wait_for_selector(".territorio-duplicados", timeout=5_000)
+    _wears(page, {
+        ".territorio-duplicados": (None, surface, None, None),
+        ".territorio-duplicados__back-btn": (True, None, None, font),
+    }, failures)
+    page.screenshot(path=str(SHOTS / "panels-duplicados.png"), full_page=False)
+    page.locator(".territorio-duplicados__back-btn").click()
+    if not settles(page, lambda: page.locator(".territorio-duplicados").count() == 0, timeout=5_000):
+        failures.append("«Volver al mapa» did not leave Posibles duplicados")
+
+    # Análisis: a bar filters, a chip and «Limpiar filtros» clear it, «Volver al mapa» leaves.
+    _pane(page, "Análisis")
+    analysis = page.locator(".territorio-analisis")
+    analysis.wait_for(timeout=5_000)
+    analysis.get_by_label("Buscar activos", exact=True).fill(name)
+    _wears(page, {
+        ".territorio-analisis__actions > :first-child": (True, None, None, font),
+        ".territorio-analisis__metric": (True, None, None, font),
+        ".territorio-analisis__bar": (True, None, None, font),
+        ".territorio-analisis__footnote": (None, None, None, small),
+        ".territorio-analisis h2": (None, surface, ink, None),
+    }, failures)
+    page.screenshot(path=str(SHOTS / "panels-analisis.png"), full_page=False)
+    bar = analysis.locator(".territorio-analisis__bar").first
+    bar.click()
+    chips = analysis.locator(".territorio-analisis__chip")
+    if not settles(page, lambda: chips.count() == 2 and bar.get_attribute("aria-pressed") == "true", timeout=2_000):
+        failures.append(f"under the stand-in theme a category bar left {chips.count()} chips, not the search's and its own")
+    else:
+        _wears(page, {".territorio-analisis__chip": (True, None, None, font)}, failures)
+        chips.last.click()
+        if not settles(page, lambda: chips.count() == 1, timeout=2_000):
+            failures.append("under the stand-in theme a chip's «Quitar» did not take its filter off")
+    analysis.get_by_role("button", name="Limpiar filtros", exact=True).first.click()
+    if not settles(page, lambda: chips.count() == 0, timeout=2_000):
+        failures.append("under the stand-in theme «Limpiar filtros» left filters on")
+    analysis.get_by_role("button", name="Volver al mapa", exact=True).click()
+    if not settles(page, lambda: page.locator(".territorio-analisis").count() == 0, timeout=5_000):
+        failures.append("«Volver al mapa» did not leave Análisis")
+
+    # The taxonomy drawer and the Capas panel in it, editing: each Category's swatch is an
+    # NcButton painted in its own colour, the glyphs it offers too, and «Cerrar» closes it.
+    open_capas(page)
+    _wears(page, {
+        ".territorio-taxonomy-drawer__panel": (None, surface, None, None),
+        ".territorio-taxonomy-drawer__title h3": (None, None, ink, None),
+        ".territorio-taxonomy-drawer__close": (True, None, None, None),
+        ".territorio-capas__category .territorio-capas__swatch": (True, None, glyph, None),
+        CAPAS_RENAME: (True, None, None, None),
+        ".territorio-capas__add": (True, None, None, None),
+        CAPAS_REMOVE: (True, None, None, None),
+    }, failures)
+    served = sorted(_served_categories(page).values())
+    swatches = page.locator(".territorio-capas__category .territorio-capas__swatch")
+    painted = sorted({_as_hex(colour) for colour in swatches.evaluate_all(
+        "(swatches) => swatches.map((swatch) => getComputedStyle(swatch).backgroundColor)")})
+    if not set(painted) <= set(served):
+        failures.append(f"under the stand-in theme the Capas swatches are {painted}, not the Categories' {served}")
+    swatches.first.click()
+    cells = page.locator(".territorio-capas__glyph")
+    if not settles(page, lambda: cells.count() > 1, timeout=10_000):
+        failures.append("under the stand-in theme a Category's swatch opened no pictograms")
+    else:
+        _wears(page, {".territorio-capas__glyph:not([title='Sin pictograma'])": (True, None, glyph, None)}, failures)
+        if _as_hex(cells.nth(1).evaluate("(cell) => getComputedStyle(cell).backgroundColor")) not in served:
+            failures.append("under the stand-in theme the pictograms are not drawn on their Category's colour")
+    page.screenshot(path=str(SHOTS / "panels-taxonomy.png"), full_page=False)
+    page.locator(".territorio-taxonomy-drawer__close").click()
+    if not settles(page, lambda: page.locator(".territorio-taxonomy-drawer").count() == 0, timeout=5_000):
+        failures.append("«Cerrar» did not close the taxonomy drawer")
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
+
+def an_ods_import_is_reviewed_before_it_writes(page, failures):
+    """#266: the ODS review's buttons are NcButtons under the stand-in theme, and they work.
+
+    A two-row sheet: one row ready, one under a Subcategory the taxonomy does not
+    hold. «Omitir todos» unselects both, «Seleccionar válidos sin posibles
+    duplicados» selects the ready one, «Aplicar clasificación» corrects the other,
+    and «Confirmar importación» writes the two.
+    """
+    ready, corrected = f"Sede Planilla {REDESIGN}", f"Club Planilla {REDESIGN}"
+    # A latitude of this run's own (NUDGE), as the duplicate queue's twins have, so no earlier
+    # run's rows stand within the review's duplicate distance of this run's.
+    lat = f"{-33.72 - NUDGE / 200:.4f}"
+    workbook = ods_workbook([
+        ["", "", ready, "salud", "cesfam", lat, "-70.72", *[""] * 9],
+        ["", "", corrected, "salud", f"inexistente-{REDESIGN}", lat, "-70.74", *[""] * 9],
+    ])
+    wear_the_stand_in_theme(page)
+    font = STAND_IN_THEME["--default-font-size"]
+    page.get_by_role("button", name="Importar / deshacer").click()
+    page.get_by_label("Conjunto de datos").fill(f"planilla-tema-{REDESIGN}")
+    page.locator('input[type="file"]').set_input_files({
+        "name": f"planilla-tema-{REDESIGN}.ods", "mimeType": "application/vnd.oasis.opendocument.spreadsheet",
+        "buffer": workbook,
+    })
+    page.get_by_role("button", name="Revisar planilla", exact=True).click()
+    review = page.locator(".territorio-ods-review")
+    if not settles(page, lambda: review.count() == 1, timeout=10_000):
+        failures.append("the ODS sheet opened no review")
+        to_list(page)
+        return
+    tally = review.locator("p[aria-live] strong")
+    _wears(page, {
+        ".territorio-ods-review__actions > :first-child": (True, None, None, font),
+        ".territorio-ods-review__actions > :last-child": (True, None, None, font),
+        ".territorio-ods-review__classification button": (True, None, None, font),
+    }, failures)
+    review.get_by_role("button", name="Omitir todos", exact=True).click()
+    if not settles(page, lambda: tally.inner_text().startswith("0 por añadir"), timeout=2_000):
+        failures.append(f"«Omitir todos» left «{tally.inner_text()}»")
+    review.get_by_role("button", name="Seleccionar válidos sin posibles duplicados", exact=True).click()
+    if not settles(page, lambda: tally.inner_text().startswith("1 por añadir"), timeout=2_000):
+        failures.append(f"«Seleccionar válidos sin posibles duplicados» left «{tally.inner_text()}»")
+    review.get_by_label("Corregir clasificación de fila 3").select_option(index=1)
+    review.get_by_role("button", name="Aplicar clasificación", exact=True).click()
+    if not settles(page, lambda: review.locator(".territorio-ods-review__classification").count() == 0,
+                   timeout=10_000):
+        failures.append("«Aplicar clasificación» did not correct the row's classification")
+    review.get_by_text(f"Fila 3 · {corrected}").click()
+    page.screenshot(path=str(SHOTS / "panels-ods-review.png"), full_page=False)
+    page.get_by_role("button", name="Confirmar importación", exact=True).click()
+    settles(page, lambda: review.count() == 0, timeout=10_000)
+    to_list(page)
+    stored = {record.get("name") for record in registry_features(page)}
+    missing = [record for record in (ready, corrected) if record not in stored]
+    if missing:
+        failures.append(f"the reviewed ODS import did not write {missing}")
     page.reload(wait_until="domcontentloaded")
     page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
 
@@ -9013,6 +9273,8 @@ def main():
         # with the page reloaded and the filter reset. `--only redesign` stops here.
         run(the_redesigned_controls_work, page, errors, failures)
         run(the_map_controls_wear_the_theme, page, failures)
+        run(the_panels_and_views_wear_the_theme, page, errors, failures)
+        run(an_ods_import_is_reviewed_before_it_writes, page, failures)
         if ONLY == "redesign":
             browser.close()
             return _report(errors, failures)

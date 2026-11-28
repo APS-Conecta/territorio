@@ -1,12 +1,12 @@
 <template>
 	<div class="territorio-duplicados">
 		<div class="territorio-duplicados__head">
-			<button type="button"
-				class="territorio-duplicados__back-btn"
+			<NcButton class="territorio-duplicados__back-btn"
+				variant="tertiary"
 				title="Volver al mapa"
 				@click="$emit('back')">
 				← Volver al mapa
-			</button>
+			</NcButton>
 			<h2>
 				{{ pairs.length }}
 				{{ pairs.length === 1 ? 'par por revisar' : 'pares por revisar' }}
@@ -202,22 +202,7 @@ export default {
 }
 
 .territorio-duplicados__back-btn {
-	background: #f1f3f4;
-	border: 1px solid #dadce0;
-	border-radius: 6px;
-	font-size: 13px;
-	font-weight: 500;
-	color: #1a73e8;
-	padding: 6px 12px;
-	cursor: pointer;
 	margin-bottom: 12px;
-	display: inline-flex;
-	align-items: center;
-	transition: background 0.15s;
-}
-
-.territorio-duplicados__back-btn:hover {
-	background: #e8eaed;
 }
 
 .territorio-duplicados__pair {

@@ -1,5 +1,5 @@
 <template>
-	<NcAppContentList>
+	<NcAppContentList :style="tileInks">
 		<div class="territorio-list__header">
 			<span class="territorio-list__count">
 				{{ features.length }} {{ features.length === 1 ? 'registro' : 'registros' }}
@@ -142,7 +142,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { sortAssets } from '../assets.js'
 import { glyphFor } from '../glyphs.js'
-import { swatchFor } from '../marks.js'
+import { swatchFor, TILE_INKS } from '../marks.js'
 import { colourOf, indexSubcategories, isSectorSubcategory } from '../taxonomy.js'
 
 export default {
@@ -169,6 +169,8 @@ export default {
 	data() {
 		return {
 			sortCriteria: 'name:asc',
+			// Bound on the root, so each swatch's glyph wears the pin's ink (marks.js).
+			tileInks: TILE_INKS,
 		}
 	},
 
@@ -270,9 +272,9 @@ export default {
 	/* So a ring's border stays inside the 18px a dot occupies and the two line
 	   up down the column. */
 	box-sizing: border-box;
-	/* White for the reason the map pin's glyph is white: the ramp was validated
-	   against white, and the dot underneath is a data colour that does not
-	   follow the theme.
+	/* The map pin's glyph ink (TILE_INKS in marks.js), for the reason the pin
+	   wears it: the ramp was validated against white, and the dot underneath is
+	   a data colour that does not follow the theme.
 
 	   Set as `color`, not as `fill` on the svg, because NcIconSvgWrapper ships
 	   `.icon-vue[data-v-…] svg { fill: currentColor }` at specificity (0,2,1) and
@@ -284,7 +286,7 @@ export default {
 
 	   Left on the base class rather than on the dot variant: a ring hides its
 	   svg outright below, and its border names its own colour. */
-	color: #fff;
+	color: var(--territorio-pin-glyph);
 }
 
 /*
@@ -318,7 +320,7 @@ export default {
 	gap: 12px;
 	padding: 4px 12px 10px;
 	border-bottom: 1px solid var(--color-border);
-	font-size: 12px;
+	font-size: var(--font-size-small);
 }
 
 .territorio-list__sort-label {
@@ -334,7 +336,7 @@ export default {
 	color: var(--color-main-text);
 	border: 1px solid var(--color-border);
 	border-radius: 4px;
-	font-size: 12px;
+	font-size: var(--font-size-small);
 	padding: 2px 6px;
 	cursor: pointer;
 }

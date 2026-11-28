@@ -25,7 +25,7 @@
 			</span>
 		</summary>
 
-		<div class="territorio-capas__body">
+		<div class="territorio-capas__body" :style="tileInks">
 			<!--
 				The whole tree's editing mode, first thing in the body: renaming,
 				adding and removing are rare next to filtering, so they are asked
@@ -127,15 +127,17 @@
 						stops a click: this sits inside a <summary>, where any click folds
 						the branch.
 					-->
-					<button v-if="crud" class="territorio-capas__swatch"
-						type="button"
+					<NcButton v-if="crud" class="territorio-capas__swatch"
+						variant="tertiary-no-background"
 						:style="{ background: category.color }"
 						:disabled="glyphsLoading"
 						:title="`Elegir pictograma de «${category.label}»`"
 						:aria-label="`Elegir pictograma de «${category.label}»`"
 						@click.stop.prevent="startPicking(category)">
-						<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
-					</button>
+						<template #icon>
+							<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
+						</template>
+					</NcButton>
 					<span v-else class="territorio-capas__swatch"
 						:style="{ background: category.color }">
 						<NcIconSvgWrapper :svg="glyphFor(category.slug, category.glyph)" :size="11" />
@@ -162,15 +164,18 @@
 						@blur="cancel">
 					<template v-else>
 						<span class="territorio-capas__name">{{ category.label }}</span>
-						<button v-if="crud" class="territorio-capas__rename"
-							type="button"
+						<NcButton v-if="crud" class="territorio-capas__rename"
+							variant="tertiary"
+							size="small"
 							:title="`Renombrar «${category.label}»`"
 							:aria-label="`Renombrar «${category.label}»`"
 							@click.stop.prevent="startRename(category)">
-							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-								<path fill="currentColor" :d="PENCIL" />
-							</svg>
-						</button>
+							<template #icon>
+								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+									<path fill="currentColor" :d="PENCIL" />
+								</svg>
+							</template>
+						</NcButton>
 						<!--
 							Adding a Subcategory starts where a person is already looking at
 							the Category it will sit under (#44). Only a name is asked for:
@@ -187,15 +192,18 @@
 							to refuse: the `addSubcategory` docblock in App.vue says what a
 							row posted there would look like, and why nothing here makes one.
 						-->
-						<button v-if="crud" class="territorio-capas__add"
-							type="button"
+						<NcButton v-if="crud" class="territorio-capas__add"
+							variant="tertiary"
+							size="small"
 							:title="`Agregar subcategoría en «${category.label}»`"
 							:aria-label="`Agregar subcategoría en «${category.label}»`"
 							@click.stop.prevent="startAdd(category, $event)">
-							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-								<path fill="currentColor" :d="PLUS" />
-							</svg>
-						</button>
+							<template #icon>
+								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+									<path fill="currentColor" :d="PLUS" />
+								</svg>
+							</template>
+						</NcButton>
 						<!--
 							Removing is offered on every Category the tree draws (#47).
 							«División territorial» is not one of them — `treeOf` leaves it
@@ -206,16 +214,19 @@
 							`FeatureDetail` uses for retiring a record and never a
 							`confirm()`, which blocks the page (ADR-0016).
 						-->
-						<button v-if="crud && confirming !== keyOf(category)"
+						<NcButton v-if="crud && confirming !== keyOf(category)"
 							class="territorio-capas__remove"
-							type="button"
+							variant="tertiary"
+							size="small"
 							:title="`Quitar «${category.label}»`"
 							:aria-label="`Quitar «${category.label}»`"
 							@click.stop.prevent="startRemove(category)">
-							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-								<path fill="currentColor" :d="TRASH" />
-							</svg>
-						</button>
+							<template #icon>
+								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+									<path fill="currentColor" :d="TRASH" />
+								</svg>
+							</template>
+						</NcButton>
 						<span v-else-if="crud && confirming === keyOf(category)" class="territorio-capas__confirm" @click.stop>
 							<NcButton variant="error" @click.stop.prevent="commitRemove(category)">
 								Quitar
@@ -260,25 +271,31 @@
 								@update:model-value="$emit('toggle-subcategory', subcategory.id)">
 								{{ subcategory.label }}
 							</NcCheckboxRadioSwitch>
-							<button v-if="crud" class="territorio-capas__rename"
-								type="button"
+							<NcButton v-if="crud" class="territorio-capas__rename"
+								variant="tertiary"
+								size="small"
 								:title="`Renombrar «${subcategory.label}»`"
 								:aria-label="`Renombrar «${subcategory.label}»`"
 								@click.stop.prevent="startRename(category, subcategory)">
-								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-									<path fill="currentColor" :d="PENCIL" />
-								</svg>
-							</button>
-							<button v-if="crud && confirming !== keyOf(category, subcategory)"
+								<template #icon>
+									<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+										<path fill="currentColor" :d="PENCIL" />
+									</svg>
+								</template>
+							</NcButton>
+							<NcButton v-if="crud && confirming !== keyOf(category, subcategory)"
 								class="territorio-capas__remove"
-								type="button"
+								variant="tertiary"
+								size="small"
 								:title="`Quitar «${subcategory.label}»`"
 								:aria-label="`Quitar «${subcategory.label}»`"
 								@click.stop.prevent="startRemove(category, subcategory)">
-								<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-									<path fill="currentColor" :d="TRASH" />
-								</svg>
-							</button>
+								<template #icon>
+									<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+										<path fill="currentColor" :d="TRASH" />
+									</svg>
+								</template>
+							</NcButton>
 							<span v-else-if="crud && confirming === keyOf(category, subcategory)" class="territorio-capas__confirm">
 								<NcButton variant="error"
 									@click.stop.prevent="commitRemove(category, subcategory)">
@@ -316,16 +333,18 @@
 						because this button is a SIBLING of the field — the grid below carries
 						the same guard on its root, and neither covers the other.
 					-->
-					<button class="territorio-capas__swatch"
-						type="button"
+					<NcButton class="territorio-capas__swatch"
+						variant="tertiary-no-background"
 						:style="{ background: NEUTRAL }"
 						:title="draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'"
 						:aria-label="draftLabel.trim() ? `Elegir pictograma de «${draftLabel.trim()}»` : 'Elegir pictograma de la nueva categoría'"
 						:disabled="glyphsLoading"
 						@mousedown.prevent
 						@click.stop.prevent="startPicking(null)">
-						<NcIconSvgWrapper :svg="glyphFor(null, draftGlyph)" :size="11" />
-					</button>
+						<template #icon>
+							<NcIconSvgWrapper :svg="glyphFor(null, draftGlyph)" :size="11" />
+						</template>
+					</NcButton>
 					<input ref="editor"
 						v-model="draftLabel"
 						class="territorio-capas__input"
@@ -386,24 +405,28 @@
 						something else — which is worse than no mark, because it asserts.
 						The Category goes back to the neutral fallback (ADR-0017).
 					-->
-					<button type="button"
-						class="territorio-capas__glyph"
+					<NcButton class="territorio-capas__glyph"
+						variant="tertiary-no-background"
 						:style="{ background: NEUTRAL }"
 						title="Sin pictograma"
 						aria-label="Sin pictograma"
 						@click="choose('')">
-						<NcIconSvgWrapper :svg="glyphFor(null, null)" :size="PIN_GLYPH_SIZE" />
-					</button>
-					<button v-for="mark in CATALOGUE"
+						<template #icon>
+							<NcIconSvgWrapper :svg="glyphFor(null, null)" :size="PIN_GLYPH_SIZE" />
+						</template>
+					</NcButton>
+					<NcButton v-for="mark in CATALOGUE"
 						:key="mark"
-						type="button"
 						class="territorio-capas__glyph"
+						variant="tertiary-no-background"
 						:style="{ background: picking.color }"
 						:title="mark"
 						:aria-label="mark"
 						@click="choose(mark)">
-						<NcIconSvgWrapper :svg="glyphFor(null, mark)" :size="PIN_GLYPH_SIZE" />
-					</button>
+						<template #icon>
+							<NcIconSvgWrapper :svg="glyphFor(null, mark)" :size="PIN_GLYPH_SIZE" />
+						</template>
+					</NcButton>
 				</div>
 			</div>
 		</div>
@@ -417,7 +440,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { CATALOGUE, glyphFor, loadCatalogue } from '../glyphs.js'
 import { categoryState, isFiltered, isSubcategoryVisible } from '../filters.js'
-import { PIN_DOT_SIZE, PIN_GLYPH_SIZE } from '../marks.js'
+import { PIN_DOT_SIZE, PIN_GLYPH_SIZE, TILE_INKS } from '../marks.js'
 import { DEFAULT_SECTOR_COLOUR, divisionsOf, treeOf } from '../taxonomy.js'
 
 /**
@@ -516,6 +539,8 @@ export default {
 			CATALOGUE,
 			PIN_DOT_SIZE,
 			PIN_GLYPH_SIZE,
+			// Bound on the body, so each swatch's glyph wears the pin's ink (marks.js).
+			tileInks: TILE_INKS,
 			/** What a not-yet-created Category is previewed on: see the button. */
 			NEUTRAL: DEFAULT_SECTOR_COLOUR,
 			/*
@@ -861,27 +886,43 @@ export default {
 	height: 16px;
 	border-radius: 50%;
 	flex: 0 0 auto;
-	/* It is a <button> since #46 — the control that opens the pictogram grid —
-	   and a button brings a border, a padding and a background of its own that
-	   would hide the Category colour this element exists to show. `min-height`
-	   is the one that is not obvious: the server stylesheet gives every button
-	   the 34px clickable area, which beats `height: 16px` and drew this circle
-	   as a 16×34 ellipse. Only a browser could say so — jsdom has no server
-	   stylesheet — and the gate did, the first time it ran against the built
-	   bundle.
-	   ponytail: the tap target comes down to the 16px dot with it. The row is
-	   34px tall, so the way back is a 34px button wrapping a 16px dot, the day
-	   this panel is used on a touch screen. */
-	border: none;
+	/* The map pin's glyph ink (TILE_INKS in marks.js), fed to NcIconSvgWrapper as
+	   `currentColor` rather than forced onto the svg: its own
+	   `.icon-vue[data-v-…] svg { fill: currentColor }` ties with a scoped
+	   `:deep(svg)` rule at specificity (0,2,1), and the library's stylesheet wins
+	   the tie (#37). See FeatureList.vue. */
+	color: var(--territorio-pin-glyph);
+}
+
+/* Editing, the swatch is an NcButton, the control that opens the pictogram grid
+   (#46), and so is each mark in the grid. NcButton brings a border, a padding, a
+   background and a clickable area of its own that would hide the Category colour
+   these exist to show and stretch the circle: `--button-size` is NcButton's
+   clickable area, and the colour is the inline background. Selected through the
+   panel's body: NcButton's own rules tie with a bare scoped class.
+   ponytail: the tap target comes down to the 16px dot with it. The row is 34px
+   tall, so the way back is a 34px button wrapping a 16px dot, the day this panel
+   is used on a touch screen. */
+.territorio-capas__body .territorio-capas__swatch,
+.territorio-capas__body .territorio-capas__glyph {
+	--button-size: var(--territorio-swatch);
+	width: var(--territorio-swatch);
+	height: var(--territorio-swatch);
 	padding: 0;
-	min-height: 0;
-	cursor: pointer;
-	/* White, fed to NcIconSvgWrapper as `currentColor` rather than forced onto
-	   the svg: its own `.icon-vue[data-v-…] svg { fill: currentColor }` ties with
-	   a scoped `:deep(svg)` rule at specificity (0,2,1), the library's stylesheet
-	   loaded last, and these glyphs rendered in the theme's dark text colour for
-	   as long as the rule claimed otherwise (#37). See FeatureList.vue. */
-	color: #fff;
+	border: none;
+	border-radius: 50%;
+	color: var(--territorio-pin-glyph);
+}
+
+.territorio-capas__body .territorio-capas__swatch {
+	--territorio-swatch: 16px;
+}
+
+/* The pin, exactly: the dot from `PIN_DOT_SIZE` through the custom property the
+   grid writes, and the mark from `PIN_GLYPH_SIZE` on the wrapper itself.
+   ADR-0017 — a mark judged at legend size can fail at the size it is used. */
+.territorio-capas__body .territorio-capas__glyph {
+	--territorio-swatch: var(--territorio-pin);
 }
 
 .territorio-capas__picker {
@@ -905,24 +946,7 @@ export default {
 }
 
 .territorio-capas__glyph {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	/* The pin, exactly: the dot from `PIN_DOT_SIZE` through the custom property
-	   the grid writes, and the mark from `PIN_GLYPH_SIZE` on the wrapper itself.
-	   ADR-0017 — a mark judged at legend size can fail at the size it is used. */
-	width: var(--territorio-pin);
-	height: var(--territorio-pin);
-	border-radius: 50%;
-	border: none;
-	padding: 0;
-	/* Same server-stylesheet 34px as the swatch above: without this the preview
-	   is not the pin's size, which is the whole of ADR-0017's ask. */
-	min-height: 0;
 	flex: 0 0 auto;
-	cursor: pointer;
-	/* White, fed as `currentColor`, for the reason the swatch above gives. */
-	color: #fff;
 }
 
 .territorio-capas__name {
@@ -968,30 +992,17 @@ export default {
    The «+» that adds a Subcategory is the same control in the same row and wears
    the same treatment, under its own name: `__rename` still means the pencil, and
    the browser gate picks a pencil by that class. */
-.territorio-capas__rename,
-.territorio-capas__add,
-.territorio-capas__remove {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+.territorio-capas__body .territorio-capas__rename,
+.territorio-capas__body .territorio-capas__add,
+.territorio-capas__body .territorio-capas__remove {
 	flex: 0 0 auto;
-	width: 24px;
-	height: 24px;
-	padding: 0;
-	border: none;
-	border-radius: var(--border-radius);
-	background: transparent;
 	color: var(--color-text-maxcontrast);
-	cursor: pointer;
 }
 
-.territorio-capas__rename:hover,
-.territorio-capas__rename:focus-visible,
-.territorio-capas__add:hover,
-.territorio-capas__add:focus-visible,
-.territorio-capas__remove:hover,
-.territorio-capas__remove:focus-visible {
-	background: var(--color-background-hover);
+.territorio-capas__body .territorio-capas__rename:hover,
+.territorio-capas__body .territorio-capas__rename:focus-visible,
+.territorio-capas__body .territorio-capas__add:hover,
+.territorio-capas__body .territorio-capas__add:focus-visible {
 	color: var(--color-main-text);
 }
 
@@ -999,8 +1010,8 @@ export default {
    one FeatureDetail's «Retirar del mapa» wears, because it is the same step in
    the same two-step shape. Only on hover and focus: eleven red bins down the
    panel would read as eleven warnings. */
-.territorio-capas__remove:hover,
-.territorio-capas__remove:focus-visible {
+.territorio-capas__body .territorio-capas__remove:hover,
+.territorio-capas__body .territorio-capas__remove:focus-visible {
 	color: var(--color-error-text);
 }
 

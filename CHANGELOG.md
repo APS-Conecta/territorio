@@ -23,6 +23,10 @@ The basemap is OpenStreetMap's tile service, used as its Tile Usage Policy asks 
   layers menu, «Dibujar Sector», the Limit picker's «Reintentar» and the docked panel's handle use
   `NcButton`, theme colours and relative font sizes. Category colours and the inks the map draws on
   its tiles (`TILE_INKS` in `src/marks.js`) keep their own values (#265).
+- The panels and views take their look from Nextcloud's variables and components: the record,
+  its history, the Datos list, the Índice, Posibles duplicados, Análisis, the ODS review and the
+  taxonomy drawer with its Capas panel use `NcButton`, theme colours and relative font sizes.
+  Category colours and the glyph ink on them (`TILE_INKS`) keep their own values (#266).
 - **First signed release (0.80.0).** Releases are built and signed by the org's shared
   workflow (instalador #31), called from `.github/workflows/release.yml` pinned by commit
   SHA: a pull request builds the frontend and packs the tarball; a `v*` tag — which must

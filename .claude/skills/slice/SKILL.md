@@ -85,6 +85,7 @@ make test            # PHP unit — bare container, no Nextcloud
 make test-js         # vitest over the pure frontend modules
 make lint            # php -l over lib/, tests/, tools/
 make lint-js         # eslint: nothing used but never imported
+# the org's shared style check at the commit the `style` job of `.github/workflows/ci.yml` pins
 make instance-up
 docker compose -f compose.dev.yaml exec --user www-data nextcloud php occ upgrade
 make test-integration
@@ -146,7 +147,7 @@ git push -u origin feat/<n>-<slug>
 gh pr create                            # opens an editor pre-filled with the org PR template
 #                                         (APS-Conecta/.github); NOT --fill: that takes title and
 #                                         body from the commits and bypasses the template entirely
-gh pr checks --watch                    # php tests+lint, js lint+tests+notices, the instance job
+gh pr checks --watch                    # php tests+lint, js lint+tests+notices, style, the instance job
 #                                         (openapi, integration, browser), build (release.yml)
 gh pr merge --rebase --delete-branch    # keeps main linear, as it has always been
 gh issue close <n> --comment "…"

@@ -84,6 +84,26 @@ export const PIN_DOT_SIZE = 26
 export const PIN_GLYPH_SIZE = 19
 
 /**
+ * The inks the map draws on its tiles: the labels and their plate, the pin ring and
+ * the pin's glyph.
+ *
+ * The basemap is raster OpenStreetMap, light whatever the theme is doing, so these
+ * follow the tile and never the theme (docs/design/map-legibility.md §2, §2.2): a
+ * dark-theme label of #ebebeb over OSM land #f2efe9 renders at 1.04:1. They are data
+ * about the basemap, as a Category's colour is data, so they live here and
+ * TerritorioMap.vue binds them onto the map as the custom properties its stylesheet
+ * reads. tools/ramp-check.py reads the ring's ink out of this object.
+ */
+export const TILE_INKS = {
+	'--territorio-label-ink': '#1a1a1a',
+	'--territorio-label-plate': 'rgba(255, 255, 255, 0.78)',
+	'--territorio-label-edge': '#949494',
+	'--territorio-ground-ink': '#4c4c4c',
+	'--territorio-pin-ring': '#171717',
+	'--territorio-pin-glyph': '#fff',
+}
+
+/**
  * The Leaflet path style for one shape.
  *
  * @param {?string} slug the record's Subcategory slug, from indexSubcategories()

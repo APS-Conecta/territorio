@@ -41,9 +41,9 @@
 		     a comuna with no streets — with nothing said, Generar just stayed grey. -->
 		<p v-if="failed" class="territorio-picker__hint">
 			No se pudieron cargar las calles del catastro.
-			<button type="button" class="territorio-picker__retry" @click="$emit('retry')">
+			<NcButton class="territorio-picker__retry" variant="tertiary" size="small" @click="$emit('retry')">
 				Reintentar
-			</button>
+			</NcButton>
 		</p>
 
 		<!--
@@ -206,16 +206,9 @@ export default {
 	margin: 8px 0;
 }
 
-/* The history panel's retry, verbatim: a link-shaped button inside the sentence. */
 .territorio-picker__retry {
-	background: none;
-	border: none;
-	padding: 0;
+	display: inline-flex;
 	margin-inline-start: 6px;
-	font: inherit;
-	color: var(--color-primary-element);
-	text-decoration: underline;
-	cursor: pointer;
 }
 
 .territorio-picker__suggestions,

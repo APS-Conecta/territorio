@@ -76,15 +76,18 @@
 						class="territorio-docked-panel"
 						:class="{ 'territorio-docked-panel--collapsed': !panelOpen }"
 						aria-label="Panel de activos comunitarios">
-						<button
-							type="button"
-							class="territorio-docked-panel__toggle"
-							:title="panelOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'"
-							:aria-label="panelOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'"
-							:aria-expanded="panelOpen ? 'true' : 'false'"
-							@click="panelOpen = !panelOpen">
-							<span class="territorio-docked-panel__chevron" aria-hidden="true">{{ panelOpen ? '◀' : '▶' }}</span>
-						</button>
+						<div class="territorio-docked-panel__handle">
+							<NcButton class="territorio-docked-panel__toggle"
+								variant="tertiary"
+								:title="panelOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'"
+								:aria-label="panelOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'"
+								:aria-expanded="panelOpen ? 'true' : 'false'"
+								@click="panelOpen = !panelOpen">
+								<template #icon>
+									<span class="territorio-docked-panel__chevron" aria-hidden="true">{{ panelOpen ? '◀' : '▶' }}</span>
+								</template>
+							</NcButton>
+						</div>
 
 						<div class="territorio-docked-panel__inner">
 							<div class="territorio-docked-panel__spacer" />
@@ -1729,7 +1732,7 @@ export default {
 	width: 408px;
 	max-width: calc(100vw - 48px);
 	background: var(--color-main-background, #ffffff);
-	box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+	box-shadow: 0 1px 8px var(--color-box-shadow);
 	z-index: 900;
 	display: flex;
 	flex-direction: column;
@@ -1749,35 +1752,23 @@ export default {
 	}
 }
 
-.territorio-docked-panel__toggle {
+// The handle the panel slides on: a tab of the theme's surface, holding its NcButton.
+.territorio-docked-panel__handle {
 	position: absolute;
 	top: 50%;
-	right: -24px;
+	left: 100%;
 	transform: translateY(-50%);
-	width: 24px;
-	height: 48px;
+	padding: 6px 2px;
 	background: var(--color-main-background, #ffffff);
 	border: 1px solid var(--color-border, #dadce0);
 	border-left: none;
-	border-radius: 0 8px 8px 0;
-	box-shadow: 2px 1px 4px rgba(60, 64, 67, 0.15);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0;
-	color: var(--color-text-maxcontrast, #70757a);
+	border-radius: 0 var(--border-radius-large) var(--border-radius-large) 0;
+	box-shadow: 2px 1px 4px var(--color-box-shadow);
 	z-index: 901;
-	transition: background-color 0.15s ease, color 0.15s ease;
-
-	&:hover {
-		background: var(--color-background-hover, #f8f9fa);
-		color: var(--color-main-text, #202124);
-	}
 }
 
 .territorio-docked-panel__chevron {
-	font-size: 11px;
+	font-size: 0.75rem;
 	line-height: 1;
 }
 
@@ -1833,7 +1824,7 @@ export default {
 	gap: 8px;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--color-border);
-	font-size: 13px;
+	font-size: var(--font-size-small);
 }
 
 .territorio-fullscreen-view {

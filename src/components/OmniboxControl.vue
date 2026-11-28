@@ -26,50 +26,56 @@
 				@keydown.enter.prevent="selectActiveResult"
 				@keydown.esc="clearQuery">
 
-			<button v-if="query.trim() !== ''"
-				type="button"
+			<NcButton v-if="query.trim() !== ''"
 				class="territorio-omnibox__clear"
+				variant="tertiary"
 				title="Limpiar búsqueda"
 				aria-label="Limpiar búsqueda"
 				@click="clearQuery">
-				✕
-			</button>
+				<template #icon>
+					<span aria-hidden="true">✕</span>
+				</template>
+			</NcButton>
 		</div>
 
 		<!-- View Switcher Tabs -->
 		<div class="territorio-omnibox__tabs" role="tablist">
-			<button type="button"
-				role="tab"
+			<NcButton role="tab"
 				class="territorio-omnibox__tab"
 				:class="{ 'territorio-omnibox__tab--active': pane === 'mapa' }"
+				:variant="pane === 'mapa' ? 'secondary' : 'tertiary'"
+				size="small"
 				:aria-selected="pane === 'mapa' ? 'true' : 'false'"
 				@click="$emit('change-pane', 'mapa')">
 				Mapa
-			</button>
-			<button type="button"
-				role="tab"
+			</NcButton>
+			<NcButton role="tab"
 				class="territorio-omnibox__tab"
 				:class="{ 'territorio-omnibox__tab--active': pane === 'indice' }"
+				:variant="pane === 'indice' ? 'secondary' : 'tertiary'"
+				size="small"
 				:aria-selected="pane === 'indice' ? 'true' : 'false'"
 				@click="$emit('change-pane', 'indice')">
 				Índice
-			</button>
-			<button type="button"
-				role="tab"
+			</NcButton>
+			<NcButton role="tab"
 				class="territorio-omnibox__tab"
 				:class="{ 'territorio-omnibox__tab--active': pane === 'analisis' }"
+				:variant="pane === 'analisis' ? 'secondary' : 'tertiary'"
+				size="small"
 				:aria-selected="pane === 'analisis' ? 'true' : 'false'"
 				@click="$emit('change-pane', 'analisis')">
 				Análisis
-			</button>
-			<button type="button"
-				role="tab"
+			</NcButton>
+			<NcButton role="tab"
 				class="territorio-omnibox__tab"
 				:class="{ 'territorio-omnibox__tab--active': pane === 'duplicados' }"
+				:variant="pane === 'duplicados' ? 'secondary' : 'tertiary'"
+				size="small"
 				:aria-selected="pane === 'duplicados' ? 'true' : 'false'"
 				@click="$emit('change-pane', 'duplicados')">
 				Posibles duplicados
-			</button>
+			</NcButton>
 		</div>
 
 		<!-- Said when the dropdown has nothing to offer: loading, failed, no streets imported, no such street. -->
@@ -109,11 +115,15 @@
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
+
 import { matchOmnibox } from '../assets.js'
 import { hintFor, placeDetail, searchStatus } from '../streets.js'
 
 export default {
 	name: 'OmniboxControl',
+
+	components: { NcButton },
 
 	props: {
 		modelValue: {
@@ -287,10 +297,10 @@ export default {
 	z-index: 1000;
 	width: 392px;
 	max-width: 100%;
-	background: #ffffff;
-	border-radius: 8px;
-	box-shadow: 0 2px 6px rgba(60, 64, 67, 0.3), 0 1px 2px rgba(60, 64, 67, 0.15);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border-radius: var(--border-radius-large);
+	box-shadow: 0 2px 6px var(--color-box-shadow);
 	box-sizing: border-box;
 }
 
@@ -298,47 +308,29 @@ export default {
 	display: flex;
 	align-items: center;
 	height: 48px;
-	padding: 0 12px;
-	border-bottom: 1px solid #ebebeb;
+	padding: 0 6px 0 12px;
+	border-bottom: 1px solid var(--color-border);
 }
 
 .territorio-omnibox__icon {
 	display: flex;
 	align-items: center;
-	color: #5f6368;
-	margin-right: 12px;
+	color: var(--color-text-maxcontrast);
+	margin-inline-end: 12px;
 }
 
 .territorio-omnibox__input {
 	flex: 1;
 	border: none;
 	outline: none;
-	font-size: 15px;
-	color: #202124;
+	font-size: var(--default-font-size);
+	color: var(--color-main-text);
 	background: transparent;
 	padding: 0;
 }
 
 .territorio-omnibox__input::placeholder {
-	color: #70757a;
-}
-
-.territorio-omnibox__clear {
-	background: none;
-	border: none;
-	cursor: pointer;
-	color: #70757a;
-	font-size: 14px;
-	padding: 6px;
-	border-radius: 50%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.territorio-omnibox__clear:hover {
-	background: #f1f3f4;
-	color: #202124;
+	color: var(--color-text-maxcontrast);
 }
 
 .territorio-omnibox__tabs {
@@ -346,32 +338,15 @@ export default {
 	align-items: center;
 	padding: 4px 8px 6px;
 	gap: 4px;
-	background: #f8f9fa;
-	border-bottom-left-radius: 8px;
-	border-bottom-right-radius: 8px;
+	background: var(--color-background-hover);
+	border-bottom-left-radius: var(--border-radius-large);
+	border-bottom-right-radius: var(--border-radius-large);
 }
 
-.territorio-omnibox__tab {
-	background: none;
-	border: none;
-	font-size: 12px;
-	font-weight: 500;
-	color: #5f6368;
-	padding: 4px 8px;
-	border-radius: 12px;
-	cursor: pointer;
-	transition: background 0.15s, color 0.15s;
-}
-
-.territorio-omnibox__tab:hover {
-	background: #e8eaed;
-	color: #202124;
-}
-
-.territorio-omnibox__tab--active {
-	background: #e8f0fe;
-	color: #1a73e8;
-	font-weight: 600;
+/* Four tabs in the box's 392px: the theme's small text and one grid step of padding. */
+.territorio-omnibox__tabs .territorio-omnibox__tab {
+	--button-padding-default: var(--default-grid-baseline);
+	font-size: var(--font-size-small);
 }
 
 .territorio-omnibox__dropdown {
@@ -380,9 +355,9 @@ export default {
 	left: 0;
 	right: 0;
 	margin-top: 4px;
-	background: #ffffff;
-	border-radius: 8px;
-	box-shadow: 0 4px 12px rgba(60, 64, 67, 0.25);
+	background: var(--color-main-background);
+	border-radius: var(--border-radius-large);
+	box-shadow: 0 4px 12px var(--color-box-shadow);
 	max-height: 380px;
 	overflow-y: auto;
 	z-index: 1001;
@@ -394,7 +369,7 @@ export default {
 	align-items: center;
 	padding: 10px 14px;
 	cursor: pointer;
-	border-bottom: 1px solid #f1f3f4;
+	border-bottom: 1px solid var(--color-border);
 	transition: background 0.1s;
 }
 
@@ -404,12 +379,12 @@ export default {
 
 .territorio-omnibox__item:hover,
 .territorio-omnibox__item--highlighted {
-	background: #f1f3f4;
+	background: var(--color-background-hover);
 }
 
 .territorio-omnibox__item-icon {
-	margin-right: 12px;
-	font-size: 16px;
+	margin-inline-end: 12px;
+	font-size: 1.1rem;
 	display: flex;
 	align-items: center;
 }
@@ -420,17 +395,16 @@ export default {
 }
 
 .territorio-omnibox__item-title {
-	font-size: 14px;
 	font-weight: 500;
-	color: #202124;
+	color: var(--color-main-text);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
 .territorio-omnibox__item-subtitle {
-	font-size: 12px;
-	color: #70757a;
+	font-size: var(--font-size-small);
+	color: var(--color-text-maxcontrast);
 	margin-top: 2px;
 	white-space: nowrap;
 	overflow: hidden;
@@ -438,19 +412,19 @@ export default {
 }
 
 .territorio-omnibox__badge {
-	background: #e8f0fe;
-	color: #1a73e8;
+	background: var(--color-primary-element-light);
+	color: var(--color-primary-element-light-text);
 	padding: 1px 6px;
-	border-radius: 4px;
-	font-size: 11px;
+	border-radius: var(--border-radius-small);
+	font-size: 0.75rem;
 	font-weight: 500;
 }
 
 .territorio-omnibox__status {
 	margin: 0;
 	padding: 8px 16px;
-	font-size: 13px;
-	color: #5f6368;
+	font-size: var(--font-size-small);
+	color: var(--color-text-maxcontrast);
 }
 
 .territorio-omnibox__status:empty {
@@ -459,6 +433,5 @@ export default {
 
 .territorio-omnibox__street-hint {
 	font-style: italic;
-	color: #5f6368;
 }
 </style>

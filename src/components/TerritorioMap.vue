@@ -1,5 +1,5 @@
 <template>
-	<div class="territorio-map">
+	<div class="territorio-map" :style="tileInks">
 		<NcNoteCard v-if="basemapUnreachable && !basemapNoticeDismissed"
 			type="warning"
 			class="territorio-map__notice">
@@ -52,7 +52,7 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { makeOperable } from '../a11y.js'
 import { addBasemap, OSM_ATTRIBUTION } from '../basemap.js'
 import { glyphFor } from '../glyphs.js'
-import { labelOptions, shapeStyle, showsGroundLabels } from '../marks.js'
+import { labelOptions, shapeStyle, showsGroundLabels, TILE_INKS } from '../marks.js'
 import { diffLayers, pointSignature, shapeSignature } from '../mapdiff.js'
 import { clusterIcon, isApproximate, pinIcon } from '../pins.js'
 import LocateControl from './LocateControl.vue'
@@ -148,6 +148,8 @@ export default {
 
 	data() {
 		return {
+			// Bound on the root, so the labels and pins inside the map read them (marks.js).
+			tileInks: TILE_INKS,
 			// The Comuna this install serves and its extent (ADR-0021), for the opening view.
 			comuna: loadState('territorio', 'comuna'),
 			// The basemap's latest reachability verdict, announced by basemap.js.
@@ -932,25 +934,24 @@ export default {
 
 /*
  * A label sits ON a tile, and the tile is raster OpenStreetMap in BOTH themes.
- * So these colours are literal and never Nextcloud variables: a dark-theme
- * label of #ebebeb over OSM land #f2efe9 renders at 1.04:1 — invisible.
- * Label colour follows the tile (map-legibility § 2).
+ * So its inks are the tile's (TILE_INKS in marks.js), never Nextcloud
+ * variables. Label colour follows the tile (map-legibility § 2).
  *
  * Qualified with .leaflet-tooltip rather than left alone, so this wins over
  * Leaflet's own tooltip rules whichever order the bundler emits them in.
  */
 .leaflet-tooltip.territorio-label {
-	background: rgba(255, 255, 255, 0.78);
+	background: var(--territorio-label-plate);
 	border: none;
 	box-shadow: none;
-	color: #1a1a1a;
-	font-size: 12px;
+	color: var(--territorio-label-ink);
+	font-size: 0.8rem;
 	font-weight: 600;
 	padding: 1px 5px;
 }
 
 .leaflet-tooltip.territorio-label--custom {
-	border: 1px solid #949494;
+	border: 1px solid var(--territorio-label-edge);
 	border-radius: 0;
 }
 
@@ -965,8 +966,8 @@ export default {
    white boxes would be the noise the figure/ground rule is removing. */
 .leaflet-tooltip.territorio-label--ground {
 	background: none;
-	color: #4c4c4c;
-	font-size: 11px;
+	color: var(--territorio-ground-ink);
+	font-size: 0.75rem;
 	font-weight: 400;
 }
 
@@ -987,15 +988,16 @@ $focus-ring: 3px solid var(--color-primary-element, #0b6bcb);
 
 /*
  * The ring every pin dot and cluster bubble wears against the basemap. One
- * fixed dark ink, not a theme variable: the tiles are light in both themes —
- * §2's label rule (docs/design/map-legibility.md) binds a ring sitting on
- * those tiles as surely as a label — and the white this replaces measured
- * 1.15–1.69:1 against them, under the 3:1 contour floor of WCAG 1.4.11 in
- * both themes. The ink clears 11.18:1 at its floor (raster water) and 3:1
- * over every legal fill — measured, not asserted, by tools/ramp-check.py,
- * which fails if this declaration or its wearers drift.
+ * fixed dark ink (TILE_INKS in marks.js), not a theme variable: the tiles are
+ * light in both themes — §2's label rule (docs/design/map-legibility.md) binds
+ * a ring sitting on those tiles as surely as a label — and the white this
+ * replaces measured 1.15–1.69:1 against them, under the 3:1 contour floor of
+ * WCAG 1.4.11 in both themes. The ink clears 11.18:1 at its floor (raster
+ * water) and 3:1 over every legal fill — measured, not asserted, by
+ * tools/ramp-check.py, which fails if this declaration, its ink or its
+ * wearers drift.
  */
-$pin-ring: 2px solid #171717;
+$pin-ring: 2px solid var(--territorio-pin-ring);
 
 /*
  * Where the keyboard currently is, on a map made of shapes a mouse could always
@@ -1029,11 +1031,11 @@ $pin-ring: 2px solid #171717;
 	height: var(--territorio-pin);
 	border-radius: 50%;
 	border: $pin-ring;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 1px 3px var(--color-box-shadow);
 
 	/*
-	 * White, and not a theme variable. The ramp was validated against white
-	 * specifically — every Category clears 3:1 against it (WCAG 1.4.11,
+	 * White (TILE_INKS in marks.js), and not a theme variable. The ramp was
+	 * validated against white specifically — every Category clears 3:1 against it (WCAG 1.4.11,
 	 * tools/ramp-check.py) — and the dot's fill is a data colour that does not
 	 * change with the theme, so a glyph that did would stop clearing on one of
 	 * them. The mark's own size comes from `PIN_GLYPH_SIZE` (marks.js), which
@@ -1044,7 +1046,7 @@ $pin-ring: 2px solid #171717;
 	svg {
 		width: var(--territorio-pin-mark);
 		height: var(--territorio-pin-mark);
-		fill: #fff;
+		fill: var(--territorio-pin-glyph);
 		flex: 0 0 auto;
 	}
 
@@ -1096,7 +1098,7 @@ $pin-ring: 2px solid #171717;
 	height: 36px;
 	border-radius: 50%;
 	border: $pin-ring;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 1px 3px var(--color-box-shadow);
 
 	/* The same dash, for the same reason, when any record under it is approximate. */
 	&--approximate {
@@ -1119,7 +1121,7 @@ $pin-ring: 2px solid #171717;
 	 */
 	background: var(--color-main-background, #fff);
 	color: var(--color-main-text, #222);
-	font-size: 12px;
+	font-size: 0.8rem;
 	font-weight: 600;
 	line-height: 1;
 	/* Lining, tabular figures: 8 and 88 must not jump in a 24px disc. */

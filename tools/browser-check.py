@@ -1897,6 +1897,42 @@ def the_assignment_is_shown_and_not_editable(page, failures):
     page.wait_for_timeout(400)
 
 
+# The picker's catastro lines for the view, and not /boundaries/names.
+BOUNDARIES_REQUEST = re.compile(r"/apps/territorio/boundaries\?")
+
+
+def a_failed_catastro_can_be_retried(page, errors, failures):
+    """#265: a catastro that fails to load offers «Reintentar», an NcButton, and it loads.
+
+    The 500 is this check's own, answered for the picker's request, so only its
+    console lines are forgiven, and only while the request fails.
+    """
+    with expected_console_errors(errors, 500):
+        page.route(BOUNDARIES_REQUEST, lambda route: route.fulfill(status=500, body="{}"))
+        page.locator(SEARCH).fill(f"Sector Navegador {RUN}")
+        page.wait_for_timeout(400)
+        open_first_row(page)
+        picker = page.locator(".territorio-picker")
+        retry = picker.get_by_role("button", name="Reintentar")
+        settles(page, lambda: retry.count() > 0, timeout=5_000)
+        page.unroute(BOUNDARIES_REQUEST)
+
+    if picker.count() == 0:
+        failures.append("opening a Sector did not open the Limit picker")
+    elif retry.count() == 0:
+        failures.append("a catastro that failed to load offered no «Reintentar»")
+    else:
+        if "button-vue" not in (retry.get_attribute("class") or ""):
+            failures.append("«Reintentar» in the Limit picker is not an NcButton")
+        retry.click()
+        if not settles(page, lambda: picker.get_by_text("No se pudieron cargar").count() == 0, timeout=5_000):
+            failures.append("«Reintentar» did not load the catastro's lines")
+        page.screenshot(path=str(SHOTS / "map-controls-boundary.png"), full_page=False)
+    dismiss(page)
+    page.locator(SEARCH).fill("")
+    page.wait_for_timeout(400)
+
+
 def the_limit_can_be_picked(page, failures):
     """#13: pick the lines a Sector's Limit runs along, by name or by clicking.
 
@@ -5765,15 +5801,15 @@ def _the_ground_label_waits_for_its_zoom(page, uv, failures):
 
 
 def _label_colour_follows_the_tile(page, label, what, failures):
-    """A map label's colour is literal, never a Nextcloud variable (#21).
+    """A map label's colour is the tile's, never a Nextcloud variable (#21).
 
     The basemap is raster OpenStreetMap under BOTH themes, so a label that
     follows the theme is illegible in one of them: a dark-theme #ebebeb over OSM
     land #f2efe9 renders at 1.04:1. Measured rather than read off the
-    stylesheet, because swapping a hex for `var(--color-main-text)` is a one-
+    stylesheet, because swapping the ink for `var(--color-main-text)` is a one-
     character edit that no unit test in this repo can see.
 
-    Both labels go through it. They are two CSS blocks with two literal hexes —
+    Both labels go through it. They are two CSS blocks with two inks of TILE_INKS —
     `.territorio-label` sits on a white plate and `--ground` sits directly on
     the tile with nothing behind it, which makes the ground label the one with
     more to lose — so checking the Sector's alone would leave the other free to
@@ -8662,6 +8698,136 @@ def the_redesigned_controls_work(page, errors, failures):
     page.screenshot(path=str(SHOTS / "redesign.png"), full_page=False)
 
 
+# A theme no Nextcloud ships, laid over the app's own light palette: a map control that
+# wears these values took them from the theme's variables, not from literals of its own.
+STAND_IN_THEME = {
+    "--color-main-background": "rgb(255, 248, 231)",
+    "--color-main-text": "rgb(61, 12, 41)",
+    "--color-primary-element-light": "rgb(214, 240, 200)",
+    "--color-primary-element-light-text": "rgb(20, 70, 10)",
+    "--color-error": "rgb(170, 20, 60)",
+    "--default-font-size": "17px",
+}
+
+# What the stand-in theme is read through: per selector, whether the element is an
+# NcButton, the colour painted behind it (its own or the nearest ancestor's), its
+# text colour and its font size.
+CONTROL_READING = """(selectors) => Object.fromEntries(selectors.map((selector) => {
+    const element = document.querySelector(selector)
+    if (element === null) return [selector, null]
+    let painted = element
+    while (painted && /^rgba\\(.*, 0\\)$|^transparent$/.test(getComputedStyle(painted).backgroundColor)) {
+        painted = painted.parentElement
+    }
+    const style = getComputedStyle(element)
+    return [selector, {
+        button: element.classList.contains('button-vue'),
+        background: painted ? getComputedStyle(painted).backgroundColor : null,
+        colour: style.color,
+        font: style.fontSize,
+    }]
+}))"""
+
+
+def _wears(page, wanted, failures):
+    """Read each selector through CONTROL_READING and say where it differs from `wanted`.
+
+    Read until it settles: NcButton eases its colours in when its variant changes.
+    """
+    def differences():
+        readings, found = page.evaluate(CONTROL_READING, list(wanted)), []
+        for selector, expected in wanted.items():
+            reading = readings[selector]
+            if reading is None:
+                found.append(f"under the stand-in theme {selector} is not on the page")
+                continue
+            got = (reading["button"], reading["background"], reading["colour"], reading["font"])
+            for what, want, have in zip(("an NcButton", "painted on", "text", "font size"), expected, got):
+                if want is not None and want != have:
+                    found.append(f"under the stand-in theme {selector}: {what} is {have}, not {want}")
+        return found
+
+    settles(page, lambda: not differences(), timeout=2_000)
+    failures.extend(differences())
+
+
+def the_map_controls_wear_the_theme(page, failures):
+    """#265: the search box, the layers menu, «Dibujar Sector», the panel's handle.
+
+    Under a stand-in theme, every one of their buttons is an NcButton, and their
+    surfaces, text and sizes are the theme's. The Category dots in the layers menu
+    and the pin ring keep their own colours: a Category's colour is data
+    (ADR-0013, ADR-0017) and the ring follows the tile (map-legibility.md §2.2).
+    """
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector(OMNIBOX_INPUT, timeout=30_000)
+    page.wait_for_selector(f"{PIN}, .territorio-cluster__ring", timeout=15_000)
+    rules = "; ".join(f"{name}: {value} !important" for name, value in STAND_IN_THEME.items())
+    page.add_style_tag(content=f".territorio-light-theme[data-theme-light] {{ {rules} }}")
+    theme = STAND_IN_THEME
+    surface, ink = theme["--color-main-background"], theme["--color-main-text"]
+    primary = (theme["--color-primary-element-light"], theme["--color-primary-element-light-text"])
+    font = theme["--default-font-size"]
+
+    # Each stage opens one control, because opening the next one closes it.
+    box = page.locator(OMNIBOX_INPUT)
+    box.click()
+    box.press_sequentially(f"Rediseño {REDESIGN}", delay=40)
+    if not settles(page, lambda: page.locator(OMNIBOX_ITEM).count() > 0, timeout=5_000):
+        failures.append("the stand-in theme check typed into the search box and got no rows")
+    # selector -> (an NcButton, painted behind it, text colour, font size); None is not checked.
+    _wears(page, {
+        ".territorio-omnibox__input": (None, surface, ink, font),
+        ".territorio-omnibox__clear": (True, surface, None, None),
+        ".territorio-omnibox__tab:not(.territorio-omnibox__tab--active)": (True, None, ink, None),
+        ".territorio-omnibox__tab--active": (True, *primary, None),
+        f"{OMNIBOX_ITEM} .territorio-omnibox__item-title": (None, surface, ink, None),
+        ".territorio-docked-panel__toggle": (True, surface, None, None),
+    }, failures)
+    page.screenshot(path=str(SHOTS / "map-controls-search.png"), full_page=False)
+    box.press("Escape")
+
+    # Read off the hover, which NcButton paints in its own hover colours.
+    page.locator(".territorio-layers-button").click()
+    page.mouse.move(MAP_CLEAR["x"], MAP_CLEAR["y"])
+    _wears(page, {
+        ".territorio-layers-button": (True, *primary, font),
+        ".territorio-layers-panel__action": (True, surface, None, None),
+        ".territorio-layers-item__label": (None, surface, ink, None),
+        ".territorio-layers-panel__settings": (True, surface, ink, None),
+    }, failures)
+
+    # Data and the tile, not the theme: the dots are the Categories' own colours, the ring its ink.
+    served = sorted(_served_categories(page).values())
+    dots = sorted(_as_hex(colour) for colour in page.locator(".territorio-layers-item__dot").evaluate_all(
+        "(dots) => dots.map((dot) => getComputedStyle(dot).backgroundColor)"))
+    if dots != served:
+        failures.append(f"under the stand-in theme the layers menu's dots are {dots}, not the Categories' {served}")
+    ring = page.locator(f"{PIN}, .territorio-cluster__ring").first.evaluate(
+        "(mark) => getComputedStyle(mark).borderTopColor")
+    if _as_hex(ring) != PIN_RING_INK:
+        failures.append(f"under the stand-in theme the pin ring is {ring}, not the tile's {PIN_RING_INK}")
+    page.screenshot(path=str(SHOTS / "map-controls-layers.png"), full_page=False)
+
+    page.get_by_label("Más opciones de dibujo", exact=True).click()
+    _wears(page, {
+        ".territorio-draw-sector__button": (True, surface, None, font),
+        ".territorio-draw-area__button": (True, surface, ink, None),
+    }, failures)
+    page.screenshot(path=str(SHOTS / "map-controls-draw.png"), full_page=False)
+
+    # Drawing, «Cancelar Dibujo» is the theme's error colour.
+    draw = page.locator(".territorio-draw-sector__button")
+    draw.click()
+    page.mouse.move(MAP_CLEAR["x"], MAP_CLEAR["y"])
+    if not settles(page, lambda: "Cancelar Dibujo" in draw.inner_text(), timeout=5_000):
+        failures.append("under the stand-in theme «Dibujar Sector» did not go into drawing mode")
+    else:
+        _wears(page, {".territorio-draw-sector__button": (True, theme["--color-error"], None, None)}, failures)
+        draw.click()
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector('[data-testid="map-canvas"]', timeout=30_000)
+
 
 def registered_assets(page):
     """The persisted inventory, excluding retired records and geographic boundaries."""
@@ -8810,6 +8976,7 @@ def main():
         # The redesigned topbar first: it seeds three records of its own and ends
         # with the page reloaded and the filter reset. `--only redesign` stops here.
         run(the_redesigned_controls_work, page, errors, failures)
+        run(the_map_controls_wear_the_theme, page, failures)
         if ONLY == "redesign":
             browser.close()
             return _report(errors, failures)
@@ -8884,6 +9051,7 @@ def main():
         run(a_pin_opens_its_record_while_a_place_card_is_open, page, failures)
         run(the_assignment_is_shown_and_not_editable, page, failures)
         run(search_narrows_everything, page, failures)
+        run(a_failed_catastro_can_be_retried, page, errors, failures)
         run(the_limit_can_be_picked, page, failures)
         run(the_duplicate_queue_works, page, failures)
         # After it, which imports through the dialog: the batch list needs one to

@@ -381,20 +381,24 @@ def spare_failures(spares, taken):
 # declaration, or set a RASTER_SURFACES colour to the ink's own) after touching
 # this block.
 PIN_RING_SOURCE = REPO / 'src' / 'components' / 'TerritorioMap.vue'
+TILE_INKS_SOURCE = REPO / 'src' / 'marks.js'
 RASTER_SURFACES = {'land': '#f2efe9', 'water': '#aad3df', 'green': '#cdebb0'}
                               # OSM Carto's standard palette, the §2 era
 
 
 def pin_ring():
-    """(width, hex) of the border every pin and cluster wears, out of the SCSS.
+    """(width, hex) of the border every pin and cluster wears: the width out of the
+    SCSS, the ink out of TILE_INKS in marks.js, which the map binds for it to read.
 
-    None if the declaration is not there, which main() turns into a failure:
-    the ring this gate measures must be the ring the map draws, not a copy that
-    agrees with this file while the component disagreed with both.
+    None if either is not there, which main() turns into a failure: the ring this
+    gate measures must be the ring the map draws, not a copy that agrees with this
+    file while the component disagreed with both.
     """
-    match = re.search(r'^[ \t]*\$pin-ring:\s*(\d+)px\s+solid\s+(#[0-9a-fA-F]{6})',
+    width = re.search(r'^[ \t]*\$pin-ring:\s*(\d+)px\s+solid\s+var\(--territorio-pin-ring\)',
                       PIN_RING_SOURCE.read_text(encoding='utf-8'), re.M)
-    return None if match is None else (int(match.group(1)), match.group(2))
+    ink = re.search(r"'--territorio-pin-ring':\s*'(#[0-9a-fA-F]{6})'",
+                    TILE_INKS_SOURCE.read_text(encoding='utf-8'))
+    return None if width is None or ink is None else (int(width.group(1)), ink.group(1))
 
 
 def main():
@@ -482,8 +486,8 @@ def main():
     # carry, or a dot would vanish into its background.
     ring = pin_ring()
     if ring is None:
-        failures.append('no $pin-ring found in TerritorioMap.vue — the declaration or the '
-                        'regex reading it has drifted')
+        failures.append('no $pin-ring in TerritorioMap.vue or no --territorio-pin-ring in '
+                        'marks.js — a declaration or the regex reading it has drifted')
     else:
         width, ink = ring
         surfaces = [(f'raster {name}', colour) for name, colour in RASTER_SURFACES.items()]

@@ -1,18 +1,19 @@
 <template>
 	<div class="territorio-layers-dropdown">
-		<button type="button"
-			class="territorio-layers-button"
-			:class="{ 'territorio-layers-button--open': isOpen }"
+		<NcButton class="territorio-layers-button"
+			:variant="isOpen ? 'secondary' : 'tertiary'"
 			:aria-expanded="isOpen ? 'true' : 'false'"
 			aria-haspopup="true"
 			@click="isOpen = !isOpen">
-			<span class="territorio-layers-button__icon" aria-hidden="true">🗂️</span>
-			<span class="territorio-layers-button__text">Tipo de Activo</span>
+			<template #icon>
+				<span aria-hidden="true">🗂️</span>
+			</template>
+			Tipo de Activo
 			<span v-if="activeCategoryCount > 0" class="territorio-layers-button__count">
 				({{ activeCategoryCount }})
 			</span>
 			<span class="territorio-layers-button__arrow" aria-hidden="true">{{ isOpen ? '▴' : '▾' }}</span>
-		</button>
+		</NcButton>
 
 		<!-- Dropdown Panel -->
 		<div v-if="isOpen" class="territorio-layers-panel">
@@ -21,17 +22,18 @@
 					Categorías de Activos
 				</div>
 				<div class="territorio-layers-panel__bulk">
-					<button type="button"
-						class="territorio-layers-panel__action"
+					<NcButton class="territorio-layers-panel__action"
+						variant="tertiary"
+						size="small"
 						@click="$emit('select-all')">
 						Todas
-					</button>
-					<span class="territorio-layers-panel__sep">·</span>
-					<button type="button"
-						class="territorio-layers-panel__action"
+					</NcButton>
+					<NcButton class="territorio-layers-panel__action"
+						variant="tertiary"
+						size="small"
 						@click="$emit('clear-all')">
 						Limpiar
-					</button>
+					</NcButton>
 				</div>
 			</div>
 
@@ -69,21 +71,27 @@
 
 			<!-- Footer Link to Taxonomy Drawer -->
 			<div class="territorio-layers-panel__footer">
-				<button type="button"
-					class="territorio-layers-panel__settings"
+				<NcButton class="territorio-layers-panel__settings"
+					variant="tertiary"
+					alignment="start"
+					wide
 					@click="openManager">
 					⚙️ Configurar taxonomía y capas
-				</button>
+				</NcButton>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/components/NcButton'
+
 import { divisionsOf, treeOf } from '../taxonomy.js'
 
 export default {
 	name: 'LayersDropdownButton',
+
+	components: { NcButton },
 
 	props: {
 		taxonomy: {
@@ -164,58 +172,26 @@ export default {
 <style scoped>
 /* Placed by App.vue's topbar; see .territorio-omnibox. */
 .territorio-layers-dropdown {
-	position: relative;
-	z-index: 1000;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-
-.territorio-layers-button {
 	display: flex;
 	align-items: center;
 	height: 48px;
-	padding: 0 16px;
-	background: #ffffff;
-	border: 1px solid #dadce0;
-	border-radius: 8px;
-	font-size: 14px;
-	font-weight: 500;
-	color: #3c4043;
-	cursor: pointer;
-	box-shadow: 0 2px 6px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.1);
-	transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-}
-
-.territorio-layers-button:hover {
-	background: #f8f9fa;
-	border-color: #c6c9ce;
-}
-
-.territorio-layers-button--open {
-	background: #e8f0fe;
-	border-color: #1a73e8;
-	color: #1a73e8;
-}
-
-.territorio-layers-button__icon {
-	margin-right: 8px;
-	font-size: 16px;
-}
-
-.territorio-layers-button__text {
-	font-weight: 600;
+	padding: 0 6px;
+	position: relative;
+	z-index: 1000;
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large);
+	box-shadow: 0 2px 6px var(--color-box-shadow);
+	box-sizing: border-box;
 }
 
 .territorio-layers-button__count {
-	margin-left: 6px;
-	font-size: 13px;
-	color: #1a73e8;
-	font-weight: 600;
+	margin-inline-start: 6px;
 }
 
 .territorio-layers-button__arrow {
-	margin-left: 8px;
-	font-size: 10px;
-	color: #70757a;
+	margin-inline-start: 8px;
+	font-size: 0.7rem;
 }
 
 .territorio-layers-panel {
@@ -228,9 +204,10 @@ export default {
 	   panel; with many categories it must scroll into reach, not off the screen. */
 	max-height: calc(100vh - 180px);
 	overflow-y: auto;
-	background: #ffffff;
-	border-radius: 8px;
-	box-shadow: 0 4px 16px rgba(60, 64, 67, 0.25);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border-radius: var(--border-radius-large);
+	box-shadow: 0 4px 16px var(--color-box-shadow);
 	padding: 12px;
 	box-sizing: border-box;
 	z-index: 1001;
@@ -244,34 +221,22 @@ export default {
 }
 
 .territorio-layers-panel__title {
-	font-size: 12px;
+	font-size: 0.8rem;
 	font-weight: 700;
 	text-transform: uppercase;
-	color: #5f6368;
+	color: var(--color-text-maxcontrast);
 	letter-spacing: 0.5px;
 }
 
 .territorio-layers-panel__bulk {
-	font-size: 12px;
+	display: flex;
+	gap: 2px;
 }
 
-.territorio-layers-panel__action {
-	background: none;
-	border: none;
-	color: #1a73e8;
-	font-size: 12px;
-	font-weight: 500;
-	cursor: pointer;
-	padding: 0;
-}
-
-.territorio-layers-panel__action:hover {
-	text-decoration: underline;
-}
-
-.territorio-layers-panel__sep {
-	margin: 0 4px;
-	color: #dadce0;
+/* Beside the title, so the theme's small text and one grid step of padding. */
+.territorio-layers-panel__bulk .territorio-layers-panel__action {
+	--button-padding-default: var(--default-grid-baseline);
+	font-size: var(--font-size-small);
 }
 
 .territorio-layers-panel__list {
@@ -284,18 +249,18 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: 4px 6px;
-	border-radius: 4px;
+	border-radius: var(--border-radius-small);
 	cursor: pointer;
 	user-select: none;
 	transition: background 0.1s;
 }
 
 .territorio-layers-item:hover {
-	background: #f1f3f4;
+	background: var(--color-background-hover);
 }
 
 .territorio-layers-item__checkbox {
-	margin-right: 8px;
+	margin-inline-end: 8px;
 	cursor: pointer;
 }
 
@@ -303,42 +268,25 @@ export default {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	margin-right: 8px;
+	margin-inline-end: 8px;
 	flex-shrink: 0;
 }
 
 .territorio-layers-item__label {
 	flex: 1;
-	font-size: 13px;
-	color: #202124;
+	font-size: var(--font-size-small);
+	color: var(--color-main-text);
 }
 
 .territorio-layers-panel__divider {
 	height: 1px;
-	background: #ebebeb;
+	background: var(--color-border);
 	margin: 10px 0;
 }
 
 .territorio-layers-panel__footer {
 	margin-top: 10px;
 	padding-top: 8px;
-	border-top: 1px solid #ebebeb;
-}
-
-.territorio-layers-panel__settings {
-	width: 100%;
-	background: none;
-	border: none;
-	color: #1a73e8;
-	font-size: 13px;
-	font-weight: 500;
-	cursor: pointer;
-	text-align: left;
-	padding: 4px 6px;
-	border-radius: 4px;
-}
-
-.territorio-layers-panel__settings:hover {
-	background: #e8f0fe;
+	border-top: 1px solid var(--color-border);
 }
 </style>
